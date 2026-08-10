@@ -2,8 +2,8 @@ import httpx
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
-from textual.containers import Container, Horizontal, Vertical
-from textual.widgets import Header, Footer, Static, Button, DataTable
+from textual.containers import Container, Vertical, ScrollableContainer
+from textual.widgets import Header, Footer, Static, DataTable, Input
 from textual.screen import ModalScreen
 from textual.reactive import reactive
 from textual.binding import Binding
@@ -14,6 +14,85 @@ from timetrace.core.editor import open_in_nvim
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
+def format_priority_badge(priority: str) -> str:
+    p = str(priority).lower().strip()
+    if p == "high":
+        return "[bold white on red] 🔴 HIGH [/bold white on red]"
+    elif p == "medium":
+        return "[bold black on yellow] 🟡 MED [/bold black on yellow]"
+    elif p == "low":
+        return "[bold white on blue] 🔵 LOW [/bold white on blue]"
+    return "[dim text] ⚪ - [/dim text]"
+
+
+def format_status_badge(status: str) -> str:
+    s = str(status).lower().strip()
+    if s == "in_progress":
+        return "[bold cyan]⚡ in_progress[/bold cyan]"
+    elif s == "ongoing":
+        return "[bold magenta]🔄 ongoing[/bold magenta]"
+    elif s == "completed":
+        return "[bold green]✓ completed[/bold green]"
+    return f"[dim]{s}[/dim]"
+
+
+class HelpModal(ModalScreen):
+    BINDINGS = [
+        ("escape", "cancel", "Close"),
+        ("q", "cancel", "Close"),
+        ("question_mark", "cancel", "Close"),
+        ("j", "scroll_down", "Scroll Down"),
+        ("k", "scroll_up", "Scroll Up"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        help_text = """
+[bold cyan]Navigation & Table Shortcuts[/bold cyan]
+─────────────────────────────────────────────────────────────────────────────
+[bold white]j / k[/bold white]         Move selection down / up
+[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow])
+[bold white]f[/bold white]             Cycle status filters ([dim]all, active, in_progress, completed...[/dim])
+[bold white]o[/bold white]             Cycle sort modes ([dim]priority, created_at, title, status[/dim])
+[bold white]r[/bold white]             Refresh current table data
+
+[bold cyan]Task & Session Actions[/bold cyan]
+─────────────────────────────────────────────────────────────────────────────
+[bold white]a[/bold white]             Add new Task slot (via Neovim editor)
+[bold white]e[/bold white]             Edit selected row details / timestamps (via Neovim editor)
+[bold white]d[/bold white]             Delete selected task or session
+[bold white]D[/bold white]             Clear / purge all completed tasks
+[bold white]s[/bold white]             Start active session timer
+[bold white]c[/bold white]             Split current running session
+[bold white]x[/bold white]             Stop active session timer & trigger post-session reflection
+[bold white]m[/bold white]             Retroactively log a past session block
+[bold white]v[/bold white]             View detailed analytics & tag statistics summary
+
+[bold cyan]Command Line Mode (:)[/bold cyan]
+─────────────────────────────────────────────────────────────────────────────
+[bold white]:help, :keys[/bold white]   Open this help overlay screen
+[bold white]:theme[/bold white]        Toggle dark / light theme
+[bold white]:tasks, :sessions, :view[/bold white]  Switch active view mode
+[bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute command
+"""
+        yield Container(
+            Static("📖 [bold magenta]TimeTrace Help & Keyboard Shortcuts[/bold magenta] [dim](j/k to scroll, Esc or ? to close)[/dim]", id="modal_title"),
+            ScrollableContainer(
+                Static(help_text, id="help_content"),
+                id="help_scroll_container"
+            ),
+            id="help_dialog"
+        )
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#help_scroll_container", ScrollableContainer).scroll_down()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#help_scroll_container", ScrollableContainer).scroll_up()
+
+
 class StatsModal(ModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
@@ -22,15 +101,15 @@ class StatsModal(ModalScreen):
         self.summary = summary
 
     def compose(self) -> ComposeResult:
-        stats_text = "📊 Activity Time Breakdown:\n" + "-" * 35 + "\n"
+        stats_text = "📊 Activity Time Breakdown:\n" + "─" * 38 + "\n"
         if not self.summary:
-            stats_text += "No session data logged yet."
+            stats_text += "[dim]No session data logged yet.[/dim]"
         else:
             for item in self.summary:
-                stats_text += f"• {item['tag']:<18} : {item['total_hours']:>5} hrs ({item['session_count']} sessions)\n"
+                stats_text += f"• [bold green]{item['tag']:<18}[/bold green] : [bold purple]{item['total_hours']:>5.1f}[/bold purple] hrs ([cyan]{item['session_count']}[/cyan] sessions)\n"
 
         yield Container(
-            Static("📊 TimeTrace Statistics & Summary  [dim](Esc to exit)[/dim]", id="modal_title"),
+            Static("📊 [bold magenta]TimeTrace Analytics Summary[/bold magenta] [dim](Esc to exit)[/dim]", id="modal_title"),
             Static(stats_text, id="stats_content"),
             id="modal_dialog_lg"
         )
@@ -41,9 +120,13 @@ class StatsModal(ModalScreen):
 
 class TimeTraceTUI(App):
     CSS = """
+    Screen {
+        background: #0d0d14;
+    }
     #timer_box {
         height: 5;
-        border: solid purple;
+        border: heavy #a855f7;
+        background: #13111c;
         content-align: center middle;
         padding: 0 1;
         margin-bottom: 1;
@@ -51,26 +134,42 @@ class TimeTraceTUI(App):
     #timer_display {
         text-style: bold;
     }
-    #actions_box {
-        height: 3;
-        margin-bottom: 1;
-    }
     #filter_status_bar {
         height: 1;
-        background: $boost;
-        color: $text-muted;
+        background: #1e1b2e;
+        color: #c084fc;
         padding: 0 1;
         margin-bottom: 1;
-        text-style: italic;
+        text-style: bold;
     }
     #main_table {
         height: 1fr;
-        border: solid blue;
+        border: panel #3b82f6;
+        background: #13111c;
+    }
+    #command_input {
+        display: none;
+        height: 3;
+        border: heavy #059669;
+        background: #10101a;
+        color: #10b981;
+        margin-bottom: 0;
+    }
+    #help_dialog {
+        padding: 1 2;
+        background: #141424;
+        border: thick #a855f7;
+        width: 78;
+        height: 24;
+    }
+    #help_scroll_container {
+        height: 18;
+        margin-top: 1;
     }
     #modal_dialog_lg {
         padding: 1 2;
-        background: $surface;
-        border: thick $accent;
+        background: #181826;
+        border: thick #a855f7;
         width: 68;
         height: 20;
     }
@@ -78,17 +177,16 @@ class TimeTraceTUI(App):
         text-style: bold;
         margin-bottom: 1;
     }
-    #stats_content {
-        margin-bottom: 1;
-    }
     """
 
     BINDINGS = [
+        Binding("colon", "focus_command_input", "Command (:)"),
+        Binding("question_mark", "show_help", "Help (?)"),
         Binding("t", "toggle_view_mode", "Toggle View (t)"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
         Binding("a", "add_task_nvim", "Add Task"),
-        Binding("e", "edit_item_nvim", "Edit Item"),
+        Binding("e", "edit_item_nvim", "Edit Row"),
         Binding("f", "cycle_filter", "Filter (f)"),
         Binding("o", "cycle_sort", "Sort (o)"),
         Binding("d", "delete_item", "Delete Row"),
@@ -102,8 +200,8 @@ class TimeTraceTUI(App):
         Binding("q", "quit", "Quit"),
     ]
 
-    timer_text = reactive("⏸️ Timer Idle")
-    status_bar_text = reactive("Mode: TASKS | Filter: ALL | Sort: PRIORITY")
+    timer_text = reactive("[dim]⏸️ Timer Idle[/dim]")
+    status_bar_text = reactive("📱 VIEW: [bold cyan][TASKS][/bold cyan]  │  🔍 FILTER: [bold magenta][ALL][/bold magenta]  │  🔀 SORT: [bold green][PRIORITY][/bold green]")
     view_mode = reactive("tasks")  # "tasks" or "sessions"
 
     def __init__(self):
@@ -122,19 +220,9 @@ class TimeTraceTUI(App):
                 Static(self.timer_text, id="timer_display"),
                 id="timer_box"
             ),
-            Horizontal(
-                Button("View: TASKS (T)", variant="primary", id="view_toggle_btn"),
-                Button("Start (S)", variant="success", id="start_btn"),
-                Button("Split (C)", variant="warning", id="split_btn"),
-                Button("Stop (X)", variant="error", id="stop_btn"),
-                Button("Add (A)", variant="default", id="add_btn"),
-                Button("Filter (F)", variant="default", id="filter_btn"),
-                Button("Sort (O)", variant="default", id="sort_btn"),
-                Button("Clear Done (D)", variant="error", id="clear_btn"),
-                id="actions_box"
-            ),
             Static(self.status_bar_text, id="filter_status_bar"),
             DataTable(id="main_table"),
+            Input(placeholder="Type command (e.g. :help, :keys, :view, :start, :stop)...", id="command_input"),
         )
         yield Footer()
 
@@ -149,15 +237,65 @@ class TimeTraceTUI(App):
         table.clear(columns=True)
         table.cursor_type = "row"
         if self.view_mode == "tasks":
-            table.add_columns("ID", "Title", "Status", "Priority", "Start/Created", "Description")
+            table.add_columns("ID", "Priority", "Title", "Status", "Created At", "Description")
         else:
             table.add_columns("ID", "Tags", "Start Time", "End Time", "Duration (m)", "Notes")
 
+    def action_show_help(self) -> None:
+        self.push_screen(HelpModal())
+
+    def action_focus_command_input(self) -> None:
+        cmd_input = self.query_one("#command_input", Input)
+        cmd_input.styles.display = "block"
+        cmd_input.value = ":"
+        cmd_input.focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        cmd_input = self.query_one("#command_input", Input)
+        val = event.value.strip().lower()
+        cmd_input.styles.display = "none"
+        self.query_one("#main_table", DataTable).focus()
+
+        if not val or val == ":":
+            return
+
+        cmd = val.lstrip(":")
+
+        if cmd in ("help", "keys", "?"):
+            self.action_show_help()
+        elif cmd in ("tasks", "sessions", "view", "v", "t"):
+            self.action_toggle_view_mode()
+        elif cmd == "theme":
+            self.dark = not self.dark
+        elif cmd == "start":
+            self.run_worker(self.action_start_timer_nvim())
+        elif cmd == "stop":
+            self.run_worker(self.action_stop_timer_nvim())
+        elif cmd == "split":
+            self.run_worker(self.action_split_timer_nvim())
+        elif cmd == "add":
+            self.run_worker(self.action_add_task_nvim())
+        elif cmd == "retro":
+            self.run_worker(self.action_retro_log_nvim())
+        elif cmd == "stats":
+            self.run_worker(self.action_view_stats())
+        elif cmd in ("clear", "clean"):
+            self.run_worker(self.action_clear_completed())
+        elif cmd == "filter":
+            self.action_cycle_filter()
+        elif cmd == "sort":
+            self.action_cycle_sort()
+        elif cmd in ("quit", "q", "exit"):
+            self.exit()
+
+    def on_key(self, event) -> None:
+        cmd_input = self.query_one("#command_input", Input)
+        if cmd_input.has_focus and event.key == "escape":
+            cmd_input.styles.display = "none"
+            self.query_one("#main_table", DataTable).focus()
+
     def action_toggle_view_mode(self) -> None:
         self.view_mode = "sessions" if self.view_mode == "tasks" else "tasks"
-        btn = self.query_one("#view_toggle_btn", Button)
-        btn.label = f"View: {self.view_mode.upper()} (T)"
-        btn.variant = "primary" if self.view_mode == "tasks" else "warning"
         self.setup_table_columns()
         self.update_status_label()
         self.run_worker(self.load_current_view())
@@ -166,7 +304,7 @@ class TimeTraceTUI(App):
         v_mode = self.view_mode.upper()
         f_mode = self.filter_modes[self.filter_index].upper()
         s_mode = self.sort_modes[self.sort_index].upper()
-        self.status_bar_text = f"📱 VIEW: [{v_mode}]  |  🔍 Filter: [{f_mode}]  |  🔀 Sort: [{s_mode}]  (Press 't' to toggle Tasks/Sessions)"
+        self.status_bar_text = f"📱 VIEW: [bold cyan][{v_mode}][/bold cyan]  │  🔍 FILTER: [bold magenta][{f_mode}][/bold magenta]  │  🔀 SORT: [bold green][{s_mode}][/bold green]  (Press ':' for commands, '?' for help)"
         self.query_one("#filter_status_bar", Static).update(self.status_bar_text)
 
     def action_cycle_filter(self) -> None:
@@ -206,11 +344,11 @@ class TimeTraceTUI(App):
                         elapsed_min = data["elapsed_seconds"] // 60
                         elapsed_sec = data["elapsed_seconds"] % 60
                         task_title = data.get("task_title") or data.get("tags") or "#session"
-                        self.timer_text = f"⏱️ RUNNING: {elapsed_min:02d}:{elapsed_sec:02d} | Task: [{task_title}] Notes: {data.get('notes', '')}"
+                        self.timer_text = f"[bold green]⏱️ RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
                     else:
-                        self.timer_text = "⏸️ Timer Idle"
+                        self.timer_text = "[dim]⏸️ Timer Idle[/dim]"
         except Exception:
-            self.timer_text = "❌ Daemon Disconnected"
+            self.timer_text = "[bold red]❌ Daemon Disconnected[/bold red]"
 
         self.query_one("#timer_display", Static).update(self.timer_text)
 
@@ -233,16 +371,16 @@ class TimeTraceTUI(App):
                     self.loaded_tasks = new_tasks
 
                     if not self.loaded_tasks:
-                        table.add_row("-", "No tasks found. Press 'A' to create.", "-", "-", "-", "-")
+                        table.add_row("-", "-", "[dim]No tasks found matching filter. Press 'A' to create.[/dim]", "-", "-", "-")
                     else:
                         for task in self.loaded_tasks:
                             created_str = str(task.get("created_at", ""))[:16].replace("T", " ")
                             table.add_row(
                                 str(task["id"]),
-                                task["title"],
-                                task.get("status", "in_progress"),
-                                f"P{task.get('priority', 1)}",
-                                created_str,
+                                format_priority_badge(task.get("priority", "-")),
+                                f"[bold white]{task['title']}[/bold white]",
+                                format_status_badge(task.get("status", "in_progress")),
+                                f"[dim]{created_str}[/dim]",
                                 task.get("description") or ""
                             )
         except Exception:
@@ -259,19 +397,18 @@ class TimeTraceTUI(App):
                     self.loaded_sessions = new_sessions
 
                     if not self.loaded_sessions:
-                        table.add_row("-", "No logged calendar sessions found.", "-", "-", "-", "-")
+                        table.add_row("-", "-", "[dim]No logged calendar sessions found.[/dim]", "-", "-", "-")
                     else:
-                        # Render sessions reverse sorted by ID (newest top)
                         for s in reversed(self.loaded_sessions):
                             start_str = str(s.get("start_time", ""))[:16].replace("T", " ")
                             end_str = str(s.get("end_time", ""))[:16].replace("T", " ") if s.get("end_time") else "NOW"
                             duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
                             table.add_row(
                                 str(s["id"]),
-                                s.get("tags") or "#general",
-                                start_str,
-                                end_str,
-                                str(duration_mins),
+                                f"[bold green]{s.get('tags') or '#general'}[/bold green]",
+                                f"[dim]{start_str}[/dim]",
+                                f"[dim]{end_str}[/dim]",
+                                f"[bold purple]{duration_mins}[/bold purple]",
                                 s.get("notes") or ""
                             )
         except Exception:
@@ -280,16 +417,17 @@ class TimeTraceTUI(App):
     async def action_add_task_nvim(self) -> None:
         template = {
             "title": "ALP-101 New Feature",
+            "priority": "-",
             "status": "in_progress",
-            "priority": 1,
             "created_at": datetime.now(timezone.utc).isoformat()[:19],
             "color": "auto"
         }
         initial_notes = "Task description goes here..."
+        hints = "priority: high|medium|low|- | status: in_progress|ongoing|completed"
 
         data = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes)
+            data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
 
         if data and data.get("title"):
             try:
@@ -297,7 +435,7 @@ class TimeTraceTUI(App):
                     "title": data["title"],
                     "description": data.get("notes", ""),
                     "status": data.get("status", "in_progress"),
-                    "priority": int(data.get("priority", 1)),
+                    "priority": str(data.get("priority", "-")).lower(),
                     "color": data.get("color", "auto")
                 }
                 if data.get("created_at"):
@@ -321,16 +459,17 @@ class TimeTraceTUI(App):
 
             template = {
                 "title": task["title"],
+                "priority": task.get("priority", "-"),
                 "status": task.get("status", "in_progress"),
-                "priority": task.get("priority", 1),
                 "created_at": str(task.get("created_at", ""))[:19],
                 "color": task.get("color", "auto")
             }
             initial_notes = task.get("description") or ""
+            hints = "priority: high|medium|low|- | status: in_progress|ongoing|completed"
 
             data = None
             with self.suspend():
-                data = open_in_nvim(template, initial_notes)
+                data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
 
             if data and data.get("title"):
                 try:
@@ -338,7 +477,7 @@ class TimeTraceTUI(App):
                         "title": data["title"],
                         "description": data.get("notes", ""),
                         "status": data.get("status", "in_progress"),
-                        "priority": int(data.get("priority", 1)),
+                        "priority": str(data.get("priority", "-")).lower(),
                         "color": data.get("color", "auto")
                     }
                     if data.get("created_at"):
@@ -363,7 +502,7 @@ class TimeTraceTUI(App):
 
             data = None
             with self.suspend():
-                data = open_in_nvim(template, initial_notes)
+                data = open_in_nvim(template, initial_notes, cursor_line=3)
 
             if data:
                 try:
@@ -412,7 +551,7 @@ class TimeTraceTUI(App):
 
         data = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes)
+            data = open_in_nvim(template, initial_notes, cursor_line=3)
 
         if data:
             raw_task_id = data.get("task_id")
@@ -443,7 +582,7 @@ class TimeTraceTUI(App):
 
         data = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes)
+            data = open_in_nvim(template, initial_notes, cursor_line=3)
 
         if data:
             try:
@@ -473,10 +612,11 @@ class TimeTraceTUI(App):
                         "habits": ["Drank Water", "Focus Maintained"]
                     }
                     initial_notes = "Obstacles / Distractions faced..."
+                    hints = "energy_level: 1..5"
 
                     data = None
                     with self.suspend():
-                        data = open_in_nvim(template, initial_notes)
+                        data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
 
                     if data:
                         await client.post(
@@ -504,7 +644,7 @@ class TimeTraceTUI(App):
 
         data = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes)
+            data = open_in_nvim(template, initial_notes, cursor_line=3)
 
         if data:
             try:
@@ -544,22 +684,4 @@ class TimeTraceTUI(App):
     def action_refresh_data(self) -> None:
         self.run_worker(self.load_current_view())
         self.run_worker(self.update_timer())
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "view_toggle_btn":
-            self.action_toggle_view_mode()
-        elif event.button.id == "start_btn":
-            self.run_worker(self.action_start_timer_nvim())
-        elif event.button.id == "split_btn":
-            self.run_worker(self.action_split_timer_nvim())
-        elif event.button.id == "stop_btn":
-            self.run_worker(self.action_stop_timer_nvim())
-        elif event.button.id == "add_btn":
-            self.run_worker(self.action_add_task_nvim())
-        elif event.button.id == "filter_btn":
-            self.action_cycle_filter()
-        elif event.button.id == "sort_btn":
-            self.action_cycle_sort()
-        elif event.button.id == "clear_btn":
-            self.run_worker(self.action_clear_completed())
 

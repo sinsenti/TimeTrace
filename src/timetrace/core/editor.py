@@ -4,10 +4,17 @@ import subprocess
 import frontmatter
 from typing import Dict, Any, Optional
 
-# Color Palette for Automatic Selection
 PALETTE = [
-    "#7c3aed", "#2563eb", "#d97706", "#dc2626", "#059669",
-    "#ec4899", "#0284c7", "#78350f", "#0d9488", "#4f46e5"
+    "#7c3aed",
+    "#2563eb",
+    "#d97706",
+    "#dc2626",
+    "#059669",
+    "#ec4899",
+    "#0284c7",
+    "#78350f",
+    "#0d9488",
+    "#4f46e5",
 ]
 
 
@@ -19,19 +26,38 @@ def get_auto_color(text: str) -> str:
     return PALETTE[hash_val % len(PALETTE)]
 
 
-def open_in_nvim(template_yaml: Dict[str, Any], initial_notes: str = "") -> Optional[Dict[str, Any]]:
-    """Spawns Neovim with a temporary .md file populated with frontmatter template."""
+def open_in_nvim(
+    template_yaml: Dict[str, Any],
+    initial_notes: str = "",
+    hint_comments: str = "",
+    cursor_line: int = 2,
+) -> Optional[Dict[str, Any]]:
+    """
+    Spawns Neovim with a temporary .md file populated with frontmatter template.
+    Pre-positions cursor for ultra-fast vim editing.
+    """
     editor = os.environ.get("EDITOR", "nvim")
-    
+
     post = frontmatter.Post(initial_notes, **template_yaml)
-    
-    with tempfile.NamedTemporaryFile(suffix=".md", mode="w+", delete=False) as tf:
-        tf.write(frontmatter.dumps(post))
+    raw_md = frontmatter.dumps(post)
+
+    # Insert optional inline comment hints above the content body or frontmatter
+    if hint_comments:
+        lines = raw_md.splitlines()
+        # Insert hints inside YAML frontmatter block if present
+        if len(lines) > 1 and lines[0] == "---":
+            raw_md = "\n".join(lines)
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".md", mode="w+", delete=False, encoding="utf-8"
+    ) as tf:
+        tf.write(raw_md)
         temp_path = tf.name
 
     try:
-        # Launch Neovim taking over the terminal window
-        result = subprocess.call([editor, temp_path])
+        # Launch Neovim and position cursor directly on target line
+        cmd = [editor, f"+{cursor_line}", temp_path]
+        result = subprocess.call(cmd)
         if result != 0:
             return None
 
@@ -45,4 +71,3 @@ def open_in_nvim(template_yaml: Dict[str, Any], initial_notes: str = "") -> Opti
     finally:
         if os.path.exists(temp_path):
             os.remove(temp_path)
-

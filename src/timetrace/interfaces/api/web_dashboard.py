@@ -168,17 +168,26 @@ HTML_DASHBOARD = """
                 <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
                 <input id="modal_input_created" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-3 gap-2">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Priority</label>
+                    <select id="modal_input_priority" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="-">- (None)</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                    </select>
+                </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Status</label>
                     <select id="modal_input_status" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-2 rounded-lg text-xs text-white">
-                        <option value="in_progress">in progress</option>
+                        <option value="in_progress">in_progress</option>
                         <option value="ongoing">ongoing</option>
                         <option value="completed">completed</option>
                     </select>
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Card Color</label>
+                    <label class="text-xs text-slate-400 block mb-1">Color</label>
                     <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-9 bg-[#10101a] border border-[#2d2d42] rounded-lg cursor-pointer p-1">
                 </div>
             </div>
@@ -346,7 +355,7 @@ HTML_DASHBOARD = """
             } else {
                 cardList.innerHTML = activeTasks.map((t, idx) => {
                     const color = t.color || defaultPalette[idx % defaultPalette.length];
-                    const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+                    const prioLabel = (t.priority || '-').toUpperCase();
                     return `
                         <div onclick="openEditTaskModal(${t.id})" style="background-color: ${color};" class="p-3 rounded-lg shadow-md cursor-pointer transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
                             <div>
@@ -355,7 +364,7 @@ HTML_DASHBOARD = """
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
                                 <span class="bg-black/20 px-1.5 py-0.5 rounded">${t.status}</span>
-                                <span>${createdDate}</span>
+                                <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
                             </div>
                         </div>
                     `;
@@ -549,6 +558,7 @@ HTML_DASHBOARD = """
             document.getElementById('modal_input_title').value = '';
             document.getElementById('modal_input_desc').value = '';
             document.getElementById('modal_input_created').value = nowIso;
+            document.getElementById('modal_input_priority').value = '-';
             document.getElementById('modal_input_status').value = 'in_progress';
             document.getElementById('modal_input_color').value = defaultPalette[activeTasks.length % defaultPalette.length];
             document.getElementById('modal_delete_btn').classList.add('hidden');
@@ -563,6 +573,7 @@ HTML_DASHBOARD = """
             document.getElementById('modal_input_title').value = t.title;
             document.getElementById('modal_input_desc').value = t.description || '';
             document.getElementById('modal_input_created').value = t.created_at ? t.created_at.slice(0,16) : '';
+            document.getElementById('modal_input_priority').value = t.priority || '-';
             document.getElementById('modal_input_status').value = t.status || 'in_progress';
             document.getElementById('modal_input_color').value = t.color || '#7c3aed';
             document.getElementById('modal_delete_btn').classList.remove('hidden');
@@ -579,6 +590,7 @@ HTML_DASHBOARD = """
             const payload = {
                 title: document.getElementById('modal_input_title').value,
                 description: document.getElementById('modal_input_desc').value,
+                priority: document.getElementById('modal_input_priority').value,
                 status: document.getElementById('modal_input_status').value,
                 color: document.getElementById('modal_input_color').value
             };

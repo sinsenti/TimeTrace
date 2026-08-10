@@ -6,7 +6,7 @@ from datetime import datetime
 class TaskCreate(BaseModel):
     title: str
     description: Optional[str] = None
-    priority: int = 1
+    priority: str = "-"
     status: str = "in_progress"
     color: str = "#7c3aed"
     estimated_minutes: Optional[int] = None
@@ -16,7 +16,7 @@ class TaskCreate(BaseModel):
 class TaskUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    priority: Optional[int] = None
+    priority: Optional[str] = None
     status: Optional[str] = None
     color: Optional[str] = None
     estimated_minutes: Optional[int] = None

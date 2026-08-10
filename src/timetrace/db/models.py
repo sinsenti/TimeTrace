@@ -11,7 +11,7 @@ class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     description: Optional[str] = None
-    priority: int = Field(default=1)  # 1 (low) to 4 (urgent)
+    priority: str = Field(default="-")  # "-", "low", "medium", "high"
     estimated_minutes: Optional[int] = None
     status: str = Field(default="in_progress")  # in_progress, ongoing, completed
     color: str = Field(default="#7c3aed")  # Hex color for Chronoboard cards

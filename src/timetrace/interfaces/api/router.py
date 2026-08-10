@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select, col
+from sqlalchemy import case
 from typing import List, Optional
 from datetime import datetime, date
 
@@ -112,13 +113,21 @@ def list_tasks(
             query = query.where(Task.status == status_filter)
 
     if sort_by == "priority":
-        query = query.order_by(col(Task.priority).desc(), col(Task.created_at).desc())
+        priority_order = case(
+            (Task.priority == "high", 4),
+            (Task.priority == "medium", 3),
+            (Task.priority == "low", 2),
+            else_=1
+        )
+        # Primary sort: Priority (high -> medium -> low -> -)
+        # Secondary sort: Created time (older created tasks come first)
+        query = query.order_by(priority_order.desc(), col(Task.created_at).asc())
+    elif sort_by == "created_at":
+        query = query.order_by(col(Task.created_at).asc())
     elif sort_by == "title":
         query = query.order_by(col(Task.title).asc())
     elif sort_by == "status":
         query = query.order_by(col(Task.status).asc())
-    elif sort_by == "created_at":
-        query = query.order_by(col(Task.created_at).desc())
 
     return db.exec(query).all()
 

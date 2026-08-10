@@ -165,23 +165,23 @@ def list_tasks_cli(
                 print("No tasks found.")
             for t in tasks:
                 created_str = str(t.get("created_at", ""))[:16].replace("T", " ")
-                print(f"#{t['id']:<3} | [{t['status']:<11}] | P{t['priority']} | {created_str} | {t['title']}")
+                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {t['title']}")
             print("-" * 65 + "\n")
 
 
 @cli_app.command("task")
 def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
-    priority: int = typer.Option(1, "--priority", "-p", help="Priority (1-4)"),
+    priority: str = typer.Option("-", "--priority", "-p", help="Priority (-, low, medium, high)"),
     est: Optional[int] = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
 ):
     """Create a new task slot."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.post("/tasks", json={"title": title, "priority": priority, "estimated_minutes": est})
+        res = client.post("/tasks", json={"title": title, "priority": priority.lower(), "estimated_minutes": est})
         if res.status_code == 201:
             task = res.json()
-            print(f"✅ Created Task #{task['id']}: '{task['title']}'")
+            print(f"✅ Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']})")
         else:
             print("❌ Failed to create task.")
 
