@@ -1,7 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
-from sqlmodel import Session as DBSession, select, col
-from sqlalchemy import case
+from sqlmodel import Session as DBSession, select
 from typing import List, Optional
 from datetime import datetime, date
 
@@ -112,24 +111,26 @@ def list_tasks(
         else:
             query = query.where(Task.status == status_filter)
 
-    if sort_by == "priority":
-        priority_order = case(
-            (Task.priority == "high", 4),
-            (Task.priority == "medium", 3),
-            (Task.priority == "low", 2),
-            else_=1
-        )
-        # Primary sort: Priority (high -> medium -> low -> -)
-        # Secondary sort: Created time (older created tasks come first)
-        query = query.order_by(priority_order.desc(), col(Task.created_at).asc())
-    elif sort_by == "created_at":
-        query = query.order_by(col(Task.created_at).asc())
-    elif sort_by == "title":
-        query = query.order_by(col(Task.title).asc())
-    elif sort_by == "status":
-        query = query.order_by(col(Task.status).asc())
+    tasks = db.exec(query).all()
 
-    return db.exec(query).all()
+    priority_map = {"high": 4, "medium": 3, "low": 2, "-": 1}
+
+    if sort_by == "priority":
+        tasks.sort(
+            key=lambda t: (
+                priority_map.get(str(t.priority).lower(), 1),
+                -t.created_at.timestamp() if t.created_at else 0
+            ),
+            reverse=True
+        )
+    elif sort_by == "created_at":
+        tasks.sort(key=lambda t: t.created_at or datetime.min)
+    elif sort_by == "title":
+        tasks.sort(key=lambda t: (t.title or "").lower())
+    elif sort_by == "status":
+        tasks.sort(key=lambda t: (t.status or "").lower())
+
+    return tasks
 
 
 @router.put("/tasks/{task_id}", response_model=Task)
@@ -293,29 +294,13 @@ def delete_session(session_id: int, db: DBSession = Depends(get_session)):
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    reflections = db.exec(select(Reflection).where(Reflection.session_id == session_id)).all()
+    for ref in reflections:
+        db.delete(ref)
+
     db.delete(db_session)
     db.commit()
     return None
-
-
-@router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
-def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
-    if req.end_time <= req.start_time:
-        raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
-
-    duration = int((req.end_time - req.start_time).total_seconds())
-    db_session = SessionModel(
-        task_id=req.task_id,
-        start_time=req.start_time,
-        end_time=req.end_time,
-        duration_seconds=duration,
-        tags=req.tags,
-        notes=req.notes
-    )
-    db.add(db_session)
-    db.commit()
-    db.refresh(db_session)
-    return db_session
 
 
 # Post-Session Reflection API Endpoint

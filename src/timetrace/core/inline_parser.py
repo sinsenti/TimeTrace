@@ -1,5 +1,6 @@
 import re
-from typing import Dict, Any
+from datetime import datetime, date, timedelta
+from typing import Dict, Any, Optional
 
 
 def parse_inline_task(text: str) -> Dict[str, Any]:
@@ -14,7 +15,6 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
     tags = re.findall(r"#\w+", first_line)
     tags_str = " ".join(tags)
 
-    # Priority parsing (!high, !h, !med, !m, !low, !l, !-)
     prio_match = re.search(r"!(high|medium|med|low|h|m|l|-)", first_line, re.IGNORECASE)
     priority = "-"
     if prio_match:
@@ -26,8 +26,9 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
         elif p_val in ("low", "l"):
             priority = "low"
 
-    # Status parsing (@ip, @og, @done, @c, @completed, @in_progress, @ongoing)
-    status_match = re.search(r"@(in_progress|ongoing|completed|ip|og|done|c)", first_line, re.IGNORECASE)
+    status_match = re.search(
+        r"@(in_progress|ongoing|completed|ip|og|done|c)", first_line, re.IGNORECASE
+    )
     status = "in_progress"
     if status_match:
         s_val = status_match.group(1).lower()
@@ -38,16 +39,22 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
 
     clean_title = first_line
     clean_title = re.sub(r"#\w+", "", clean_title)
-    clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c)", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(
+        r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE
+    )
+    clean_title = re.sub(
+        r"@(in_progress|ongoing|completed|ip|og|done|c)",
+        "",
+        clean_title,
+        flags=re.IGNORECASE,
+    )
     clean_title = " ".join(clean_title.split()).strip()
 
     return {
         "title": clean_title if clean_title else "Untitled Task",
-        "tags": tags_str,
+        "description": description,
         "priority": priority,
         "status": status,
-        "notes": description
     }
 
 
@@ -76,14 +83,101 @@ def parse_inline_timer(text: str) -> Dict[str, Any]:
     clean_notes = " ".join(clean_notes.split()).strip()
 
     if extra_notes:
-        clean_notes = f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+        clean_notes = (
+            f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+        )
 
     return {
         "tags": tags_str if tags_str else "#general",
         "notes": clean_notes,
         "task_id": task_id,
-        "pomo_minutes": pomo_mins
+        "pomo_minutes": pomo_mins,
     }
+
+
+def parse_inline_session_edit(
+    text: str, base_session: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Parses session modifications from Neovim: timestamps, duration, tags, notes."""
+    lines = [l.strip() for l in text.strip().splitlines() if l.strip()]
+    if not lines:
+        return {}
+
+    first_line = lines[0]
+    extra_notes = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+
+    tags = re.findall(r"#\w+", first_line)
+    tags_str = " ".join(tags)
+
+    base_start = base_session.get("start_time") if base_session else None
+    base_date_str = date.today().isoformat()
+    if base_start:
+        if isinstance(base_start, str):
+            base_date_str = base_start.split("T")[0]
+        elif isinstance(base_start, datetime):
+            base_date_str = base_start.date().isoformat()
+
+    start_dt: Optional[datetime] = None
+    end_dt: Optional[datetime] = None
+
+    # Match time intervals e.g. [2026-08-10 14:00 - 15:30] or [14:00 - 15:30] or 14:00 - NOW
+    range_match = re.search(
+        r"\[?\b((\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2})\s*-\s*((\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}|NOW)\b\]?",
+        first_line,
+        re.IGNORECASE,
+    )
+
+    clean_line = first_line
+
+    if range_match:
+        raw_start = range_match.group(1).strip()
+        raw_end = range_match.group(3).strip()
+        clean_line = clean_line.replace(range_match.group(0), "")
+
+        # Parse Start Time
+        if len(raw_start) == 5:  # HH:MM
+            start_dt = datetime.fromisoformat(f"{base_date_str}T{raw_start}:00")
+        else:  # YYYY-MM-DD HH:MM
+            s_date, s_time = raw_start.split()
+            start_dt = datetime.fromisoformat(f"{s_date}T{s_time}:00")
+
+        # Parse End Time
+        if raw_end.upper() != "NOW":
+            if len(raw_end) == 5:  # HH:MM
+                s_date_str = start_dt.date().isoformat() if start_dt else base_date_str
+                end_dt = datetime.fromisoformat(f"{s_date_str}T{raw_end}:00")
+            else:  # YYYY-MM-DD HH:MM
+                e_date, e_time = raw_end.split()
+                end_dt = datetime.fromisoformat(f"{e_date}T{e_time}:00")
+
+    # Match duration override in parens e.g. (90m) or (1.5h)
+    dur_match = re.search(r"\(?(\d+(?:\.\d+)?)\s*(m|h)\)?", clean_line, re.IGNORECASE)
+    if dur_match:
+        dur_val = float(dur_match.group(1))
+        dur_unit = dur_match.group(2).lower()
+        dur_mins = dur_val * 60 if dur_unit == "h" else dur_val
+        clean_line = clean_line.replace(dur_match.group(0), "")
+
+        if start_dt and not end_dt:
+            end_dt = start_dt + timedelta(minutes=dur_mins)
+
+    # Clean tags from remaining text to leave notes
+    clean_notes = clean_line
+    clean_notes = re.sub(r"#\w+", "", clean_notes)
+    clean_notes = " ".join(clean_notes.split()).strip()
+
+    if extra_notes:
+        clean_notes = (
+            f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+        )
+
+    res = {"tags": tags_str if tags_str else "#general", "notes": clean_notes}
+    if start_dt:
+        res["start_time"] = start_dt.isoformat()
+    if end_dt:
+        res["end_time"] = end_dt.isoformat()
+
+    return res
 
 
 def parse_inline_reflection(text: str) -> Dict[str, Any]:
@@ -100,12 +194,14 @@ def parse_inline_reflection(text: str) -> Dict[str, Any]:
 
     habits_part = re.sub(r"\d/5", "", first_line).strip()
     habits_part = habits_part.lstrip("|").strip()
-    habits = [h.strip() for h in habits_part.split(",") if h.strip()] if habits_part else []
+    habits = (
+        [h.strip() for h in habits_part.split(",") if h.strip()] if habits_part else []
+    )
 
     return {
         "energy_level": max(1, min(5, energy_level)),
         "habits": habits,
-        "obstacles": obstacles
+        "obstacles": obstacles,
     }
 
 
@@ -138,12 +234,13 @@ def parse_inline_retro(text: str) -> Dict[str, Any]:
     clean_notes = " ".join(clean_notes.split()).strip()
 
     if extra_notes:
-        clean_notes = f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+        clean_notes = (
+            f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+        )
 
     return {
         "start_mins_ago": start_ago_mins,
         "duration_mins": dur_mins,
         "tags": tags_str if tags_str else "#general",
-        "notes": clean_notes
+        "notes": clean_notes,
     }
-
