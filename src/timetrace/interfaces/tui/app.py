@@ -1,7 +1,7 @@
 import time
 import re
 import httpx
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
 from textual.containers import Container, Vertical, ScrollableContainer
@@ -74,7 +74,7 @@ class HelpModal(ModalScreen):
 [bold white]s[/bold white]             Start Timer -> [dim]Working notes #tags @task_id !25m[/dim]
 [bold white]c[/bold white]             Split Timer -> [dim]New activity notes #newtag[/dim]
 [bold white]x[/bold white]             Stop & Reflect -> [dim]5/5 water, focus[/dim]
-[bold white]m[/bold white]             Retro Session  -> [dim]Past activity #tags -90m 30m[/dim]
+[bold white]m[/bold white]             Retro Session  -> [dim]Past activity #tags @task_id -90m 30m[/dim]
 [bold white]v[/bold white]             View Analytics Summary
 
 [bold cyan]Command Line Mode (:)[/bold cyan]
@@ -562,8 +562,9 @@ class TimeTraceTUI(App):
             start_str = str(session.get("start_time", ""))[:16].replace("T", " ")
             end_str = str(session.get("end_time", ""))[:16].replace("T", " ") if session.get("end_time") else "NOW"
             duration_mins = round((session.get("duration_seconds") or 0) / 60, 1)
+            task_ref = f"@{session['task_id']}" if session.get("task_id") else ""
 
-            pre_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {session.get('notes', '')}".strip()
+            pre_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
 
             raw_text = None
             with self.suspend():
@@ -702,9 +703,13 @@ class TimeTraceTUI(App):
             pass
 
     async def action_retro_log_nvim(self) -> None:
+        item_id = self.get_selected_item_id()
+        task_id = item_id if self.view_mode == "tasks" else None
+        pre_text = f"-120m 45m #programming @{task_id} Activity notes..." if task_id else "-120m 45m #programming Activity notes..."
+
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim("-120m 45m #programming Activity notes...")
+            raw_text = open_in_nvim(pre_text)
 
         if raw_text:
             parsed = parse_inline_retro(raw_text)
@@ -715,20 +720,27 @@ class TimeTraceTUI(App):
                 end_dt = datetime.now(timezone.utc) - timedelta(minutes=(start_ago - dur_mins))
                 start_dt = end_dt - timedelta(minutes=dur_mins)
 
+                payload = {
+                    "task_id": parsed.get("task_id") or task_id,
+                    "start_time": start_dt.isoformat(),
+                    "end_time": end_dt.isoformat(),
+                    "tags": parsed["tags"],
+                    "notes": parsed["notes"]
+                }
+
                 async with httpx.AsyncClient() as client:
-                    await client.post(
+                    res = await client.post(
                         f"{BASE_URL}/sessions/retro",
-                        json={
-                            "start_time": start_dt.isoformat(),
-                            "end_time": end_dt.isoformat(),
-                            "tags": parsed["tags"],
-                            "notes": parsed["notes"]
-                        },
+                        json=payload,
                         timeout=3.0
                     )
+                    if res.status_code == 201:
+                        self.notify("Retro session logged!", timeout=1.5)
+                    else:
+                        self.notify(f"Failed to log retro session: {res.text}", severity="error")
                 await self.load_current_view()
-            except Exception:
-                pass
+            except Exception as e:
+                self.notify(f"Error: {e}", severity="error")
 
     async def action_view_stats(self) -> None:
         try:

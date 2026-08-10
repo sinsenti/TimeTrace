@@ -23,6 +23,14 @@ class TaskUpdate(BaseModel):
     created_at: Optional[datetime] = None
 
 
+class SessionCreate(BaseModel):
+    task_id: Optional[int] = None
+    start_time: datetime
+    end_time: datetime
+    tags: str = "#general"
+    notes: str = ""
+
+
 class SessionUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

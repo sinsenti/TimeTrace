@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
 from typing import List, Optional
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 
 from timetrace.db.session import get_session
 from timetrace.db.models import Task, Session as SessionModel, Reflection
@@ -13,6 +13,7 @@ from timetrace.core.editor import get_auto_color
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
     TaskUpdate,
+    SessionCreate,
     SessionUpdate,
     TimerStartRequest,
     TimerSplitRequest,
@@ -247,6 +248,26 @@ def stop_timer(db: DBSession = Depends(get_session)):
 
 
 # Session API Endpoints
+@router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
+    if req.end_time <= req.start_time:
+        raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
+
+    duration = int((req.end_time - req.start_time).total_seconds())
+    db_session = SessionModel(
+        task_id=req.task_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        duration_seconds=duration,
+        tags=req.tags,
+        notes=req.notes
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+
 @router.get("/sessions")
 def list_sessions(
     start: Optional[datetime] = Query(None),
@@ -263,6 +284,12 @@ def list_sessions(
     result = []
     for s in sessions:
         s_dict = s.model_dump()
+        # Convert naive datetimes to UTC ISO strings for Web Calendar compatibility
+        if s.start_time:
+            s_dict["start_time"] = s.start_time.isoformat() if s.start_time.tzinfo else s.start_time.replace(tzinfo=timezone.utc).isoformat()
+        if s.end_time:
+            s_dict["end_time"] = s.end_time.isoformat() if s.end_time.tzinfo else s.end_time.replace(tzinfo=timezone.utc).isoformat()
+
         if s.reflection:
             s_dict["reflection"] = s.reflection.model_dump()
         result.append(s_dict)
@@ -301,6 +328,26 @@ def delete_session(session_id: int, db: DBSession = Depends(get_session)):
     db.delete(db_session)
     db.commit()
     return None
+
+
+@router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
+    if req.end_time <= req.start_time:
+        raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
+
+    duration = int((req.end_time - req.start_time).total_seconds())
+    db_session = SessionModel(
+        task_id=req.task_id,
+        start_time=req.start_time,
+        end_time=req.end_time,
+        duration_seconds=duration,
+        tags=req.tags,
+        notes=req.notes
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
 
 
 # Post-Session Reflection API Endpoint

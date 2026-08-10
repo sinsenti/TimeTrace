@@ -14,6 +14,8 @@ HTML_DASHBOARD = """
         .fc-timegrid-slot { height: 3em !important; }
         .fc-col-header-cell { background-color: #181826; padding: 6px 0; }
         .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; }
+        .task-card { cursor: grab; }
+        .task-card:active { cursor: grabbing; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #14141f; }
         ::-webkit-scrollbar-thumb { background: #2d2d42; border-radius: 3px; }
@@ -36,8 +38,18 @@ HTML_DASHBOARD = """
         </div>
 
         <div class="flex items-center space-x-2 text-xs">
+            <!-- Slot Duration Config -->
+            <div class="flex items-center bg-[#1c1c2b] border border-[#2d2d42] px-2 py-1 rounded text-slate-300 space-x-1">
+                <span class="text-slate-400 font-semibold">Slot:</span>
+                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#14141f] text-white rounded px-1.5 py-0.5 text-xs font-bold border border-[#2d2d42]">
+                    <option value="15">15 min</option>
+                    <option value="30" selected>30 min</option>
+                    <option value="45">45 min</option>
+                    <option value="60">60 min</option>
+                </select>
+            </div>
+
             <button onclick="openStatsModal()" class="bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 font-semibold px-3 py-1 rounded border border-purple-700/50 flex items-center space-x-1">
-                <span>📊</span>
                 <span>Stats</span>
             </button>
             <button onclick="toggleSidebar('left_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Tasks</button>
@@ -67,7 +79,6 @@ HTML_DASHBOARD = """
                 <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
             </div>
 
-            <!-- Task Filters -->
             <div class="flex space-x-1 mb-2">
                 <button onclick="setTaskFilter('all')" id="filter_tab_all" class="flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold">All</button>
                 <button onclick="setTaskFilter('hide_completed')" id="filter_tab_active" class="flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white">Active</button>
@@ -81,7 +92,7 @@ HTML_DASHBOARD = """
                     + Add task slot
                 </button>
                 <button onclick="clearCompletedTasks()" class="w-full bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-800/40 py-1.5 rounded-lg text-[11px] font-semibold transition">
-                    🧹 Clear Completed Tasks
+                    Clear Completed Tasks
                 </button>
             </div>
         </aside>
@@ -97,12 +108,12 @@ HTML_DASHBOARD = """
             </div>
 
             <div>
-                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">🏷️ By Activity (#tags)</span>
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">By Activity (#tags)</span>
                 <div id="activity_totals_list" class="space-y-2"></div>
             </div>
 
             <div>
-                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">📋 By Task</span>
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">By Task</span>
                 <div id="weekly_totals_list" class="space-y-2"></div>
             </div>
         </aside>
@@ -113,7 +124,7 @@ HTML_DASHBOARD = """
         <div class="bg-[#181826] border border-[#2d2d42] w-[540px] max-h-[85vh] rounded-xl p-6 shadow-2xl flex flex-col space-y-4">
             <div class="flex justify-between items-center border-b border-[#2d2d42] pb-3">
                 <div>
-                    <h3 class="font-black text-lg text-white">📊 Analytics & Summary</h3>
+                    <h3 class="font-black text-lg text-white">Analytics & Summary</h3>
                     <p id="stats_range_label" class="text-xs text-purple-400 font-medium">Range: Week</p>
                 </div>
                 <button onclick="closeStatsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
@@ -201,15 +212,66 @@ HTML_DASHBOARD = """
         </div>
     </div>
 
+    <!-- Session Creation & Slot Planning Modal -->
+    <div id="session_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[#181826] border border-[#2d2d42] w-[420px] rounded-xl p-5 shadow-2xl space-y-3">
+            <div class="flex justify-between items-center border-b border-[#2d2d42] pb-2">
+                <h3 class="font-bold text-lg text-white">Calendar Session Configuration</h3>
+                <span id="session_modal_type_badge" class="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700">Planned Slot</span>
+            </div>
+
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Attach Task</label>
+                <select id="session_modal_task_select" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                    <option value="">-- Independent Session --</option>
+                </select>
+            </div>
+
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Activity Tags</label>
+                <input id="session_modal_tags" type="text" placeholder="#programming #backend" value="#general" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Start Time</label>
+                    <input id="session_modal_start" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-1.5 rounded-lg text-xs text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">End Time</label>
+                    <input id="session_modal_end" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-1.5 rounded-lg text-xs text-white">
+                </div>
+            </div>
+
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Notes / Description</label>
+                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-[#2d2d42]">
+                <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">
+                    Start Timer Now
+                </button>
+                <div class="flex space-x-2 ml-auto">
+                    <button onclick="closeSessionModal()" class="bg-[#232334] hover:bg-[#2d2d42] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                    <button onclick="saveSessionFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save Session</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         let calendar;
         let isRunning = false;
         let activeTasks = [];
         let allSessions = [];
         let currentFilter = 'all';
+        let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '30');
         let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899'];
 
         document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('config_slot_duration').value = defaultDurationMinutes;
+
             const calendarEl = document.getElementById('calendar');
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'timeGridWeek',
@@ -217,15 +279,41 @@ HTML_DASHBOARD = """
                 slotMinTime: "07:00:00",
                 slotMaxTime: "23:00:00",
                 editable: true,
+                selectable: true,
+                selectMirror: true,
+                droppable: true,
+                defaultTimedEventDuration: `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`,
                 events: fetchCalendarEvents,
+
+                // Click and drag to create a session
+                select: function(selectionInfo) {
+                    openCreateSessionModal(selectionInfo.start, selectionInfo.end);
+                    calendar.unselect();
+                },
+
+                // Calendar event drop & resize handlers
                 eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
                 eventResize: async function(info) { await handleCalendarEventUpdate(info.event); },
+                
+                // Click existing event to delete
                 eventClick: async function(info) {
                     if (confirm(`Delete session log: "${info.event.title.replace(/\\n/g, ' ')}"?`)) {
                         await fetch(`/api/v1/sessions/${info.event.id}`, { method: 'DELETE' });
                         calendar.refetchEvents();
                     }
                 },
+
+                // External Task Card Dropped onto Calendar
+                eventReceive: function(info) {
+                    const taskTitle = info.event.title;
+                    const taskId = info.event.extendedProps.taskId;
+                    const startTime = info.event.start;
+                    const endTime = new Date(startTime.getTime() + defaultDurationMinutes * 60000);
+
+                    info.event.remove(); // Remove temporary dropped event
+                    openCreateSessionModal(startTime, endTime, taskId, taskTitle);
+                },
+
                 datesSet: function(info) {
                     document.getElementById('calendar_range_title').innerText = info.view.title;
                     updateViewButtons(info.view.type);
@@ -234,10 +322,123 @@ HTML_DASHBOARD = """
             });
             calendar.render();
 
+            // Enable external drag and drop for task cards
+            new FullCalendar.Draggable(document.getElementById('task_card_list'), {
+                itemSelector: '.task-card',
+                eventData: function(eventEl) {
+                    return {
+                        title: eventEl.getAttribute('data-task-title'),
+                        backgroundColor: eventEl.getAttribute('data-task-color'),
+                        extendedProps: {
+                            taskId: parseInt(eventEl.getAttribute('data-task-id'))
+                        }
+                    };
+                }
+            });
+
             fetchTasks();
             fetchTimerStatus();
             setInterval(fetchTimerStatus, 1000);
         });
+
+        function setSlotDuration(val) {
+            defaultDurationMinutes = intVal(val);
+            localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
+            if (calendar) {
+                calendar.setOption('defaultTimedEventDuration', `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`);
+            }
+        }
+
+        function intVal(v) { return parseInt(v) || 30; }
+
+        function formatIsoLocal(dt) {
+            const tzOffset = dt.getTimezoneOffset() * 60000;
+            return new Date(dt.getTime() - tzOffset).toISOString().slice(0, 16);
+        }
+
+        function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
+            const now = new Date();
+            const badge = document.getElementById('session_modal_type_badge');
+            const startNowBtn = document.getElementById('session_modal_start_now_btn');
+
+            document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
+            document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
+
+            // Dynamically detect slot relation to NOW
+            if (endDate <= now) {
+                badge.innerText = "Logged Past Session";
+                badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-blue-900/60 text-blue-300 border border-blue-700";
+                startNowBtn.classList.add('hidden');
+            } else if (startDate <= now && endDate > now) {
+                badge.innerText = "Active / Present Slot";
+                badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700";
+                startNowBtn.classList.remove('hidden');
+            } else {
+                badge.innerText = "Planned Slot";
+                badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700";
+                startNowBtn.classList.add('hidden');
+            }
+
+            // Populate task select dropdown
+            const taskSelect = document.getElementById('session_modal_task_select');
+            taskSelect.innerHTML = '<option value="">-- Independent Session --</option>' +
+                activeTasks.map(t => `<option value="${t.id}" ${t.id === taskId ? 'selected' : ''}>${t.title}</option>`).join('');
+
+            document.getElementById('session_modal_tags').value = taskTitle ? `#${taskTitle.toLowerCase().replace(/\\s+/g, '')}` : "#general";
+            document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
+
+            document.getElementById('session_modal').classList.remove('hidden');
+        }
+
+        function closeSessionModal() {
+            document.getElementById('session_modal').classList.add('hidden');
+        }
+
+        async function saveSessionFromModal() {
+            const taskIdVal = document.getElementById('session_modal_task_select').value;
+            const startVal = document.getElementById('session_modal_start').value;
+            const endVal = document.getElementById('session_modal_end').value;
+            const tagsVal = document.getElementById('session_modal_tags').value;
+            const notesVal = document.getElementById('session_modal_notes').value;
+
+            if (!startVal || !endVal) return;
+
+            const payload = {
+                task_id: taskIdVal ? parseInt(taskIdVal) : null,
+                start_time: new Date(startVal).toISOString(),
+                end_time: new Date(endVal).toISOString(),
+                tags: tagsVal || "#general",
+                notes: notesVal || ""
+            };
+
+            await fetch('/api/v1/sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            closeSessionModal();
+            calendar.refetchEvents();
+        }
+
+        async function startTimerFromModal() {
+            const taskIdVal = document.getElementById('session_modal_task_select').value;
+            const tagsVal = document.getElementById('session_modal_tags').value;
+            const notesVal = document.getElementById('session_modal_notes').value;
+
+            await fetch('/api/v1/timer/start', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    task_id: taskIdVal ? parseInt(taskIdVal) : null,
+                    tags: tagsVal || "#general",
+                    notes: notesVal || ""
+                })
+            });
+
+            closeSessionModal();
+            fetchTimerStatus();
+        }
 
         async function handleCalendarEventUpdate(event) {
             const payload = {
@@ -280,7 +481,7 @@ HTML_DASHBOARD = """
                     const title = matchedTask ? matchedTask.title : (s.tags || '#session');
                     return {
                         id: s.id,
-                        title: `${title}\n${s.notes || ''}`,
+                        title: `${title}\\n${s.notes || ''}`,
                         start: s.start_time,
                         end: s.end_time || new Date().toISOString(),
                         backgroundColor: color,
@@ -313,7 +514,7 @@ HTML_DASHBOARD = """
 
                     document.title = `⏱️ ${timeStr} - [${taskName}] ${data.tags}`;
                 } else {
-                    label.innerText = '⏸️ Idle';
+                    label.innerText = 'Timer Idle';
                     btn.innerText = 'Start Timer';
                     btn.className = 'bg-purple-600 hover:bg-purple-500 text-white font-medium px-3 py-1 rounded text-xs';
                     document.title = 'TimeTrace Dashboard';
@@ -357,7 +558,7 @@ HTML_DASHBOARD = """
                     const color = t.color || defaultPalette[idx % defaultPalette.length];
                     const prioLabel = (t.priority || '-').toUpperCase();
                     return `
-                        <div onclick="openEditTaskModal(${t.id})" style="background-color: ${color};" class="p-3 rounded-lg shadow-md cursor-pointer transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
+                        <div onclick="openEditTaskModal(${t.id})" data-task-id="${t.id}" data-task-title="${t.title}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
                             <div>
                                 <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
                                 <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
