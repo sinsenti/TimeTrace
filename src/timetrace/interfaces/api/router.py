@@ -1,18 +1,58 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
 from typing import List
+from datetime import date
 
 from timetrace.db.session import get_session
 from timetrace.db.models import Task, Session as SessionModel, Reflection
 from timetrace.core.timer import timer_manager
+from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
     TimerStartRequest,
     ReflectionCreate,
     RetroSessionCreate
 )
+from timetrace.interfaces.api.web_dashboard import HTML_DASHBOARD
 
 router = APIRouter()
+
+
+@router.get("/dashboard", response_class=HTMLResponse)
+def get_web_dashboard():
+    return HTML_DASHBOARD
+
+
+@router.get("/markdown/export", response_class=PlainTextResponse)
+def export_markdown(db: DBSession = Depends(get_session)):
+    sessions = db.exec(select(SessionModel)).all()
+    session_dicts = []
+    for s in sessions:
+        s_dict = s.model_dump()
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        session_dicts.append(s_dict)
+
+    return export_sessions_to_markdown(session_dicts, date.today())
+
+
+@router.post("/markdown/import", status_code=status.HTTP_201_CREATED)
+def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSession = Depends(get_session)):
+    parsed_sessions = parse_markdown_to_sessions(content)
+    added_count = 0
+    for s in parsed_sessions:
+        db_session = SessionModel(
+            start_time=s["start_time"],
+            end_time=s["end_time"],
+            duration_seconds=s["duration_seconds"],
+            tags=s["tags"],
+            notes=s["notes"]
+        )
+        db.add(db_session)
+        added_count += 1
+    db.commit()
+    return {"status": "success", "imported_sessions": added_count}
 
 
 @router.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
