@@ -14,7 +14,6 @@ HTML_DASHBOARD = """
         .fc-timegrid-slot { height: 3em !important; }
         .fc-col-header-cell { background-color: #181826; padding: 6px 0; }
         .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; }
-        .btn-purple { background-color: #8b5cf6 !important; color: #ffffff !important; font-weight: 700 !important; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #14141f; }
         ::-webkit-scrollbar-thumb { background: #2d2d42; border-radius: 3px; }
@@ -22,9 +21,7 @@ HTML_DASHBOARD = """
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Top TimeTrace Toolbar -->
     <header class="bg-[#14141f] border-b border-[#232334] px-4 py-2.5 flex items-center justify-between shrink-0">
-        <!-- Title & Timer Tracker -->
         <div class="flex items-center space-x-4">
             <span class="text-xl font-black text-purple-400 tracking-wider">TimeTrace</span>
             <div id="active_timer_pill" class="bg-[#1c1c2b] border border-[#2d2d42] px-3 py-1 rounded-md flex items-center space-x-3 text-xs">
@@ -38,9 +35,7 @@ HTML_DASHBOARD = """
             </div>
         </div>
 
-        <!-- Center Controls & Navigation -->
         <div class="flex items-center space-x-2 text-xs">
-            <!-- Stats Button -->
             <button onclick="openStatsModal()" class="bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 font-semibold px-3 py-1 rounded border border-purple-700/50 flex items-center space-x-1">
                 <span>📊</span>
                 <span>Stats</span>
@@ -53,30 +48,25 @@ HTML_DASHBOARD = """
                 <button onclick="calendar.next()" class="px-2 py-1 text-slate-300 hover:text-white">&gt;</button>
             </div>
             <button onclick="calendar.today()" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Today</button>
-            <button id="btn_view_day" onclick="switchView('timeGridDay')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Day</button>
-            <!-- Requirement #1: Week always purple theme -->
-            <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="btn-purple px-3 py-1 rounded font-bold shadow-lg border border-purple-400">Week</button>
-            <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Month</button>
+            
+            <button id="btn_view_day" onclick="switchView('timeGridDay')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]">Day</button>
+            <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="px-2.5 py-1 rounded border text-white font-bold bg-purple-600 border-purple-400">Week</button>
+            <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]">Month</button>
         </div>
 
-        <!-- Right Header Total -->
         <div class="flex items-center space-x-3 text-xs">
-            <span class="text-slate-400">Range Total</span>
+            <span id="range_total_header" class="text-slate-400">Range Total</span>
             <span id="weekly_total_badge" class="text-lg font-black text-purple-400">0.0h</span>
         </div>
     </header>
 
-    <!-- Main Layout Grid -->
     <div class="flex-1 flex overflow-hidden">
-        
-        <!-- LEFT SIDEBAR: Task Cards -->
         <aside id="left_sidebar" class="w-64 bg-[#14141f] border-r border-[#232334] p-3 flex flex-col shrink-0">
             <div class="flex justify-between items-center mb-3">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
                 <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
             </div>
 
-            <!-- Task List Cards -->
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
 
             <button onclick="openNewTaskModal()" class="mt-3 w-full border border-dashed border-[#33334d] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2.5 rounded-lg text-xs font-medium transition">
@@ -84,26 +74,21 @@ HTML_DASHBOARD = """
             </button>
         </aside>
 
-        <!-- CENTER: FullCalendar View -->
         <main class="flex-1 bg-[#0f0f15] p-3 overflow-hidden flex flex-col">
             <div id="calendar" class="flex-1"></div>
         </main>
 
-        <!-- RIGHT SIDEBAR: Requirement #2 - Activity & Task Time Totals -->
         <aside id="right_sidebar" class="w-72 bg-[#14141f] border-l border-[#232334] p-3 flex flex-col shrink-0 overflow-y-auto space-y-4">
-            <!-- Total Hours Summary -->
             <div class="flex justify-between items-center border-b border-[#232334] pb-2">
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Range Breakdown</span>
+                <span id="range_breakdown_label" class="text-xs font-bold uppercase tracking-wider text-slate-400">Range Breakdown</span>
                 <span id="side_total_hours" class="text-xs font-black text-purple-400">0.0h</span>
             </div>
 
-            <!-- Breakdown By Activity / Tag -->
             <div>
                 <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">🏷️ By Activity (#tags)</span>
                 <div id="activity_totals_list" class="space-y-2"></div>
             </div>
 
-            <!-- Breakdown By Task -->
             <div>
                 <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">📋 By Task</span>
                 <div id="weekly_totals_list" class="space-y-2"></div>
@@ -111,7 +96,6 @@ HTML_DASHBOARD = """
         </aside>
     </div>
 
-    <!-- REQUIREMENT #3: STATISTICS MODAL FOR DAY, WEEK, AND MONTH -->
     <div id="stats_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[#181826] border border-[#2d2d42] w-[540px] max-h-[85vh] rounded-xl p-6 shadow-2xl flex flex-col space-y-4">
             <div class="flex justify-between items-center border-b border-[#2d2d42] pb-3">
@@ -122,7 +106,6 @@ HTML_DASHBOARD = """
                 <button onclick="closeStatsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
 
-            <!-- Summary Stat Cards -->
             <div class="grid grid-cols-3 gap-3">
                 <div class="bg-[#10101a] border border-[#2d2d42] p-3 rounded-lg text-center">
                     <span class="text-xs text-slate-400 block">Total Hours</span>
@@ -138,7 +121,6 @@ HTML_DASHBOARD = """
                 </div>
             </div>
 
-            <!-- Detailed Breakdown Bars -->
             <div class="flex-1 overflow-y-auto space-y-4 pr-1">
                 <div>
                     <h4 class="text-xs font-bold text-slate-300 uppercase mb-2">Activities (#tags)</h4>
@@ -156,7 +138,6 @@ HTML_DASHBOARD = """
         </div>
     </div>
 
-    <!-- TASK EDIT / CREATE MODAL -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[#181826] border border-[#2d2d42] w-96 rounded-xl p-5 shadow-2xl space-y-4">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
@@ -193,7 +174,6 @@ HTML_DASHBOARD = """
         </div>
     </div>
 
-    <!-- JAVASCRIPT CONTROLLER -->
     <script>
         let calendar;
         let isRunning = false;
@@ -212,6 +192,7 @@ HTML_DASHBOARD = """
                 events: fetchCalendarEvents,
                 datesSet: function(info) {
                     document.getElementById('calendar_range_title').innerText = info.view.title;
+                    updateViewButtons(info.view.type);
                     fetchRangeTotals();
                 }
             });
@@ -224,8 +205,19 @@ HTML_DASHBOARD = """
 
         function switchView(viewName) {
             calendar.changeView(viewName);
-            // Requirement #1: Keep week button purple locked
-            document.getElementById('btn_view_week').className = 'btn-purple px-3 py-1 rounded font-bold shadow-lg border border-purple-400';
+        }
+
+        function updateViewButtons(activeViewType) {
+            const btnDay = document.getElementById('btn_view_day');
+            const btnWeek = document.getElementById('btn_view_week');
+            const btnMonth = document.getElementById('btn_view_month');
+
+            const activeClass = "px-2.5 py-1 rounded border text-white font-bold bg-purple-600 border-purple-400 shadow-md";
+            const inactiveClass = "px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]";
+
+            btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
+            btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
+            btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
         }
 
         async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -311,9 +303,16 @@ HTML_DASHBOARD = """
             fetchRangeTotals();
         }
 
-        // REQUIREMENT #2: Breakdown of how much time each activity/tag & task takes
         function fetchRangeTotals() {
             if (!calendar) return;
+            const viewType = calendar.view.type;
+            let rangeLabel = "Week";
+            if (viewType === 'timeGridDay') rangeLabel = "Day";
+            if (viewType === 'dayGridMonth') rangeLabel = "Month";
+
+            document.getElementById('range_breakdown_label').innerText = `${rangeLabel} Breakdown`;
+            document.getElementById('range_total_header').innerText = `${rangeLabel} Total`;
+
             const viewStart = calendar.view.activeStart;
             const viewEnd = calendar.view.activeEnd;
 
@@ -330,11 +329,9 @@ HTML_DASHBOARD = """
                 const dur = s.duration_seconds || 0;
                 grandTotalSecs += dur;
 
-                // Task aggregation
                 const tid = s.task_id || 0;
                 taskHours[tid] = (taskHours[tid] || 0) + dur;
 
-                // Activity / Tag aggregation
                 const tagStr = s.tags || '#general';
                 const tags = tagStr.split(' ').filter(t => t.startsWith('#'));
                 if (tags.length === 0) tags.push('#general');
@@ -346,11 +343,10 @@ HTML_DASHBOARD = """
             document.getElementById('weekly_total_badge').innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
             document.getElementById('side_total_hours').innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
 
-            // Render Activity Totals
             const activityList = document.getElementById('activity_totals_list');
             const sortedTags = Object.entries(tagHours).sort((a,b) => b[1] - a[1]);
             if (sortedTags.length === 0) {
-                activityList.innerHTML = '<div class="text-xs text-slate-500">No activities logged.</div>';
+                activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
             } else {
                 activityList.innerHTML = sortedTags.map(([tag, secs]) => `
                     <div class="bg-[#181826] border border-[#232334] p-2.5 rounded-lg flex justify-between items-center">
@@ -360,7 +356,6 @@ HTML_DASHBOARD = """
                 `).join('');
             }
 
-            // Render Task Totals
             const totalsList = document.getElementById('weekly_totals_list');
             totalsList.innerHTML = activeTasks.map((t, idx) => {
                 const color = t.color || defaultPalette[idx % defaultPalette.length];
@@ -374,7 +369,6 @@ HTML_DASHBOARD = """
             }).join('');
         }
 
-        // REQUIREMENT #3: STATISTICS MODAL FOR DAY, WEEK, AND MONTH
         function openStatsModal() {
             const viewType = calendar.view.type;
             let rangeName = "Week";
@@ -406,15 +400,13 @@ HTML_DASHBOARD = """
                     energyCount++;
                 }
 
-                // Tag stats
                 const tagStr = s.tags || '#general';
-                const tags = tagStr.split(' ').filter(t => t.startswith ? t.startswith('#') : t.indexOf('#') === 0);
+                const tags = tagStr.split(' ').filter(t => t.startsWith('#'));
                 if (tags.length === 0) tags.push('#general');
                 tags.forEach(tg => {
                     tagMap[tg] = (tagMap[tg] || 0) + dur;
                 });
 
-                // Task stats
                 const tid = s.task_id;
                 const taskObj = activeTasks.find(t => t.id === tid);
                 const taskName = taskObj ? taskObj.title : 'Unassigned';
@@ -425,7 +417,6 @@ HTML_DASHBOARD = """
             document.getElementById('stats_total_sessions').innerText = visibleSessions.length;
             document.getElementById('stats_avg_energy').innerText = energyCount > 0 ? `${(totalEnergy / energyCount).toFixed(1)} / 5` : 'N/A';
 
-            // Tag Progress Bars
             const tagBars = document.getElementById('stats_tag_bars');
             const sortedTags = Object.entries(tagMap).sort((a,b) => b[1] - a[1]);
             tagBars.innerHTML = sortedTags.map(([tag, secs]) => {
@@ -443,7 +434,6 @@ HTML_DASHBOARD = """
                 `;
             }).join('');
 
-            // Task Progress Bars
             const taskBars = document.getElementById('stats_task_bars');
             const sortedTasks = Object.entries(taskMap).sort((a,b) => b[1] - a[1]);
             taskBars.innerHTML = sortedTasks.map(([taskTitle, secs]) => {
