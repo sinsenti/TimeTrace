@@ -7,9 +7,10 @@ class Task(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     title: str
     description: Optional[str] = None
-    priority: int = Field(default=1)
+    priority: int = Field(default=1)  # 1 (low) to 4 (urgent)
     estimated_minutes: Optional[int] = None
-    status: str = Field(default="todo")
+    status: str = Field(default="in_progress")  # in_progress, ongoing, completed
+    color: str = Field(default="#7c3aed")  # Hex color for Chronoboard cards
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
     sessions: List["Session"] = Relationship(back_populates="task")
@@ -26,8 +27,7 @@ class Session(SQLModel, table=True):
 
     task: Optional[Task] = Relationship(back_populates="sessions")
     reflection: Optional["Reflection"] = Relationship(
-        back_populates="session",
-        sa_relationship_kwargs={"uselist": False}
+        back_populates="session", sa_relationship_kwargs={"uselist": False}
     )
 
 

@@ -7,12 +7,18 @@ from datetime import date
 from timetrace.db.session import get_session
 from timetrace.db.models import Task, Session as SessionModel, Reflection
 from timetrace.core.timer import timer_manager
-from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
+from timetrace.core.parser import (
+    export_sessions_to_markdown,
+    parse_markdown_to_sessions,
+)
+from timetrace.core.analytics import calculate_tag_summaries
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
+    TaskUpdate,
     TimerStartRequest,
+    TimerSplitRequest,
     ReflectionCreate,
-    RetroSessionCreate
+    RetroSessionCreate,
 )
 from timetrace.interfaces.api.web_dashboard import HTML_DASHBOARD
 
@@ -22,6 +28,13 @@ router = APIRouter()
 @router.get("/dashboard", response_class=HTMLResponse)
 def get_web_dashboard():
     return HTML_DASHBOARD
+
+
+@router.get("/analytics/summary")
+def get_analytics_summary(db: DBSession = Depends(get_session)):
+    sessions = db.exec(select(SessionModel)).all()
+    session_dicts = [s.model_dump() for s in sessions]
+    return calculate_tag_summaries(session_dicts)
 
 
 @router.get("/markdown/export", response_class=PlainTextResponse)
@@ -38,7 +51,10 @@ def export_markdown(db: DBSession = Depends(get_session)):
 
 
 @router.post("/markdown/import", status_code=status.HTTP_201_CREATED)
-def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSession = Depends(get_session)):
+def import_markdown(
+    content: str = Body(..., media_type="text/plain"),
+    db: DBSession = Depends(get_session),
+):
     parsed_sessions = parse_markdown_to_sessions(content)
     added_count = 0
     for s in parsed_sessions:
@@ -47,7 +63,7 @@ def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSes
             end_time=s["end_time"],
             duration_seconds=s["duration_seconds"],
             tags=s["tags"],
-            notes=s["notes"]
+            notes=s["notes"],
         )
         db.add(db_session)
         added_count += 1
@@ -55,6 +71,7 @@ def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSes
     return {"status": "success", "imported_sessions": added_count}
 
 
+# Task API Endpoints
 @router.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
     db_task = Task.model_validate(task)
@@ -69,17 +86,87 @@ def list_tasks(db: DBSession = Depends(get_session)):
     return db.exec(select(Task)).all()
 
 
+@router.put("/tasks/{task_id}", response_model=Task)
+def update_task(
+    task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get_session)
+):
+    db_task = db.get(Task, task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_dict = task_data.model_dump(exclude_unset=True)
+    for key, value in update_dict.items():
+        setattr(db_task, key, value)
+
+    db.add(db_task)
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+@router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int, db: DBSession = Depends(get_session)):
+    db_task = db.get(Task, task_id)
+    if not db_task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(db_task)
+    db.commit()
+    return None
+
+
+# Active Timer API Endpoints
 @router.get("/timer/status")
-def timer_status():
-    return timer_manager.get_status()
+def timer_status(db: DBSession = Depends(get_session)):
+    status_data = timer_manager.get_status()
+    if status_data.get("task_id") and not status_data.get("task_title"):
+        task_obj = db.get(Task, status_data["task_id"])
+        if task_obj:
+            status_data["task_title"] = task_obj.title
+    return status_data
 
 
 @router.post("/timer/start")
-def start_timer(req: TimerStartRequest):
+def start_timer(req: TimerStartRequest, db: DBSession = Depends(get_session)):
     try:
-        return timer_manager.start(task_id=req.task_id, tags=req.tags, notes=req.notes)
+        task_title = None
+        if req.task_id:
+            t = db.get(Task, req.task_id)
+            if t:
+                task_title = t.title
+        return timer_manager.start(
+            task_id=req.task_id,
+            task_title=task_title,
+            tags=req.tags,
+            notes=req.notes,
+            mode=req.mode,
+            target_minutes=req.target_minutes,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@router.post("/timer/split", response_model=SessionModel)
+def split_timer(req: TimerSplitRequest, db: DBSession = Depends(get_session)):
+    try:
+        stopped_session_data = timer_manager.split(
+            new_tags=req.new_tags, new_notes=req.new_notes
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    db_session = SessionModel(
+        task_id=stopped_session_data["task_id"],
+        start_time=stopped_session_data["start_time"],
+        end_time=stopped_session_data["end_time"],
+        duration_seconds=stopped_session_data["duration_seconds"],
+        tags=stopped_session_data["tags"],
+        notes=stopped_session_data["notes"],
+    )
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
 
 
 @router.post("/timer/stop", response_model=SessionModel)
@@ -95,7 +182,7 @@ def stop_timer(db: DBSession = Depends(get_session)):
         end_time=session_data["end_time"],
         duration_seconds=session_data["duration_seconds"],
         tags=session_data["tags"],
-        notes=session_data["notes"]
+        notes=session_data["notes"],
     )
     db.add(db_session)
     db.commit()
@@ -103,10 +190,15 @@ def stop_timer(db: DBSession = Depends(get_session)):
     return db_session
 
 
-@router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+# Retroactive Session Logging API Endpoints
+@router.post(
+    "/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED
+)
 def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
     if req.end_time <= req.start_time:
-        raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
+        raise HTTPException(
+            status_code=400, detail="end_time must be strictly after start_time"
+        )
 
     duration = int((req.end_time - req.start_time).total_seconds())
     db_session = SessionModel(
@@ -115,7 +207,7 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
         end_time=req.end_time,
         duration_seconds=duration,
         tags=req.tags,
-        notes=req.notes
+        notes=req.notes,
     )
     db.add(db_session)
     db.commit()
@@ -123,12 +215,22 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     return db_session
 
 
-@router.get("/sessions", response_model=List[SessionModel])
+@router.get("/sessions")
 def list_sessions(db: DBSession = Depends(get_session)):
-    return db.exec(select(SessionModel)).all()
+    sessions = db.exec(select(SessionModel)).all()
+    result = []
+    for s in sessions:
+        s_dict = s.model_dump()
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        result.append(s_dict)
+    return result
 
 
-@router.post("/reflections", response_model=Reflection, status_code=status.HTTP_201_CREATED)
+# Post-Session Reflection API Endpoint
+@router.post(
+    "/reflections", response_model=Reflection, status_code=status.HTTP_201_CREATED
+)
 def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session)):
     session_obj = db.get(SessionModel, req.session_id)
     if not session_obj:
@@ -138,7 +240,7 @@ def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session
         session_id=req.session_id,
         energy_level=req.energy_level,
         obstacles=req.obstacles,
-        habits_completed=",".join(req.habits_completed)
+        habits_completed=",".join(req.habits_completed),
     )
     db.add(db_reflection)
     db.commit()
