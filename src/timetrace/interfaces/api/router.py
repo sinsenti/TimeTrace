@@ -1,5 +1,6 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
-from fastapi.responses import HTMLResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
 from typing import List, Optional
 from datetime import datetime, date, timezone
@@ -8,7 +9,7 @@ from timetrace.db.session import get_session
 from timetrace.db.models import Task, Session as SessionModel, Reflection
 from timetrace.core.timer import timer_manager
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
-from timetrace.core.analytics import calculate_tag_summaries
+from timetrace.core.analytics import calculate_tag_summaries, calculate_detailed_analytics
 from timetrace.core.editor import get_auto_color
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
@@ -20,21 +21,53 @@ from timetrace.interfaces.api.schemas import (
     ReflectionCreate,
     RetroSessionCreate
 )
-from timetrace.interfaces.api.web_dashboard import HTML_DASHBOARD
 
 router = APIRouter()
 
+STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-@router.get("/dashboard", response_class=HTMLResponse)
+
+# Static Web File Serving Endpoints
+@router.get("/dashboard", response_class=FileResponse)
 def get_web_dashboard():
-    return HTML_DASHBOARD
+    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
 
 
+@router.get("/stats", response_class=FileResponse)
+def get_stats_dashboard():
+    return FileResponse(os.path.join(STATIC_DIR, "stats.html"))
+
+
+@router.get("/static/{file_path:path}")
+def get_static_file(file_path: str):
+    full_path = os.path.join(STATIC_DIR, file_path)
+    if os.path.exists(full_path) and os.path.isfile(full_path):
+        return FileResponse(full_path)
+    raise HTTPException(status_code=404, detail="Static asset not found")
+
+
+# Analytics API Endpoints
 @router.get("/analytics/summary")
 def get_analytics_summary(db: DBSession = Depends(get_session)):
     sessions = db.exec(select(SessionModel)).all()
     session_dicts = [s.model_dump() for s in sessions]
     return calculate_tag_summaries(session_dicts)
+
+
+@router.get("/analytics/detailed")
+def get_detailed_analytics(db: DBSession = Depends(get_session)):
+    sessions = db.exec(select(SessionModel)).all()
+    tasks = db.exec(select(Task)).all()
+
+    session_dicts = []
+    for s in sessions:
+        s_dict = s.model_dump()
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        session_dicts.append(s_dict)
+
+    task_dicts = [t.model_dump() for t in tasks]
+    return calculate_detailed_analytics(session_dicts, task_dicts)
 
 
 @router.get("/markdown/export", response_class=PlainTextResponse)
@@ -113,7 +146,6 @@ def list_tasks(
             query = query.where(Task.status == status_filter)
 
     tasks = db.exec(query).all()
-
     priority_map = {"high": 4, "medium": 3, "low": 2, "-": 1}
 
     if sort_by == "priority":
@@ -284,7 +316,6 @@ def list_sessions(
     result = []
     for s in sessions:
         s_dict = s.model_dump()
-        # Convert naive datetimes to UTC ISO strings for Web Calendar compatibility
         if s.start_time:
             s_dict["start_time"] = s.start_time.isoformat() if s.start_time.tzinfo else s.start_time.replace(tzinfo=timezone.utc).isoformat()
         if s.end_time:
@@ -350,7 +381,6 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     return db_session
 
 
-# Post-Session Reflection API Endpoint
 @router.post("/reflections", response_model=Reflection, status_code=status.HTTP_201_CREATED)
 def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session)):
     session_obj = db.get(SessionModel, req.session_id)

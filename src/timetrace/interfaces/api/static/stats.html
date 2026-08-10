@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTrace Analytics & Custom Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        .widget-card { background-color: #12131d; border: 1px solid #1a1c26; border-radius: 0.75rem; padding: 1.25rem; transition: transform 0.2s, border-color 0.2s; }
+        .widget-card:hover { border-color: #3b82f6; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0b0c10; }
+        ::-webkit-scrollbar-thumb { background: #262938; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <header class="bg-[#12131d] border-b border-[#1a1c26] px-6 py-3 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-6">
+            <span class="text-xl font-black text-purple-400 tracking-wider">TimeTrace</span>
+            <nav class="flex space-x-2 text-xs font-semibold">
+                <a href="/api/v1/dashboard" class="px-3 py-1.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300">Calendar Dashboard</a>
+                <a href="/api/v1/stats" class="px-3 py-1.5 rounded-lg bg-purple-600 text-white font-bold">Analytics & Widgets</a>
+            </nav>
+        </div>
+
+        <div class="flex items-center space-x-3 text-xs">
+            <button onclick="toggleWidgetModal()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-800/40 px-3 py-1.5 rounded-lg font-bold">
+                ⚙️ Customize Dashboard Widgets
+            </button>
+            <button onclick="loadAnalyticsData()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg">
+                🔄 Refresh Metrics
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
+        
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="widget-card flex items-center space-x-4">
+                <div class="p-3 bg-purple-900/40 border border-purple-700/50 rounded-xl text-purple-400 text-2xl">⏱️</div>
+                <div>
+                    <span class="text-xs text-slate-400 font-semibold block">Total Time Logged</span>
+                    <span id="kpi_total_hours" class="text-2xl font-black text-purple-400">0.0h</span>
+                </div>
+            </div>
+
+            <div class="widget-card flex items-center space-x-4">
+                <div class="p-3 bg-emerald-900/40 border border-emerald-700/50 rounded-xl text-emerald-400 text-2xl">⚡</div>
+                <div>
+                    <span class="text-xs text-slate-400 font-semibold block">Logged Sessions</span>
+                    <span id="kpi_total_sessions" class="text-2xl font-black text-emerald-400">0</span>
+                </div>
+            </div>
+
+            <div class="widget-card flex items-center space-x-4">
+                <div class="p-3 bg-amber-900/40 border border-amber-700/50 rounded-xl text-amber-400 text-2xl">🔋</div>
+                <div>
+                    <span class="text-xs text-slate-400 font-semibold block">Avg Energy Level</span>
+                    <span id="kpi_avg_energy" class="text-2xl font-black text-amber-400">N/A</span>
+                </div>
+            </div>
+
+            <div class="widget-card flex items-center space-x-4">
+                <div class="p-3 bg-blue-900/40 border border-blue-700/50 rounded-xl text-blue-400 text-2xl">📋</div>
+                <div>
+                    <span class="text-xs text-slate-400 font-semibold block">Active Tasks</span>
+                    <span id="kpi_total_tasks" class="text-2xl font-black text-blue-400">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="widget_grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+            <div id="widget_daily_trend" class="widget-card flex flex-col space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-sm text-slate-200">Daily Focus Trend (14 Days)</h3>
+                    <span class="text-xs text-purple-400 font-semibold">Hours / Day</span>
+                </div>
+                <div class="h-64 relative">
+                    <canvas id="chart_daily_trend"></canvas>
+                </div>
+            </div>
+
+            <div id="widget_hourly_heatmap" class="widget-card flex flex-col space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-sm text-slate-200">Peak Focus Hours (24h Distribution)</h3>
+                    <span class="text-xs text-emerald-400 font-semibold">Time Slots</span>
+                </div>
+                <div class="h-64 relative">
+                    <canvas id="chart_hourly_heatmap"></canvas>
+                </div>
+            </div>
+
+            <div id="widget_tags_pie" class="widget-card flex flex-col space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-sm text-slate-200">Activity Breakdown (#tags)</h3>
+                    <span class="text-xs text-purple-400 font-semibold">Share %</span>
+                </div>
+                <div class="h-64 relative flex items-center justify-center">
+                    <canvas id="chart_tags_pie"></canvas>
+                </div>
+            </div>
+
+            <div id="widget_energy_line" class="widget-card flex flex-col space-y-3">
+                <div class="flex justify-between items-center">
+                    <h3 class="font-bold text-sm text-slate-200">Post-Session Energy Trend</h3>
+                    <span class="text-xs text-amber-400 font-semibold">Scale 1-5</span>
+                </div>
+                <div class="h-64 relative">
+                    <canvas id="chart_energy_line"></canvas>
+                </div>
+            </div>
+
+            <div id="widget_habits" class="widget-card flex flex-col space-y-3">
+                <h3 class="font-bold text-sm text-slate-200">Habit Frequency & Streaks</h3>
+                <div id="habits_pill_container" class="flex flex-wrap gap-2.5 pt-2"></div>
+            </div>
+
+            <div id="widget_obstacles" class="widget-card flex flex-col space-y-3">
+                <h3 class="font-bold text-sm text-slate-200">Recent Obstacles & Distractions</h3>
+                <div id="obstacles_list" class="space-y-2 text-xs text-slate-400 max-h-56 overflow-y-auto pr-1"></div>
+            </div>
+
+        </div>
+    </main>
+
+    <div id="widget_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[#161824] border border-[#262938] w-[450px] rounded-xl p-5 shadow-2xl space-y-4">
+            <div class="flex justify-between items-center border-b border-[#262938] pb-2">
+                <h3 class="font-bold text-base text-white">Customize Dashboard Widgets</h3>
+                <button onclick="toggleWidgetModal()" class="text-slate-400 hover:text-white font-bold">&times;</button>
+            </div>
+
+            <div id="widget_toggle_list" class="space-y-2.5 text-xs text-slate-300"></div>
+
+            <div class="pt-2 border-t border-[#262938] flex justify-end space-x-2">
+                <button onclick="toggleWidgetModal()" class="bg-purple-600 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/api/v1/static/js/stats.js"></script>
+</body>
+</html>
+
