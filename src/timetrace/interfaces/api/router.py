@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
-from sqlmodel import Session as DBSession, select
+from sqlmodel import Session as DBSession, select, col
 from typing import List, Optional
 from datetime import datetime, date
 
@@ -87,7 +87,7 @@ def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSes
 # Task API Endpoints
 @router.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
-    task_dict = task.model_dump()
+    task_dict = task.model_dump(exclude_unset=True)
     if not task_dict.get("color") or task_dict.get("color") == "auto":
         task_dict["color"] = get_auto_color(task_dict["title"])
 
@@ -99,8 +99,28 @@ def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
 
 
 @router.get("/tasks", response_model=List[Task])
-def list_tasks(db: DBSession = Depends(get_session)):
-    return db.exec(select(Task)).all()
+def list_tasks(
+    status_filter: Optional[str] = Query(None, alias="status"),
+    sort_by: Optional[str] = Query("priority", alias="sort"),
+    db: DBSession = Depends(get_session)
+):
+    query = select(Task)
+    if status_filter and status_filter != "all":
+        if status_filter == "hide_completed":
+            query = query.where(Task.status != "completed")
+        else:
+            query = query.where(Task.status == status_filter)
+
+    if sort_by == "priority":
+        query = query.order_by(col(Task.priority).desc(), col(Task.created_at).desc())
+    elif sort_by == "title":
+        query = query.order_by(col(Task.title).asc())
+    elif sort_by == "status":
+        query = query.order_by(col(Task.status).asc())
+    elif sort_by == "created_at":
+        query = query.order_by(col(Task.created_at).desc())
+
+    return db.exec(query).all()
 
 
 @router.put("/tasks/{task_id}", response_model=Task)
@@ -120,6 +140,16 @@ def update_task(task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get
     db.commit()
     db.refresh(db_task)
     return db_task
+
+
+@router.delete("/tasks/completed", status_code=status.HTTP_200_OK)
+def delete_completed_tasks(db: DBSession = Depends(get_session)):
+    completed_tasks = db.exec(select(Task).where(Task.status == "completed")).all()
+    count = len(completed_tasks)
+    for task in completed_tasks:
+        db.delete(task)
+    db.commit()
+    return {"status": "success", "deleted_count": count}
 
 
 @router.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

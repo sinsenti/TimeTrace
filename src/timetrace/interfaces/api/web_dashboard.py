@@ -62,16 +62,28 @@ HTML_DASHBOARD = """
 
     <div class="flex-1 flex overflow-hidden">
         <aside id="left_sidebar" class="w-64 bg-[#14141f] border-r border-[#232334] p-3 flex flex-col shrink-0">
-            <div class="flex justify-between items-center mb-3">
+            <div class="flex justify-between items-center mb-2">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
                 <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
             </div>
 
+            <!-- Task Filters -->
+            <div class="flex space-x-1 mb-2">
+                <button onclick="setTaskFilter('all')" id="filter_tab_all" class="flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold">All</button>
+                <button onclick="setTaskFilter('hide_completed')" id="filter_tab_active" class="flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white">Active</button>
+                <button onclick="setTaskFilter('completed')" id="filter_tab_done" class="flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white">Done</button>
+            </div>
+
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
 
-            <button onclick="openNewTaskModal()" class="mt-3 w-full border border-dashed border-[#33334d] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2.5 rounded-lg text-xs font-medium transition">
-                + Add task slot
-            </button>
+            <div class="mt-3 space-y-1.5">
+                <button onclick="openNewTaskModal()" class="w-full border border-dashed border-[#33334d] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2 rounded-lg text-xs font-medium transition">
+                    + Add task slot
+                </button>
+                <button onclick="clearCompletedTasks()" class="w-full bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-800/40 py-1.5 rounded-lg text-[11px] font-semibold transition">
+                    🧹 Clear Completed Tasks
+                </button>
+            </div>
         </aside>
 
         <main class="flex-1 bg-[#0f0f15] p-3 overflow-hidden flex flex-col">
@@ -141,7 +153,7 @@ HTML_DASHBOARD = """
 
     <!-- Task Modal -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#181826] border border-[#2d2d42] w-96 rounded-xl p-5 shadow-2xl space-y-4">
+        <div class="bg-[#181826] border border-[#2d2d42] w-96 rounded-xl p-5 shadow-2xl space-y-3">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
             <input type="hidden" id="edit_task_id">
             <div>
@@ -151,6 +163,10 @@ HTML_DASHBOARD = """
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
                 <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+            </div>
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
+                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
             <div class="grid grid-cols-2 gap-3">
                 <div>
@@ -181,6 +197,7 @@ HTML_DASHBOARD = """
         let isRunning = false;
         let activeTasks = [];
         let allSessions = [];
+        let currentFilter = 'all';
         let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899'];
 
         document.addEventListener('DOMContentLoaded', function() {
@@ -295,8 +312,25 @@ HTML_DASHBOARD = """
             } catch(e) {}
         }
 
+        function setTaskFilter(filterName) {
+            currentFilter = filterName;
+            
+            const tabAll = document.getElementById('filter_tab_all');
+            const tabActive = document.getElementById('filter_tab_active');
+            const tabDone = document.getElementById('filter_tab_done');
+            
+            const activeClass = "flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold";
+            const inactiveClass = "flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white";
+
+            tabAll.className = (filterName === 'all') ? activeClass : inactiveClass;
+            tabActive.className = (filterName === 'hide_completed') ? activeClass : inactiveClass;
+            tabDone.className = (filterName === 'completed') ? activeClass : inactiveClass;
+
+            fetchTasks();
+        }
+
         async function fetchTasks() {
-            const res = await fetch('/api/v1/tasks');
+            const res = await fetch(`/api/v1/tasks?status=${currentFilter}`);
             activeTasks = await res.json();
 
             const cardList = document.getElementById('task_card_list');
@@ -307,23 +341,35 @@ HTML_DASHBOARD = """
             select.innerHTML = '<option value="">-- Attach Task --</option>' + 
                 activeTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
 
-            cardList.innerHTML = activeTasks.map((t, idx) => {
-                const color = t.color || defaultPalette[idx % defaultPalette.length];
-                return `
-                    <div onclick="openEditTaskModal(${t.id})" style="background-color: ${color};" class="p-3 rounded-lg shadow-md cursor-pointer transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
-                        <div>
-                            <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
-                            <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
+            if (activeTasks.length === 0) {
+                cardList.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tasks found.</div>';
+            } else {
+                cardList.innerHTML = activeTasks.map((t, idx) => {
+                    const color = t.color || defaultPalette[idx % defaultPalette.length];
+                    const createdDate = t.created_at ? new Date(t.created_at).toLocaleDateString() : '';
+                    return `
+                        <div onclick="openEditTaskModal(${t.id})" style="background-color: ${color};" class="p-3 rounded-lg shadow-md cursor-pointer transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
+                            <div>
+                                <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
+                                <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
+                            </div>
+                            <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
+                                <span class="bg-black/20 px-1.5 py-0.5 rounded">${t.status}</span>
+                                <span>${createdDate}</span>
+                            </div>
                         </div>
-                        <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
-                            <span class="bg-black/20 px-1.5 py-0.5 rounded">${t.status}</span>
-                            <span>P${t.priority}</span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
+                    `;
+                }).join('');
+            }
 
             fetchRangeTotals();
+        }
+
+        async function clearCompletedTasks() {
+            if (confirm("Are you sure you want to delete all completed tasks?")) {
+                await fetch('/api/v1/tasks/completed', { method: 'DELETE' });
+                fetchTasks();
+            }
         }
 
         function fetchRangeTotals() {
@@ -497,10 +543,12 @@ HTML_DASHBOARD = """
         }
 
         function openNewTaskModal() {
+            const nowIso = new Date().toISOString().slice(0,16);
             document.getElementById('edit_task_id').value = '';
             document.getElementById('modal_task_title').innerText = 'Create Task Slot';
             document.getElementById('modal_input_title').value = '';
             document.getElementById('modal_input_desc').value = '';
+            document.getElementById('modal_input_created').value = nowIso;
             document.getElementById('modal_input_status').value = 'in_progress';
             document.getElementById('modal_input_color').value = defaultPalette[activeTasks.length % defaultPalette.length];
             document.getElementById('modal_delete_btn').classList.add('hidden');
@@ -514,6 +562,7 @@ HTML_DASHBOARD = """
             document.getElementById('modal_task_title').innerText = 'Edit Task Slot';
             document.getElementById('modal_input_title').value = t.title;
             document.getElementById('modal_input_desc').value = t.description || '';
+            document.getElementById('modal_input_created').value = t.created_at ? t.created_at.slice(0,16) : '';
             document.getElementById('modal_input_status').value = t.status || 'in_progress';
             document.getElementById('modal_input_color').value = t.color || '#7c3aed';
             document.getElementById('modal_delete_btn').classList.remove('hidden');
@@ -526,12 +575,17 @@ HTML_DASHBOARD = """
 
         async function saveTask() {
             const id = document.getElementById('edit_task_id').value;
+            const createdInput = document.getElementById('modal_input_created').value;
             const payload = {
                 title: document.getElementById('modal_input_title').value,
                 description: document.getElementById('modal_input_desc').value,
                 status: document.getElementById('modal_input_status').value,
                 color: document.getElementById('modal_input_color').value
             };
+
+            if (createdInput) {
+                payload.created_at = new Date(createdInput).toISOString();
+            }
 
             if (!payload.title) return;
 

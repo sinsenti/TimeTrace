@@ -1,4 +1,5 @@
 import httpx
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
 from textual.containers import Container, Horizontal, Vertical
@@ -54,7 +55,15 @@ class TimeTraceTUI(App):
         height: 3;
         margin-bottom: 1;
     }
-    #tasks_table {
+    #filter_status_bar {
+        height: 1;
+        background: $boost;
+        color: $text-muted;
+        padding: 0 1;
+        margin-bottom: 1;
+        text-style: italic;
+    }
+    #main_table {
         height: 1fr;
         border: solid blue;
     }
@@ -75,25 +84,36 @@ class TimeTraceTUI(App):
     """
 
     BINDINGS = [
+        Binding("t", "toggle_view_mode", "Toggle View (t)"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
-        Binding("a", "add_task_nvim", "Add Task (Nvim)"),
-        Binding("e", "edit_task_nvim", "Edit Task (Nvim)"),
-        Binding("d", "delete_task", "Delete Task"),
-        Binding("s", "start_timer_nvim", "Start (Nvim)"),
-        Binding("c", "split_timer_nvim", "Split (Nvim)"),
+        Binding("a", "add_task_nvim", "Add Task"),
+        Binding("e", "edit_item_nvim", "Edit Item"),
+        Binding("f", "cycle_filter", "Filter (f)"),
+        Binding("o", "cycle_sort", "Sort (o)"),
+        Binding("d", "delete_item", "Delete Row"),
+        Binding("D", "clear_completed", "Clear Completed"),
+        Binding("s", "start_timer_nvim", "Start Timer"),
+        Binding("c", "split_timer_nvim", "Split Timer"),
         Binding("x", "stop_timer_nvim", "Stop/Reflect"),
-        Binding("m", "retro_log_nvim", "Retro (Nvim)"),
+        Binding("m", "retro_log_nvim", "Retro Log"),
         Binding("v", "view_stats", "Stats"),
         Binding("r", "refresh_data", "Refresh"),
         Binding("q", "quit", "Quit"),
     ]
 
     timer_text = reactive("⏸️ Timer Idle")
+    status_bar_text = reactive("Mode: TASKS | Filter: ALL | Sort: PRIORITY")
+    view_mode = reactive("tasks")  # "tasks" or "sessions"
 
     def __init__(self):
         super().__init__()
         self.loaded_tasks: List[Dict[str, Any]] = []
+        self.loaded_sessions: List[Dict[str, Any]] = []
+        self.filter_modes = ["all", "hide_completed", "in_progress", "ongoing", "completed"]
+        self.filter_index = 0
+        self.sort_modes = ["priority", "created_at", "title", "status"]
+        self.sort_index = 0
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -103,44 +123,76 @@ class TimeTraceTUI(App):
                 id="timer_box"
             ),
             Horizontal(
+                Button("View: TASKS (T)", variant="primary", id="view_toggle_btn"),
                 Button("Start (S)", variant="success", id="start_btn"),
                 Button("Split (C)", variant="warning", id="split_btn"),
                 Button("Stop (X)", variant="error", id="stop_btn"),
-                Button("Add Task (A)", variant="primary", id="add_btn"),
-                Button("Stats (V)", variant="default", id="stats_btn"),
+                Button("Add (A)", variant="default", id="add_btn"),
+                Button("Filter (F)", variant="default", id="filter_btn"),
+                Button("Sort (O)", variant="default", id="sort_btn"),
+                Button("Clear Done (D)", variant="error", id="clear_btn"),
                 id="actions_box"
             ),
-            DataTable(id="tasks_table"),
+            Static(self.status_bar_text, id="filter_status_bar"),
+            DataTable(id="main_table"),
         )
         yield Footer()
 
     def on_mount(self) -> None:
-        table = self.query_one(DataTable)
-        table.add_columns("ID", "Title", "Status", "Description")
-        table.cursor_type = "row"
+        self.setup_table_columns()
         self.set_interval(1.0, self.update_timer)
-        self.set_interval(3.0, self.load_tasks)
-        self.call_after_refresh(self.load_tasks)
+        self.set_interval(3.0, self.load_current_view)
+        self.call_after_refresh(self.load_current_view)
+
+    def setup_table_columns(self) -> None:
+        table = self.query_one("#main_table", DataTable)
+        table.clear(columns=True)
+        table.cursor_type = "row"
+        if self.view_mode == "tasks":
+            table.add_columns("ID", "Title", "Status", "Priority", "Start/Created", "Description")
+        else:
+            table.add_columns("ID", "Tags", "Start Time", "End Time", "Duration (m)", "Notes")
+
+    def action_toggle_view_mode(self) -> None:
+        self.view_mode = "sessions" if self.view_mode == "tasks" else "tasks"
+        btn = self.query_one("#view_toggle_btn", Button)
+        btn.label = f"View: {self.view_mode.upper()} (T)"
+        btn.variant = "primary" if self.view_mode == "tasks" else "warning"
+        self.setup_table_columns()
+        self.update_status_label()
+        self.run_worker(self.load_current_view())
+
+    def update_status_label(self) -> None:
+        v_mode = self.view_mode.upper()
+        f_mode = self.filter_modes[self.filter_index].upper()
+        s_mode = self.sort_modes[self.sort_index].upper()
+        self.status_bar_text = f"📱 VIEW: [{v_mode}]  |  🔍 Filter: [{f_mode}]  |  🔀 Sort: [{s_mode}]  (Press 't' to toggle Tasks/Sessions)"
+        self.query_one("#filter_status_bar", Static).update(self.status_bar_text)
+
+    def action_cycle_filter(self) -> None:
+        self.filter_index = (self.filter_index + 1) % len(self.filter_modes)
+        self.update_status_label()
+        self.run_worker(self.load_current_view())
+
+    def action_cycle_sort(self) -> None:
+        self.sort_index = (self.sort_index + 1) % len(self.sort_modes)
+        self.update_status_label()
+        self.run_worker(self.load_current_view())
 
     def action_cursor_down(self) -> None:
-        table = self.query_one(DataTable)
-        table.action_cursor_down()
+        self.query_one("#main_table", DataTable).action_cursor_down()
 
     def action_cursor_up(self) -> None:
-        table = self.query_one(DataTable)
-        table.action_cursor_up()
+        self.query_one("#main_table", DataTable).action_cursor_up()
 
-    def get_selected_task(self) -> Optional[Dict[str, Any]]:
-        table = self.query_one(DataTable)
+    def get_selected_item_id(self) -> Optional[int]:
+        table = self.query_one("#main_table", DataTable)
         if table.row_count == 0 or table.cursor_row is None:
             return None
         try:
             row_data = table.get_row_at(table.cursor_row)
-            task_id_str = str(row_data[0])
-            if not task_id_str.isdigit():
-                return None
-            task_id = int(task_id_str)
-            return next((t for t in self.loaded_tasks if t["id"] == task_id), None)
+            item_id_str = str(row_data[0])
+            return int(item_id_str) if item_id_str.isdigit() else None
         except Exception:
             return None
 
@@ -162,35 +214,75 @@ class TimeTraceTUI(App):
 
         self.query_one("#timer_display", Static).update(self.timer_text)
 
+    async def load_current_view(self) -> None:
+        if self.view_mode == "tasks":
+            await self.load_tasks()
+        else:
+            await self.load_sessions()
+
     async def load_tasks(self) -> None:
         try:
+            f_param = self.filter_modes[self.filter_index]
+            s_param = self.sort_modes[self.sort_index]
             async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/tasks", timeout=2.0)
+                res = await client.get(f"{BASE_URL}/tasks?status={f_param}&sort={s_param}", timeout=2.0)
                 if res.status_code == 200:
                     new_tasks = res.json()
-                    table = self.query_one(DataTable)
+                    table = self.query_one("#main_table", DataTable)
                     table.clear()
                     self.loaded_tasks = new_tasks
 
                     if not self.loaded_tasks:
-                        table.add_row("-", "No tasks found. Press 'A' to create one in Nvim.", "-", "-")
+                        table.add_row("-", "No tasks found. Press 'A' to create.", "-", "-", "-", "-")
                     else:
                         for task in self.loaded_tasks:
+                            created_str = str(task.get("created_at", ""))[:16].replace("T", " ")
                             table.add_row(
                                 str(task["id"]),
                                 task["title"],
                                 task.get("status", "in_progress"),
+                                f"P{task.get('priority', 1)}",
+                                created_str,
                                 task.get("description") or ""
                             )
         except Exception:
             pass
 
-    # WORKFLOW: Launch Neovim for Task Creation
+    async def load_sessions(self) -> None:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"{BASE_URL}/sessions", timeout=2.0)
+                if res.status_code == 200:
+                    new_sessions = res.json()
+                    table = self.query_one("#main_table", DataTable)
+                    table.clear()
+                    self.loaded_sessions = new_sessions
+
+                    if not self.loaded_sessions:
+                        table.add_row("-", "No logged calendar sessions found.", "-", "-", "-", "-")
+                    else:
+                        # Render sessions reverse sorted by ID (newest top)
+                        for s in reversed(self.loaded_sessions):
+                            start_str = str(s.get("start_time", ""))[:16].replace("T", " ")
+                            end_str = str(s.get("end_time", ""))[:16].replace("T", " ") if s.get("end_time") else "NOW"
+                            duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
+                            table.add_row(
+                                str(s["id"]),
+                                s.get("tags") or "#general",
+                                start_str,
+                                end_str,
+                                str(duration_mins),
+                                s.get("notes") or ""
+                            )
+        except Exception:
+            pass
+
     async def action_add_task_nvim(self) -> None:
         template = {
             "title": "ALP-101 New Feature",
             "status": "in_progress",
             "priority": 1,
+            "created_at": datetime.now(timezone.utc).isoformat()[:19],
             "color": "auto"
         }
         initial_notes = "Task description goes here..."
@@ -201,73 +293,115 @@ class TimeTraceTUI(App):
 
         if data and data.get("title"):
             try:
+                payload = {
+                    "title": data["title"],
+                    "description": data.get("notes", ""),
+                    "status": data.get("status", "in_progress"),
+                    "priority": int(data.get("priority", 1)),
+                    "color": data.get("color", "auto")
+                }
+                if data.get("created_at"):
+                    payload["created_at"] = data["created_at"]
+
                 async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"{BASE_URL}/tasks",
-                        json={
-                            "title": data["title"],
-                            "description": data.get("notes", ""),
-                            "status": data.get("status", "in_progress"),
-                            "priority": int(data.get("priority", 1)),
-                            "color": data.get("color", "auto")
-                        },
-                        timeout=3.0
-                    )
-                await self.load_tasks()
+                    await client.post(f"{BASE_URL}/tasks", json=payload, timeout=3.0)
+                await self.load_current_view()
             except Exception:
                 pass
 
-    # WORKFLOW: Launch Neovim for Task Editing
-    async def action_edit_task_nvim(self) -> None:
-        task = self.get_selected_task()
-        if not task:
+    async def action_edit_item_nvim(self) -> None:
+        item_id = self.get_selected_item_id()
+        if not item_id:
             return
 
-        template = {
-            "title": task["title"],
-            "status": task.get("status", "in_progress"),
-            "priority": task.get("priority", 1),
-            "color": task.get("color", "auto")
-        }
-        initial_notes = task.get("description") or ""
+        if self.view_mode == "tasks":
+            task = next((t for t in self.loaded_tasks if t["id"] == item_id), None)
+            if not task:
+                return
 
-        data = None
-        with self.suspend():
-            data = open_in_nvim(template, initial_notes)
+            template = {
+                "title": task["title"],
+                "status": task.get("status", "in_progress"),
+                "priority": task.get("priority", 1),
+                "created_at": str(task.get("created_at", ""))[:19],
+                "color": task.get("color", "auto")
+            }
+            initial_notes = task.get("description") or ""
 
-        if data and data.get("title"):
-            try:
-                async with httpx.AsyncClient() as client:
-                    await client.put(
-                        f"{BASE_URL}/tasks/{task['id']}",
-                        json={
-                            "title": data["title"],
-                            "description": data.get("notes", ""),
-                            "status": data.get("status", "in_progress"),
-                            "priority": int(data.get("priority", 1)),
-                            "color": data.get("color", "auto")
-                        },
-                        timeout=3.0
-                    )
-                await self.load_tasks()
-            except Exception:
-                pass
+            data = None
+            with self.suspend():
+                data = open_in_nvim(template, initial_notes)
 
-    async def action_delete_task(self) -> None:
-        task = self.get_selected_task()
-        if not task:
+            if data and data.get("title"):
+                try:
+                    payload = {
+                        "title": data["title"],
+                        "description": data.get("notes", ""),
+                        "status": data.get("status", "in_progress"),
+                        "priority": int(data.get("priority", 1)),
+                        "color": data.get("color", "auto")
+                    }
+                    if data.get("created_at"):
+                        payload["created_at"] = data["created_at"]
+
+                    async with httpx.AsyncClient() as client:
+                        await client.put(f"{BASE_URL}/tasks/{task['id']}", json=payload, timeout=3.0)
+                    await self.load_tasks()
+                except Exception:
+                    pass
+        else:
+            session = next((s for s in self.loaded_sessions if s["id"] == item_id), None)
+            if not session:
+                return
+
+            template = {
+                "tags": session.get("tags", "#general"),
+                "start_time": str(session.get("start_time", ""))[:19],
+                "end_time": str(session.get("end_time", ""))[:19] if session.get("end_time") else ""
+            }
+            initial_notes = session.get("notes") or ""
+
+            data = None
+            with self.suspend():
+                data = open_in_nvim(template, initial_notes)
+
+            if data:
+                try:
+                    payload = {
+                        "tags": data.get("tags", "#general"),
+                        "notes": data.get("notes", ""),
+                        "start_time": data.get("start_time"),
+                        "end_time": data.get("end_time") if data.get("end_time") else None
+                    }
+                    async with httpx.AsyncClient() as client:
+                        await client.put(f"{BASE_URL}/sessions/{session['id']}", json=payload, timeout=3.0)
+                    await self.load_sessions()
+                except Exception:
+                    pass
+
+    async def action_delete_item(self) -> None:
+        item_id = self.get_selected_item_id()
+        if not item_id:
             return
         try:
+            endpoint = f"/tasks/{item_id}" if self.view_mode == "tasks" else f"/sessions/{item_id}"
             async with httpx.AsyncClient() as client:
-                await client.delete(f"{BASE_URL}/tasks/{task['id']}", timeout=2.0)
-            await self.load_tasks()
+                await client.delete(f"{BASE_URL}{endpoint}", timeout=2.0)
+            await self.load_current_view()
         except Exception:
             pass
 
-    # WORKFLOW: Launch Neovim to Start Active Timer
+    async def action_clear_completed(self) -> None:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.delete(f"{BASE_URL}/tasks/completed", timeout=3.0)
+            await self.load_current_view()
+        except Exception:
+            pass
+
     async def action_start_timer_nvim(self) -> None:
-        task = self.get_selected_task()
-        task_id = task["id"] if task else None
+        item_id = self.get_selected_item_id()
+        task_id = item_id if self.view_mode == "tasks" else None
 
         template = {
             "task_id": task_id if task_id else "none",
@@ -303,11 +437,8 @@ class TimeTraceTUI(App):
             except Exception:
                 pass
 
-    # WORKFLOW: Launch Neovim for Timer Split
     async def action_split_timer_nvim(self) -> None:
-        template = {
-            "new_tags": "#documentation #api"
-        }
+        template = {"new_tags": "#documentation #api"}
         initial_notes = "Notes for switched activity..."
 
         data = None
@@ -329,7 +460,6 @@ class TimeTraceTUI(App):
             except Exception:
                 pass
 
-    # WORKFLOW: Stop Timer and Reflection via Neovim
     async def action_stop_timer_nvim(self) -> None:
         try:
             async with httpx.AsyncClient() as client:
@@ -360,13 +490,11 @@ class TimeTraceTUI(App):
                             timeout=3.0
                         )
             await self.update_timer()
+            await self.load_current_view()
         except Exception:
             pass
 
-    # WORKFLOW: Retroactive Log via Neovim
     async def action_retro_log_nvim(self) -> None:
-        from datetime import datetime, timedelta, timezone
-
         template = {
             "start_mins_ago": 120,
             "duration_mins": 45,
@@ -399,6 +527,7 @@ class TimeTraceTUI(App):
                         },
                         timeout=3.0
                     )
+                await self.load_current_view()
             except Exception:
                 pass
 
@@ -413,11 +542,13 @@ class TimeTraceTUI(App):
             pass
 
     def action_refresh_data(self) -> None:
-        self.run_worker(self.load_tasks())
+        self.run_worker(self.load_current_view())
         self.run_worker(self.update_timer())
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "start_btn":
+        if event.button.id == "view_toggle_btn":
+            self.action_toggle_view_mode()
+        elif event.button.id == "start_btn":
             self.run_worker(self.action_start_timer_nvim())
         elif event.button.id == "split_btn":
             self.run_worker(self.action_split_timer_nvim())
@@ -425,6 +556,10 @@ class TimeTraceTUI(App):
             self.run_worker(self.action_stop_timer_nvim())
         elif event.button.id == "add_btn":
             self.run_worker(self.action_add_task_nvim())
-        elif event.button.id == "stats_btn":
-            self.run_worker(self.action_view_stats())
+        elif event.button.id == "filter_btn":
+            self.action_cycle_filter()
+        elif event.button.id == "sort_btn":
+            self.action_cycle_sort()
+        elif event.button.id == "clear_btn":
+            self.run_worker(self.action_clear_completed())
 

@@ -148,6 +148,27 @@ def summary_stats():
             print("-" * 40 + "\n")
 
 
+@cli_app.command("tasks")
+def list_tasks_cli(
+    status_filter: str = typer.Option("all", "--status", "-s", help="Filter status: all, in_progress, ongoing, completed, hide_completed"),
+    sort_by: str = typer.Option("priority", "--sort", "-o", help="Sort by: priority, created_at, title, status")
+):
+    """List tasks with filtering and sorting."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.get(f"/tasks?status={status_filter}&sort={sort_by}")
+        if res.status_code == 200:
+            tasks = res.json()
+            print(f"\n📋 Tasks [{status_filter.upper()}] sorted by [{sort_by.upper()}]:")
+            print("-" * 65)
+            if not tasks:
+                print("No tasks found.")
+            for t in tasks:
+                created_str = str(t.get("created_at", ""))[:16].replace("T", " ")
+                print(f"#{t['id']:<3} | [{t['status']:<11}] | P{t['priority']} | {created_str} | {t['title']}")
+            print("-" * 65 + "\n")
+
+
 @cli_app.command("task")
 def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
@@ -163,6 +184,31 @@ def add_task(
             print(f"✅ Created Task #{task['id']}: '{task['title']}'")
         else:
             print("❌ Failed to create task.")
+
+
+@cli_app.command("task-delete")
+def delete_task_cli(task_id: int = typer.Argument(..., help="ID of the task to delete")):
+    """Delete a task slot by ID."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.delete(f"/tasks/{task_id}")
+        if res.status_code == 204:
+            print(f"🗑️ Task #{task_id} deleted successfully.")
+        else:
+            print(f"❌ Failed to delete Task #{task_id}.")
+
+
+@cli_app.command("task-clean")
+def clean_completed_tasks_cli():
+    """Remove all completed / passed tasks."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.delete("/tasks/completed")
+        if res.status_code == 200:
+            data = res.json()
+            print(f"🧹 Cleaned up {data['deleted_count']} completed tasks.")
+        else:
+            print("❌ Failed to clean completed tasks.")
 
 
 @cli_app.command("export-md")

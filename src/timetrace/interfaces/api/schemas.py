@@ -10,6 +10,7 @@ class TaskCreate(BaseModel):
     status: str = "in_progress"
     color: str = "#7c3aed"
     estimated_minutes: Optional[int] = None
+    created_at: Optional[datetime] = None
 
 
 class TaskUpdate(BaseModel):
@@ -19,6 +20,7 @@ class TaskUpdate(BaseModel):
     status: Optional[str] = None
     color: Optional[str] = None
     estimated_minutes: Optional[int] = None
+    created_at: Optional[datetime] = None
 
 
 class SessionUpdate(BaseModel):
