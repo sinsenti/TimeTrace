@@ -13,7 +13,7 @@ HTML_DASHBOARD = """
         .fc-theme-standard td, .fc-theme-standard th { border-color: #232334 !important; }
         .fc-timegrid-slot { height: 3em !important; }
         .fc-col-header-cell { background-color: #181826; padding: 6px 0; }
-        .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; }
+        .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: #14141f; }
         ::-webkit-scrollbar-thumb { background: #2d2d42; border-radius: 3px; }
@@ -40,7 +40,7 @@ HTML_DASHBOARD = """
                 <span>📊</span>
                 <span>Stats</span>
             </button>
-            <button onclick="toggleSidebar('left_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Task</button>
+            <button onclick="toggleSidebar('left_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Tasks</button>
             <button onclick="toggleSidebar('right_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Totals</button>
             <div class="flex items-center bg-[#1c1c2b] rounded border border-[#2d2d42] px-1">
                 <button onclick="calendar.prev()" class="px-2 py-1 text-slate-300 hover:text-white">&lt;</button>
@@ -96,6 +96,7 @@ HTML_DASHBOARD = """
         </aside>
     </div>
 
+    <!-- Analytics Modal -->
     <div id="stats_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[#181826] border border-[#2d2d42] w-[540px] max-h-[85vh] rounded-xl p-6 shadow-2xl flex flex-col space-y-4">
             <div class="flex justify-between items-center border-b border-[#2d2d42] pb-3">
@@ -138,6 +139,7 @@ HTML_DASHBOARD = """
         </div>
     </div>
 
+    <!-- Task Modal -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[#181826] border border-[#2d2d42] w-96 rounded-xl p-5 shadow-2xl space-y-4">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
@@ -190,6 +192,14 @@ HTML_DASHBOARD = """
                 slotMaxTime: "23:00:00",
                 editable: true,
                 events: fetchCalendarEvents,
+                eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
+                eventResize: async function(info) { await handleCalendarEventUpdate(info.event); },
+                eventClick: async function(info) {
+                    if (confirm(`Delete session log: "${info.event.title.replace(/\\n/g, ' ')}"?`)) {
+                        await fetch(`/api/v1/sessions/${info.event.id}`, { method: 'DELETE' });
+                        calendar.refetchEvents();
+                    }
+                },
                 datesSet: function(info) {
                     document.getElementById('calendar_range_title').innerText = info.view.title;
                     updateViewButtons(info.view.type);
@@ -202,6 +212,19 @@ HTML_DASHBOARD = """
             fetchTimerStatus();
             setInterval(fetchTimerStatus, 1000);
         });
+
+        async function handleCalendarEventUpdate(event) {
+            const payload = {
+                start_time: event.start.toISOString(),
+                end_time: event.end ? event.end.toISOString() : event.start.toISOString()
+            };
+            await fetch(`/api/v1/sessions/${event.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+            calendar.refetchEvents();
+        }
 
         function switchView(viewName) {
             calendar.changeView(viewName);
@@ -222,7 +245,7 @@ HTML_DASHBOARD = """
 
         async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
             try {
-                const res = await fetch('/api/v1/sessions');
+                const res = await fetch(`/api/v1/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
                 allSessions = await res.json();
                 
                 const events = allSessions.map(s => {
@@ -549,3 +572,4 @@ HTML_DASHBOARD = """
 </body>
 </html>
 """
+

@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
-from typing import List
-from datetime import date
+from typing import List, Optional
+from datetime import datetime, date
 
 from timetrace.db.session import get_session
 from timetrace.db.models import Task, Session as SessionModel, Reflection
@@ -13,6 +13,7 @@ from timetrace.core.editor import get_auto_color
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
     TaskUpdate,
+    SessionUpdate,
     TimerStartRequest,
     TimerSplitRequest,
     ReflectionCreate,
@@ -61,8 +62,25 @@ def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSes
             notes=s["notes"]
         )
         db.add(db_session)
+        db.commit()
+        db.refresh(db_session)
+
+        if s.get("reflection"):
+            ref_data = s["reflection"]
+            habits_str = ref_data.get("habits_completed", "")
+            if isinstance(habits_str, list):
+                habits_str = ",".join(habits_str)
+
+            db_ref = Reflection(
+                session_id=db_session.id,
+                energy_level=ref_data.get("energy_level", 3),
+                obstacles=ref_data.get("obstacles", ""),
+                habits_completed=habits_str
+            )
+            db.add(db_ref)
+            db.commit()
+
         added_count += 1
-    db.commit()
     return {"status": "success", "imported_sessions": added_count}
 
 
@@ -109,7 +127,7 @@ def delete_task(task_id: int, db: DBSession = Depends(get_session)):
     db_task = db.get(Task, task_id)
     if not db_task:
         raise HTTPException(status_code=404, detail="Task not found")
-    
+
     db.delete(db_task)
     db.commit()
     return None
@@ -188,7 +206,59 @@ def stop_timer(db: DBSession = Depends(get_session)):
     return db_session
 
 
-# Retroactive Session Logging API Endpoints
+# Session API Endpoints
+@router.get("/sessions")
+def list_sessions(
+    start: Optional[datetime] = Query(None),
+    end: Optional[datetime] = Query(None),
+    db: DBSession = Depends(get_session)
+):
+    query = select(SessionModel)
+    if start:
+        query = query.where(SessionModel.start_time >= start)
+    if end:
+        query = query.where(SessionModel.start_time <= end)
+
+    sessions = db.exec(query).all()
+    result = []
+    for s in sessions:
+        s_dict = s.model_dump()
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        result.append(s_dict)
+    return result
+
+
+@router.put("/sessions/{session_id}", response_model=SessionModel)
+def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(get_session)):
+    db_session = db.get(SessionModel, session_id)
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    update_dict = req.model_dump(exclude_unset=True)
+    for key, val in update_dict.items():
+        setattr(db_session, key, val)
+
+    if db_session.start_time and db_session.end_time:
+        db_session.duration_seconds = max(0, int((db_session.end_time - db_session.start_time).total_seconds()))
+
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return db_session
+
+
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_session(session_id: int, db: DBSession = Depends(get_session)):
+    db_session = db.get(SessionModel, session_id)
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    db.delete(db_session)
+    db.commit()
+    return None
+
+
 @router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
     if req.end_time <= req.start_time:
@@ -209,18 +279,6 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     return db_session
 
 
-@router.get("/sessions")
-def list_sessions(db: DBSession = Depends(get_session)):
-    sessions = db.exec(select(SessionModel)).all()
-    result = []
-    for s in sessions:
-        s_dict = s.model_dump()
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
-        result.append(s_dict)
-    return result
-
-
 # Post-Session Reflection API Endpoint
 @router.post("/reflections", response_model=Reflection, status_code=status.HTTP_201_CREATED)
 def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session)):
@@ -232,7 +290,7 @@ def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session
         session_id=req.session_id,
         energy_level=req.energy_level,
         obstacles=req.obstacles,
-        habits_completed=",".join(req.habits_completed)
+        habits_completed=",".join(req.habits_completed) if isinstance(req.habits_completed, list) else str(req.habits_completed)
     )
     db.add(db_reflection)
     db.commit()

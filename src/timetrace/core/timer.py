@@ -1,9 +1,12 @@
+import json
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from timetrace.config import settings
 
 
 class ActiveTimerState:
     def __init__(self):
+        self.state_file = settings.db_file.parent / "active_timer.json"
         self.is_running: bool = False
         self.task_id: Optional[int] = None
         self.task_title: Optional[str] = None
@@ -12,6 +15,44 @@ class ActiveTimerState:
         self.notes: str = ""
         self.mode: str = "flowtime"
         self.target_minutes: Optional[int] = None
+
+        self._load_state()
+
+    def _save_state(self) -> None:
+        """Persists current running timer state to disk."""
+        data = {
+            "is_running": self.is_running,
+            "task_id": self.task_id,
+            "task_title": self.task_title,
+            "start_time": self.start_time.isoformat() if self.start_time else None,
+            "tags": self.tags,
+            "notes": self.notes,
+            "mode": self.mode,
+            "target_minutes": self.target_minutes,
+        }
+        try:
+            self.state_file.parent.mkdir(parents=True, exist_ok=True)
+            self.state_file.write_text(json.dumps(data), encoding="utf-8")
+        except Exception as e:
+            print(f"Warning: Failed to persist timer state: {e}")
+
+    def _load_state(self) -> None:
+        """Loads running timer state from disk on daemon boot."""
+        if not self.state_file.exists():
+            return
+        try:
+            raw = json.loads(self.state_file.read_text(encoding="utf-8"))
+            if raw.get("is_running") and raw.get("start_time"):
+                self.is_running = True
+                self.task_id = raw.get("task_id")
+                self.task_title = raw.get("task_title")
+                self.start_time = datetime.fromisoformat(raw["start_time"])
+                self.tags = raw.get("tags", "")
+                self.notes = raw.get("notes", "")
+                self.mode = raw.get("mode", "flowtime")
+                self.target_minutes = raw.get("target_minutes")
+        except Exception:
+            pass
 
     def start(
         self,
@@ -34,6 +75,8 @@ class ActiveTimerState:
         self.notes = notes
         self.mode = mode
         self.target_minutes = target_minutes
+
+        self._save_state()
         return self.get_status()
 
     def split(self, new_tags: str, new_notes: str) -> Dict[str, Any]:
@@ -76,6 +119,7 @@ class ActiveTimerState:
         self.mode = "flowtime"
         self.target_minutes = None
 
+        self._save_state()
         return session_summary
 
     def get_status(self) -> Dict[str, Any]:
@@ -112,3 +156,4 @@ class ActiveTimerState:
 
 
 timer_manager = ActiveTimerState()
+

@@ -1,6 +1,9 @@
 import typer
 import uvicorn
+from pathlib import Path
 from typing import Optional
+from datetime import datetime, timedelta, timezone
+
 from timetrace.config import settings
 from timetrace.interfaces.cli.client import get_client, ensure_daemon_running
 
@@ -22,14 +25,37 @@ def run_daemon():
 def start_timer(
     tags: str = typer.Option("", "--tags", "-t", help="Tags for session (e.g. '#programming')"),
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
-    task_id: Optional[int] = typer.Option(None, "--task", "-k", help="Task ID to attach")
+    task_id: Optional[int] = typer.Option(None, "--task", "-k", help="Task ID to attach"),
+    pomo: Optional[int] = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes")
 ):
     """Start active session timer."""
     ensure_daemon_running()
+    mode = "pomodoro" if pomo and pomo > 0 else "flowtime"
     with get_client() as client:
-        res = client.post("/timer/start", json={"task_id": task_id, "tags": tags, "notes": notes})
+        res = client.post("/timer/start", json={
+            "task_id": task_id,
+            "tags": tags,
+            "notes": notes,
+            "mode": mode,
+            "target_minutes": pomo
+        })
         if res.status_code == 200:
-            print("⏱️ Timer started successfully!")
+            print(f"⏱️ Timer started ({mode})!")
+        else:
+            print(f"❌ Error: {res.json().get('detail')}")
+
+
+@cli_app.command("split")
+def split_timer(
+    tags: str = typer.Option("", "--tags", "-t", help="New tags for switched activity"),
+    notes: str = typer.Option("", "--notes", "-n", help="New notes for switched activity")
+):
+    """Split active timer and start a new session immediately."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.post("/timer/split", json={"new_tags": tags, "new_notes": notes})
+        if res.status_code == 200:
+            print("✂️ Timer split successfully! New session started.")
         else:
             print(f"❌ Error: {res.json().get('detail')}")
 
@@ -44,6 +70,32 @@ def stop_timer():
             data = res.json()
             duration_min = round(data.get("duration_seconds", 0) / 60, 1)
             print(f"🛑 Timer stopped! Saved Session #{data['id']} ({duration_min} mins).")
+        else:
+            print(f"❌ Error: {res.json().get('detail')}")
+
+
+@cli_app.command("retro")
+def retro_session(
+    start_mins_ago: int = typer.Option(60, "--start-ago", "-s", help="Minutes ago session started"),
+    duration_mins: int = typer.Option(30, "--duration", "-d", help="Duration of past session in minutes"),
+    tags: str = typer.Option("#general", "--tags", "-t", help="Tags for session"),
+    notes: str = typer.Option("", "--notes", "-n", help="Notes for session")
+):
+    """Retroactively log a past untracked session."""
+    ensure_daemon_running()
+    end_dt = datetime.now(timezone.utc) - timedelta(minutes=(start_mins_ago - duration_mins))
+    start_dt = end_dt - timedelta(minutes=duration_mins)
+
+    with get_client() as client:
+        res = client.post("/sessions/retro", json={
+            "start_time": start_dt.isoformat(),
+            "end_time": end_dt.isoformat(),
+            "tags": tags,
+            "notes": notes
+        })
+        if res.status_code == 201:
+            data = res.json()
+            print(f"✅ Retroactive Session #{data['id']} saved ({duration_mins} mins).")
         else:
             print(f"❌ Error: {res.json().get('detail')}")
 
@@ -81,13 +133,28 @@ def timer_status(
             print("❌ Daemon Offline")
 
 
+@cli_app.command("summary")
+def summary_stats():
+    """View aggregated hours grouped by tags and activities."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.get("/analytics/summary")
+        if res.status_code == 200:
+            data = res.json()
+            print("\n📊 TimeTrace Activity Breakdown:")
+            print("-" * 40)
+            for item in data:
+                print(f"• {item['tag']:<20} : {item['total_hours']:>5.1f} hrs ({item['session_count']} sessions)")
+            print("-" * 40 + "\n")
+
+
 @cli_app.command("task")
 def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
     priority: int = typer.Option(1, "--priority", "-p", help="Priority (1-4)"),
     est: Optional[int] = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
 ):
-    """Create a new task."""
+    """Create a new task slot."""
     ensure_daemon_running()
     with get_client() as client:
         res = client.post("/tasks", json={"title": title, "priority": priority, "estimated_minutes": est})
@@ -96,3 +163,41 @@ def add_task(
             print(f"✅ Created Task #{task['id']}: '{task['title']}'")
         else:
             print("❌ Failed to create task.")
+
+
+@cli_app.command("export-md")
+def export_markdown(
+    out_file: Optional[Path] = typer.Option(None, "--out", "-o", help="File path to save markdown log")
+):
+    """Export tracked sessions to structured Markdown format."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.get("/markdown/export")
+        if res.status_code == 200:
+            content = res.text
+            if out_file:
+                out_file.write_text(content, encoding="utf-8")
+                print(f"📄 Log exported to {out_file}")
+            else:
+                print(content)
+
+
+@cli_app.command("import-md")
+def import_markdown(
+    in_file: Path = typer.Argument(..., help="Path to markdown file to import")
+):
+    """Import sessions and reflections from a structured Markdown log."""
+    ensure_daemon_running()
+    if not in_file.exists():
+        print(f"❌ File '{in_file}' not found.")
+        return
+
+    content = in_file.read_text(encoding="utf-8")
+    with get_client() as client:
+        res = client.post("/markdown/import", content=content, headers={"Content-Type": "text/plain"})
+        if res.status_code == 201:
+            data = res.json()
+            print(f"✅ Imported {data['imported_sessions']} sessions from '{in_file}'.")
+        else:
+            print("❌ Failed to import markdown file.")
+

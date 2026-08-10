@@ -21,6 +21,14 @@ class TaskUpdate(BaseModel):
     estimated_minutes: Optional[int] = None
 
 
+class SessionUpdate(BaseModel):
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    tags: Optional[str] = None
+    notes: Optional[str] = None
+    task_id: Optional[int] = None
+
+
 class TimerStartRequest(BaseModel):
     task_id: Optional[int] = None
     tags: str = ""
@@ -47,3 +55,4 @@ class RetroSessionCreate(BaseModel):
     end_time: datetime
     tags: str = ""
     notes: str = ""
+
