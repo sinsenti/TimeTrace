@@ -8,27 +8,62 @@ HTML_DASHBOARD = """
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <style>
-        body { background-color: #0f0f15; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-        .fc { background-color: #14141f; border-radius: 0.5rem; border: 1px solid #232334; }
-        .fc-theme-standard td, .fc-theme-standard th { border-color: #232334 !important; }
-        .fc-timegrid-slot { height: 3em !important; }
-        .fc-col-header-cell { background-color: #181826; padding: 6px 0; }
-        .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; }
+        body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        
+        /* Calendar Theme */
+        .fc { background-color: #0f1016; border-radius: 0.75rem; border: 1px solid #1a1c26; }
+        .fc-theme-standard td, .fc-theme-standard th { border-color: #1a1c26 !important; }
+        .fc-timegrid-slot { height: 3.2em !important; border-bottom: 1px dashed #161822 !important; }
+        .fc-timegrid-slot-label { font-size: 0.72rem !important; color: #64748b !important; font-weight: 500; text-transform: uppercase; }
+        .fc-col-header-cell { background-color: #0f1016; padding: 6px 0; border-bottom: 1px solid #1a1c26 !important; }
+        .fc-event { border-radius: 6px !important; border: none !important; padding: 3px 6px !important; font-size: 0.75rem !important; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .task-card { cursor: grab; }
         .task-card:active { cursor: grabbing; }
+        
+        /* Ensure Current Day Column Has Same Background as Other Days */
+        .fc .fc-day-today { background: transparent !important; background-color: transparent !important; }
+
+        /* Red Now Indicator Line & Glowing Circular Dot */
+        .fc .fc-timegrid-now-indicator-line {
+            border-color: #f87171 !important;
+            border-width: 2px !important;
+            box-shadow: 0 0 10px rgba(248, 113, 113, 0.7);
+            z-index: 20 !important;
+        }
+        .fc .fc-timegrid-now-indicator-arrow {
+            border: none !important;
+            width: 10px !important;
+            height: 10px !important;
+            background-color: #f87171 !important;
+            border-radius: 50% !important;
+            margin-top: -4px !important;
+            margin-left: -5px !important;
+            box-shadow: 0 0 12px rgba(248, 113, 113, 0.9);
+            z-index: 21 !important;
+        }
+
+        /* Timezone Overlay in Axis Header */
+        .tz-header-label {
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #64748b;
+            padding: 4px;
+            text-align: center;
+        }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #14141f; }
-        ::-webkit-scrollbar-thumb { background: #2d2d42; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: #0f1016; }
+        ::-webkit-scrollbar-thumb { background: #262938; border-radius: 3px; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <header class="bg-[#14141f] border-b border-[#232334] px-4 py-2.5 flex items-center justify-between shrink-0">
+    <header class="bg-[#12131d] border-b border-[#1a1c26] px-4 py-2.5 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-4">
             <span class="text-xl font-black text-purple-400 tracking-wider">TimeTrace</span>
-            <div id="active_timer_pill" class="bg-[#1c1c2b] border border-[#2d2d42] px-3 py-1 rounded-md flex items-center space-x-3 text-xs">
+            <div id="active_timer_pill" class="bg-[#181a28] border border-[#262938] px-3 py-1 rounded-md flex items-center space-x-3 text-xs">
                 <span id="timer_status_label" class="text-slate-400">Loading timer...</span>
-                <select id="timer_task_select" class="bg-[#14141f] border border-[#2d2d42] text-slate-200 px-2 py-0.5 rounded text-xs">
+                <select id="timer_task_select" class="bg-[#12131d] border border-[#262938] text-slate-200 px-2 py-0.5 rounded text-xs">
                     <option value="">-- Attach Task --</option>
                 </select>
                 <button id="toggle_btn" onclick="toggleTimer()" class="bg-purple-600 hover:bg-purple-500 text-white font-medium px-3 py-1 rounded transition text-xs">
@@ -39,9 +74,9 @@ HTML_DASHBOARD = """
 
         <div class="flex items-center space-x-2 text-xs">
             <!-- Slot Duration Config -->
-            <div class="flex items-center bg-[#1c1c2b] border border-[#2d2d42] px-2 py-1 rounded text-slate-300 space-x-1">
+            <div class="flex items-center bg-[#181a28] border border-[#262938] px-2 py-1 rounded text-slate-300 space-x-1">
                 <span class="text-slate-400 font-semibold">Slot:</span>
-                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#14141f] text-white rounded px-1.5 py-0.5 text-xs font-bold border border-[#2d2d42]">
+                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#12131d] text-white rounded px-1.5 py-0.5 text-xs font-bold border border-[#262938]">
                     <option value="15">15 min</option>
                     <option value="30" selected>30 min</option>
                     <option value="45">45 min</option>
@@ -52,18 +87,18 @@ HTML_DASHBOARD = """
             <button onclick="openStatsModal()" class="bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 font-semibold px-3 py-1 rounded border border-purple-700/50 flex items-center space-x-1">
                 <span>Stats</span>
             </button>
-            <button onclick="toggleSidebar('left_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Tasks</button>
-            <button onclick="toggleSidebar('right_sidebar')" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Hide Totals</button>
-            <div class="flex items-center bg-[#1c1c2b] rounded border border-[#2d2d42] px-1">
+            <button onclick="toggleSidebar('left_sidebar')" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 py-1 rounded border border-[#262938]">Hide Tasks</button>
+            <button onclick="toggleSidebar('right_sidebar')" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 py-1 rounded border border-[#262938]">Hide Totals</button>
+            <div class="flex items-center bg-[#181a28] rounded border border-[#262938] px-1">
                 <button onclick="calendar.prev()" class="px-2 py-1 text-slate-300 hover:text-white">&lt;</button>
                 <span id="calendar_range_title" class="px-3 py-1 font-semibold text-slate-200">Date Range</span>
                 <button onclick="calendar.next()" class="px-2 py-1 text-slate-300 hover:text-white">&gt;</button>
             </div>
-            <button onclick="calendar.today()" class="bg-[#1c1c2b] hover:bg-[#28283d] text-slate-300 px-2.5 py-1 rounded border border-[#2d2d42]">Today</button>
+            <button onclick="scrollToCurrentTime()" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 py-1 rounded border border-[#262938]">Today</button>
             
-            <button id="btn_view_day" onclick="switchView('timeGridDay')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]">Day</button>
+            <button id="btn_view_day" onclick="switchView('timeGridDay')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938]">Day</button>
             <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="px-2.5 py-1 rounded border text-white font-bold bg-purple-600 border-purple-400">Week</button>
-            <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]">Month</button>
+            <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="px-2.5 py-1 rounded border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938]">Month</button>
         </div>
 
         <div class="flex items-center space-x-3 text-xs">
@@ -73,7 +108,7 @@ HTML_DASHBOARD = """
     </header>
 
     <div class="flex-1 flex overflow-hidden">
-        <aside id="left_sidebar" class="w-64 bg-[#14141f] border-r border-[#232334] p-3 flex flex-col shrink-0">
+        <aside id="left_sidebar" class="w-64 bg-[#12131d] border-r border-[#1a1c26] p-3 flex flex-col shrink-0">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
                 <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
@@ -81,14 +116,14 @@ HTML_DASHBOARD = """
 
             <div class="flex space-x-1 mb-2">
                 <button onclick="setTaskFilter('all')" id="filter_tab_all" class="flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold">All</button>
-                <button onclick="setTaskFilter('hide_completed')" id="filter_tab_active" class="flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white">Active</button>
-                <button onclick="setTaskFilter('completed')" id="filter_tab_done" class="flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white">Done</button>
+                <button onclick="setTaskFilter('hide_completed')" id="filter_tab_active" class="flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white">Active</button>
+                <button onclick="setTaskFilter('completed')" id="filter_tab_done" class="flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white">Done</button>
             </div>
 
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
 
             <div class="mt-3 space-y-1.5">
-                <button onclick="openNewTaskModal()" class="w-full border border-dashed border-[#33334d] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2 rounded-lg text-xs font-medium transition">
+                <button onclick="openNewTaskModal()" class="w-full border border-dashed border-[#2d3042] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2 rounded-lg text-xs font-medium transition">
                     + Add task slot
                 </button>
                 <button onclick="clearCompletedTasks()" class="w-full bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-800/40 py-1.5 rounded-lg text-[11px] font-semibold transition">
@@ -97,12 +132,12 @@ HTML_DASHBOARD = """
             </div>
         </aside>
 
-        <main class="flex-1 bg-[#0f0f15] p-3 overflow-hidden flex flex-col">
+        <main class="flex-1 bg-[#0b0c10] p-3 overflow-hidden flex flex-col">
             <div id="calendar" class="flex-1"></div>
         </main>
 
-        <aside id="right_sidebar" class="w-72 bg-[#14141f] border-l border-[#232334] p-3 flex flex-col shrink-0 overflow-y-auto space-y-4">
-            <div class="flex justify-between items-center border-b border-[#232334] pb-2">
+        <aside id="right_sidebar" class="w-72 bg-[#12131d] border-l border-[#1a1c26] p-3 flex flex-col shrink-0 overflow-y-auto space-y-4">
+            <div class="flex justify-between items-center border-b border-[#1a1c26] pb-2">
                 <span id="range_breakdown_label" class="text-xs font-bold uppercase tracking-wider text-slate-400">Range Breakdown</span>
                 <span id="side_total_hours" class="text-xs font-black text-purple-400">0.0h</span>
             </div>
@@ -121,8 +156,8 @@ HTML_DASHBOARD = """
 
     <!-- Analytics Modal -->
     <div id="stats_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#181826] border border-[#2d2d42] w-[540px] max-h-[85vh] rounded-xl p-6 shadow-2xl flex flex-col space-y-4">
-            <div class="flex justify-between items-center border-b border-[#2d2d42] pb-3">
+        <div class="bg-[#161824] border border-[#262938] w-[540px] max-h-[85vh] rounded-xl p-6 shadow-2xl flex flex-col space-y-4">
+            <div class="flex justify-between items-center border-b border-[#262938] pb-3">
                 <div>
                     <h3 class="font-black text-lg text-white">Analytics & Summary</h3>
                     <p id="stats_range_label" class="text-xs text-purple-400 font-medium">Range: Week</p>
@@ -131,15 +166,15 @@ HTML_DASHBOARD = """
             </div>
 
             <div class="grid grid-cols-3 gap-3">
-                <div class="bg-[#10101a] border border-[#2d2d42] p-3 rounded-lg text-center">
+                <div class="bg-[#0f1016] border border-[#262938] p-3 rounded-lg text-center">
                     <span class="text-xs text-slate-400 block">Total Hours</span>
                     <span id="stats_total_hours" class="text-xl font-black text-purple-400">0.0h</span>
                 </div>
-                <div class="bg-[#10101a] border border-[#2d2d42] p-3 rounded-lg text-center">
+                <div class="bg-[#0f1016] border border-[#262938] p-3 rounded-lg text-center">
                     <span class="text-xs text-slate-400 block">Sessions</span>
                     <span id="stats_total_sessions" class="text-xl font-black text-emerald-400">0</span>
                 </div>
-                <div class="bg-[#10101a] border border-[#2d2d42] p-3 rounded-lg text-center">
+                <div class="bg-[#0f1016] border border-[#262938] p-3 rounded-lg text-center">
                     <span class="text-xs text-slate-400 block">Avg Energy</span>
                     <span id="stats_avg_energy" class="text-xl font-black text-amber-400">N/A</span>
                 </div>
@@ -156,7 +191,7 @@ HTML_DASHBOARD = """
                 </div>
             </div>
 
-            <div class="pt-2 border-t border-[#2d2d42] flex justify-end">
+            <div class="pt-2 border-t border-[#262938] flex justify-end">
                 <button onclick="closeStatsModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Close</button>
             </div>
         </div>
@@ -164,25 +199,25 @@ HTML_DASHBOARD = """
 
     <!-- Task Modal -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#181826] border border-[#2d2d42] w-96 rounded-xl p-5 shadow-2xl space-y-3">
+        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
             <input type="hidden" id="edit_task_id">
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Task Title / Code</label>
-                <input id="modal_input_title" type="text" placeholder="e.g. ALP-101 Portal Refresh" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_title" type="text" placeholder="e.g. ALP-101 Portal Refresh" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
             </div>
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
-                <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
             </div>
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
-                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
             <div class="grid grid-cols-3 gap-2">
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Priority</label>
-                    <select id="modal_input_priority" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-2 rounded-lg text-xs text-white">
+                    <select id="modal_input_priority" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="-">- (None)</option>
                         <option value="low">low</option>
                         <option value="medium">medium</option>
@@ -191,7 +226,7 @@ HTML_DASHBOARD = """
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Status</label>
-                    <select id="modal_input_status" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-2 rounded-lg text-xs text-white">
+                    <select id="modal_input_status" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="in_progress">in_progress</option>
                         <option value="ongoing">ongoing</option>
                         <option value="completed">completed</option>
@@ -199,13 +234,13 @@ HTML_DASHBOARD = """
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Color</label>
-                    <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-9 bg-[#10101a] border border-[#2d2d42] rounded-lg cursor-pointer p-1">
+                    <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-9 bg-[#0f1016] border border-[#262938] rounded-lg cursor-pointer p-1">
                 </div>
             </div>
             <div class="flex justify-between items-center pt-2">
                 <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete</button>
                 <div class="space-x-2">
-                    <button onclick="closeTaskModal()" class="bg-[#232334] hover:bg-[#2d2d42] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                    <button onclick="closeTaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
                     <button onclick="saveTask()" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save</button>
                 </div>
             </div>
@@ -214,46 +249,46 @@ HTML_DASHBOARD = """
 
     <!-- Session Creation & Slot Planning Modal -->
     <div id="session_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#181826] border border-[#2d2d42] w-[420px] rounded-xl p-5 shadow-2xl space-y-3">
-            <div class="flex justify-between items-center border-b border-[#2d2d42] pb-2">
+        <div class="bg-[#161824] border border-[#262938] w-[420px] rounded-xl p-5 shadow-2xl space-y-3">
+            <div class="flex justify-between items-center border-b border-[#262938] pb-2">
                 <h3 class="font-bold text-lg text-white">Calendar Session Configuration</h3>
                 <span id="session_modal_type_badge" class="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700">Planned Slot</span>
             </div>
 
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Attach Task</label>
-                <select id="session_modal_task_select" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <select id="session_modal_task_select" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
                     <option value="">-- Independent Session --</option>
                 </select>
             </div>
 
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Activity Tags</label>
-                <input id="session_modal_tags" type="text" placeholder="#programming #backend" value="#general" class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <input id="session_modal_tags" type="text" placeholder="#programming #backend" value="#general" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
 
             <div class="grid grid-cols-2 gap-3">
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Start Time</label>
-                    <input id="session_modal_start" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-1.5 rounded-lg text-xs text-white">
+                    <input id="session_modal_start" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-1.5 rounded-lg text-xs text-white">
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">End Time</label>
-                    <input id="session_modal_end" type="datetime-local" class="w-full bg-[#10101a] border border-[#2d2d42] px-2 py-1.5 rounded-lg text-xs text-white">
+                    <input id="session_modal_end" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-1.5 rounded-lg text-xs text-white">
                 </div>
             </div>
 
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Notes / Description</label>
-                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#10101a] border border-[#2d2d42] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
 
-            <div class="flex justify-between items-center pt-2 border-t border-[#2d2d42]">
+            <div class="flex justify-between items-center pt-2 border-t border-[#262938]">
                 <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">
                     Start Timer Now
                 </button>
                 <div class="flex space-x-2 ml-auto">
-                    <button onclick="closeSessionModal()" class="bg-[#232334] hover:bg-[#2d2d42] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                    <button onclick="closeSessionModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
                     <button onclick="saveSessionFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save Session</button>
                 </div>
             </div>
@@ -269,6 +304,20 @@ HTML_DASHBOARD = """
         let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '30');
         let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899'];
 
+        function getInitialScrollTime() {
+            const now = new Date();
+            let targetHour = now.getHours() - 1;
+            if (targetHour < 0) targetHour = 0;
+            return `${String(targetHour).padStart(2, '0')}:00:00`;
+        }
+
+        function getLocalTimezoneLabel() {
+            const offsetMins = -new Date().getTimezoneOffset();
+            const hours = Math.floor(Math.abs(offsetMins) / 60);
+            const sign = offsetMins >= 0 ? '+' : '-';
+            return `GMT${sign}${String(hours).padStart(2, '0')}`;
+        }
+
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('config_slot_duration').value = defaultDurationMinutes;
 
@@ -276,8 +325,11 @@ HTML_DASHBOARD = """
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'timeGridWeek',
                 headerToolbar: false,
-                slotMinTime: "07:00:00",
-                slotMaxTime: "23:00:00",
+                slotMinTime: "00:00:00",
+                slotMaxTime: "24:00:00",
+                scrollTime: getInitialScrollTime(),
+                scrollTimeReset: false,
+                nowIndicator: true,
                 editable: true,
                 selectable: true,
                 selectMirror: true,
@@ -285,17 +337,28 @@ HTML_DASHBOARD = """
                 defaultTimedEventDuration: `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`,
                 events: fetchCalendarEvents,
 
-                // Click and drag to create a session
+                // Uniform Header Renderer across all days (including Today)
+                dayHeaderContent: function(arg) {
+                    const dayName = arg.date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+                    const dayNum = arg.date.getDate();
+                    return {
+                        html: `
+                            <div class="flex flex-col items-center py-1">
+                                <span class="text-[10px] font-bold tracking-widest text-slate-500 uppercase">${dayName}</span>
+                                <span class="mt-1 text-base font-bold text-slate-200">${dayNum}</span>
+                            </div>
+                        `
+                    };
+                },
+
                 select: function(selectionInfo) {
                     openCreateSessionModal(selectionInfo.start, selectionInfo.end);
                     calendar.unselect();
                 },
 
-                // Calendar event drop & resize handlers
                 eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
                 eventResize: async function(info) { await handleCalendarEventUpdate(info.event); },
                 
-                // Click existing event to delete
                 eventClick: async function(info) {
                     if (confirm(`Delete session log: "${info.event.title.replace(/\\n/g, ' ')}"?`)) {
                         await fetch(`/api/v1/sessions/${info.event.id}`, { method: 'DELETE' });
@@ -303,14 +366,13 @@ HTML_DASHBOARD = """
                     }
                 },
 
-                // External Task Card Dropped onto Calendar
                 eventReceive: function(info) {
                     const taskTitle = info.event.title;
                     const taskId = info.event.extendedProps.taskId;
                     const startTime = info.event.start;
                     const endTime = new Date(startTime.getTime() + defaultDurationMinutes * 60000);
 
-                    info.event.remove(); // Remove temporary dropped event
+                    info.event.remove();
                     openCreateSessionModal(startTime, endTime, taskId, taskTitle);
                 },
 
@@ -318,11 +380,11 @@ HTML_DASHBOARD = """
                     document.getElementById('calendar_range_title').innerText = info.view.title;
                     updateViewButtons(info.view.type);
                     fetchRangeTotals();
+                    injectTimezoneLabel();
                 }
             });
             calendar.render();
 
-            // Enable external drag and drop for task cards
             new FullCalendar.Draggable(document.getElementById('task_card_list'), {
                 itemSelector: '.task-card',
                 eventData: function(eventEl) {
@@ -341,6 +403,22 @@ HTML_DASHBOARD = """
             setInterval(fetchTimerStatus, 1000);
         });
 
+        function injectTimezoneLabel() {
+            setTimeout(() => {
+                const cornerCell = document.querySelector('.fc-timegrid-axis-frame');
+                if (cornerCell && !cornerCell.querySelector('.tz-header-label')) {
+                    cornerCell.innerHTML = `<div class="tz-header-label">${getLocalTimezoneLabel()}</div>`;
+                }
+            }, 50);
+        }
+
+        function scrollToCurrentTime() {
+            calendar.today();
+            if (calendar.view.type !== 'dayGridMonth') {
+                calendar.scrollToTime(getInitialScrollTime());
+            }
+        }
+
         function setSlotDuration(val) {
             defaultDurationMinutes = intVal(val);
             localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
@@ -352,8 +430,13 @@ HTML_DASHBOARD = """
         function intVal(v) { return parseInt(v) || 30; }
 
         function formatIsoLocal(dt) {
-            const tzOffset = dt.getTimezoneOffset() * 60000;
-            return new Date(dt.getTime() - tzOffset).toISOString().slice(0, 16);
+            const pad = (n) => String(n).padStart(2, '0');
+            const yyyy = dt.getFullYear();
+            const mm = pad(dt.getMonth() + 1);
+            const dd = pad(dt.getDate());
+            const hh = pad(dt.getHours());
+            const min = pad(dt.getMinutes());
+            return `${yyyy}-${mm}-${dd}T${hh}:${min}`;
         }
 
         function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
@@ -364,7 +447,6 @@ HTML_DASHBOARD = """
             document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
             document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
-            // Dynamically detect slot relation to NOW
             if (endDate <= now) {
                 badge.innerText = "Logged Past Session";
                 badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-blue-900/60 text-blue-300 border border-blue-700";
@@ -379,7 +461,6 @@ HTML_DASHBOARD = """
                 startNowBtn.classList.add('hidden');
             }
 
-            // Populate task select dropdown
             const taskSelect = document.getElementById('session_modal_task_select');
             taskSelect.innerHTML = '<option value="">-- Independent Session --</option>' +
                 activeTasks.map(t => `<option value="${t.id}" ${t.id === taskId ? 'selected' : ''}>${t.title}</option>`).join('');
@@ -455,6 +536,9 @@ HTML_DASHBOARD = """
 
         function switchView(viewName) {
             calendar.changeView(viewName);
+            if (viewName !== 'dayGridMonth') {
+                setTimeout(() => calendar.scrollToTime(getInitialScrollTime()), 50);
+            }
         }
 
         function updateViewButtons(activeViewType) {
@@ -463,7 +547,7 @@ HTML_DASHBOARD = """
             const btnMonth = document.getElementById('btn_view_month');
 
             const activeClass = "px-2.5 py-1 rounded border text-white font-bold bg-purple-600 border-purple-400 shadow-md";
-            const inactiveClass = "px-2.5 py-1 rounded border text-slate-300 bg-[#1c1c2b] hover:bg-[#28283d] border-[#2d2d42]";
+            const inactiveClass = "px-2.5 py-1 rounded border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938]";
 
             btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
             btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
@@ -478,10 +562,27 @@ HTML_DASHBOARD = """
                 const events = allSessions.map(s => {
                     const matchedTask = activeTasks.find(t => t.id === s.task_id);
                     const color = matchedTask ? matchedTask.color : '#7c3aed';
-                    const title = matchedTask ? matchedTask.title : (s.tags || '#session');
+                    
+                    let titleParts = [];
+                    if (matchedTask && matchedTask.title) {
+                        titleParts.push(matchedTask.title);
+                    }
+                    if (s.notes) {
+                        titleParts.push(s.notes);
+                    }
+                    let mainTitle = titleParts.join(' - ');
+
+                    let finalTitle = mainTitle;
+                    if (s.tags) {
+                        finalTitle = finalTitle ? `${finalTitle} ${s.tags}` : s.tags;
+                    }
+                    if (!finalTitle) {
+                        finalTitle = '#session';
+                    }
+
                     return {
                         id: s.id,
-                        title: `${title}\\n${s.notes || ''}`,
+                        title: finalTitle,
                         start: s.start_time,
                         end: s.end_time || new Date().toISOString(),
                         backgroundColor: color,
@@ -530,7 +631,7 @@ HTML_DASHBOARD = """
             const tabDone = document.getElementById('filter_tab_done');
             
             const activeClass = "flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold";
-            const inactiveClass = "flex-1 py-1 text-[10px] rounded bg-[#1c1c2b] text-slate-400 hover:text-white";
+            const inactiveClass = "flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white";
 
             tabAll.className = (filterName === 'all') ? activeClass : inactiveClass;
             tabActive.className = (filterName === 'hide_completed') ? activeClass : inactiveClass;
@@ -628,7 +729,7 @@ HTML_DASHBOARD = """
                 activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
             } else {
                 activityList.innerHTML = sortedTags.map(([tag, secs]) => `
-                    <div class="bg-[#181826] border border-[#232334] p-2.5 rounded-lg flex justify-between items-center">
+                    <div class="bg-[#161824] border border-[#262938] p-2.5 rounded-lg flex justify-between items-center">
                         <span class="text-xs font-bold text-emerald-400">${tag}</span>
                         <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h</span>
                     </div>
@@ -706,7 +807,7 @@ HTML_DASHBOARD = """
                             <span class="font-bold text-emerald-400">${tag}</span>
                             <span>${(secs/3600).toFixed(1)}h (${pct}%)</span>
                         </div>
-                        <div class="w-full bg-[#10101a] h-2 rounded-full overflow-hidden">
+                        <div class="w-full bg-[#0f1016] h-2 rounded-full overflow-hidden">
                             <div style="width: ${pct}%;" class="bg-emerald-500 h-full rounded-full"></div>
                         </div>
                     </div>
@@ -723,7 +824,7 @@ HTML_DASHBOARD = """
                             <span class="font-bold text-purple-400">${taskTitle}</span>
                             <span>${(secs/3600).toFixed(1)}h (${pct}%)</span>
                         </div>
-                        <div class="w-full bg-[#10101a] h-2 rounded-full overflow-hidden">
+                        <div class="w-full bg-[#0f1016] h-2 rounded-full overflow-hidden">
                             <div style="width: ${pct}%;" class="bg-purple-600 h-full rounded-full"></div>
                         </div>
                     </div>
