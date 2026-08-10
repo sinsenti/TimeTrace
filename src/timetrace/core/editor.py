@@ -1,8 +1,7 @@
 import os
 import tempfile
 import subprocess
-import frontmatter
-from typing import Dict, Any, Optional
+from typing import Optional
 
 PALETTE = [
     "#7c3aed",
@@ -26,46 +25,27 @@ def get_auto_color(text: str) -> str:
     return PALETTE[hash_val % len(PALETTE)]
 
 
-def open_in_nvim(
-    template_yaml: Dict[str, Any],
-    initial_notes: str = "",
-    hint_comments: str = "",
-    cursor_line: int = 2,
-) -> Optional[Dict[str, Any]]:
+def open_in_nvim(initial_text: str = "") -> Optional[str]:
     """
-    Spawns Neovim with a temporary .md file populated with frontmatter template.
-    Pre-positions cursor for ultra-fast vim editing.
+    Spawns Neovim with a temporary clean .md file.
+    Returns the raw saved string from Neovim.
     """
     editor = os.environ.get("EDITOR", "nvim")
-
-    post = frontmatter.Post(initial_notes, **template_yaml)
-    raw_md = frontmatter.dumps(post)
-
-    # Insert optional inline comment hints above the content body or frontmatter
-    if hint_comments:
-        lines = raw_md.splitlines()
-        # Insert hints inside YAML frontmatter block if present
-        if len(lines) > 1 and lines[0] == "---":
-            raw_md = "\n".join(lines)
 
     with tempfile.NamedTemporaryFile(
         suffix=".md", mode="w+", delete=False, encoding="utf-8"
     ) as tf:
-        tf.write(raw_md)
+        if initial_text:
+            tf.write(initial_text)
         temp_path = tf.name
 
     try:
-        # Launch Neovim and position cursor directly on target line
-        cmd = [editor, f"+{cursor_line}", temp_path]
-        result = subprocess.call(cmd)
+        result = subprocess.call([editor, temp_path])
         if result != 0:
             return None
 
-        # Parse saved .md file
-        parsed = frontmatter.load(temp_path)
-        data = dict(parsed.metadata)
-        data["notes"] = parsed.content.strip()
-        return data
+        with open(temp_path, "r", encoding="utf-8") as f:
+            return f.read().strip()
     except Exception:
         return None
     finally:

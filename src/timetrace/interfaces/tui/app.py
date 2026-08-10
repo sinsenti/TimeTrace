@@ -10,6 +10,12 @@ from textual.binding import Binding
 
 from timetrace.config import settings
 from timetrace.core.editor import open_in_nvim
+from timetrace.core.inline_parser import (
+    parse_inline_task,
+    parse_inline_timer,
+    parse_inline_reflection,
+    parse_inline_retro,
+)
 
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
@@ -47,35 +53,34 @@ class HelpModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         help_text = """
-[bold cyan]Navigation & Table Shortcuts[/bold cyan]
+[bold cyan]Navigation & Shortcuts[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]j / k[/bold white]         Move selection down / up
 [bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow])
-[bold white]f[/bold white]             Cycle status filters ([dim]all, active, in_progress, completed...[/dim])
-[bold white]o[/bold white]             Cycle sort modes ([dim]priority, created_at, title, status[/dim])
+[bold white]f[/bold white]             Cycle status filters
+[bold white]o[/bold white]             Cycle sort modes
 [bold white]r[/bold white]             Refresh current table data
 
-[bold cyan]Task & Session Actions[/bold cyan]
+[bold cyan]Ultra-Fast Neovim Actions[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
-[bold white]a[/bold white]             Add new Task slot (via Neovim editor)
-[bold white]e[/bold white]             Edit selected row details / timestamps (via Neovim editor)
-[bold white]d[/bold white]             Delete selected task or session
-[bold white]D[/bold white]             Clear / purge all completed tasks
-[bold white]s[/bold white]             Start active session timer
-[bold white]c[/bold white]             Split current running session
-[bold white]x[/bold white]             Stop active session timer & trigger post-session reflection
-[bold white]m[/bold white]             Retroactively log a past session block
-[bold white]v[/bold white]             View detailed analytics & tag statistics summary
+[bold white]a[/bold white]             Add Task  -> [dim]Title #tags !high @ip[/dim]
+[bold white]e[/bold white]             Edit Row  -> [dim]Modify title / tags / priority[/dim]
+[bold white]d[/bold white]             Delete Row
+[bold white]D[/bold white]             Clear Completed Tasks
+[bold white]s[/bold white]             Start Timer -> [dim]Working notes #tags @task_id !25m[/dim]
+[bold white]c[/bold white]             Split Timer -> [dim]New activity notes #newtag[/dim]
+[bold white]x[/bold white]             Stop & Reflect -> [dim]5/5 water, focus[/dim]
+[bold white]m[/bold white]             Retro Session  -> [dim]Past activity #tags -90m 30m[/dim]
+[bold white]v[/bold white]             View Analytics Summary
 
 [bold cyan]Command Line Mode (:)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]:help, :keys[/bold white]   Open this help overlay screen
 [bold white]:theme[/bold white]        Toggle dark / light theme
-[bold white]:tasks, :sessions, :view[/bold white]  Switch active view mode
-[bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute command
+[bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute
 """
         yield Container(
-            Static("📖 [bold magenta]TimeTrace Help & Keyboard Shortcuts[/bold magenta] [dim](j/k to scroll, Esc or ? to close)[/dim]", id="modal_title"),
+            Static("📖 [bold magenta]TimeTrace Help & Keyboard Shortcuts[/bold magenta]", id="modal_title"),
             ScrollableContainer(
                 Static(help_text, id="help_content"),
                 id="help_scroll_container"
@@ -415,37 +420,19 @@ class TimeTraceTUI(App):
             pass
 
     async def action_add_task_nvim(self) -> None:
-        template = {
-            "title": "ALP-101 New Feature",
-            "priority": "-",
-            "status": "in_progress",
-            "created_at": datetime.now(timezone.utc).isoformat()[:19],
-            "color": "auto"
-        }
-        initial_notes = "Task description goes here..."
-        hints = "priority: high|medium|low|- | status: in_progress|ongoing|completed"
-
-        data = None
+        raw_text = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
+            raw_text = open_in_nvim()
 
-        if data and data.get("title"):
-            try:
-                payload = {
-                    "title": data["title"],
-                    "description": data.get("notes", ""),
-                    "status": data.get("status", "in_progress"),
-                    "priority": str(data.get("priority", "-")).lower(),
-                    "color": data.get("color", "auto")
-                }
-                if data.get("created_at"):
-                    payload["created_at"] = data["created_at"]
-
-                async with httpx.AsyncClient() as client:
-                    await client.post(f"{BASE_URL}/tasks", json=payload, timeout=3.0)
-                await self.load_current_view()
-            except Exception:
-                pass
+        if raw_text:
+            parsed = parse_inline_task(raw_text)
+            if parsed and parsed.get("title"):
+                try:
+                    async with httpx.AsyncClient() as client:
+                        await client.post(f"{BASE_URL}/tasks", json=parsed, timeout=3.0)
+                    await self.load_current_view()
+                except Exception:
+                    pass
 
     async def action_edit_item_nvim(self) -> None:
         item_id = self.get_selected_item_id()
@@ -457,60 +444,39 @@ class TimeTraceTUI(App):
             if not task:
                 return
 
-            template = {
-                "title": task["title"],
-                "priority": task.get("priority", "-"),
-                "status": task.get("status", "in_progress"),
-                "created_at": str(task.get("created_at", ""))[:19],
-                "color": task.get("color", "auto")
-            }
-            initial_notes = task.get("description") or ""
-            hints = "priority: high|medium|low|- | status: in_progress|ongoing|completed"
+            p_tag = f"!{task.get('priority', '-')}" if task.get('priority') != '-' else ""
+            pre_text = f"{task['title']} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
 
-            data = None
+            raw_text = None
             with self.suspend():
-                data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
+                raw_text = open_in_nvim(pre_text)
 
-            if data and data.get("title"):
-                try:
-                    payload = {
-                        "title": data["title"],
-                        "description": data.get("notes", ""),
-                        "status": data.get("status", "in_progress"),
-                        "priority": str(data.get("priority", "-")).lower(),
-                        "color": data.get("color", "auto")
-                    }
-                    if data.get("created_at"):
-                        payload["created_at"] = data["created_at"]
-
-                    async with httpx.AsyncClient() as client:
-                        await client.put(f"{BASE_URL}/tasks/{task['id']}", json=payload, timeout=3.0)
-                    await self.load_tasks()
-                except Exception:
-                    pass
+            if raw_text:
+                parsed = parse_inline_task(raw_text)
+                if parsed and parsed.get("title"):
+                    try:
+                        async with httpx.AsyncClient() as client:
+                            await client.put(f"{BASE_URL}/tasks/{task['id']}", json=parsed, timeout=3.0)
+                        await self.load_tasks()
+                    except Exception:
+                        pass
         else:
             session = next((s for s in self.loaded_sessions if s["id"] == item_id), None)
             if not session:
                 return
 
-            template = {
-                "tags": session.get("tags", "#general"),
-                "start_time": str(session.get("start_time", ""))[:19],
-                "end_time": str(session.get("end_time", ""))[:19] if session.get("end_time") else ""
-            }
-            initial_notes = session.get("notes") or ""
+            pre_text = f"{session.get('notes', '')} {session.get('tags', '')}".strip()
 
-            data = None
+            raw_text = None
             with self.suspend():
-                data = open_in_nvim(template, initial_notes, cursor_line=3)
+                raw_text = open_in_nvim(pre_text)
 
-            if data:
+            if raw_text:
+                parsed = parse_inline_timer(raw_text)
                 try:
                     payload = {
-                        "tags": data.get("tags", "#general"),
-                        "notes": data.get("notes", ""),
-                        "start_time": data.get("start_time"),
-                        "end_time": data.get("end_time") if data.get("end_time") else None
+                        "tags": parsed.get("tags", "#general"),
+                        "notes": parsed.get("notes", "")
                     }
                     async with httpx.AsyncClient() as client:
                         await client.put(f"{BASE_URL}/sessions/{session['id']}", json=payload, timeout=3.0)
@@ -542,33 +508,29 @@ class TimeTraceTUI(App):
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
 
-        template = {
-            "task_id": task_id if task_id else "none",
-            "tags": "#programming #frontend",
-            "pomo_minutes": 0
-        }
-        initial_notes = "What are you working on in this session?"
+        pre_text = f"@task {task_id}" if task_id else ""
 
-        data = None
+        raw_text = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes, cursor_line=3)
+            raw_text = open_in_nvim(pre_text)
 
-        if data:
-            raw_task_id = data.get("task_id")
-            parsed_task_id = int(raw_task_id) if raw_task_id and str(raw_task_id).isdigit() else None
-            pomo_mins = int(data.get("pomo_minutes", 0)) if str(data.get("pomo_minutes", "0")).isdigit() else 0
-            mode = "pomodoro" if pomo_mins > 0 else "flowtime"
+        if raw_text:
+            parsed = parse_inline_timer(raw_text)
+            if not parsed.get("task_id") and task_id:
+                parsed["task_id"] = task_id
+
+            mode = "pomodoro" if parsed.get("pomo_minutes", 0) > 0 else "flowtime"
 
             try:
                 async with httpx.AsyncClient() as client:
                     await client.post(
                         f"{BASE_URL}/timer/start",
                         json={
-                            "task_id": parsed_task_id,
-                            "tags": data.get("tags", "#general"),
-                            "notes": data.get("notes", ""),
+                            "task_id": parsed.get("task_id"),
+                            "tags": parsed.get("tags", "#general"),
+                            "notes": parsed.get("notes", ""),
                             "mode": mode,
-                            "target_minutes": pomo_mins if pomo_mins > 0 else None
+                            "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
                         },
                         timeout=3.0
                     )
@@ -577,21 +539,19 @@ class TimeTraceTUI(App):
                 pass
 
     async def action_split_timer_nvim(self) -> None:
-        template = {"new_tags": "#documentation #api"}
-        initial_notes = "Notes for switched activity..."
-
-        data = None
+        raw_text = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes, cursor_line=3)
+            raw_text = open_in_nvim()
 
-        if data:
+        if raw_text:
+            parsed = parse_inline_timer(raw_text)
             try:
                 async with httpx.AsyncClient() as client:
                     await client.post(
                         f"{BASE_URL}/timer/split",
                         json={
-                            "new_tags": data.get("new_tags", "#general"),
-                            "new_notes": data.get("notes", "")
+                            "new_tags": parsed.get("tags", "#general"),
+                            "new_notes": parsed.get("notes", "")
                         },
                         timeout=3.0
                     )
@@ -605,27 +565,20 @@ class TimeTraceTUI(App):
                 res = await client.post(f"{BASE_URL}/timer/stop", timeout=3.0)
                 if res.status_code == 200:
                     session_data = res.json()
-                    
-                    template = {
-                        "session_id": session_data["id"],
-                        "energy_level": 5,
-                        "habits": ["Drank Water", "Focus Maintained"]
-                    }
-                    initial_notes = "Obstacles / Distractions faced..."
-                    hints = "energy_level: 1..5"
 
-                    data = None
+                    raw_text = None
                     with self.suspend():
-                        data = open_in_nvim(template, initial_notes, hint_comments=hints, cursor_line=3)
+                        raw_text = open_in_nvim("5/5 water, focus")
 
-                    if data:
+                    if raw_text:
+                        parsed = parse_inline_reflection(raw_text)
                         await client.post(
                             f"{BASE_URL}/reflections",
                             json={
                                 "session_id": session_data["id"],
-                                "energy_level": int(data.get("energy_level", 3)),
-                                "obstacles": data.get("notes", ""),
-                                "habits_completed": data.get("habits", []) if isinstance(data.get("habits"), list) else []
+                                "energy_level": parsed["energy_level"],
+                                "obstacles": parsed["obstacles"],
+                                "habits_completed": parsed["habits"]
                             },
                             timeout=3.0
                         )
@@ -635,23 +588,15 @@ class TimeTraceTUI(App):
             pass
 
     async def action_retro_log_nvim(self) -> None:
-        template = {
-            "start_mins_ago": 120,
-            "duration_mins": 45,
-            "tags": "#programming"
-        }
-        initial_notes = "Past activity description..."
-
-        data = None
+        raw_text = None
         with self.suspend():
-            data = open_in_nvim(template, initial_notes, cursor_line=3)
+            raw_text = open_in_nvim("-120m 45m #programming Activity notes...")
 
-        if data:
+        if raw_text:
+            parsed = parse_inline_retro(raw_text)
             try:
-                start_ago = int(data.get("start_mins_ago", 60))
-                dur_mins = int(data.get("duration_mins", 30))
-                tags = data.get("tags", "#general")
-                notes = data.get("notes", "")
+                start_ago = parsed["start_mins_ago"]
+                dur_mins = parsed["duration_mins"]
 
                 end_dt = datetime.now(timezone.utc) - timedelta(minutes=(start_ago - dur_mins))
                 start_dt = end_dt - timedelta(minutes=dur_mins)
@@ -662,8 +607,8 @@ class TimeTraceTUI(App):
                         json={
                             "start_time": start_dt.isoformat(),
                             "end_time": end_dt.isoformat(),
-                            "tags": tags,
-                            "notes": notes
+                            "tags": parsed["tags"],
+                            "notes": parsed["notes"]
                         },
                         timeout=3.0
                     )
