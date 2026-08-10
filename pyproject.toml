@@ -1,0 +1,30 @@
+[project]
+name = "timetrace"
+version = "0.1.0"
+description = "A local-first, developer-centric time tracking and productivity engine."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "sinsenti", email = "sinsenti73@gmail.com" }
+]
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.110.0",
+    "uvicorn>=0.28.0",
+    "sqlmodel>=0.0.16",
+    "typer>=0.9.0",
+    "textual>=0.52.0",
+    "python-frontmatter>=1.1.0",
+    "pydantic-settings>=2.2.0",
+]
+
+[project.scripts]
+timetrace = "timetrace.main:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
