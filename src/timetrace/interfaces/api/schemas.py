@@ -77,3 +77,30 @@ class IdleResolveRequest(BaseModel):
     option: str  # "discard", "break", "claim_work", "re_tag"
     new_tags: Optional[str] = "#general"
     new_notes: Optional[str] = ""
+
+
+class HabitCreate(BaseModel):
+    name: str
+    habit_type: str = "boolean"  # "boolean" or "numeric"
+    target_value: float = 1.0
+    unit: str = ""
+    frequency: str = "Every day"
+    reminder_time: Optional[str] = None
+    color: str = "#10b981"
+
+
+class HabitUpdate(BaseModel):
+    name: Optional[str] = None
+    habit_type: Optional[str] = None
+    target_value: Optional[float] = None
+    unit: Optional[str] = None
+    frequency: Optional[str] = None
+    reminder_time: Optional[str] = None
+    color: Optional[str] = None
+
+
+class HabitLogRequest(BaseModel):
+    date_str: str                 # YYYY-MM-DD
+    status: Optional[str] = None   # "completed", "failed", "skipped", "erase"
+    delta_value: Optional[float] = None  # e.g., +5.0 or -1.0
+    set_value: Optional[float] = None    # Direct set e.g., 30.0

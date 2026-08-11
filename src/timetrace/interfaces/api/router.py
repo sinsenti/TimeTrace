@@ -3,10 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
 from typing import List, Optional
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 
 from timetrace.db.session import get_session
-from timetrace.db.models import Task, Session as SessionModel, Reflection
+from timetrace.db.models import Task, Session as SessionModel, Reflection, Habit, HabitLog
 from timetrace.core.timer import timer_manager
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
 from timetrace.core.analytics import calculate_tag_summaries, calculate_detailed_analytics
@@ -21,7 +21,10 @@ from timetrace.interfaces.api.schemas import (
     ReflectionCreate,
     RetroSessionCreate,
     IdleToggleRequest,
-    IdleResolveRequest
+    IdleResolveRequest,
+    HabitCreate,
+    HabitUpdate,
+    HabitLogRequest
 )
 
 router = APIRouter()
@@ -29,6 +32,7 @@ router = APIRouter()
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
+# Static Web Serving
 @router.get("/dashboard", response_class=FileResponse)
 def get_web_dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
@@ -39,6 +43,11 @@ def get_stats_dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "stats.html"))
 
 
+@router.get("/habits-view", response_class=FileResponse)
+def get_habits_dashboard():
+    return FileResponse(os.path.join(STATIC_DIR, "habits.html"))
+
+
 @router.get("/static/{file_path:path}")
 def get_static_file(file_path: str):
     full_path = os.path.join(STATIC_DIR, file_path)
@@ -47,6 +56,134 @@ def get_static_file(file_path: str):
     raise HTTPException(status_code=404, detail="Static asset not found")
 
 
+# Habit Tracker API Endpoints
+@router.post("/habits", response_model=Habit, status_code=status.HTTP_201_CREATED)
+def create_habit(req: HabitCreate, db: DBSession = Depends(get_session)):
+    db_habit = Habit.model_validate(req.model_dump())
+    db.add(db_habit)
+    db.commit()
+    db.refresh(db_habit)
+    return db_habit
+
+
+@router.get("/habits")
+def list_habits(db: DBSession = Depends(get_session)):
+    habits = db.exec(select(Habit)).all()
+    today_dt = datetime.now().date()
+    
+    # Query last 14 days of logs for matrix view
+    start_date_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
+    logs = db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
+
+    log_map = {}
+    for l in logs:
+        if l.habit_id not in log_map:
+            log_map[l.habit_id] = {}
+        log_map[l.habit_id][l.date_str] = l.model_dump()
+
+    result = []
+    for h in habits:
+        h_dict = h.model_dump()
+        h_dict["logs"] = log_map.get(h.id, {})
+        result.append(h_dict)
+
+    return result
+
+
+@router.put("/habits/{habit_id}", response_model=Habit)
+def update_habit(habit_id: int, req: HabitUpdate, db: DBSession = Depends(get_session)):
+    db_habit = db.get(Habit, habit_id)
+    if not db_habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+
+    update_dict = req.model_dump(exclude_unset=True)
+    for k, v in update_dict.items():
+        setattr(db_habit, k, v)
+
+    db.add(db_habit)
+    db.commit()
+    db.refresh(db_habit)
+    return db_habit
+
+
+@router.delete("/habits/{habit_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_habit(habit_id: int, db: DBSession = Depends(get_session)):
+    db_habit = db.get(Habit, habit_id)
+    if not db_habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+
+    db.delete(db_habit)
+    db.commit()
+    return None
+
+
+@router.post("/habits/{habit_id}/log")
+def log_habit_progress(habit_id: int, req: HabitLogRequest, db: DBSession = Depends(get_session)):
+    db_habit = db.get(Habit, habit_id)
+    if not db_habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+
+    # Fetch existing log for date or create new
+    log = db.exec(select(HabitLog).where(HabitLog.habit_id == habit_id, HabitLog.date_str == req.date_str)).first()
+
+    if req.status == "erase":
+        if log:
+            db.delete(log)
+            db.commit()
+        return {"status": "erased", "date_str": req.date_str}
+
+    if not log:
+        log = HabitLog(habit_id=habit_id, date_str=req.date_str, status="completed", value=0.0)
+
+    if req.status:
+        log.status = req.status
+
+    if req.set_value is not None:
+        log.value = max(0.0, req.set_value)
+    elif req.delta_value is not None:
+        log.value = max(0.0, log.value + req.delta_value)
+
+    # Auto mark completed if target reached for numeric habit
+    if db_habit.habit_type == "numeric":
+        if log.value >= db_habit.target_value:
+            log.status = "completed"
+        elif log.value > 0:
+            log.status = "in_progress"
+
+    db.add(log)
+    db.commit()
+    db.refresh(log)
+    return log
+
+
+@router.get("/habits/{habit_id}/stats")
+def get_habit_stats(habit_id: int, db: DBSession = Depends(get_session)):
+    db_habit = db.get(Habit, habit_id)
+    if not db_habit:
+        raise HTTPException(status_code=404, detail="Habit not found")
+
+    logs = db.exec(select(HabitLog).where(HabitLog.habit_id == habit_id)).all()
+    logs.sort(key=lambda x: x.date_str)
+
+    completed_count = sum(1 for l in logs if l.status == "completed")
+    failed_count = sum(1 for l in logs if l.status == "failed")
+    skipped_count = sum(1 for l in logs if l.status == "skipped")
+
+    history = [{ "date": l.date_str, "value": l.value, "status": l.status } for l in logs[-30:]]
+
+    return {
+        "habit": db_habit.model_dump(),
+        "summary": {
+            "completed": completed_count,
+            "failed": failed_count,
+            "skipped": skipped_count,
+            "total_logs": len(logs)
+        },
+        "history": history
+    }
+
+
+# Idle Detection API Endpoints
 @router.post("/idle/toggle")
 def toggle_idle_detection(req: IdleToggleRequest):
     new_state = timer_manager.toggle_idle_detection(req.enabled)
@@ -116,6 +253,7 @@ def resolve_idle_gap(req: IdleResolveRequest, db: DBSession = Depends(get_sessio
     return {"status": "success", "option_applied": req.option}
 
 
+# Analytics API Endpoints
 @router.get("/analytics/summary")
 def get_analytics_summary(db: DBSession = Depends(get_session)):
     sessions = db.exec(select(SessionModel)).all()
@@ -187,6 +325,7 @@ def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSes
     return {"status": "success", "imported_sessions": added_count}
 
 
+# Task API Endpoints
 @router.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
     task_dict = task.model_dump(exclude_unset=True)
@@ -293,53 +432,14 @@ def delete_task(task_id: int, db: DBSession = Depends(get_session)):
     return None
 
 
+# Active Timer API Endpoints
 @router.get("/timer/status")
 def timer_status(db: DBSession = Depends(get_session)):
     status_data = timer_manager.get_status()
-    now_utc = datetime.now(timezone.utc)
-
     if status_data.get("task_id") and not status_data.get("task_title"):
         task_obj = db.get(Task, status_data["task_id"])
         if task_obj:
             status_data["task_title"] = task_obj.title
-            if status_data.get("remaining_seconds") is None and task_obj.estimated_minutes:
-                elapsed = status_data.get("elapsed_seconds", 0)
-                status_data["remaining_seconds"] = max(0, (task_obj.estimated_minutes * 60) - elapsed)
-
-    # Compute upcoming scheduled session/task countdown
-    sessions = db.exec(select(SessionModel)).all()
-    upcoming_sessions = []
-    for s in sessions:
-        st = s.start_time
-        if st:
-            if not st.tzinfo:
-                st = st.replace(tzinfo=timezone.utc)
-            if st > now_utc:
-                upcoming_sessions.append((st, s))
-
-    next_info = None
-    if upcoming_sessions:
-        upcoming_sessions.sort(key=lambda x: x[0])
-        earliest_st, next_sess = upcoming_sessions[0]
-        starts_in_secs = max(0, int((earliest_st - now_utc).total_seconds()))
-        starts_in_mins = max(1, (starts_in_secs + 59) // 60) if starts_in_secs > 0 else 0
-
-        task_title = ""
-        if next_sess.task_id:
-            t_obj = db.get(Task, next_sess.task_id)
-            if t_obj:
-                task_title = t_obj.title
-
-        next_info = {
-            "id": next_sess.id,
-            "title": task_title or next_sess.notes or next_sess.tags or "Scheduled Session",
-            "tags": next_sess.tags,
-            "start_time": earliest_st.isoformat(),
-            "starts_in_seconds": starts_in_secs,
-            "starts_in_minutes": starts_in_mins
-        }
-
-    status_data["next_session"] = next_info
     return status_data
 
 
@@ -347,25 +447,17 @@ def timer_status(db: DBSession = Depends(get_session)):
 def start_timer(req: TimerStartRequest, db: DBSession = Depends(get_session)):
     try:
         task_title = None
-        tags = req.tags
-        target_mins = req.target_minutes
-
         if req.task_id:
             t = db.get(Task, req.task_id)
             if t:
                 task_title = t.title
-                if not tags and t.tags:
-                    tags = t.tags
-                if target_mins is None and t.estimated_minutes:
-                    target_mins = t.estimated_minutes
-
         return timer_manager.start(
             task_id=req.task_id,
             task_title=task_title,
-            tags=tags if tags else "#general",
+            tags=req.tags,
             notes=req.notes,
             mode=req.mode,
-            target_minutes=target_mins
+            target_minutes=req.target_minutes
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
@@ -413,6 +505,7 @@ def stop_timer(db: DBSession = Depends(get_session)):
     return db_session
 
 
+# Session API Endpoints
 @router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
     if req.end_time <= req.start_time:

@@ -3,27 +3,23 @@ from datetime import datetime, date, timezone
 from typing import Dict, Any, Optional
 
 
-def _strip_comments_and_templates(text: str) -> str:
-    """Removes syntax help comments starting with '>', '//', '<!--', or '# SYNTAX'."""
-    clean_lines = []
-    for line in text.splitlines():
-        sline = line.strip()
-        if (
-            sline.startswith(">")
-            or sline.startswith("//")
-            or sline.startswith("<!--")
-            or sline.startswith("# SYNTAX")
-            or sline.startswith("# ---")
-        ):
-            continue
-        clean_lines.append(line)
-    return "\n".join(clean_lines).strip()
+def strip_comments(text: str) -> str:
+    """
+    Strips HTML comments (<!-- ... -->), markdown blockquote help lines (> ...),
+    and // comment lines from Neovim buffer text before parsing.
+    """
+    clean = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
+    lines = [
+        line for line in clean.splitlines()
+        if not line.strip().startswith(("> ", ">", "//"))
+    ]
+    return "\n".join(lines).strip()
 
 
 def parse_inline_task(text: str) -> Dict[str, Any]:
-    """Parses 1-2 line task creation markdown with comment template stripping."""
-    text = _strip_comments_and_templates(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    """Parses 1-2 line task creation markdown."""
+    clean_text = strip_comments(text)
+    lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -31,7 +27,6 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
     description = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
 
     tags = re.findall(r"#\w+", first_line)
-    tags_str = " ".join(tags)
 
     prio_match = re.search(r"!(high|medium|med|low|h|m|l|-)", first_line, re.IGNORECASE)
     priority = "-"
@@ -64,14 +59,13 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
         "description": description,
         "priority": priority,
         "status": status,
-        "tags": tags_str,
     }
 
 
 def parse_inline_timer(text: str) -> Dict[str, Any]:
     """Parses 1-line timer start / split markdown."""
-    text = _strip_comments_and_templates(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    clean_text = strip_comments(text)
+    lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -97,7 +91,7 @@ def parse_inline_timer(text: str) -> Dict[str, Any]:
         clean_notes = f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
 
     return {
-        "tags": tags_str if tags_str else "",
+        "tags": tags_str if tags_str else "#general",
         "notes": clean_notes,
         "task_id": task_id,
         "pomo_minutes": pomo_mins
@@ -114,8 +108,8 @@ def _local_time_to_utc(date_str: str, time_str: str) -> datetime:
 
 def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Parses edited session text from Neovim buffer."""
-    text = _strip_comments_and_templates(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    clean_text = strip_comments(text)
+    lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -184,8 +178,8 @@ def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] 
 
 def parse_inline_retro(text: str) -> Dict[str, Any]:
     """Parses 1-2 line retroactive session markdown."""
-    text = _strip_comments_and_templates(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    clean_text = strip_comments(text)
+    lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -198,11 +192,12 @@ def parse_inline_retro(text: str) -> Dict[str, Any]:
     task_id_match = re.search(r"@(task\s*)?(\d+)", first_line, re.IGNORECASE)
     task_id = int(task_id_match.group(2)) if task_id_match else None
 
-    start_ago_match = re.search(r"-(\d+)(m|h)", first_line)
+    start_ago_match = re.search(r"-\d+(m|h)", first_line)
     start_ago_mins = 60
     if start_ago_match:
-        val = int(start_ago_match.group(1))
-        unit = start_ago_match.group(2).lower()
+        val_str = start_ago_match.group(0).lstrip("-")
+        val = int(re.sub(r"[^\d]", "", val_str))
+        unit = val_str[-1].lower()
         start_ago_mins = val * 60 if unit == "h" else val
 
     dur_match = re.search(r"\b(\d+)m\b", re.sub(r"-\d+(m|h)", "", first_line))
@@ -229,8 +224,8 @@ def parse_inline_retro(text: str) -> Dict[str, Any]:
 
 def parse_inline_reflection(text: str) -> Dict[str, Any]:
     """Parses 1-2 line post-session reflection markdown."""
-    text = _strip_comments_and_templates(text)
-    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    clean_text = strip_comments(text)
+    lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {"energy_level": 3, "habits": [], "obstacles": ""}
 

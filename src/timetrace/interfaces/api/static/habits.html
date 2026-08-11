@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTrace Habit Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
+        .habit-card { background-color: #12131d; border: 1px solid #1a1c26; border-radius: 0.75rem; }
+        .cell-completed { background-color: #059669 !important; color: white !important; font-weight: bold; }
+        .cell-failed { background-color: #dc2626 !important; color: white !important; font-weight: bold; }
+        .cell-skipped { background-color: #334155 !important; color: #94a3b8 !important; }
+        .cell-in-progress { background-color: #d97706 !important; color: white !important; font-weight: bold; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0b0c10; }
+        ::-webkit-scrollbar-thumb { background: #262938; border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+
+    <!-- Header Navigation -->
+    <header class="bg-[#12131d] border-b border-[#1a1c26] px-6 py-2.5 flex items-center justify-between shrink-0">
+        <div class="flex items-center space-x-6">
+            <span class="text-xl font-black text-emerald-400 tracking-wider">TimeTrace Habits</span>
+            <nav class="flex space-x-2 text-xs font-semibold">
+                <a href="/api/v1/dashboard" class="px-3 py-1.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300">Calendar Dashboard</a>
+                <a href="/api/v1/habits-view" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">⚡ Habit Tracker</a>
+                <a href="/api/v1/stats" class="px-3 py-1.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300">Analytics</a>
+            </nav>
+        </div>
+
+        <div class="flex items-center space-x-3 text-xs">
+            <div class="flex bg-[#181a28] p-1 rounded-lg border border-[#262938]">
+                <button onclick="switchHabitTab('matrix')" id="tab_btn_matrix" class="px-3 py-1 rounded font-bold bg-emerald-600 text-white">Tracking Grid</button>
+                <button onclick="switchHabitTab('reminders')" id="tab_btn_reminders" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Reminders</button>
+                <button onclick="switchHabitTab('charts')" id="tab_btn_charts" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Charts & Trends</button>
+            </div>
+            <button onclick="openNewHabitModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-1.5 rounded-lg">+ New Habit</button>
+        </div>
+    </header>
+
+    <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+
+        <!-- Tab 1: Tracking Matrix View (Images 2 & 4) -->
+        <section id="habit_tab_matrix" class="space-y-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h2 class="text-lg font-bold text-white">Daily Habit Matrix</h2>
+                    <p class="text-xs text-slate-400">Click cells or use quick controls to log daily progress.</p>
+                </div>
+                <div class="flex items-center space-x-2 text-xs text-slate-400">
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-completed inline-block"></span><span>Done</span></span>
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-failed inline-block"></span><span>Failed</span></span>
+                    <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-skipped inline-block"></span><span>Skipped</span></span>
+                </div>
+            </div>
+
+            <!-- Matrix Table Container -->
+            <div class="habit-card overflow-x-auto p-4">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr id="matrix_table_header" class="border-b border-[#1a1c26] text-slate-400">
+                            <th class="py-2.5 px-3 font-bold uppercase w-56">Habit Name</th>
+                            <!-- Dynamic Dates Render Here -->
+                        </tr>
+                    </thead>
+                    <tbody id="matrix_table_body" class="divide-y divide-[#1a1c26]">
+                        <!-- Habit Rows Render Here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- Tab 2: Reminders View (Image 1) -->
+        <section id="habit_tab_reminders" class="hidden space-y-4 max-w-3xl mx-auto">
+            <div class="flex justify-between items-center border-b border-[#1a1c26] pb-3">
+                <h2 class="text-lg font-bold text-white">Habit Reminders & Schedule</h2>
+                <span class="text-xs text-slate-400">Configured reminder notifications</span>
+            </div>
+            <div id="reminders_card_list" class="space-y-3">
+                <!-- Reminder Cards Render Here -->
+            </div>
+        </section>
+
+        <!-- Tab 3: Charts & Trends View (Image 3) -->
+        <section id="habit_tab_charts" class="hidden space-y-6">
+            <div class="flex justify-between items-center bg-[#12131d] p-4 rounded-xl border border-[#1a1c26]">
+                <div>
+                    <label class="text-xs text-slate-400 font-semibold block mb-1">Select Habit for Chart</label>
+                    <select id="chart_habit_select" onchange="renderSelectedHabitCharts()" class="bg-[#0f1016] border border-[#262938] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-emerald-500">
+                        <!-- Options populated via JS -->
+                    </select>
+                </div>
+                <div id="chart_habit_kpis" class="flex space-x-6 text-right">
+                    <!-- Dynamic KPI Badges -->
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <!-- Doughnut Chart (Success/Fail Ratio) -->
+                <div class="habit-card p-5 flex flex-col space-y-3">
+                    <h3 class="font-bold text-sm text-slate-200">Consistency Ratio</h3>
+                    <div class="h-64 relative flex items-center justify-center">
+                        <canvas id="chart_habit_doughnut"></canvas>
+                    </div>
+                </div>
+
+                <!-- Bar Chart (Trend Over Time) -->
+                <div class="habit-card p-5 col-span-2 flex flex-col space-y-3">
+                    <h3 class="font-bold text-sm text-slate-200">Daily Progress History</h3>
+                    <div class="h-64 relative">
+                        <canvas id="chart_habit_bar"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Create/Edit Habit Modal -->
+    <div id="habit_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3">
+            <div class="flex justify-between items-center border-b border-[#262938] pb-2">
+                <h3 id="modal_habit_title" class="font-bold text-lg text-white">Create Habit</h3>
+                <button onclick="closeHabitModal()" class="text-slate-400 hover:text-white font-bold">&times;</button>
+            </div>
+            <input type="hidden" id="edit_habit_id">
+
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Habit Name</label>
+                <input id="modal_habit_name" type="text" placeholder="e.g. Pull-ups, Read Books, Meditate" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-emerald-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Type</label>
+                    <select id="modal_habit_type" onchange="toggleHabitTypeFields()" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="boolean">Done / Fail (Checkmark)</option>
+                        <option value="numeric">Numeric Count (e.g. Pull-ups)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Color</label>
+                    <input id="modal_habit_color" type="color" value="#10b981" class="w-full h-9 bg-[#0f1016] border border-[#262938] rounded-lg cursor-pointer p-1">
+                </div>
+            </div>
+
+            <div id="numeric_fields_group" class="grid grid-cols-2 gap-3 hidden">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Daily Target</label>
+                    <input id="modal_habit_target" type="number" step="0.1" value="30" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Unit</label>
+                    <input id="modal_habit_unit" type="text" placeholder="e.g. reps, pages, miles" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Schedule Frequency</label>
+                    <select id="modal_habit_frequency" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="Every day">Every day</option>
+                        <option value="Mon Wed Fri">Mon Wed Fri</option>
+                        <option value="Weekdays">Weekdays</option>
+                        <option value="Weekends">Weekends</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Reminder Time</label>
+                    <input id="modal_habit_reminder" type="time" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-1.5 rounded-lg text-xs text-white">
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-[#262938]">
+                <button id="modal_habit_delete_btn" onclick="deleteHabit()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
+                <div class="space-x-2 ml-auto">
+                    <button onclick="closeHabitModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                    <button onclick="saveHabit()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save Habit</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Confirmation Modal -->
+    <div id="custom_confirm_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
+            <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
+            <div class="flex justify-end space-x-2 pt-2 border-t border-[#262938]">
+                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/api/v1/static/js/utils.js"></script>
+    <script src="/api/v1/static/js/habits.js"></script>
+</body>
+</html>

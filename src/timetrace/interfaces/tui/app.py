@@ -25,7 +25,6 @@ BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
 def parse_utc_dt(iso_str: Optional[str]) -> datetime:
-    """Helper to convert API ISO strings safely into UTC datetime objects."""
     if not iso_str:
         return datetime.min.replace(tzinfo=timezone.utc)
     try:
@@ -41,7 +40,6 @@ def parse_utc_dt(iso_str: Optional[str]) -> datetime:
 
 
 def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> str:
-    """Converts API UTC ISO string to user's system local timezone string."""
     if not iso_str:
         return ""
     try:
@@ -87,16 +85,21 @@ class HelpModal(ModalScreen):
 [bold cyan]Navigation & Search Shortcuts[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]j / k[/bold white]         Move selection down / up
-[bold white]/[/bold white]             Search text in real-time ([dim]matches title, tags, notes[/dim])
-[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow])
+[bold white]/[/bold white]             Search text in real-time
+[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow] ↔ [bold yellow]Habits[/bold yellow])
 [bold white]f[/bold white]             Cycle status filters
-[bold white]o[/bold white]             Cycle sort modes ([bold yellow]Priority, Created, Title, Status[/bold yellow])
+[bold white]o[/bold white]             Cycle sort modes
 [bold white]r[/bold white]             Refresh current table data
+
+[bold cyan]Fast Habit Tracking Controls (in Habits View)[/bold cyan]
+─────────────────────────────────────────────────────────────────────────────
+[bold white]Space[/bold white]         Toggle Today's Status (Done ✓ / Fail ✗ / Skip ↷)
+[bold white]+ / -[/bold white]         Increment / Decrement numeric habit (e.g. +1 pull-up)
 
 [bold cyan]Ultra-Fast Neovim Actions[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]a[/bold white]             Add Task  -> [dim]Title #tags !high @ip[/dim]
-[bold white]e[/bold white]             Edit Row  -> [dim]Modify title, tags, priority, notes[/dim]
+[bold white]e[/bold white]             Edit Row  -> [dim]Modify task, session, or habit in Neovim[/dim]
 [bold white]dd[/bold white]            Delete Row ([dim]press 'd' twice[/dim])
 [bold white]D[/bold white]             Clear Completed Tasks
 [bold white]s[/bold white]             Start Timer -> [dim]Working notes #tags @task_id !25m[/dim]
@@ -107,9 +110,10 @@ class HelpModal(ModalScreen):
 
 [bold cyan]Command Line Mode (:)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
-[bold white]:ex, :examples[/bold white] Open Markdown file syntax & log examples viewer
-[bold white]:help, :keys[/bold white]   Open this help overlay screen
-[bold white]:theme[/bold white]         Toggle dark / light theme
+[bold white]:ex, :examples[/bold white] Open Markdown examples
+[bold white]:habits[/bold white]       Switch to Habits View
+[bold white]:help, :keys[/bold white]   Open help screen
+[bold white]:theme[/bold white]        Toggle dark / light theme
 [bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute
 """
         yield Container(
@@ -141,7 +145,7 @@ class ExamplesModal(ModalScreen):
 
     def compose(self) -> ComposeResult:
         yield Container(
-            Static("[bold magenta]TimeTrace Markdown Syntax & File Examples[/bold magenta] [dim](Esc or 'q' to exit)[/dim]", id="modal_title"),
+            Static("[bold magenta]TimeTrace Markdown Syntax & File Examples[/bold magenta]", id="modal_title"),
             ScrollableContainer(
                 Static(FULL_EXAMPLES_MARKDOWN, id="examples_content"),
                 id="examples_scroll_container"
@@ -240,17 +244,6 @@ class TimeTraceTUI(App):
         height: 20;
         margin-top: 1;
     }
-    #modal_dialog_lg {
-        padding: 1 2;
-        background: #181826;
-        border: thick #a855f7;
-        width: 68;
-        height: 20;
-    }
-    #modal_title {
-        text-style: bold;
-        margin-bottom: 1;
-    }
     """
 
     BINDINGS = [
@@ -260,6 +253,9 @@ class TimeTraceTUI(App):
         Binding("t", "toggle_view_mode", "Toggle View (t)"),
         Binding("j", "cursor_down", "Down", show=False),
         Binding("k", "cursor_up", "Up", show=False),
+        Binding("space", "quick_toggle_habit", "Toggle Habit", show=False),
+        Binding("plus", "quick_inc_habit", "+1 Habit", show=False),
+        Binding("minus", "quick_dec_habit", "-1 Habit", show=False),
         Binding("a", "add_task_nvim", "Add Task"),
         Binding("e", "edit_item_nvim", "Edit Row"),
         Binding("f", "cycle_filter", "Filter (f)"),
@@ -282,6 +278,7 @@ class TimeTraceTUI(App):
         super().__init__()
         self.loaded_tasks: List[Dict[str, Any]] = []
         self.loaded_sessions: List[Dict[str, Any]] = []
+        self.loaded_habits: List[Dict[str, Any]] = []
         self.active_task_id: Optional[int] = None
         self.filter_modes = ["all", "hide_completed", "in_progress", "ongoing", "completed"]
         self.filter_index = 0
@@ -300,7 +297,7 @@ class TimeTraceTUI(App):
             Static(self.status_bar_text, id="filter_status_bar"),
             DataTable(id="main_table"),
             Input(placeholder="Search tasks or notes...", id="search_input"),
-            Input(placeholder="Type command (e.g. :ex, :help, :keys, :start, :stop)...", id="command_input"),
+            Input(placeholder="Type command (e.g. :ex, :habits, :help, :start)...", id="command_input"),
         )
         yield Footer()
 
@@ -315,9 +312,11 @@ class TimeTraceTUI(App):
         table.clear(columns=True)
         table.cursor_type = "row"
         if self.view_mode == "tasks":
-            table.add_columns("ID", "Priority", "Title & Tags", "Status", "Created At", "Description")
-        else:
+            table.add_columns("ID", "Priority", "Title", "Status", "Created At", "Description")
+        elif self.view_mode == "sessions":
             table.add_columns("ID", "Tags", "Start Time", "End Time", "Duration (m)", "Notes")
+        else:
+            table.add_columns("ID", "Habit Name", "Type / Target", "Today Progress", "Status", "Schedule")
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
@@ -337,92 +336,13 @@ class TimeTraceTUI(App):
         cmd_input.value = ":"
         cmd_input.focus()
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        if event.input.id == "search_input":
-            self.search_query = event.value.strip().lower()
-            self.update_status_label()
-            self.render_current_view()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "search_input":
-            event.input.styles.display = "none"
-            self.query_one("#main_table", DataTable).focus()
-            return
-
-        cmd_input = self.query_one("#command_input", Input)
-        val = event.value.strip().lower()
-        cmd_input.styles.display = "none"
-        self.query_one("#main_table", DataTable).focus()
-
-        if not val or val == ":":
-            return
-
-        cmd = val.lstrip(":")
-
-        if cmd in ("ex", "example", "examples"):
-            self.action_show_examples()
-        elif cmd in ("help", "keys", "?"):
-            self.action_show_help()
-        elif cmd in ("tasks", "sessions", "view", "v", "t"):
-            self.action_toggle_view_mode()
-        elif cmd == "theme":
-            self.dark = not self.dark
-        elif cmd == "start":
-            self.run_worker(self.action_start_timer_nvim())
-        elif cmd == "stop":
-            self.run_worker(self.action_stop_timer_nvim())
-        elif cmd == "split":
-            self.run_worker(self.action_split_timer_nvim())
-        elif cmd == "add":
-            self.run_worker(self.action_add_task_nvim())
-        elif cmd == "retro":
-            self.run_worker(self.action_retro_log_nvim())
-        elif cmd == "stats":
-            self.run_worker(self.action_view_stats())
-        elif cmd in ("clear", "clean"):
-            self.run_worker(self.action_clear_completed())
-        elif cmd == "filter":
-            self.action_cycle_filter()
-        elif cmd == "sort":
-            self.action_cycle_sort()
-        elif cmd in ("quit", "q", "exit"):
-            self.exit()
-
-    def on_key(self, event) -> None:
-        s_input = self.query_one("#search_input", Input)
-        cmd_input = self.query_one("#command_input", Input)
-
-        if s_input.has_focus:
-            if event.key == "escape":
-                s_input.styles.display = "none"
-                self.query_one("#main_table", DataTable).focus()
-            return
-
-        if cmd_input.has_focus:
-            if event.key == "escape":
-                cmd_input.styles.display = "none"
-                self.query_one("#main_table", DataTable).focus()
-            return
-
-        if event.key == "escape" and self.search_query:
-            self.search_query = ""
-            s_input.value = ""
-            self.update_status_label()
-            self.render_current_view()
-            self.notify("Search filter cleared", timeout=1.0)
-            return
-
-        if event.key == "d":
-            now = time.time()
-            if now - self.last_d_time < 0.6:
-                self.last_d_time = 0.0
-                self.run_worker(self.action_delete_item())
-            else:
-                self.last_d_time = now
-                self.notify("Press 'd' again to delete row (dd)", timeout=1.2)
-
     def action_toggle_view_mode(self) -> None:
-        self.view_mode = "sessions" if self.view_mode == "tasks" else "tasks"
+        if self.view_mode == "tasks":
+            self.view_mode = "sessions"
+        elif self.view_mode == "sessions":
+            self.view_mode = "habits"
+        else:
+            self.view_mode = "tasks"
         self.setup_table_columns()
         self.update_status_label()
         self.run_worker(self.load_current_view())
@@ -464,6 +384,92 @@ class TimeTraceTUI(App):
         except Exception:
             return None
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "search_input":
+            self.search_query = event.value.strip().lower()
+            self.update_status_label()
+            self.render_current_view()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id == "search_input":
+            event.input.styles.display = "none"
+            self.query_one("#main_table", DataTable).focus()
+            return
+
+        cmd_input = self.query_one("#command_input", Input)
+        val = event.value.strip().lower()
+        cmd_input.styles.display = "none"
+        self.query_one("#main_table", DataTable).focus()
+
+        if not val or val == ":":
+            return
+
+        cmd = val.lstrip(":")
+
+        if cmd in ("ex", "example", "examples"):
+            self.action_show_examples()
+        elif cmd in ("help", "keys", "?"):
+            self.action_show_help()
+        elif cmd in ("tasks", "sessions", "habits", "view", "v", "t"):
+            if cmd == "habits":
+                self.view_mode = "habits"
+                self.setup_table_columns()
+                self.update_status_label()
+                self.run_worker(self.load_current_view())
+            else:
+                self.action_toggle_view_mode()
+        elif cmd == "theme":
+            self.dark = not self.dark
+        elif cmd == "start":
+            self.run_worker(self.action_start_timer_nvim())
+        elif cmd == "stop":
+            self.run_worker(self.action_stop_timer_nvim())
+        elif cmd == "split":
+            self.run_worker(self.action_split_timer_nvim())
+        elif cmd == "add":
+            self.run_worker(self.action_add_task_nvim())
+        elif cmd == "retro":
+            self.run_worker(self.action_retro_log_nvim())
+        elif cmd == "stats":
+            self.run_worker(self.action_view_stats())
+        elif cmd in ("clear", "clean"):
+            self.run_worker(self.action_clear_completed())
+        elif cmd in ("quit", "q", "exit"):
+            self.exit()
+
+    def on_key(self, event) -> None:
+        s_input = self.query_one("#search_input", Input)
+        cmd_input = self.query_one("#command_input", Input)
+
+        if s_input.has_focus:
+            if event.key == "escape":
+                s_input.styles.display = "none"
+                self.query_one("#main_table", DataTable).focus()
+            return
+
+        if cmd_input.has_focus:
+            if event.key == "escape":
+                cmd_input.styles.display = "none"
+                self.query_one("#main_table", DataTable).focus()
+            return
+
+        if event.key == "escape" and self.search_query:
+            self.search_query = ""
+            s_input.value = ""
+            self.update_status_label()
+            self.render_current_view()
+            self.notify("Search filter cleared", timeout=1.0)
+            return
+
+        if event.key == "d":
+            now = time.time()
+            if now - self.last_d_time < 0.6:
+                self.last_d_time = 0.0
+                self.action_delete_item()
+            else:
+                self.last_d_time = now
+                self.notify("Press 'd' again to delete row (dd)", timeout=1.2)
+
     async def update_timer(self) -> None:
         try:
             async with httpx.AsyncClient() as client:
@@ -475,23 +481,10 @@ class TimeTraceTUI(App):
                         elapsed_min = data["elapsed_seconds"] // 60
                         elapsed_sec = data["elapsed_seconds"] % 60
                         task_title = data.get("task_title") or data.get("tags") or "#session"
-
-                        rem_str = ""
-                        if data.get("remaining_seconds") is not None:
-                            rem_m = data["remaining_seconds"] // 60
-                            rem_s = data["remaining_seconds"] % 60
-                            rem_str = f"  │  Remaining: [bold yellow]{rem_m:02d}:{rem_s:02d}[/bold yellow]"
-
-                        self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]{rem_str}  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
+                        self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
                     else:
                         self.active_task_id = None
-                        next_sess = data.get("next_session")
-                        if next_sess:
-                            mins = next_sess["starts_in_minutes"]
-                            start_local = format_local_time(next_sess["start_time"], fmt="%H:%M")
-                            self.timer_text = f"[dim]Timer Idle[/dim]  │  [bold yellow]NEXT TASK:[/bold yellow] [bold white]{next_sess['title']}[/bold white] in [bold cyan]{mins} mins[/bold cyan] (at {start_local})"
-                        else:
-                            self.timer_text = "[dim]Timer Idle[/dim]"
+                        self.timer_text = "[dim]Timer Idle[/dim]"
         except Exception:
             self.active_task_id = None
             self.timer_text = "[bold red]Daemon Disconnected[/bold red]"
@@ -501,8 +494,10 @@ class TimeTraceTUI(App):
     async def load_current_view(self) -> None:
         if self.view_mode == "tasks":
             await self.load_tasks()
-        else:
+        elif self.view_mode == "sessions":
             await self.load_sessions()
+        else:
+            await self.load_habits()
 
     async def load_tasks(self) -> None:
         try:
@@ -518,9 +513,6 @@ class TimeTraceTUI(App):
 
     def render_tasks(self) -> None:
         table = self.query_one("#main_table", DataTable)
-        saved_id = self.get_selected_item_id()
-        saved_cursor_row = table.cursor_row
-
         table.clear()
 
         filtered = self.loaded_tasks
@@ -528,40 +520,23 @@ class TimeTraceTUI(App):
             filtered = [
                 t for t in filtered
                 if self.search_query in str(t.get("title", "")).lower()
-                or self.search_query in str(t.get("tags", "")).lower()
                 or self.search_query in str(t.get("description", "")).lower()
-                or self.search_query in str(t.get("status", "")).lower()
-                or self.search_query in str(t.get("priority", "")).lower()
             ]
 
         if not filtered:
             table.add_row("-", "-", "[dim]No tasks match current filter/search.[/dim]", "-", "-", "-")
             return
 
-        target_row = 0
-        for idx, task in enumerate(filtered):
-            if saved_id is not None and task["id"] == saved_id:
-                target_row = idx
-
+        for task in filtered:
             created_str = format_local_time(task.get("created_at"))
-            tags_str = f" [purple]{task['tags']}[/purple]" if task.get("tags") else ""
             table.add_row(
                 str(task["id"]),
                 format_priority_badge(task.get("priority", "-")),
-                f"[bold white]{task['title']}[/bold white]{tags_str}",
+                f"[bold white]{task['title']}[/bold white]",
                 format_status_badge(task.get("status", "in_progress")),
                 f"[dim]{created_str}[/dim]",
                 task.get("description") or ""
             )
-
-        if saved_id is None and saved_cursor_row is not None and saved_cursor_row < table.row_count:
-            target_row = saved_cursor_row
-
-        if table.row_count > 0:
-            try:
-                table.move_cursor(row=target_row)
-            except Exception:
-                pass
 
     async def load_sessions(self) -> None:
         try:
@@ -575,9 +550,6 @@ class TimeTraceTUI(App):
 
     def render_sessions(self) -> None:
         table = self.query_one("#main_table", DataTable)
-        saved_id = self.get_selected_item_id()
-        saved_cursor_row = table.cursor_row
-
         table.clear()
 
         filtered = self.loaded_sessions
@@ -593,7 +565,6 @@ class TimeTraceTUI(App):
             return
 
         now = datetime.now(timezone.utc)
-
         current_sessions = []
         upcoming_sessions = []
         past_sessions = []
@@ -612,21 +583,9 @@ class TimeTraceTUI(App):
         upcoming_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")))
         past_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")), reverse=True)
 
-        current_row_index = 0
-        target_row = 0
-
         if current_sessions:
-            c_first = current_sessions[0]
-            c_end = parse_utc_dt(c_first.get("end_time")) if c_first.get("end_time") else now
-            mins_left = max(0, int((c_end - now).total_seconds() // 60))
-            
-            table.add_row("", "", f"[bold cyan]--- CURRENT SESSION ({mins_left} min left) ---[/bold cyan]", "", "", "")
-            current_row_index += 1
-
+            table.add_row("", "", "[bold cyan]--- CURRENT SESSION ---[/bold cyan]", "", "", "")
             for s in current_sessions:
-                if saved_id is not None and s["id"] == saved_id:
-                    target_row = current_row_index
-
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -638,20 +597,10 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
-                current_row_index += 1
 
         if upcoming_sessions:
-            u_first = upcoming_sessions[0]
-            u_start = parse_utc_dt(u_first.get("start_time"))
-            mins_until = max(0, int((u_start - now).total_seconds() // 60))
-
-            table.add_row("", "", f"[bold yellow]--- UPCOMING SESSIONS ({mins_until} min until start) ---[/bold yellow]", "", "", "")
-            current_row_index += 1
-
+            table.add_row("", "", "[bold yellow]--- UPCOMING SESSIONS ---[/bold yellow]", "", "", "")
             for s in upcoming_sessions:
-                if saved_id is not None and s["id"] == saved_id:
-                    target_row = current_row_index
-
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else ""
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -663,20 +612,10 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
-                current_row_index += 1
 
         if past_sessions:
-            p_first = past_sessions[0]
-            p_start = parse_utc_dt(p_first.get("start_time"))
-            mins_ago = max(0, int((now - p_start).total_seconds() // 60))
-
-            table.add_row("", "", f"[bold dim]--- PAST SESSIONS ({mins_ago} min before start) ---[/bold dim]", "", "", "")
-            current_row_index += 1
-
+            table.add_row("", "", "[bold dim]--- PAST SESSIONS ---[/bold dim]", "", "", "")
             for s in past_sessions:
-                if saved_id is not None and s["id"] == saved_id:
-                    target_row = current_row_index
-
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -688,33 +627,141 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
-                current_row_index += 1
 
-        if saved_id is None and saved_cursor_row is not None and saved_cursor_row < table.row_count:
-            target_row = saved_cursor_row
+    async def load_habits(self) -> None:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.get(f"{BASE_URL}/habits", timeout=2.0)
+                if res.status_code == 200:
+                    self.loaded_habits = res.json()
+                    self.render_habits()
+        except Exception:
+            pass
 
-        if table.row_count > 0:
-            try:
-                table.move_cursor(row=target_row)
-            except Exception:
-                pass
+    def render_habits(self) -> None:
+        table = self.query_one("#main_table", DataTable)
+        table.clear()
 
-    def render_current_view(self) -> None:
-        if self.view_mode == "tasks":
-            self.render_tasks()
-        else:
-            self.render_sessions()
+        if not self.loaded_habits:
+            table.add_row("-", "[dim]No habits tracked yet. Use Web UI or API to add habits.[/dim]", "-", "-", "-", "-")
+            return
 
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        for h in self.loaded_habits:
+            logs = h.get("logs", {})
+            today_log = logs.get(today_str, {"status": "pending", "value": 0.0})
+
+            if h.get("habit_type") == "numeric":
+                prog_str = f"[bold yellow]{today_log.get('value', 0.0)}[/bold yellow] / [bold white]{h.get('target_value', 1.0)} {h.get('unit', '')}[/bold white]"
+            else:
+                prog_str = "[bold green]1 / 1[/bold green]" if today_log.get("status") == "completed" else "[dim]0 / 1[/dim]"
+
+            st = today_log.get("status", "pending")
+            if st == "completed":
+                st_badge = "[bold white on #059669] DONE ✓ [/bold white on #059669]"
+            elif st == "failed":
+                st_badge = "[bold white on #dc2626] FAILED ✗ [/bold white on #dc2626]"
+            elif st == "skipped":
+                st_badge = "[bold white on #475569] SKIPPED ↷ [/bold white on #475569]"
+            else:
+                st_badge = "[bold black on #d97706] PENDING [/bold black on #d97706]"
+
+            table.add_row(
+                str(h["id"]),
+                f"[bold white]{h['name']}[/bold white]",
+                f"[cyan]{h.get('habit_type', 'boolean')}[/cyan]",
+                prog_str,
+                st_badge,
+                f"[dim]{h.get('frequency', 'Every day')} @ {h.get('reminder_time', '09:00 AM')}[/dim]"
+            )
+
+    async def action_quick_toggle_habit(self) -> None:
+        if self.view_mode != "habits":
+            return
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        habit = next((h for h in self.loaded_habits if h["id"] == item_id), None)
+        if not habit:
+            return
+
+        curr_log = habit.get("logs", {}).get(today_str, {})
+        curr_st = curr_log.get("status", "pending")
+
+        next_st = "completed"
+        if curr_st == "completed":
+            next_st = "failed"
+        elif curr_st == "failed":
+            next_st = "skipped"
+        elif curr_st == "skipped":
+            next_st = "erase"
+
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{BASE_URL}/habits/{item_id}/log",
+                    json={"date_str": today_str, "status": next_st},
+                    timeout=3.0
+                )
+            self.notify(f"Habit #{item_id} updated: {next_st.upper()}", timeout=1.2)
+            await self.load_habits()
+        except Exception as e:
+            self.notify(f"Error: {e}", severity="error")
+
+    async def action_quick_inc_habit(self) -> None:
+        if self.view_mode != "habits":
+            return
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{BASE_URL}/habits/{item_id}/log",
+                    json={"date_str": today_str, "delta_value": 1.0},
+                    timeout=3.0
+                )
+            self.notify(f"Habit #{item_id} +1", timeout=1.0)
+            await self.load_habits()
+        except Exception:
+            pass
+
+    async def action_quick_dec_habit(self) -> None:
+        if self.view_mode != "habits":
+            return
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.post(
+                    f"{BASE_URL}/habits/{item_id}/log",
+                    json={"date_str": today_str, "delta_value": -1.0},
+                    timeout=3.0
+                )
+            self.notify(f"Habit #{item_id} -1", timeout=1.0)
+            await self.load_habits()
+        except Exception:
+            pass
+
+    # Neovim Quick Actions (a, e, s, c, x, m, v)
     async def action_add_task_nvim(self) -> None:
-        pre_text = (
+        template = (
             "\n\n\n\n\n"
             "> ADD TASK SYNTAX HELP: Title #tags !priority @status\n"
-            "> Priority: !high !medium !low  Status: @in_progress @ongoing @completed\n"
+            "> Priority: !high !medium !low   Status: @in_progress @ongoing @completed\n"
             "> Example: Project(a1labs) #progr #work !medium @in_progress"
         )
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim(pre_text)
+            raw_text = open_in_nvim(template)
 
         if raw_text:
             parsed = parse_inline_task(raw_text)
@@ -741,14 +788,13 @@ class TimeTraceTUI(App):
                 return
 
             p_tag = f"!{task.get('priority', '-')}" if task.get('priority') != '-' else ""
-            t_tags = task.get("tags", "")
-            content_text = f"{task['title']} {t_tags} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
-            pre_text = (
-                f"{content_text}\n\n\n\n\n"
-                f"> EDIT TASK #{task['id']} SYNTAX HELP: Title #tags !priority @status\n"
-                "> Priority: !high !medium !low  Status: @in_progress @ongoing @completed\n"
-                f"> Example: Project(a1labs) #progr #work !medium @in_progress"
+            help_text = (
+                "\n\n\n\n\n"
+                "> EDIT TASK SYNTAX HELP: Title #tags !priority @status\n"
+                "> Priority: !high !medium !low   Status: @in_progress @ongoing @completed\n"
+                "> Line 2+: Task description"
             )
+            pre_text = f"{task['title']} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}{help_text}".strip()
 
             raw_text = None
             with self.suspend():
@@ -763,7 +809,8 @@ class TimeTraceTUI(App):
                         await self.load_tasks()
                     except Exception:
                         pass
-        else:
+
+        elif self.view_mode == "sessions":
             session = next((s for s in self.loaded_sessions if s["id"] == item_id), None)
             if not session:
                 return
@@ -772,13 +819,13 @@ class TimeTraceTUI(App):
             end_str = format_local_time(session.get("end_time"), fmt="%H:%M") if session.get("end_time") else "NOW"
             duration_mins = round((session.get("duration_seconds") or 0) / 60, 1)
             task_ref = f"@{session['task_id']}" if session.get("task_id") else ""
-            content_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
 
-            pre_text = (
-                f"{content_text}\n\n\n\n\n"
-                f"> EDIT SESSION #{session['id']} SYNTAX HELP: [start - end] #tags @task_id Notes...\n"
-                "> Example: [09:00 - 10:30] #backend @5 Refactored connection pool"
+            help_text = (
+                "\n\n\n\n\n"
+                "> EDIT SESSION SYNTAX HELP: [start_time - end_time] (duration) #tags @task_id notes\n"
+                "> Example: [09:00 - 10:30] #progr #backend @14 Refactored WebSocket connection pool"
             )
+            pre_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}{help_text}".strip()
 
             raw_text = None
             with self.suspend():
@@ -806,47 +853,20 @@ class TimeTraceTUI(App):
                 except Exception as e:
                     self.notify(f"Error: {e}", severity="error")
 
-    async def action_delete_item(self) -> None:
-        item_id = self.get_selected_item_id()
-        if not item_id:
-            self.notify("No row selected", severity="warning")
-            return
-        try:
-            endpoint = f"/tasks/{item_id}" if self.view_mode == "tasks" else f"/sessions/{item_id}"
-            async with httpx.AsyncClient() as client:
-                res = await client.delete(f"{BASE_URL}{endpoint}", timeout=3.0)
-                if res.status_code in (200, 204):
-                    self.notify(f"Deleted {self.view_mode[:-1]} #{item_id}", timeout=1.5)
-                else:
-                    err_msg = res.json().get("detail", "Unknown error") if res.headers.get("content-type") == "application/json" else res.text
-                    self.notify(f"Failed to delete {self.view_mode[:-1]} #{item_id}: {err_msg}", severity="error")
-            await self.load_current_view()
-        except Exception as e:
-            self.notify(f"Error: {e}", severity="error")
-
-    async def action_clear_completed(self) -> None:
-        try:
-            async with httpx.AsyncClient() as client:
-                await client.delete(f"{BASE_URL}/tasks/completed", timeout=3.0)
-            self.notify("Cleared completed tasks", timeout=1.5)
-            await self.load_current_view()
-        except Exception:
-            pass
-
     async def action_start_timer_nvim(self) -> None:
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
-        task_ref = f"@task {task_id}" if task_id else ""
-
-        pre_text = (
-            f"{task_ref}\n\n\n\n\n"
-            "> START TIMER SYNTAX HELP: Working notes #tags @task_id !pomo_mins\n"
-            "> Example: Fixing WebSocket mutex lock #backend @14 !25m"
+        task_ref = f"@{task_id}" if task_id else "@task_id"
+        template = (
+            "\n\n\n\n\n"
+            f"> START TIMER SYNTAX HELP: Working notes #tags {task_ref} !pomo_mins\n"
+            "> Priority/Pomo: !15m !25m !50m   Tags: #progr #backend #meeting\n"
+            f"> Example: Fixing WebSocket mutex lock #progr #backend {task_ref} !25m"
         )
 
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim(pre_text)
+            raw_text = open_in_nvim(template)
 
         if raw_text:
             parsed = parse_inline_timer(raw_text)
@@ -861,7 +881,7 @@ class TimeTraceTUI(App):
                         f"{BASE_URL}/timer/start",
                         json={
                             "task_id": parsed.get("task_id"),
-                            "tags": parsed.get("tags", ""),
+                            "tags": parsed.get("tags", "#general"),
                             "notes": parsed.get("notes", ""),
                             "mode": mode,
                             "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
@@ -873,14 +893,15 @@ class TimeTraceTUI(App):
                 pass
 
     async def action_split_timer_nvim(self) -> None:
-        pre_text = (
+        template = (
             "\n\n\n\n\n"
-            "> SPLIT TIMER SYNTAX HELP: New activity notes #newtags\n"
-            "> Example: Switched to API documentation #docs #api"
+            "> SPLIT TIMER SYNTAX HELP: New activity notes #tags\n"
+            "> Tags: #progr #review #meeting #design\n"
+            "> Example: Code review for pull request #review #progr"
         )
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim(pre_text)
+            raw_text = open_in_nvim(template)
 
         if raw_text:
             parsed = parse_inline_timer(raw_text)
@@ -904,19 +925,17 @@ class TimeTraceTUI(App):
                 res = await client.post(f"{BASE_URL}/timer/stop", timeout=3.0)
                 if res.status_code == 200:
                     session_data = res.json()
-
-                    pre_text = (
+                    template = (
                         "5/5 water, focus\n\n\n\n\n"
-                        "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2, habit3\n"
-                        "> Line 2+: Obstacles / Distractions\n"
-                        "> Example:\n"
-                        "> 5/5 water, stretched, focus\n"
-                        "> Minor CORS issue on WebSocket handshake."
+                        "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2\n"
+                        "> Line 2+: Optional obstacle or session notes\n"
+                        "> Example: 5/5 water, focus, stretch\n"
+                        "> Minor CORS issue on WebSocket handshake"
                     )
 
                     raw_text = None
                     with self.suspend():
-                        raw_text = open_in_nvim(pre_text)
+                        raw_text = open_in_nvim(template)
 
                     if raw_text:
                         parsed = parse_inline_reflection(raw_text)
@@ -938,17 +957,17 @@ class TimeTraceTUI(App):
     async def action_retro_log_nvim(self) -> None:
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
-        content_text = f"-120m 45m #programming @{task_id} Activity notes..." if task_id else "-120m 45m #programming Activity notes..."
-
-        pre_text = (
-            f"{content_text}\n\n\n\n\n"
-            "> RETROACTIVE LOG SYNTAX HELP: Activity notes #tags @task_id -start_mins_ago duration_mins\n"
-            "> Example: Reviewed open PRs #review @12 -90m 30m"
+        task_ref = f"@{task_id}" if task_id else "@task_id"
+        template = (
+            "\n\n\n\n\n"
+            f"> RETROACTIVE LOG SYNTAX HELP: Activity notes #tags {task_ref} -start_ago duration_mins\n"
+            "> Time format: -90m 30m  OR  -2h 45m\n"
+            f"> Example: Reviewed pull requests #review #progr {task_ref} -90m 30m"
         )
 
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim(pre_text)
+            raw_text = open_in_nvim(template)
 
         if raw_text:
             parsed = parse_inline_retro(raw_text)
@@ -990,6 +1009,32 @@ class TimeTraceTUI(App):
                     self.push_screen(StatsModal(summary=summary))
         except Exception:
             pass
+
+    async def action_clear_completed(self) -> None:
+        try:
+            async with httpx.AsyncClient() as client:
+                await client.delete(f"{BASE_URL}/tasks/completed", timeout=3.0)
+            self.notify("Cleared completed tasks", timeout=1.5)
+            await self.load_current_view()
+        except Exception:
+            pass
+
+    def action_delete_item(self) -> None:
+        item_id = self.get_selected_item_id()
+        if not item_id:
+            return
+        endpoint = f"/tasks/{item_id}" if self.view_mode == "tasks" else (f"/sessions/{item_id}" if self.view_mode == "sessions" else f"/habits/{item_id}")
+        self.run_worker(self._async_delete_item(endpoint, item_id))
+
+    async def _async_delete_item(self, endpoint: str, item_id: int) -> None:
+        try:
+            async with httpx.AsyncClient() as client:
+                res = await client.delete(f"{BASE_URL}{endpoint}", timeout=3.0)
+                if res.status_code in (200, 204):
+                    self.notify(f"Deleted #{item_id}", timeout=1.5)
+            await self.load_current_view()
+        except Exception as e:
+            self.notify(f"Error deleting: {e}", severity="error")
 
     def action_refresh_data(self) -> None:
         self.run_worker(self.load_current_view())
