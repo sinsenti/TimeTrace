@@ -67,8 +67,10 @@
             <a href="/api/v1/stats" class="h-8 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 font-semibold px-3 rounded-lg border border-purple-700/50 flex items-center whitespace-nowrap">
                 <span>Custom Stats</span>
             </a>
-            <button onclick="toggleSidebar('left_sidebar')" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-3 rounded-lg border border-[#262938] whitespace-nowrap">Hide Tasks</button>
-            <button onclick="toggleSidebar('right_sidebar')" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-3 rounded-lg border border-[#262938] whitespace-nowrap">Hide Totals</button>
+            
+            <!-- Dynamic Color-Changing Sidebar Toggle Buttons -->
+            <button id="btn_toggle_left_sidebar" onclick="toggleSidebar('left_sidebar')" class="h-8 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 px-3 rounded-lg font-semibold whitespace-nowrap transition">Hide Tasks</button>
+            <button id="btn_toggle_right_sidebar" onclick="toggleSidebar('right_sidebar')" class="h-8 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 px-3 rounded-lg font-semibold whitespace-nowrap transition">Hide Totals</button>
             
             <!-- Date Navigation Pill -->
             <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[#262938] px-1 whitespace-nowrap">
@@ -197,7 +199,7 @@
                 <span id="session_modal_type_badge" class="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700">Planned Slot</span>
             </div>
 
-            <!-- Attach Task Section (Autocomplete & Chip Pattern) -->
+            <!-- Attach Task Section -->
             <div class="relative">
                 <label class="text-xs text-slate-400 block mb-1">Attach Task</label>
                 <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[#262938] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
@@ -315,7 +317,13 @@
         </div>
     </div>
 
-    <!-- Dashboard Engine -->
+    <!-- JavaScript Modules (Loaded in dependency order) -->
+    <script src="/api/v1/static/js/utils.js"></script>
+    <script src="/api/v1/static/js/tags_engine.js"></script>
+    <script src="/api/v1/static/js/task_attach.js"></script>
+    <script src="/api/v1/static/js/timer_control.js"></script>
+    <script src="/api/v1/static/js/modals.js"></script>
+    <script src="/api/v1/static/js/vim_engine.js"></script>
     <script src="/api/v1/static/js/dashboard.js"></script>
 </body>
 </html>
