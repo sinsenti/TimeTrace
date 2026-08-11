@@ -707,10 +707,10 @@ class TimeTraceTUI(App):
 
     async def action_add_task_nvim(self) -> None:
         pre_text = (
-            "> SYNTAX HELP: Title #tags !priority @status\n"
+            "\n\n\n\n\n"
+            "> ADD TASK SYNTAX HELP: Title #tags !priority @status\n"
             "> Priority: !high !medium !low  Status: @in_progress @ongoing @completed\n"
-            "> Example: Refactor FastAPI WebSocket pool #backend !high @in_progress\n"
-            "> ----------------------------------------------------------------------\n\n"
+            "> Example: Project(a1labs) #progr #work !medium @in_progress"
         )
         raw_text = None
         with self.suspend():
@@ -742,10 +742,12 @@ class TimeTraceTUI(App):
 
             p_tag = f"!{task.get('priority', '-')}" if task.get('priority') != '-' else ""
             t_tags = task.get("tags", "")
+            content_text = f"{task['title']} {t_tags} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
             pre_text = (
+                f"{content_text}\n\n\n\n\n"
                 f"> EDIT TASK #{task['id']} SYNTAX HELP: Title #tags !priority @status\n"
-                "> ----------------------------------------------------------------------\n"
-                f"{task['title']} {t_tags} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
+                "> Priority: !high !medium !low  Status: @in_progress @ongoing @completed\n"
+                f"> Example: Project(a1labs) #progr #work !medium @in_progress"
             )
 
             raw_text = None
@@ -770,11 +772,12 @@ class TimeTraceTUI(App):
             end_str = format_local_time(session.get("end_time"), fmt="%H:%M") if session.get("end_time") else "NOW"
             duration_mins = round((session.get("duration_seconds") or 0) / 60, 1)
             task_ref = f"@{session['task_id']}" if session.get("task_id") else ""
+            content_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
 
             pre_text = (
+                f"{content_text}\n\n\n\n\n"
                 f"> EDIT SESSION #{session['id']} SYNTAX HELP: [start - end] #tags @task_id Notes...\n"
-                "> ----------------------------------------------------------------------\n"
-                f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
+                "> Example: [09:00 - 10:30] #backend @5 Refactored connection pool"
             )
 
             raw_text = None
@@ -833,12 +836,12 @@ class TimeTraceTUI(App):
     async def action_start_timer_nvim(self) -> None:
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
+        task_ref = f"@task {task_id}" if task_id else ""
 
         pre_text = (
-            "> SYNTAX HELP: Working notes #tags @task_id !pomo_mins\n"
-            "> Example: Fixing WebSocket mutex lock #backend @14 !25m\n"
-            "> ----------------------------------------------------------------------\n"
-            f"{f'@task {task_id}' if task_id else ''}"
+            f"{task_ref}\n\n\n\n\n"
+            "> START TIMER SYNTAX HELP: Working notes #tags @task_id !pomo_mins\n"
+            "> Example: Fixing WebSocket mutex lock #backend @14 !25m"
         )
 
         raw_text = None
@@ -871,9 +874,9 @@ class TimeTraceTUI(App):
 
     async def action_split_timer_nvim(self) -> None:
         pre_text = (
-            "> SYNTAX HELP: New activity notes #newtags\n"
-            "> Example: Switched to API documentation #docs #api\n"
-            "> ----------------------------------------------------------------------\n"
+            "\n\n\n\n\n"
+            "> SPLIT TIMER SYNTAX HELP: New activity notes #newtags\n"
+            "> Example: Switched to API documentation #docs #api"
         )
         raw_text = None
         with self.suspend():
@@ -903,13 +906,12 @@ class TimeTraceTUI(App):
                     session_data = res.json()
 
                     pre_text = (
-                        "> SYNTAX HELP: [Energy 1-5]/5 habit1, habit2, habit3\n"
+                        "5/5 water, focus\n\n\n\n\n"
+                        "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2, habit3\n"
                         "> Line 2+: Obstacles / Distractions\n"
                         "> Example:\n"
                         "> 5/5 water, stretched, focus\n"
-                        "> Minor CORS issue on WebSocket handshake.\n"
-                        "> ----------------------------------------------------------------------\n"
-                        "5/5 water, focus"
+                        "> Minor CORS issue on WebSocket handshake."
                     )
 
                     raw_text = None
@@ -936,12 +938,12 @@ class TimeTraceTUI(App):
     async def action_retro_log_nvim(self) -> None:
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
+        content_text = f"-120m 45m #programming @{task_id} Activity notes..." if task_id else "-120m 45m #programming Activity notes..."
 
         pre_text = (
-            "> SYNTAX HELP: Activity notes #tags @task_id -start_mins_ago duration_mins\n"
-            "> Example: Reviewed open PRs #review @12 -90m 30m\n"
-            "> ----------------------------------------------------------------------\n"
-            f"{f'-120m 45m #programming @{task_id} Activity notes...' if task_id else '-120m 45m #programming Activity notes...'}"
+            f"{content_text}\n\n\n\n\n"
+            "> RETROACTIVE LOG SYNTAX HELP: Activity notes #tags @task_id -start_mins_ago duration_mins\n"
+            "> Example: Reviewed open PRs #review @12 -90m 30m"
         )
 
         raw_text = None
