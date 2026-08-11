@@ -28,19 +28,38 @@ async function fetchTimerStatus() {
             const timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
             const taskName = data.task_title || (data.tags || 'Task');
             
-            if (label) label.innerText = `⏱️ ${timeStr} | ${taskName}`;
+            let remTitleStr = '';
+            let remPillStr = '';
+            if (data.remaining_seconds !== null && data.remaining_seconds !== undefined) {
+                const rMins = Math.ceil(data.remaining_seconds / 60);
+                remTitleStr = `${rMins}m left - `;
+                remPillStr = ` (${rMins}m left)`;
+            }
+
+            if (label) label.innerText = `⏱️ ${timeStr}${remPillStr} | ${taskName}`;
             if (btn) {
                 btn.innerText = 'Stop';
                 btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
-            document.title = `⏱️ ${timeStr} - [${taskName}] ${data.tags}`;
+            document.title = `⏱️ ${remTitleStr}${timeStr} - [${taskName}]`;
         } else {
-            if (label) label.innerText = data.is_frozen_idle ? '⏸️ Timer Frozen (AFK)' : 'Timer Idle';
+            const nextSess = data.next_session;
+            let idleText = data.is_frozen_idle ? '⏸️ Timer Frozen (AFK)' : 'Timer Idle';
+            let tabTitle = data.is_frozen_idle ? '⚠️ AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
+            
+            if (!data.is_frozen_idle && nextSess) {
+                const startDt = new Date(nextSess.start_time);
+                const timeLabel = `${String(startDt.getHours()).padStart(2,'0')}:${String(startDt.getMinutes()).padStart(2,'0')}`;
+                idleText = `⏹️ Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m (at ${timeLabel})`;
+                tabTitle = `⏹️ Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m`;
+            }
+
+            if (label) label.innerText = idleText;
             if (btn) {
                 btn.innerText = 'Start Timer';
                 btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
-            document.title = data.is_frozen_idle ? '⚠️ AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
+            document.title = tabTitle;
         }
     } catch(e) {}
 }

@@ -9,6 +9,7 @@ class TaskCreate(BaseModel):
     priority: str = "-"
     status: str = "in_progress"
     color: str = "#7c3aed"
+    tags: str = ""
     estimated_minutes: Optional[int] = None
     created_at: Optional[datetime] = None
 
@@ -19,6 +20,7 @@ class TaskUpdate(BaseModel):
     priority: Optional[str] = None
     status: Optional[str] = None
     color: Optional[str] = None
+    tags: Optional[str] = None
     estimated_minutes: Optional[int] = None
     created_at: Optional[datetime] = None
 

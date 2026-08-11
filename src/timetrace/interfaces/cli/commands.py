@@ -189,28 +189,30 @@ def list_tasks_cli(
         if res.status_code == 200:
             tasks = res.json()
             print(f"\n📋 Tasks [{status_filter.upper()}] sorted by [{sort_by.upper()}]:")
-            print("-" * 65)
+            print("-" * 75)
             if not tasks:
                 print("No tasks found.")
             for t in tasks:
                 created_str = format_local_cli_time(t.get("created_at"))
-                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {t['title']}")
-            print("-" * 65 + "\n")
+                t_tags = f"[{t.get('tags', '')}]" if t.get('tags') else ""
+                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {t['title']} {t_tags}")
+            print("-" * 75 + "\n")
 
 
 @cli_app.command("task")
 def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
     priority: str = typer.Option("-", "--priority", "-p", help="Priority (-, low, medium, high)"),
+    tags: str = typer.Option("", "--tags", "-t", help="Default tags for task (e.g. '#backend')"),
     est: Optional[int] = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
 ):
     """Create a new task slot."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.post("/tasks", json={"title": title, "priority": priority.lower(), "estimated_minutes": est})
+        res = client.post("/tasks", json={"title": title, "priority": priority.lower(), "tags": tags, "estimated_minutes": est})
         if res.status_code == 201:
             task = res.json()
-            print(f"✅ Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']})")
+            print(f"✅ Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']}, Tags: {task.get('tags', 'none')})")
         else:
             print("❌ Failed to create task.")
 

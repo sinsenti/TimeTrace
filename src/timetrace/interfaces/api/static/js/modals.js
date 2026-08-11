@@ -141,6 +141,7 @@ function openNewTaskModal() {
     document.getElementById('modal_task_title').innerText = 'Create Task Slot';
     document.getElementById('modal_input_title').value = '';
     document.getElementById('modal_input_desc').value = '';
+    document.getElementById('modal_input_tags').value = '';
     document.getElementById('modal_input_created').value = nowIso;
     document.getElementById('modal_input_priority').value = '-';
     document.getElementById('modal_input_status').value = 'in_progress';
@@ -161,6 +162,7 @@ function openEditTaskModal(id) {
     document.getElementById('modal_task_title').innerText = 'Edit Task Slot';
     document.getElementById('modal_input_title').value = t.title;
     document.getElementById('modal_input_desc').value = t.description || '';
+    document.getElementById('modal_input_tags').value = t.tags || '';
     document.getElementById('modal_input_created').value = t.created_at ? formatIsoLocal(parseApiDateTime(t.created_at)) : '';
     document.getElementById('modal_input_priority').value = t.priority || '-';
     document.getElementById('modal_input_status').value = t.status || 'in_progress';
@@ -185,6 +187,7 @@ async function saveTask() {
     const payload = {
         title: document.getElementById('modal_input_title').value,
         description: document.getElementById('modal_input_desc').value,
+        tags: document.getElementById('modal_input_tags').value,
         priority: document.getElementById('modal_input_priority').value,
         status: document.getElementById('modal_input_status').value,
         color: document.getElementById('modal_input_color').value
@@ -211,7 +214,6 @@ async function saveTask() {
     }
 
     closeTaskModal();
-    // Sync global registry so calendar sessions and drop downs receive the new task title & color immediately
     await fetchAllTasksRegistry();
     fetchTasks();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
@@ -220,7 +222,9 @@ async function saveTask() {
 async function deleteTask() {
     const id = document.getElementById('edit_task_id').value;
     if (!id) return;
-    if (confirm("Are you sure you want to delete this task slot?")) {
+    
+    const confirmed = await showCustomConfirm("Delete Task Slot", "Are you sure you want to delete this task slot? Attached sessions will remain.");
+    if (confirmed) {
         await fetch(`/api/v1/tasks/${id}`, { method: 'DELETE' });
         closeTaskModal();
         await fetchAllTasksRegistry();
@@ -380,7 +384,8 @@ async function deleteSessionFromModal() {
     const sessionId = document.getElementById('edit_session_id').value;
     if (!sessionId) return;
 
-    if (confirm("Are you sure you want to delete this session log?")) {
+    const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log? This action cannot be undone.");
+    if (confirmed) {
         await fetch(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' });
         closeSessionModal();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();

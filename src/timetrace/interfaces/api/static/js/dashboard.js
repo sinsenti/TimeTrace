@@ -155,7 +155,6 @@ function updateViewButtons(activeViewType) {
     if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
 }
 
-// Dynamic Sidebar Toggle Button Styling Handler
 function toggleSidebar(id) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -257,6 +256,7 @@ async function fetchTasks() {
                         <div onclick="openEditTaskModal(${t.id})" data-task-id="${t.id}" data-task-title="${t.title}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
                             <div>
                                 <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
+                                ${t.tags ? `<div class="text-[10px] font-mono opacity-90 truncate mt-0.5">${t.tags}</div>` : ''}
                                 <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
@@ -276,8 +276,10 @@ async function fetchTasks() {
 }
 
 async function clearCompletedTasks() {
-    if (confirm("Are you sure you want to delete all completed tasks?")) {
+    const confirmed = await showCustomConfirm("Clear Completed Tasks", "Are you sure you want to remove all completed task slots?");
+    if (confirmed) {
         await fetch('/api/v1/tasks/completed', { method: 'DELETE' });
+        await fetchAllTasksRegistry();
         fetchTasks();
     }
 }

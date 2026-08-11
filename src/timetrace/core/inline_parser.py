@@ -3,9 +3,27 @@ from datetime import datetime, date, timezone
 from typing import Dict, Any, Optional
 
 
+def _strip_comments_and_templates(text: str) -> str:
+    """Removes syntax help comments starting with '>', '//', '<!--', or '# SYNTAX'."""
+    clean_lines = []
+    for line in text.splitlines():
+        sline = line.strip()
+        if (
+            sline.startswith(">")
+            or sline.startswith("//")
+            or sline.startswith("<!--")
+            or sline.startswith("# SYNTAX")
+            or sline.startswith("# ---")
+        ):
+            continue
+        clean_lines.append(line)
+    return "\n".join(clean_lines).strip()
+
+
 def parse_inline_task(text: str) -> Dict[str, Any]:
-    """Parses 1-2 line task creation markdown."""
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    """Parses 1-2 line task creation markdown with comment template stripping."""
+    text = _strip_comments_and_templates(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -46,12 +64,14 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
         "description": description,
         "priority": priority,
         "status": status,
+        "tags": tags_str,
     }
 
 
 def parse_inline_timer(text: str) -> Dict[str, Any]:
     """Parses 1-line timer start / split markdown."""
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    text = _strip_comments_and_templates(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -77,7 +97,7 @@ def parse_inline_timer(text: str) -> Dict[str, Any]:
         clean_notes = f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
 
     return {
-        "tags": tags_str if tags_str else "#general",
+        "tags": tags_str if tags_str else "",
         "notes": clean_notes,
         "task_id": task_id,
         "pomo_minutes": pomo_mins
@@ -93,8 +113,9 @@ def _local_time_to_utc(date_str: str, time_str: str) -> datetime:
 
 
 def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    """Parses edited session text from Neovim buffer (interprets user input in local time)."""
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    """Parses edited session text from Neovim buffer."""
+    text = _strip_comments_and_templates(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -163,7 +184,8 @@ def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] 
 
 def parse_inline_retro(text: str) -> Dict[str, Any]:
     """Parses 1-2 line retroactive session markdown."""
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    text = _strip_comments_and_templates(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return {}
 
@@ -207,7 +229,8 @@ def parse_inline_retro(text: str) -> Dict[str, Any]:
 
 def parse_inline_reflection(text: str) -> Dict[str, Any]:
     """Parses 1-2 line post-session reflection markdown."""
-    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    text = _strip_comments_and_templates(text)
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
     if not lines:
         return {"energy_level": 3, "habits": [], "obstacles": ""}
 

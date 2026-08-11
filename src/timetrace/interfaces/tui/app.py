@@ -12,6 +12,7 @@ from textual.binding import Binding
 
 from timetrace.config import settings
 from timetrace.core.editor import open_in_nvim
+from timetrace.core.examples import FULL_EXAMPLES_MARKDOWN
 from timetrace.core.inline_parser import (
     parse_inline_task,
     parse_inline_timer,
@@ -95,7 +96,7 @@ class HelpModal(ModalScreen):
 [bold cyan]Ultra-Fast Neovim Actions[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]a[/bold white]             Add Task  -> [dim]Title #tags !high @ip[/dim]
-[bold white]e[/bold white]             Edit Row  -> [dim]Modify start/end time, duration, tags, notes[/dim]
+[bold white]e[/bold white]             Edit Row  -> [dim]Modify title, tags, priority, notes[/dim]
 [bold white]dd[/bold white]            Delete Row ([dim]press 'd' twice[/dim])
 [bold white]D[/bold white]             Clear Completed Tasks
 [bold white]s[/bold white]             Start Timer -> [dim]Working notes #tags @task_id !25m[/dim]
@@ -106,8 +107,9 @@ class HelpModal(ModalScreen):
 
 [bold cyan]Command Line Mode (:)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
+[bold white]:ex, :examples[/bold white] Open Markdown file syntax & log examples viewer
 [bold white]:help, :keys[/bold white]   Open this help overlay screen
-[bold white]:theme[/bold white]        Toggle dark / light theme
+[bold white]:theme[/bold white]         Toggle dark / light theme
 [bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute
 """
         yield Container(
@@ -127,6 +129,34 @@ class HelpModal(ModalScreen):
 
     def action_scroll_up(self) -> None:
         self.query_one("#help_scroll_container", ScrollableContainer).scroll_up()
+
+
+class ExamplesModal(ModalScreen):
+    BINDINGS = [
+        ("escape", "cancel", "Close"),
+        ("q", "cancel", "Close"),
+        ("j", "scroll_down", "Scroll Down"),
+        ("k", "scroll_up", "Scroll Up"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Container(
+            Static("[bold magenta]TimeTrace Markdown Syntax & File Examples[/bold magenta] [dim](Esc or 'q' to exit)[/dim]", id="modal_title"),
+            ScrollableContainer(
+                Static(FULL_EXAMPLES_MARKDOWN, id="examples_content"),
+                id="examples_scroll_container"
+            ),
+            id="help_dialog"
+        )
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def action_scroll_down(self) -> None:
+        self.query_one("#examples_scroll_container", ScrollableContainer).scroll_down()
+
+    def action_scroll_up(self) -> None:
+        self.query_one("#examples_scroll_container", ScrollableContainer).scroll_up()
 
 
 class StatsModal(ModalScreen):
@@ -172,7 +202,7 @@ class TimeTraceTUI(App):
     }
     #filter_status_bar {
         height: 1;
-        background: #181824;
+        background: #181a28;
         color: #d8b4fe;
         padding: 0 1;
         margin-bottom: 1;
@@ -203,11 +233,11 @@ class TimeTraceTUI(App):
         padding: 1 2;
         background: #141424;
         border: thick #a855f7;
-        width: 78;
-        height: 24;
+        width: 82;
+        height: 26;
     }
-    #help_scroll_container {
-        height: 18;
+    #help_scroll_container, #examples_scroll_container {
+        height: 20;
         margin-top: 1;
     }
     #modal_dialog_lg {
@@ -270,7 +300,7 @@ class TimeTraceTUI(App):
             Static(self.status_bar_text, id="filter_status_bar"),
             DataTable(id="main_table"),
             Input(placeholder="Search tasks or notes...", id="search_input"),
-            Input(placeholder="Type command (e.g. :help, :keys, :view, :start, :stop)...", id="command_input"),
+            Input(placeholder="Type command (e.g. :ex, :help, :keys, :start, :stop)...", id="command_input"),
         )
         yield Footer()
 
@@ -285,12 +315,15 @@ class TimeTraceTUI(App):
         table.clear(columns=True)
         table.cursor_type = "row"
         if self.view_mode == "tasks":
-            table.add_columns("ID", "Priority", "Title", "Status", "Created At", "Description")
+            table.add_columns("ID", "Priority", "Title & Tags", "Status", "Created At", "Description")
         else:
             table.add_columns("ID", "Tags", "Start Time", "End Time", "Duration (m)", "Notes")
 
     def action_show_help(self) -> None:
         self.push_screen(HelpModal())
+
+    def action_show_examples(self) -> None:
+        self.push_screen(ExamplesModal())
 
     def action_focus_search_input(self) -> None:
         s_input = self.query_one("#search_input", Input)
@@ -326,7 +359,9 @@ class TimeTraceTUI(App):
 
         cmd = val.lstrip(":")
 
-        if cmd in ("help", "keys", "?"):
+        if cmd in ("ex", "example", "examples"):
+            self.action_show_examples()
+        elif cmd in ("help", "keys", "?"):
             self.action_show_help()
         elif cmd in ("tasks", "sessions", "view", "v", "t"):
             self.action_toggle_view_mode()
@@ -440,10 +475,23 @@ class TimeTraceTUI(App):
                         elapsed_min = data["elapsed_seconds"] // 60
                         elapsed_sec = data["elapsed_seconds"] % 60
                         task_title = data.get("task_title") or data.get("tags") or "#session"
-                        self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
+
+                        rem_str = ""
+                        if data.get("remaining_seconds") is not None:
+                            rem_m = data["remaining_seconds"] // 60
+                            rem_s = data["remaining_seconds"] % 60
+                            rem_str = f"  │  Remaining: [bold yellow]{rem_m:02d}:{rem_s:02d}[/bold yellow]"
+
+                        self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]{rem_str}  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
                     else:
                         self.active_task_id = None
-                        self.timer_text = "[dim]Timer Idle[/dim]"
+                        next_sess = data.get("next_session")
+                        if next_sess:
+                            mins = next_sess["starts_in_minutes"]
+                            start_local = format_local_time(next_sess["start_time"], fmt="%H:%M")
+                            self.timer_text = f"[dim]Timer Idle[/dim]  │  [bold yellow]NEXT TASK:[/bold yellow] [bold white]{next_sess['title']}[/bold white] in [bold cyan]{mins} mins[/bold cyan] (at {start_local})"
+                        else:
+                            self.timer_text = "[dim]Timer Idle[/dim]"
         except Exception:
             self.active_task_id = None
             self.timer_text = "[bold red]Daemon Disconnected[/bold red]"
@@ -469,8 +517,10 @@ class TimeTraceTUI(App):
             pass
 
     def render_tasks(self) -> None:
-        """Renders tasks list cleanly according to active filter and sort mode."""
         table = self.query_one("#main_table", DataTable)
+        saved_id = self.get_selected_item_id()
+        saved_cursor_row = table.cursor_row
+
         table.clear()
 
         filtered = self.loaded_tasks
@@ -478,6 +528,7 @@ class TimeTraceTUI(App):
             filtered = [
                 t for t in filtered
                 if self.search_query in str(t.get("title", "")).lower()
+                or self.search_query in str(t.get("tags", "")).lower()
                 or self.search_query in str(t.get("description", "")).lower()
                 or self.search_query in str(t.get("status", "")).lower()
                 or self.search_query in str(t.get("priority", "")).lower()
@@ -487,16 +538,30 @@ class TimeTraceTUI(App):
             table.add_row("-", "-", "[dim]No tasks match current filter/search.[/dim]", "-", "-", "-")
             return
 
-        for task in filtered:
+        target_row = 0
+        for idx, task in enumerate(filtered):
+            if saved_id is not None and task["id"] == saved_id:
+                target_row = idx
+
             created_str = format_local_time(task.get("created_at"))
+            tags_str = f" [purple]{task['tags']}[/purple]" if task.get("tags") else ""
             table.add_row(
                 str(task["id"]),
                 format_priority_badge(task.get("priority", "-")),
-                f"[bold white]{task['title']}[/bold white]",
+                f"[bold white]{task['title']}[/bold white]{tags_str}",
                 format_status_badge(task.get("status", "in_progress")),
                 f"[dim]{created_str}[/dim]",
                 task.get("description") or ""
             )
+
+        if saved_id is None and saved_cursor_row is not None and saved_cursor_row < table.row_count:
+            target_row = saved_cursor_row
+
+        if table.row_count > 0:
+            try:
+                table.move_cursor(row=target_row)
+            except Exception:
+                pass
 
     async def load_sessions(self) -> None:
         try:
@@ -509,8 +574,10 @@ class TimeTraceTUI(App):
             pass
 
     def render_sessions(self) -> None:
-        """Renders sessions with default timeline grouping and proximity sorting."""
         table = self.query_one("#main_table", DataTable)
+        saved_id = self.get_selected_item_id()
+        saved_cursor_row = table.cursor_row
+
         table.clear()
 
         filtered = self.loaded_sessions
@@ -535,26 +602,31 @@ class TimeTraceTUI(App):
             s_start = parse_utc_dt(s.get("start_time"))
             s_end = parse_utc_dt(s.get("end_time")) if s.get("end_time") else now
 
-            # 1. Current / Active Session
             if s_start <= now <= s_end or (self.active_task_id and s.get("task_id") == self.active_task_id):
                 current_sessions.append(s)
-            # 2. Upcoming Sessions (start in future)
             elif s_start > now:
                 upcoming_sessions.append(s)
-            # 3. Past / Ended Sessions
             else:
                 past_sessions.append(s)
 
-        # Sort Upcoming: Start time ASCENDING (Next session to start is at the top)
         upcoming_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")))
-
-        # Sort Past: Proximity to Current Time DESCENDING (Nearest ended session is at the top)
         past_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")), reverse=True)
 
-        # --- Section 1: Current / Active Session ---
+        current_row_index = 0
+        target_row = 0
+
         if current_sessions:
-            table.add_row("", "", "[bold cyan]--- CURRENT SESSION ---[/bold cyan]", "", "", "")
+            c_first = current_sessions[0]
+            c_end = parse_utc_dt(c_first.get("end_time")) if c_first.get("end_time") else now
+            mins_left = max(0, int((c_end - now).total_seconds() // 60))
+            
+            table.add_row("", "", f"[bold cyan]--- CURRENT SESSION ({mins_left} min left) ---[/bold cyan]", "", "", "")
+            current_row_index += 1
+
             for s in current_sessions:
+                if saved_id is not None and s["id"] == saved_id:
+                    target_row = current_row_index
+
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -566,11 +638,20 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
+                current_row_index += 1
 
-        # --- Section 2: Upcoming Sessions (Next to Start) ---
         if upcoming_sessions:
-            table.add_row("", "", "[bold yellow]--- UPCOMING SESSIONS ---[/bold yellow]", "", "", "")
+            u_first = upcoming_sessions[0]
+            u_start = parse_utc_dt(u_first.get("start_time"))
+            mins_until = max(0, int((u_start - now).total_seconds() // 60))
+
+            table.add_row("", "", f"[bold yellow]--- UPCOMING SESSIONS ({mins_until} min until start) ---[/bold yellow]", "", "", "")
+            current_row_index += 1
+
             for s in upcoming_sessions:
+                if saved_id is not None and s["id"] == saved_id:
+                    target_row = current_row_index
+
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else ""
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -582,11 +663,20 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
+                current_row_index += 1
 
-        # --- Section 3: Past Sessions (Nearest First) ---
         if past_sessions:
-            table.add_row("", "", "[bold dim]--- PAST SESSIONS ---[/bold dim]", "", "", "")
+            p_first = past_sessions[0]
+            p_start = parse_utc_dt(p_first.get("start_time"))
+            mins_ago = max(0, int((now - p_start).total_seconds() // 60))
+
+            table.add_row("", "", f"[bold dim]--- PAST SESSIONS ({mins_ago} min before start) ---[/bold dim]", "", "", "")
+            current_row_index += 1
+
             for s in past_sessions:
+                if saved_id is not None and s["id"] == saved_id:
+                    target_row = current_row_index
+
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
@@ -598,6 +688,16 @@ class TimeTraceTUI(App):
                     f"[bold purple]{duration_mins}[/bold purple]",
                     s.get("notes") or ""
                 )
+                current_row_index += 1
+
+        if saved_id is None and saved_cursor_row is not None and saved_cursor_row < table.row_count:
+            target_row = saved_cursor_row
+
+        if table.row_count > 0:
+            try:
+                table.move_cursor(row=target_row)
+            except Exception:
+                pass
 
     def render_current_view(self) -> None:
         if self.view_mode == "tasks":
@@ -606,9 +706,15 @@ class TimeTraceTUI(App):
             self.render_sessions()
 
     async def action_add_task_nvim(self) -> None:
+        pre_text = (
+            "> SYNTAX HELP: Title #tags !priority @status\n"
+            "> Priority: !high !medium !low  Status: @in_progress @ongoing @completed\n"
+            "> Example: Refactor FastAPI WebSocket pool #backend !high @in_progress\n"
+            "> ----------------------------------------------------------------------\n\n"
+        )
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim()
+            raw_text = open_in_nvim(pre_text)
 
         if raw_text:
             parsed = parse_inline_task(raw_text)
@@ -635,7 +741,12 @@ class TimeTraceTUI(App):
                 return
 
             p_tag = f"!{task.get('priority', '-')}" if task.get('priority') != '-' else ""
-            pre_text = f"{task['title']} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
+            t_tags = task.get("tags", "")
+            pre_text = (
+                f"> EDIT TASK #{task['id']} SYNTAX HELP: Title #tags !priority @status\n"
+                "> ----------------------------------------------------------------------\n"
+                f"{task['title']} {t_tags} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}".strip()
+            )
 
             raw_text = None
             with self.suspend():
@@ -660,7 +771,11 @@ class TimeTraceTUI(App):
             duration_mins = round((session.get("duration_seconds") or 0) / 60, 1)
             task_ref = f"@{session['task_id']}" if session.get("task_id") else ""
 
-            pre_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
+            pre_text = (
+                f"> EDIT SESSION #{session['id']} SYNTAX HELP: [start - end] #tags @task_id Notes...\n"
+                "> ----------------------------------------------------------------------\n"
+                f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}".strip()
+            )
 
             raw_text = None
             with self.suspend():
@@ -719,7 +834,12 @@ class TimeTraceTUI(App):
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
 
-        pre_text = f"@task {task_id}" if task_id else ""
+        pre_text = (
+            "> SYNTAX HELP: Working notes #tags @task_id !pomo_mins\n"
+            "> Example: Fixing WebSocket mutex lock #backend @14 !25m\n"
+            "> ----------------------------------------------------------------------\n"
+            f"{f'@task {task_id}' if task_id else ''}"
+        )
 
         raw_text = None
         with self.suspend():
@@ -738,7 +858,7 @@ class TimeTraceTUI(App):
                         f"{BASE_URL}/timer/start",
                         json={
                             "task_id": parsed.get("task_id"),
-                            "tags": parsed.get("tags", "#general"),
+                            "tags": parsed.get("tags", ""),
                             "notes": parsed.get("notes", ""),
                             "mode": mode,
                             "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
@@ -750,9 +870,14 @@ class TimeTraceTUI(App):
                 pass
 
     async def action_split_timer_nvim(self) -> None:
+        pre_text = (
+            "> SYNTAX HELP: New activity notes #newtags\n"
+            "> Example: Switched to API documentation #docs #api\n"
+            "> ----------------------------------------------------------------------\n"
+        )
         raw_text = None
         with self.suspend():
-            raw_text = open_in_nvim()
+            raw_text = open_in_nvim(pre_text)
 
         if raw_text:
             parsed = parse_inline_timer(raw_text)
@@ -777,9 +902,19 @@ class TimeTraceTUI(App):
                 if res.status_code == 200:
                     session_data = res.json()
 
+                    pre_text = (
+                        "> SYNTAX HELP: [Energy 1-5]/5 habit1, habit2, habit3\n"
+                        "> Line 2+: Obstacles / Distractions\n"
+                        "> Example:\n"
+                        "> 5/5 water, stretched, focus\n"
+                        "> Minor CORS issue on WebSocket handshake.\n"
+                        "> ----------------------------------------------------------------------\n"
+                        "5/5 water, focus"
+                    )
+
                     raw_text = None
                     with self.suspend():
-                        raw_text = open_in_nvim("5/5 water, focus")
+                        raw_text = open_in_nvim(pre_text)
 
                     if raw_text:
                         parsed = parse_inline_reflection(raw_text)
@@ -801,7 +936,13 @@ class TimeTraceTUI(App):
     async def action_retro_log_nvim(self) -> None:
         item_id = self.get_selected_item_id()
         task_id = item_id if self.view_mode == "tasks" else None
-        pre_text = f"-120m 45m #programming @{task_id} Activity notes..." if task_id else "-120m 45m #programming Activity notes..."
+
+        pre_text = (
+            "> SYNTAX HELP: Activity notes #tags @task_id -start_mins_ago duration_mins\n"
+            "> Example: Reviewed open PRs #review @12 -90m 30m\n"
+            "> ----------------------------------------------------------------------\n"
+            f"{f'-120m 45m #programming @{task_id} Activity notes...' if task_id else '-120m 45m #programming Activity notes...'}"
+        )
 
         raw_text = None
         with self.suspend():

@@ -15,6 +15,7 @@ class Task(SQLModel, table=True):
     estimated_minutes: Optional[int] = None
     status: str = Field(default="in_progress")  # in_progress, ongoing, completed
     color: str = Field(default="#7c3aed")  # Hex color for Chronoboard cards
+    tags: str = Field(default="")  # Task default tags
     created_at: datetime = Field(default_factory=utc_now)
 
     sessions: List["Session"] = Relationship(back_populates="task")
@@ -43,4 +44,3 @@ class Reflection(SQLModel, table=True):
     habits_completed: str = Field(default="")
 
     session: Optional[Session] = Relationship(back_populates="reflection")
-

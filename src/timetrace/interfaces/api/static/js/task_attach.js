@@ -59,6 +59,11 @@ function attachTaskById(taskId, preventFocus = false) {
     document.getElementById('session_modal_task_id').value = t.id;
     renderTaskChip();
 
+    // Auto-populate task's default tags if defined
+    if (t.tags) {
+        setTagChips(t.tags);
+    }
+
     const input = document.getElementById('session_modal_task_search');
     if (input) input.value = '';
 

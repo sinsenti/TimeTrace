@@ -81,3 +81,35 @@ function setDurationFromStart(minutes) {
     const endDt = new Date(startDt.getTime() + minutes * 60000);
     endInput.value = formatIsoLocal(endDt);
 }
+
+// Custom Async Confirmation Modal Helper (Replaces window.confirm)
+function showCustomConfirm(title, message) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('custom_confirm_modal');
+        const titleEl = document.getElementById('confirm_modal_title');
+        const msgEl = document.getElementById('confirm_modal_message');
+        const cancelBtn = document.getElementById('confirm_modal_cancel_btn');
+        const proceedBtn = document.getElementById('confirm_modal_proceed_btn');
+
+        if (!modal) {
+            resolve(window.confirm(message));
+            return;
+        }
+
+        titleEl.innerText = title || "Confirm Action";
+        msgEl.innerText = message || "Are you sure you want to proceed?";
+        modal.classList.remove('hidden');
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            cancelBtn.removeEventListener('click', onCancel);
+            proceedBtn.removeEventListener('click', onProceed);
+        };
+
+        const onCancel = () => { cleanup(); resolve(false); };
+        const onProceed = () => { cleanup(); resolve(true); };
+
+        cancelBtn.addEventListener('click', onCancel);
+        proceedBtn.addEventListener('click', onProceed);
+    });
+}
