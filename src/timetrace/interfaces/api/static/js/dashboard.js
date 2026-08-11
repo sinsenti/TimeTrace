@@ -15,6 +15,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: 'timeGridWeek',
+            firstDay: 1, // Start week on Monday (1 = Monday, 0 = Sunday)
+            height: '100%',
             headerToolbar: false,
             slotMinTime: "00:00:00",
             slotMaxTime: "24:00:00",
