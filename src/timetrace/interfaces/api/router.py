@@ -19,7 +19,9 @@ from timetrace.interfaces.api.schemas import (
     TimerStartRequest,
     TimerSplitRequest,
     ReflectionCreate,
-    RetroSessionCreate
+    RetroSessionCreate,
+    IdleToggleRequest,
+    IdleResolveRequest
 )
 
 router = APIRouter()
@@ -44,6 +46,76 @@ def get_static_file(file_path: str):
     if os.path.exists(full_path) and os.path.isfile(full_path):
         return FileResponse(full_path)
     raise HTTPException(status_code=404, detail="Static asset not found")
+
+
+# Idle Detection & Killer Switch API Endpoints
+@router.post("/idle/toggle")
+def toggle_idle_detection(req: IdleToggleRequest):
+    new_state = timer_manager.toggle_idle_detection(req.enabled)
+    return {"idle_detection_enabled": new_state}
+
+
+@router.post("/idle/resolve")
+def resolve_idle_gap(req: IdleResolveRequest, db: DBSession = Depends(get_session)):
+    gap = timer_manager.pending_idle_gap
+    if not gap:
+        raise HTTPException(status_code=400, detail="No pending idle gap to resolve.")
+
+    saved_session_data = gap.get("saved_session")
+    if saved_session_data and saved_session_data.get("duration_seconds", 0) > 0:
+        db_work = SessionModel(
+            task_id=saved_session_data.get("task_id"),
+            start_time=datetime.fromisoformat(saved_session_data["start_time"]),
+            end_time=datetime.fromisoformat(saved_session_data["end_time"]),
+            duration_seconds=saved_session_data["duration_seconds"],
+            tags=saved_session_data.get("tags") or "#general",
+            notes=saved_session_data.get("notes") or ""
+        )
+        db.add(db_work)
+        db.commit()
+
+    idle_start = datetime.fromisoformat(gap["idle_start"])
+    idle_end = datetime.fromisoformat(gap["idle_end"])
+    idle_duration = int((idle_end - idle_start).total_seconds())
+
+    if req.option == "break":
+        db_break = SessionModel(
+            task_id=gap.get("task_id"),
+            start_time=idle_start,
+            end_time=idle_end,
+            duration_seconds=idle_duration,
+            tags="#break",
+            notes="AFK Break Time"
+        )
+        db.add(db_break)
+        db.commit()
+
+    elif req.option == "claim_work":
+        db_claimed = SessionModel(
+            task_id=gap.get("task_id"),
+            start_time=idle_start,
+            end_time=idle_end,
+            duration_seconds=idle_duration,
+            tags=gap.get("tags") or "#general",
+            notes=f"Claimed AFK Work: {gap.get('notes', '')}".strip()
+        )
+        db.add(db_claimed)
+        db.commit()
+
+    elif req.option == "re_tag":
+        db_retag = SessionModel(
+            task_id=gap.get("task_id"),
+            start_time=idle_start,
+            end_time=idle_end,
+            duration_seconds=idle_duration,
+            tags=req.new_tags or "#general",
+            notes=req.new_notes or "Re-tagged AFK time"
+        )
+        db.add(db_retag)
+        db.commit()
+
+    timer_manager.resolve_idle_gap()
+    return {"status": "success", "option_applied": req.option}
 
 
 # Analytics API Endpoints

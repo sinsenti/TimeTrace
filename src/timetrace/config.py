@@ -8,6 +8,10 @@ class Settings(BaseSettings):
     host: str = "127.0.0.1"
     port: int = 8002
 
+    # Inactivity / Idle Detection Settings (Killer Switch)
+    idle_detection_enabled: bool = True
+    idle_threshold_seconds: int = 600  # 10 minutes
+
     model_config = SettingsConfigDict(env_prefix="TIMETRACE_")
 
 

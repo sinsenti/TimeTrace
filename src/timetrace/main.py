@@ -1,12 +1,28 @@
 import sys
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 
 from timetrace.config import settings
 from timetrace.db.session import init_db
+from timetrace.core.timer import timer_manager
+from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.interfaces.api.router import router
 from timetrace.interfaces.cli.commands import cli_app
+
+
+async def idle_checker_loop():
+    """Background task polling system idle time when timer is running."""
+    while True:
+        await asyncio.sleep(10)
+        try:
+            if settings.idle_detection_enabled and timer_manager.idle_detection_enabled and timer_manager.is_running:
+                idle_secs = get_idle_seconds()
+                if idle_secs >= timer_manager.idle_threshold_seconds:
+                    timer_manager.freeze_for_idle(idle_secs)
+        except Exception as exc:
+            print(f"Warning: Idle loop error: {exc}")
 
 
 def create_daemon_app() -> FastAPI:
@@ -15,7 +31,9 @@ def create_daemon_app() -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         init_db()
+        idle_task = asyncio.create_task(idle_checker_loop())
         yield
+        idle_task.cancel()
 
     app = FastAPI(title=settings.app_name, version="0.1.0", lifespan=lifespan)
     app.add_middleware(

@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 from timetrace.config import settings
 
@@ -16,10 +16,16 @@ class ActiveTimerState:
         self.mode: str = "flowtime"
         self.target_minutes: Optional[int] = None
 
+        # Killer switch and idle state
+        self.idle_detection_enabled: bool = settings.idle_detection_enabled
+        self.idle_threshold_seconds: int = settings.idle_threshold_seconds
+        self.is_frozen_idle: bool = False
+        self.pending_idle_gap: Optional[Dict[str, Any]] = None
+
         self._load_state()
 
     def _save_state(self) -> None:
-        """Persists current running timer state to disk."""
+        """Persists current running timer state and idle status to disk."""
         data = {
             "is_running": self.is_running,
             "task_id": self.task_id,
@@ -29,6 +35,10 @@ class ActiveTimerState:
             "notes": self.notes,
             "mode": self.mode,
             "target_minutes": self.target_minutes,
+            "idle_detection_enabled": self.idle_detection_enabled,
+            "idle_threshold_seconds": self.idle_threshold_seconds,
+            "is_frozen_idle": self.is_frozen_idle,
+            "pending_idle_gap": self.pending_idle_gap,
         }
         try:
             self.state_file.parent.mkdir(parents=True, exist_ok=True)
@@ -42,6 +52,11 @@ class ActiveTimerState:
             return
         try:
             raw = json.loads(self.state_file.read_text(encoding="utf-8"))
+            self.idle_detection_enabled = raw.get("idle_detection_enabled", settings.idle_detection_enabled)
+            self.idle_threshold_seconds = raw.get("idle_threshold_seconds", settings.idle_threshold_seconds)
+            self.is_frozen_idle = raw.get("is_frozen_idle", False)
+            self.pending_idle_gap = raw.get("pending_idle_gap")
+
             if raw.get("is_running") and raw.get("start_time"):
                 self.is_running = True
                 self.task_id = raw.get("task_id")
@@ -53,6 +68,71 @@ class ActiveTimerState:
                 self.target_minutes = raw.get("target_minutes")
         except Exception:
             pass
+
+    def toggle_idle_detection(self, enabled: Optional[bool] = None) -> bool:
+        """Killer Switch: Toggles the idle detection feature on/off."""
+        if enabled is None:
+            self.idle_detection_enabled = not self.idle_detection_enabled
+        else:
+            self.idle_detection_enabled = enabled
+        self._save_state()
+        return self.idle_detection_enabled
+
+    def freeze_for_idle(self, idle_seconds: float) -> Dict[str, Any]:
+        """Retroactively freezes the active timer at the exact start of idleness."""
+        if not self.is_running or not self.start_time:
+            return {}
+
+        now = datetime.now(timezone.utc)
+        idle_start_time = now - timedelta(seconds=idle_seconds)
+
+        # Cap idle start time to start_time if idle was detected right as session started
+        if idle_start_time < self.start_time:
+            idle_start_time = self.start_time
+
+        duration_before_idle = int((idle_start_time - self.start_time).total_seconds())
+
+        # Create session summary for work completed prior to idleness
+        saved_session = {
+            "task_id": self.task_id,
+            "task_title": self.task_title,
+            "start_time": self.start_time.isoformat(),
+            "end_time": idle_start_time.isoformat(),
+            "duration_seconds": duration_before_idle,
+            "tags": self.tags,
+            "notes": self.notes,
+        }
+
+        self.pending_idle_gap = {
+            "idle_start": idle_start_time.isoformat(),
+            "idle_end": now.isoformat(),
+            "idle_seconds": int(idle_seconds),
+            "saved_session": saved_session,
+            "task_id": self.task_id,
+            "task_title": self.task_title,
+            "tags": self.tags,
+            "notes": self.notes,
+        }
+
+        self.is_running = False
+        self.is_frozen_idle = True
+        self._save_state()
+        return self.pending_idle_gap
+
+    def resolve_idle_gap(self) -> Optional[Dict[str, Any]]:
+        """Clears frozen idle status after user resolves AFK prompt."""
+        gap = self.pending_idle_gap
+        self.is_frozen_idle = False
+        self.pending_idle_gap = None
+        self.task_id = None
+        self.task_title = None
+        self.start_time = None
+        self.tags = ""
+        self.notes = ""
+        self.mode = "flowtime"
+        self.target_minutes = None
+        self._save_state()
+        return gap
 
     def start(
         self,
@@ -68,6 +148,8 @@ class ActiveTimerState:
                 "Timer is already running. Stop or split current timer first."
             )
         self.is_running = True
+        self.is_frozen_idle = False
+        self.pending_idle_gap = None
         self.task_id = task_id
         self.task_title = task_title
         self.start_time = datetime.now(timezone.utc)
@@ -118,6 +200,8 @@ class ActiveTimerState:
         }
 
         self.is_running = False
+        self.is_frozen_idle = False
+        self.pending_idle_gap = None
         self.task_id = None
         self.task_title = None
         self.start_time = None
@@ -130,17 +214,23 @@ class ActiveTimerState:
         return session_summary
 
     def get_status(self) -> Dict[str, Any]:
+        status_data = {
+            "is_running": self.is_running,
+            "idle_detection_enabled": self.idle_detection_enabled,
+            "idle_threshold_seconds": self.idle_threshold_seconds,
+            "is_frozen_idle": self.is_frozen_idle,
+            "pending_idle_gap": self.pending_idle_gap,
+            "elapsed_seconds": 0,
+            "remaining_seconds": None,
+            "task_id": self.task_id,
+            "task_title": self.task_title,
+            "tags": self.tags,
+            "notes": self.notes,
+            "mode": self.mode,
+        }
+
         if not self.is_running or not self.start_time:
-            return {
-                "is_running": False,
-                "elapsed_seconds": 0,
-                "remaining_seconds": None,
-                "task_id": None,
-                "task_title": None,
-                "tags": "",
-                "notes": "",
-                "mode": "flowtime",
-            }
+            return status_data
 
         elapsed = int((datetime.now(timezone.utc) - self.start_time).total_seconds())
         remaining = None
@@ -148,18 +238,13 @@ class ActiveTimerState:
             target_secs = self.target_minutes * 60
             remaining = max(0, target_secs - elapsed)
 
-        return {
-            "is_running": True,
+        status_data.update({
             "elapsed_seconds": elapsed,
             "remaining_seconds": remaining,
-            "task_id": self.task_id,
-            "task_title": self.task_title,
             "start_time": self.start_time.isoformat(),
-            "tags": self.tags,
-            "notes": self.notes,
-            "mode": self.mode,
             "target_minutes": self.target_minutes,
-        }
+        })
+        return status_data
 
 
 timer_manager = ActiveTimerState()

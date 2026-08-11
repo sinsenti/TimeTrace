@@ -37,6 +37,18 @@ def run_daemon():
     uvicorn.run("timetrace.main:daemon_app", host=settings.host, port=settings.port, reload=False)
 
 
+@cli_app.command("idle-toggle")
+def toggle_idle_cli():
+    """Killer Switch: Toggle the automatic idle detector on or off."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.post("/idle/toggle", json={})
+        if res.status_code == 200:
+            state = res.json()["idle_detection_enabled"]
+            status_str = "ENABLED ⚡" if state else "DISABLED ⏸️"
+            print(f"Inactivity Idle Detector is now {status_str}")
+
+
 @cli_app.command("start")
 def start_timer(
     tags: str = typer.Option("", "--tags", "-t", help="Tags for session (e.g. '#programming')"),
@@ -127,10 +139,11 @@ def timer_status(
             if res.status_code == 200:
                 data = res.json()
                 if not data["is_running"]:
-                    if tmux:
-                        print("⏹️ Idle")
+                    if data.get("is_frozen_idle"):
+                        msg = "⏸️ AFK Frozen" if tmux else "⚠️ Timer frozen due to AFK inactivity."
                     else:
-                        print("⏸️ No timer currently running.")
+                        msg = "⏹️ Idle" if tmux else "⏸️ No timer currently running."
+                    print(msg)
                     return
 
                 elapsed_min = data["elapsed_seconds"] // 60

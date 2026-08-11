@@ -46,6 +46,11 @@
         </div>
 
         <div class="flex items-center space-x-2 text-xs">
+            <!-- Idle Detection Killer Switch Toggle -->
+            <button id="idle_killer_switch_btn" onclick="toggleIdleSwitch()" class="bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-2.5 py-1 rounded font-bold transition flex items-center space-x-1">
+                <span id="idle_switch_label">⚡ Idle Detector: ON</span>
+            </button>
+
             <!-- Slot Duration Config -->
             <div class="flex items-center bg-[#181a28] border border-[#262938] px-2 py-1 rounded text-slate-300 space-x-1">
                 <span class="text-slate-400 font-semibold">Slot:</span>
@@ -222,8 +227,58 @@
         </div>
     </div>
 
+    <!-- AFK / Inactivity Resolution Modal -->
+    <div id="idle_resolution_modal" class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center hidden z-50">
+        <div class="bg-[#161824] border-2 border-amber-500/80 w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex items-center space-x-3 border-b border-[#262938] pb-3">
+                <span class="text-3xl">⚠️</span>
+                <div>
+                    <h3 class="font-extrabold text-base text-amber-400">Inactivity Detected (AFK)</h3>
+                    <p id="idle_time_summary_label" class="text-xs text-slate-400">You were away for 0 mins.</p>
+                </div>
+            </div>
+
+            <p class="text-xs text-slate-300 leading-relaxed">
+                Your work prior to stepping away was automatically saved. How would you like to log the AFK gap?
+            </p>
+
+            <div class="space-y-2">
+                <button onclick="resolveIdleGap('discard')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                    <div>
+                        <span class="font-bold text-slate-200 block">1. Discard Idle Time</span>
+                        <span class="text-[10px] text-slate-400">Keep work session up to AFK start; drop the idle gap.</span>
+                    </div>
+                    <span class="text-slate-400 text-base">🗑️</span>
+                </button>
+
+                <button onclick="resolveIdleGap('break')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                    <div>
+                        <span class="font-bold text-emerald-400 block">2. Log as #break</span>
+                        <span class="text-[10px] text-slate-400">Save the AFK gap as an explicit break slot.</span>
+                    </div>
+                    <span class="text-slate-400 text-base">☕</span>
+                </button>
+
+                <button onclick="resolveIdleGap('claim_work')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                    <div>
+                        <span class="font-bold text-purple-400 block">3. Claim as Work</span>
+                        <span class="text-[10px] text-slate-400">Include the AFK gap in your work session (offline work).</span>
+                    </div>
+                    <span class="text-slate-400 text-base">💼</span>
+                </button>
+
+                <div class="bg-[#1e2030] border border-[#262938] p-2.5 rounded-lg space-y-2">
+                    <span class="font-bold text-blue-400 block text-xs">4. Re-tag Activity</span>
+                    <div class="flex space-x-2">
+                        <input id="idle_retag_input" type="text" value="#meeting" placeholder="#tag" class="bg-[#0f1016] border border-[#262938] px-2 py-1 rounded text-xs text-white flex-1 focus:outline-none focus:border-purple-500">
+                        <button onclick="resolveIdleGap('re_tag')" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1 rounded text-xs">Log Tag</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Dashboard Engine -->
     <script src="/api/v1/static/js/dashboard.js"></script>
 </body>
 </html>
-

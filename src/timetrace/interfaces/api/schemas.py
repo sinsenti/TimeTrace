@@ -66,3 +66,12 @@ class RetroSessionCreate(BaseModel):
     tags: str = ""
     notes: str = ""
 
+
+class IdleToggleRequest(BaseModel):
+    enabled: Optional[bool] = None
+
+
+class IdleResolveRequest(BaseModel):
+    option: str  # "discard", "break", "claim_work", "re_tag"
+    new_tags: Optional[str] = "#general"
+    new_notes: Optional[str] = ""
