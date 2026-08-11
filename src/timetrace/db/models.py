@@ -14,7 +14,7 @@ class Task(SQLModel, table=True):
     priority: str = Field(default="-")  # "-", "low", "medium", "high"
     estimated_minutes: Optional[int] = None
     status: str = Field(default="in_progress")  # in_progress, ongoing, completed
-    color: str = Field(default="#7c3aed")
+    color: str = Field(default="auto")  # "auto" or custom hex (e.g. "#ff0055")
     tags: str = Field(default="")
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -50,10 +50,10 @@ class Habit(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
     habit_type: str = Field(default="boolean")  # "boolean" or "numeric"
-    target_value: float = Field(default=1.0)    # e.g., 1.0 for boolean, 30.0 for pull-ups, 50.0 for pages
-    unit: str = Field(default="")               # e.g., "pull-ups", "pages", "miles", ""
-    frequency: str = Field(default="Every day") # "Every day", "Mon Wed Fri", "Weekdays", "Weekends"
-    reminder_time: Optional[str] = Field(default=None) # e.g. "09:00 AM"
+    target_value: float = Field(default=1.0)
+    unit: str = Field(default="")
+    frequency: str = Field(default="Every day")
+    reminder_time: Optional[str] = Field(default=None)
     color: str = Field(default="#10b981")
     created_at: datetime = Field(default_factory=utc_now)
 
@@ -63,9 +63,9 @@ class Habit(SQLModel, table=True):
 class HabitLog(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     habit_id: int = Field(foreign_key="habit.id")
-    date_str: str = Field(index=True)           # YYYY-MM-DD
-    status: str = Field(default="completed")    # "completed", "failed", "skipped", "pending"
-    value: float = Field(default=0.0)           # Cumulative count (e.g. 25 pull-ups)
+    date_str: str = Field(index=True)
+    status: str = Field(default="completed")
+    value: float = Field(default=0.0)
     notes: Optional[str] = None
 
     habit: Optional[Habit] = Relationship(back_populates="logs")

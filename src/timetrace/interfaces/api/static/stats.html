@@ -42,9 +42,8 @@
                 <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded hover:bg-[#222536] text-emerald-400 font-semibold flex items-center text-[11px]">Habits</a>
                 <a href="/api/v1/stats" class="h-6 px-2.5 rounded bg-purple-600 text-white font-bold flex items-center text-[11px]">Stats</a>
             </nav>
-            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px] space-x-1">
-                <span>⚙️</span>
-                <span>Settings</span>
+            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
+                Settings
             </button>
         </div>
 
@@ -54,10 +53,10 @@
 
         <div class="flex items-center space-x-2 text-xs">
             <button onclick="toggleWidgetModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-800/40 px-3 rounded-lg font-bold transition">
-                ⚙️ Widgets
+                Widgets
             </button>
             <button onclick="loadAnalyticsData()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
-                🔄 Refresh
+                Refresh
             </button>
         </div>
     </header>
@@ -65,7 +64,7 @@
     <main class="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-purple-900/40 border border-purple-700/50 rounded-xl text-purple-400 text-2xl">⏱️</div>
+                <div class="p-3 bg-purple-900/40 border border-purple-700/50 rounded-xl text-purple-400 text-sm font-bold">LOGGED</div>
                 <div>
                     <span class="text-xs text-slate-400 font-semibold block">Total Time Logged</span>
                     <span id="kpi_total_hours" class="text-2xl font-black text-purple-400">0.0h</span>
@@ -73,7 +72,7 @@
             </div>
 
             <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-emerald-900/40 border border-emerald-700/50 rounded-xl text-emerald-400 text-2xl">⚡</div>
+                <div class="p-3 bg-emerald-900/40 border border-emerald-700/50 rounded-xl text-emerald-400 text-sm font-bold">SESSIONS</div>
                 <div>
                     <span class="text-xs text-slate-400 font-semibold block">Logged Sessions</span>
                     <span id="kpi_total_sessions" class="text-2xl font-black text-emerald-400">0</span>
@@ -81,7 +80,7 @@
             </div>
 
             <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-amber-900/40 border border-amber-700/50 rounded-xl text-amber-400 text-2xl">🔋</div>
+                <div class="p-3 bg-amber-900/40 border border-amber-700/50 rounded-xl text-amber-400 text-sm font-bold">ENERGY</div>
                 <div>
                     <span class="text-xs text-slate-400 font-semibold block">Avg Energy Level</span>
                     <span id="kpi_avg_energy" class="text-2xl font-black text-amber-400">N/A</span>
@@ -89,7 +88,7 @@
             </div>
 
             <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-blue-900/40 border border-blue-700/50 rounded-xl text-blue-400 text-2xl">📋</div>
+                <div class="p-3 bg-blue-900/40 border border-blue-700/50 rounded-xl text-blue-400 text-sm font-bold">TASKS</div>
                 <div>
                     <span class="text-xs text-slate-400 font-semibold block">Active Tasks</span>
                     <span id="kpi_total_tasks" class="text-2xl font-black text-blue-400">0</span>
@@ -154,9 +153,9 @@
     <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-                <div class="flex items-center space-x-2">
-                    <span class="text-lg">⚙️</span>
+                <div>
                     <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+                    <span class="text-[10px] text-slate-400">Press Ctrl+Enter to save, Esc to close</span>
                 </div>
                 <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
@@ -256,8 +255,8 @@
             </div>
 
             <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel</button>
-                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings</button>
+                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
+                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings (Ctrl+Enter)</button>
             </div>
         </div>
     </div>

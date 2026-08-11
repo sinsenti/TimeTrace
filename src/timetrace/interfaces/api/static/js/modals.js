@@ -127,15 +127,46 @@ function setupModalKeyboardListeners() {
             taskDropdown.classList.add('hidden');
         }
     });
+
+    const colorPickerInput = document.getElementById('modal_input_color');
+    if (colorPickerInput) {
+        colorPickerInput.addEventListener('input', (e) => {
+            const hexLabel = document.getElementById('custom_color_hex');
+            if (hexLabel) hexLabel.innerText = e.target.value.toUpperCase();
+        });
+    }
+}
+
+function renderColorSwatches(activeHex = '') {
+    const list = document.getElementById('swatch_list');
+    if (!list) return;
+
+    list.innerHTML = defaultPalette.map(hex => `
+        <button type="button" onclick="selectSwatch('${hex}')" class="w-5 h-5 rounded-full border-2 transition transform hover:scale-125 ${activeHex.toLowerCase() === hex.toLowerCase() ? 'border-white scale-110' : 'border-transparent'}" style="background-color: ${hex};"></button>
+    `).join('');
+}
+
+function selectSwatch(hex) {
+    const picker = document.getElementById('modal_input_color');
+    const hexLabel = document.getElementById('custom_color_hex');
+    if (picker) picker.value = hex;
+    if (hexLabel) hexLabel.innerText = hex.toUpperCase();
+    renderColorSwatches(hex);
 }
 
 function toggleCustomColorPicker(val) {
-    const picker = document.getElementById('modal_input_color');
-    if (!picker) return;
+    const container = document.getElementById('custom_color_container');
+    const swatches = document.getElementById('color_swatches_container');
+    if (!container || !swatches) return;
+
     if (val === 'custom') {
-        picker.classList.remove('hidden');
+        container.classList.remove('hidden');
+        swatches.classList.remove('hidden');
+        const picker = document.getElementById('modal_input_color');
+        renderColorSwatches(picker ? picker.value : defaultPalette[0]);
     } else {
-        picker.classList.add('hidden');
+        container.classList.add('hidden');
+        swatches.classList.add('hidden');
     }
 }
 
@@ -178,11 +209,14 @@ function openEditTaskModal(id) {
     const isCustom = t.color && t.color !== 'auto';
     const colorModeSelect = document.getElementById('modal_input_color_mode');
     if (colorModeSelect) colorModeSelect.value = isCustom ? 'custom' : 'auto';
-    toggleCustomColorPicker(isCustom ? 'custom' : 'auto');
-
+    
     if (isCustom) {
         document.getElementById('modal_input_color').value = t.color;
+        const hexLabel = document.getElementById('custom_color_hex');
+        if (hexLabel) hexLabel.innerText = t.color.toUpperCase();
     }
+
+    toggleCustomColorPicker(isCustom ? 'custom' : 'auto');
 
     document.getElementById('modal_delete_btn').classList.remove('hidden');
     document.getElementById('task_modal').classList.remove('hidden');

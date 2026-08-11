@@ -39,6 +39,21 @@ function saveUserSettings(settings) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
+function setupSettingsKeyboardShortcuts() {
+    const modal = document.getElementById('settings_modal');
+    if (!modal) return;
+    
+    modal.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            saveSettingsFromModal();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            closeSettingsModal();
+        }
+    });
+}
+
 function openSettingsModal() {
     const s = getUserSettings();
     
@@ -70,7 +85,11 @@ function openSettingsModal() {
     if (tagInput) tagInput.value = s.defaultTag || '#general';
 
     const modal = document.getElementById('settings_modal');
-    if (modal) modal.classList.remove('hidden');
+    if (modal) {
+        modal.classList.remove('hidden');
+        const firstFocus = document.getElementById('setting_theme');
+        if (firstFocus) firstFocus.focus();
+    }
 }
 
 function closeSettingsModal() {
@@ -100,7 +119,7 @@ async function saveSettingsFromModal() {
 async function applyUserSettings(s = null, isInitialBoot = false) {
     if (!s) s = getUserSettings();
 
-    // 1. Apply Theme & Dynamic Palette
+    // 1. Apply Theme & Dynamic Palette to UI CSS variables
     const themeName = s.theme || 'midnight';
     document.documentElement.setAttribute('data-theme', themeName);
     
@@ -108,7 +127,7 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         defaultPalette = THEME_PALETTES[themeName] || THEME_PALETTES.midnight;
     }
 
-    // 2. Sync Idle Detector toggle with Backend API if state changed
+    // 2. Sync Idle Detector toggle with Backend API
     if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
         try {
             await fetch('/api/v1/idle/toggle', {
@@ -135,11 +154,11 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         calendar.refetchEvents();
     }
 
-    // 5. Set Sidebars Visibilities
+    // 5. Set Sidebar Visibilities
     setSidebarVisibility('left_sidebar', !s.hideLeftSidebar);
     setSidebarVisibility('right_sidebar', !s.hideRightSidebar);
 
-    // 6. Refresh task card lists & colors
+    // 6. Re-evaluate and re-render task cards
     if (typeof fetchTasks === 'function') {
         fetchTasks();
     }
@@ -168,5 +187,6 @@ function setSidebarVisibility(id, visible) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    setupSettingsKeyboardShortcuts();
     applyUserSettings(getUserSettings(), true);
 });

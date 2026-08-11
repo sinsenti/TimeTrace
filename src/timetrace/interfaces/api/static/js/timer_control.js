@@ -36,22 +36,22 @@ async function fetchTimerStatus() {
                 remPillStr = ` (${rMins}m left)`;
             }
 
-            if (label) label.innerText = `⏱️ ${timeStr}${remPillStr} | ${taskName}`;
+            if (label) label.innerText = `${timeStr}${remPillStr} | ${taskName}`;
             if (btn) {
                 btn.innerText = 'Stop';
                 btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
-            document.title = `⏱️ ${remTitleStr}${timeStr} - [${taskName}]`;
+            document.title = `${remTitleStr}${timeStr} - [${taskName}]`;
         } else {
             const nextSess = data.next_session;
-            let idleText = data.is_frozen_idle ? '⏸️ Timer Frozen (AFK)' : 'Timer Idle';
-            let tabTitle = data.is_frozen_idle ? '⚠️ AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
+            let idleText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
+            let tabTitle = data.is_frozen_idle ? 'AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
             
             if (!data.is_frozen_idle && nextSess) {
                 const startDt = new Date(nextSess.start_time);
                 const timeLabel = `${String(startDt.getHours()).padStart(2,'0')}:${String(startDt.getMinutes()).padStart(2,'0')}`;
-                idleText = `⏹️ Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m (at ${timeLabel})`;
-                tabTitle = `⏹️ Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m`;
+                idleText = `Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m (at ${timeLabel})`;
+                tabTitle = `Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m`;
             }
 
             if (label) label.innerText = idleText;
@@ -70,10 +70,11 @@ async function toggleTimer() {
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     } else {
         const taskId = document.getElementById('timer_task_select').value;
+        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
         await fetch('/api/v1/timer/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task_id: taskId ? parseInt(taskId) : null, tags: "#timetrace" })
+            body: JSON.stringify({ task_id: taskId ? parseInt(taskId) : null, tags: settings.defaultTag || "#general" })
         });
     }
     fetchTimerStatus();

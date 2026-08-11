@@ -2,16 +2,33 @@ let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#e
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 
 /**
- * Determines task color based on theme and user preference.
- * - If color is 'auto' or empty: uses dynamic theme palette.
- * - If color is custom hex: preserves explicit user color across all themes.
+ * State Management Layer: Evaluates color priority
+ * Priority: Custom Hex > Auto Theme Palette > Default Fallback
  */
 function getTaskColor(task, index = 0) {
     if (!task) return defaultPalette[0];
-    if (!task.color || task.color === 'auto' || task.color === '') {
-        return defaultPalette[index % defaultPalette.length];
+    
+    // 1. Custom Color Check (Database Storage Layer override)
+    if (task.color && task.color !== 'auto' && task.color !== '' && task.color.startsWith('#')) {
+        return task.color;
     }
-    return task.color;
+    
+    // 2. Auto Theme Palette Check (State Management Layer)
+    const activePalette = (typeof defaultPalette !== 'undefined' && defaultPalette.length > 0)
+        ? defaultPalette
+        : ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
+
+    const title = task.title || '';
+    if (title.length > 0) {
+        let hash = 0;
+        for (let i = 0; i < title.length; i++) {
+            hash += title.charCodeAt(i);
+        }
+        return activePalette[hash % activePalette.length];
+    }
+    
+    // 3. Fallback Default
+    return activePalette[index % activePalette.length];
 }
 
 function parseApiDateTime(dtStr) {

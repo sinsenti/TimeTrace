@@ -51,7 +51,7 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Unified Streamlined Top Navigation Bar -->
+    <!-- Top Navigation Bar -->
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         <div class="flex items-center space-x-3 shrink-0">
             <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
@@ -62,9 +62,8 @@
                 <a href="/api/v1/stats" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Stats</a>
             </nav>
 
-            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px] space-x-1">
-                <span>⚙️</span>
-                <span>Settings</span>
+            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
+                Settings
             </button>
         </div>
 
@@ -147,9 +146,9 @@
     <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-                <div class="flex items-center space-x-2">
-                    <span class="text-lg">⚙️</span>
+                <div>
                     <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+                    <span class="text-[10px] text-slate-400">Press Ctrl+Enter to save, Esc to close</span>
                 </div>
                 <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
@@ -249,8 +248,8 @@
             </div>
 
             <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel</button>
-                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings</button>
+                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
+                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings (Ctrl+Enter)</button>
             </div>
         </div>
     </div>
@@ -279,7 +278,7 @@
                 <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
                 <input id="modal_input_created" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-2 gap-2">
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Priority</label>
                     <select id="modal_input_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
@@ -297,15 +296,26 @@
                         <option value="completed">completed</option>
                     </select>
                 </div>
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Color</label>
-                    <select id="modal_input_color_mode" onchange="toggleCustomColorPicker(this.value)" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-1 py-2 rounded-lg text-[11px] text-white">
-                        <option value="auto">Auto (Theme)</option>
+            </div>
+
+            <div class="pt-1">
+                <label class="text-xs text-slate-400 block mb-1">Task Color Mode</label>
+                <div class="flex items-center space-x-2">
+                    <select id="modal_input_color_mode" onchange="toggleCustomColorPicker(this.value)" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white focus:outline-none flex-1">
+                        <option value="auto">Auto (Adapts to Theme)</option>
                         <option value="custom">Custom Color</option>
                     </select>
-                    <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-8 mt-1 bg-[#0f1016] border border-[var(--border-muted)] rounded cursor-pointer p-0.5 hidden">
+                    <div id="custom_color_container" class="flex items-center space-x-2 hidden">
+                        <input id="modal_input_color" type="color" value="#7c3aed" class="w-8 h-8 bg-transparent border border-[var(--border-muted)] rounded cursor-pointer p-0.5">
+                        <span id="custom_color_hex" class="text-xs font-mono text-slate-300">#7C3AED</span>
+                    </div>
+                </div>
+                <div id="color_swatches_container" class="flex items-center space-x-2 mt-2 hidden">
+                    <span class="text-[10px] text-slate-400">Presets:</span>
+                    <div id="swatch_list" class="flex space-x-1.5"></div>
                 </div>
             </div>
+
             <div class="flex justify-between items-center pt-2">
                 <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete</button>
                 <div class="space-x-2">
@@ -384,7 +394,7 @@
         </div>
     </div>
 
-    <!-- Confirm Modal -->
+    <!-- Custom Confirmation Modal -->
     <div id="custom_confirm_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
@@ -400,9 +410,9 @@
     <div id="idle_resolution_modal" class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border-2 border-amber-500/80 w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex items-center space-x-3 border-b border-[var(--border-muted)] pb-3">
-                <span class="text-3xl">⚠️</span>
+                <span class="text-2xl font-bold text-amber-400">[AFK]</span>
                 <div>
-                    <h3 class="font-extrabold text-base text-amber-400">Inactivity Detected (AFK)</h3>
+                    <h3 class="font-extrabold text-base text-amber-400">Inactivity Detected</h3>
                     <p id="idle_time_summary_label" class="text-xs text-slate-400">You were away for 0 mins.</p>
                 </div>
             </div>
@@ -417,7 +427,6 @@
                         <span class="font-bold text-slate-200 block">1. Discard Idle Time</span>
                         <span class="text-[10px] text-slate-400">Keep work session up to AFK start; drop the idle gap.</span>
                     </div>
-                    <span class="text-slate-400 text-base">🗑️</span>
                 </button>
 
                 <button onclick="resolveIdleGap('break')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
@@ -425,7 +434,6 @@
                         <span class="font-bold text-emerald-400 block">2. Log as #break</span>
                         <span class="text-[10px] text-slate-400">Save the AFK gap as an explicit break slot.</span>
                     </div>
-                    <span class="text-slate-400 text-base">☕</span>
                 </button>
 
                 <button onclick="resolveIdleGap('claim_work')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
@@ -433,7 +441,6 @@
                         <span class="font-bold text-purple-400 block">3. Claim as Work</span>
                         <span class="text-[10px] text-slate-400">Include the AFK gap in your work session (offline work).</span>
                     </div>
-                    <span class="text-slate-400 text-base">💼</span>
                 </button>
 
                 <div class="bg-[#1e2030] border border-[var(--border-muted)] p-2.5 rounded-lg space-y-2">

@@ -10,7 +10,6 @@ from timetrace.db.models import Task, Session as SessionModel, Reflection, Habit
 from timetrace.core.timer import timer_manager
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
 from timetrace.core.analytics import calculate_tag_summaries, calculate_detailed_analytics
-from timetrace.core.editor import get_auto_color
 from timetrace.interfaces.api.schemas import (
     TaskCreate,
     TaskUpdate,
@@ -341,8 +340,8 @@ async def import_markdown(request: Request, db: DBSession = Depends(get_session)
 @router.post("/tasks", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
     task_dict = task.model_dump(exclude_unset=True)
-    if not task_dict.get("color") or task_dict.get("color") == "auto":
-        task_dict["color"] = get_auto_color(task_dict["title"])
+    if not task_dict.get("color"):
+        task_dict["color"] = "auto"
 
     db_task = Task.model_validate(task_dict)
     if db_task.created_at:
@@ -400,8 +399,6 @@ def update_task(task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get
         raise HTTPException(status_code=404, detail="Task not found")
 
     update_dict = task_data.model_dump(exclude_unset=True)
-    if "title" in update_dict and ("color" not in update_dict or update_dict["color"] == "auto"):
-        update_dict["color"] = get_auto_color(update_dict["title"])
 
     for key, value in update_dict.items():
         setattr(db_task, key, value)
