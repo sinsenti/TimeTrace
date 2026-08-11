@@ -126,9 +126,16 @@ def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
         task_dict["color"] = get_auto_color(task_dict["title"])
 
     db_task = Task.model_validate(task_dict)
+    if db_task.created_at and db_task.created_at.tzinfo:
+        db_task.created_at = db_task.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+
+    if db_task.created_at and not db_task.created_at.tzinfo:
+        db_task.created_at = db_task.created_at.replace(tzinfo=timezone.utc)
+
     return db_task
 
 
@@ -146,6 +153,11 @@ def list_tasks(
             query = query.where(Task.status == status_filter)
 
     tasks = db.exec(query).all()
+
+    for t in tasks:
+        if t.created_at and not t.created_at.tzinfo:
+            t.created_at = t.created_at.replace(tzinfo=timezone.utc)
+
     priority_map = {"high": 4, "medium": 3, "low": 2, "-": 1}
 
     if sort_by == "priority":
@@ -179,9 +191,16 @@ def update_task(task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get
     for key, value in update_dict.items():
         setattr(db_task, key, value)
 
+    if db_task.created_at and db_task.created_at.tzinfo:
+        db_task.created_at = db_task.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
+
+    if db_task.created_at and not db_task.created_at.tzinfo:
+        db_task.created_at = db_task.created_at.replace(tzinfo=timezone.utc)
+
     return db_task
 
 
@@ -308,9 +327,11 @@ def list_sessions(
 ):
     query = select(SessionModel)
     if start:
-        query = query.where(SessionModel.start_time >= start)
+        naive_start = start.astimezone(timezone.utc).replace(tzinfo=None) if start.tzinfo else start
+        query = query.where(SessionModel.start_time >= naive_start)
     if end:
-        query = query.where(SessionModel.start_time <= end)
+        naive_end = end.astimezone(timezone.utc).replace(tzinfo=None) if end.tzinfo else end
+        query = query.where(SessionModel.start_time <= naive_end)
 
     sessions = db.exec(query).all()
     result = []
@@ -397,4 +418,3 @@ def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session
     db.commit()
     db.refresh(db_reflection)
     return db_reflection
-

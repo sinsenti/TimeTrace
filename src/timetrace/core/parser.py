@@ -1,6 +1,6 @@
 import re
-from datetime import datetime, date
-from typing import List, Dict, Any
+from datetime import datetime, date, timezone
+from typing import List, Dict, Any, Optional
 import frontmatter
 
 
@@ -15,9 +15,9 @@ def export_sessions_to_markdown(sessions: List[Dict[str, Any]], log_date: date) 
     content = "# Logged Sessions\n"
     for s in sessions:
         start_dt = datetime.fromisoformat(str(s["start_time"])) if isinstance(s["start_time"], str) else s["start_time"]
-        end_dt = datetime.fromisoformat(str(s["end_time"])) if isinstance(s["end_time"], str) else s.get("end_time")
+        end_dt = datetime.fromisoformat(str(s["end_time"])) if isinstance(s.get("end_time"), str) else s.get("end_time")
 
-        start_str = start_dt.strftime("%H:%M")
+        start_str = start_dt.strftime("%H:%M") if start_dt else "00:00"
         end_str = end_dt.strftime("%H:%M") if end_dt else "NOW"
         tags = s.get("tags") or "#general"
         notes = s.get("notes") or "No notes"
@@ -56,8 +56,8 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
                 sessions.append(current_session)
 
             start_hhmm, end_hhmm, tags, notes = match.groups()
-            start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00")
-            end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00")
+            start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00").replace(tzinfo=timezone.utc)
+            end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00").replace(tzinfo=timezone.utc)
             duration = int((end_dt - start_dt).total_seconds())
 
             current_session = {
@@ -96,4 +96,3 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
         sessions.append(current_session)
 
     return sessions
-

@@ -1,5 +1,6 @@
 import re
-from typing import Dict, Any
+from datetime import datetime, date, timezone
+from typing import Dict, Any, Optional
 
 
 def parse_inline_task(text: str) -> Dict[str, Any]:
@@ -83,6 +84,83 @@ def parse_inline_timer(text: str) -> Dict[str, Any]:
     }
 
 
+def _local_time_to_utc(date_str: str, time_str: str) -> datetime:
+    """Interprets input date & time as local time and converts to UTC aware datetime."""
+    local_tz = datetime.now().astimezone().tzinfo
+    naive_dt = datetime.fromisoformat(f"{date_str}T{time_str}")
+    local_dt = naive_dt.replace(tzinfo=local_tz)
+    return local_dt.astimezone(timezone.utc)
+
+
+def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    """Parses edited session text from Neovim buffer (interprets user input in local time)."""
+    lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
+    if not lines:
+        return {}
+
+    first_line = lines[0]
+    extra_notes = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+
+    result: Dict[str, Any] = {}
+
+    time_range_match = re.search(r"\[(.*?)\]", first_line)
+    if time_range_match:
+        raw_range = time_range_match.group(1).strip()
+        parts = raw_range.split("-")
+        if len(parts) == 2:
+            s_str, e_str = parts[0].strip(), parts[1].strip()
+            try:
+                base_date = date.today().isoformat()
+                if base_session and base_session.get("start_time"):
+                    st_val = str(base_session["start_time"])
+                    if "T" in st_val:
+                        dt = datetime.fromisoformat(st_val.replace("Z", "+00:00")).astimezone()
+                        base_date = dt.strftime("%Y-%m-%d")
+
+                if len(s_str) <= 5:
+                    s_dt = _local_time_to_utc(base_date, f"{s_str}:00")
+                else:
+                    naive = datetime.fromisoformat(s_str.replace(" ", "T"))
+                    s_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(timezone.utc)
+
+                if e_str.upper() != "NOW":
+                    if len(e_str) <= 5:
+                        e_dt = _local_time_to_utc(base_date, f"{e_str}:00")
+                    else:
+                        naive = datetime.fromisoformat(e_str.replace(" ", "T"))
+                        e_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(timezone.utc)
+                else:
+                    e_dt = datetime.now(timezone.utc)
+
+                result["start_time"] = s_dt
+                result["end_time"] = e_dt
+            except Exception:
+                pass
+
+        first_line = re.sub(r"\[.*?\]", "", first_line)
+
+    first_line = re.sub(r"\(\d+(\.\d+)?m\)", "", first_line)
+
+    tags = re.findall(r"#\w+", first_line)
+    if tags:
+        result["tags"] = " ".join(tags)
+
+    task_id_match = re.search(r"@(task\s*)?(\d+)", first_line, re.IGNORECASE)
+    if task_id_match:
+        result["task_id"] = int(task_id_match.group(2))
+
+    clean_notes = first_line
+    clean_notes = re.sub(r"#\w+", "", clean_notes)
+    clean_notes = re.sub(r"@(task\s*)?\d+", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = " ".join(clean_notes.split()).strip()
+
+    if extra_notes:
+        clean_notes = f"{clean_notes}\n{extra_notes}".strip() if clean_notes else extra_notes
+
+    result["notes"] = clean_notes
+    return result
+
+
 def parse_inline_retro(text: str) -> Dict[str, Any]:
     """Parses 1-2 line retroactive session markdown."""
     lines = [line.strip() for line in text.strip().splitlines() if line.strip()]
@@ -148,4 +226,3 @@ def parse_inline_reflection(text: str) -> Dict[str, Any]:
         "habits": habits,
         "obstacles": obstacles
     }
-

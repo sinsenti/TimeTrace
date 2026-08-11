@@ -14,6 +14,22 @@ cli_app = typer.Typer(
 )
 
 
+def format_local_cli_time(iso_str: Optional[str]) -> str:
+    """Helper to convert UTC ISO strings to local system timezone string for CLI."""
+    if not iso_str:
+        return ""
+    try:
+        clean = str(iso_str)
+        if not clean.endswith("Z") and "+" not in clean and "-" not in clean[10:]:
+            clean += "Z"
+        dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return str(iso_str)[:16].replace("T", " ")
+
+
 @cli_app.command("daemon")
 def run_daemon():
     """Start the TimeTrace FastAPI background daemon."""
@@ -164,7 +180,7 @@ def list_tasks_cli(
             if not tasks:
                 print("No tasks found.")
             for t in tasks:
-                created_str = str(t.get("created_at", ""))[:16].replace("T", " ")
+                created_str = format_local_cli_time(t.get("created_at"))
                 print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {t['title']}")
             print("-" * 65 + "\n")
 
@@ -246,4 +262,3 @@ def import_markdown(
             print(f"✅ Imported {data['imported_sessions']} sessions from '{in_file}'.")
         else:
             print("❌ Failed to import markdown file.")
-

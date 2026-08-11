@@ -23,6 +23,22 @@ from timetrace.core.inline_parser import (
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
+def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> str:
+    """Converts API UTC ISO string to user's system local timezone string."""
+    if not iso_str:
+        return ""
+    try:
+        clean_str = str(iso_str)
+        if not clean_str.endswith("Z") and "+" not in clean_str and "-" not in clean_str[10:]:
+            clean_str += "Z"
+        dt = datetime.fromisoformat(clean_str.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone().strftime(fmt)
+    except Exception:
+        return str(iso_str)[:16].replace("T", " ")
+
+
 def format_priority_badge(priority: str) -> str:
     p = str(priority).lower().strip()
     if p == "high":
@@ -455,7 +471,7 @@ class TimeTraceTUI(App):
             table.add_row("-", "-", "[dim]No tasks match current filter/search.[/dim]", "-", "-", "-")
         else:
             for task in filtered:
-                created_str = str(task.get("created_at", ""))[:16].replace("T", " ")
+                created_str = format_local_time(task.get("created_at"))
                 table.add_row(
                     str(task["id"]),
                     format_priority_badge(task.get("priority", "-")),
@@ -491,8 +507,8 @@ class TimeTraceTUI(App):
             table.add_row("-", "-", "[dim]No logged calendar sessions match search.[/dim]", "-", "-", "-")
         else:
             for s in filtered:
-                start_str = str(s.get("start_time", ""))[:16].replace("T", " ")
-                end_str = str(s.get("end_time", ""))[:16].replace("T", " ") if s.get("end_time") else "NOW"
+                start_str = format_local_time(s.get("start_time"))
+                end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
                 table.add_row(
                     str(s["id"]),
@@ -559,8 +575,8 @@ class TimeTraceTUI(App):
             if not session:
                 return
 
-            start_str = str(session.get("start_time", ""))[:16].replace("T", " ")
-            end_str = str(session.get("end_time", ""))[:16].replace("T", " ") if session.get("end_time") else "NOW"
+            start_str = format_local_time(session.get("start_time"), fmt="%H:%M")
+            end_str = format_local_time(session.get("end_time"), fmt="%H:%M") if session.get("end_time") else "NOW"
             duration_mins = round((session.get("duration_seconds") or 0) / 60, 1)
             task_ref = f"@{session['task_id']}" if session.get("task_id") else ""
 
@@ -578,9 +594,9 @@ class TimeTraceTUI(App):
                         "notes": parsed.get("notes", "")
                     }
                     if "start_time" in parsed:
-                        payload["start_time"] = parsed["start_time"]
+                        payload["start_time"] = parsed["start_time"].isoformat()
                     if "end_time" in parsed:
-                        payload["end_time"] = parsed["end_time"]
+                        payload["end_time"] = parsed["end_time"].isoformat()
 
                     async with httpx.AsyncClient() as client:
                         res = await client.put(f"{BASE_URL}/sessions/{session['id']}", json=payload, timeout=3.0)
@@ -755,4 +771,3 @@ class TimeTraceTUI(App):
     def action_refresh_data(self) -> None:
         self.run_worker(self.load_current_view())
         self.run_worker(self.update_timer())
-

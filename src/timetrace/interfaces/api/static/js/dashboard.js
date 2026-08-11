@@ -66,7 +66,6 @@ document.addEventListener('DOMContentLoaded', function() {
             eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
             eventResize: async function(info) { await handleCalendarEventUpdate(info.event); },
             
-            // Open Session Editing Modal when clicking a calendar session!
             eventClick: function(info) {
                 openEditSessionModal(info.event.id);
             },
@@ -92,7 +91,6 @@ document.addEventListener('DOMContentLoaded', function() {
         calendar.render();
     }
 
-    // Enable external drag and drop for task cards
     const taskCardList = document.getElementById('task_card_list');
     if (taskCardList) {
         new FullCalendar.Draggable(taskCardList, {
@@ -109,7 +107,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Setup Modal Key Listeners (Ctrl+Enter to Save, Esc to Close)
     const sessionModal = document.getElementById('session_modal');
     if (sessionModal) {
         sessionModal.addEventListener('keydown', function(e) {
@@ -141,7 +138,6 @@ document.addEventListener('keydown', function(e) {
         return;
     }
 
-    // Initialize cursor position if not set
     if (!cursorStart) {
         const now = new Date();
         now.setMinutes(Math.floor(now.getMinutes() / defaultDurationMinutes) * defaultDurationMinutes, 0, 0);
@@ -154,7 +150,6 @@ document.addEventListener('keydown', function(e) {
     const isMonthView = calendar && calendar.view.type === 'dayGridMonth';
 
     switch (e.key.toLowerCase()) {
-        // Toggle Visual Mode (v)
         case 'v':
             e.preventDefault();
             if (vimMode === 'NORMAL') {
@@ -169,7 +164,6 @@ document.addEventListener('keydown', function(e) {
             renderHighlightSelection();
             break;
 
-        // Move Cursor DOWN (j)
         case 'j':
             e.preventDefault();
             const stepDownMs = isMonthView ? (7 * dayMs) : slotMs;
@@ -179,7 +173,6 @@ document.addEventListener('keydown', function(e) {
             renderHighlightSelection();
             break;
 
-        // Move Cursor UP (k)
         case 'k':
             e.preventDefault();
             const stepUpMs = isMonthView ? (7 * dayMs) : slotMs;
@@ -189,7 +182,6 @@ document.addEventListener('keydown', function(e) {
             renderHighlightSelection();
             break;
 
-        // Move Cursor LEFT 1 Day (h)
         case 'h':
             e.preventDefault();
             cursorStart = new Date(cursorStart.getTime() - dayMs);
@@ -198,7 +190,6 @@ document.addEventListener('keydown', function(e) {
             renderHighlightSelection();
             break;
 
-        // Move Cursor RIGHT 1 Day (l)
         case 'l':
             e.preventDefault();
             cursorStart = new Date(cursorStart.getTime() + dayMs);
@@ -207,7 +198,6 @@ document.addEventListener('keydown', function(e) {
             renderHighlightSelection();
             break;
 
-        // Enter or 's' -> Open Session Creation Modal for Highlighted Range!
         case 'enter':
         case 's':
             e.preventDefault();
@@ -314,6 +304,15 @@ function updateVimModeIndicator() {
 // ==========================================
 // 🛠️ Calendar Utility & Helper Functions
 // ==========================================
+function parseApiDateTime(dtStr) {
+    if (!dtStr) return null;
+    if (typeof dtStr !== 'string') dtStr = String(dtStr);
+    if (!dtStr.endsWith('Z') && !dtStr.includes('+') && !dtStr.includes('-')) {
+        dtStr += 'Z';
+    }
+    return new Date(dtStr);
+}
+
 function setSlotDuration(val) {
     defaultDurationMinutes = parseInt(val) || 15;
     localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
@@ -356,6 +355,7 @@ function scrollToCurrentTime() {
 }
 
 function formatIsoLocal(dt) {
+    if (!dt || isNaN(dt.getTime())) return '';
     const pad = (n) => String(n).padStart(2, '0');
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
@@ -398,8 +398,8 @@ function openEditSessionModal(sessionId) {
     const deleteBtn = document.getElementById('session_modal_delete_btn');
     if (deleteBtn) deleteBtn.classList.remove('hidden');
 
-    const startDate = new Date(session.start_time);
-    const endDate = session.end_time ? new Date(session.end_time) : new Date();
+    const startDate = parseApiDateTime(session.start_time);
+    const endDate = session.end_time ? parseApiDateTime(session.end_time) : new Date();
 
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
@@ -799,7 +799,7 @@ async function toggleTimer() {
 }
 
 function openNewTaskModal() {
-    const nowIso = new Date().toISOString().slice(0,16);
+    const nowIso = formatIsoLocal(new Date());
     document.getElementById('edit_task_id').value = '';
     document.getElementById('modal_task_title').innerText = 'Create Task Slot';
     document.getElementById('modal_input_title').value = '';
@@ -819,7 +819,7 @@ function openEditTaskModal(id) {
     document.getElementById('modal_task_title').innerText = 'Edit Task Slot';
     document.getElementById('modal_input_title').value = t.title;
     document.getElementById('modal_input_desc').value = t.description || '';
-    document.getElementById('modal_input_created').value = t.created_at ? t.created_at.slice(0,16) : '';
+    document.getElementById('modal_input_created').value = t.created_at ? formatIsoLocal(parseApiDateTime(t.created_at)) : '';
     document.getElementById('modal_input_priority').value = t.priority || '-';
     document.getElementById('modal_input_status').value = t.status || 'in_progress';
     document.getElementById('modal_input_color').value = t.color || '#7c3aed';
@@ -882,4 +882,3 @@ function toggleSidebar(id) {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden');
 }
-

@@ -83,13 +83,20 @@ class ActiveTimerState:
         if not self.is_running or not self.start_time:
             raise ValueError("No active timer to split.")
 
+        prev_task_id = self.task_id
+        prev_task_title = self.task_title
+        prev_mode = self.mode
+        prev_target = self.target_minutes
+
         stopped_summary = self.stop()
+
         self.start(
-            task_id=stopped_summary["task_id"],
-            task_title=stopped_summary.get("task_title"),
+            task_id=prev_task_id,
+            task_title=prev_task_title,
             tags=new_tags,
             notes=new_notes,
-            mode=self.mode,
+            mode=prev_mode,
+            target_minutes=prev_target,
         )
         return stopped_summary
 
@@ -156,4 +163,3 @@ class ActiveTimerState:
 
 
 timer_manager = ActiveTimerState()
-
