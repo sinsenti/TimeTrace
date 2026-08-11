@@ -7,20 +7,22 @@ let lastTimerData = null;
 // ==========================================
 // 🚀 Main Entry Orchestrator
 // ==========================================
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    const userSettings = getUserSettings();
+
     const durationSelect = document.getElementById('config_slot_duration');
-    if (durationSelect) durationSelect.value = defaultDurationMinutes;
+    if (durationSelect) durationSelect.value = userSettings.slotDuration;
 
     const calendarEl = document.getElementById('calendar');
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: 'timeGridWeek',
-            firstDay: 1, // Start week on Monday (1 = Monday, 0 = Sunday)
+            initialView: userSettings.defaultView,
+            firstDay: userSettings.firstDayOfWeek, // 1 = Monday, 0 = Sunday
             height: '100%',
             headerToolbar: false,
             slotMinTime: "00:00:00",
             slotMaxTime: "24:00:00",
-            slotDuration: `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`,
+            slotDuration: `00:${String(userSettings.slotDuration).padStart(2,'0')}:00`,
             scrollTime: getInitialScrollTime(),
             scrollTimeReset: false,
             nowIndicator: true,
@@ -28,10 +30,10 @@ document.addEventListener('DOMContentLoaded', function() {
             selectable: true,
             selectMirror: true,
             droppable: true,
-            defaultTimedEventDuration: `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`,
+            defaultTimedEventDuration: `00:${String(userSettings.slotDuration).padStart(2,'0')}:00`,
             events: fetchCalendarEvents,
 
-            // Calendar Event Renderer (Hierarchy: 1. Task Title -> 2. Description/Notes -> 3. Tags)
+            // Calendar Event Renderer
             eventContent: function(arg) {
                 const props = arg.event.extendedProps || {};
                 const taskTitle = props.taskTitle || '';
@@ -123,6 +125,13 @@ document.addEventListener('DOMContentLoaded', function() {
     setupModalKeyboardListeners();
     setupVimKeyboardListeners();
 
+    // Apply User Preferences
+    await applyUserSettings(userSettings, true);
+
+    if (userSettings.autoScrollNow) {
+        scrollToCurrentTime();
+    }
+
     fetchAllTasksRegistry();
     fetchTasks();
     fetchTimerStatus();
@@ -166,8 +175,8 @@ function updateViewButtons(activeViewType) {
     const btnWeek = document.getElementById('btn_view_week');
     const btnMonth = document.getElementById('btn_view_month');
 
-    const activeClass = "h-8 px-2.5 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 whitespace-nowrap";
-    const inactiveClass = "h-8 px-2.5 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap";
+    const activeClass = "h-7 px-2 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 whitespace-nowrap text-[11px]";
+    const inactiveClass = "h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap text-[11px]";
 
     if (btnDay) btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
@@ -180,34 +189,19 @@ function toggleSidebar(id) {
     el.classList.toggle('hidden');
     const isHidden = el.classList.contains('hidden');
 
-    if (id === 'left_sidebar') {
-        const btn = document.getElementById('btn_toggle_left_sidebar');
-        if (btn) {
-            btn.innerText = isHidden ? 'Show Tasks' : 'Hide Tasks';
-            btn.className = isHidden 
-                ? 'h-7 bg-[#181a28] hover:bg-[#222536] text-slate-500 border border-slate-800 px-2 rounded-lg whitespace-nowrap text-[11px] transition'
-                : 'h-7 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 px-2 rounded-lg font-semibold whitespace-nowrap text-[11px] transition';
-        }
-    } else if (id === 'right_sidebar') {
-        const btn = document.getElementById('btn_toggle_right_sidebar');
-        if (btn) {
-            btn.innerText = isHidden ? 'Show Totals' : 'Hide Totals';
-            btn.className = isHidden 
-                ? 'h-7 bg-[#181a28] hover:bg-[#222536] text-slate-500 border border-slate-800 px-2 rounded-lg whitespace-nowrap text-[11px] transition'
-                : 'h-7 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 border border-purple-700/50 px-2 rounded-lg font-semibold whitespace-nowrap text-[11px] transition';
-        }
-    }
+    // Update settings state on toggle
+    const settings = getUserSettings();
+    if (id === 'left_sidebar') settings.hideLeftSidebar = isHidden;
+    if (id === 'right_sidebar') settings.hideRightSidebar = isHidden;
+    saveUserSettings(settings);
 
-    if (typeof calendar !== 'undefined' && calendar) {
-        setTimeout(() => calendar.updateSize(), 50);
-    }
+    setSidebarVisibility(id, !isHidden);
 }
 
-// Dynamic Browser Tab Title Engine (Strict 3-Tier Priority System)
+// Dynamic Browser Tab Title Engine
 function updateDocumentTitle() {
     const now = new Date();
 
-    // Priority 1: Active Running Timer Session
     if (lastTimerData && lastTimerData.is_running) {
         const taskName = lastTimerData.task_title || lastTimerData.notes || lastTimerData.tags || 'Active Session';
         if (lastTimerData.mode === 'pomodoro' && lastTimerData.remaining_seconds !== null) {
@@ -226,7 +220,6 @@ function updateDocumentTitle() {
         return;
     }
 
-    // Priority 2: Current Scheduled Calendar Slot (When no timer is running)
     const currentSession = allSessions.find(s => {
         const start = new Date(s.start_time);
         const end = s.end_time ? new Date(s.end_time) : new Date(start.getTime() + 15 * 60000);
@@ -242,7 +235,6 @@ function updateDocumentTitle() {
         return;
     }
 
-    // Priority 3: Next Scheduled Task Slot (When no timer & no current slot)
     const upcomingSessions = allSessions
         .filter(s => new Date(s.start_time) > now)
         .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -257,13 +249,9 @@ function updateDocumentTitle() {
         return;
     }
 
-    // Fallback
     document.title = 'TimeTrace Dashboard';
 }
 
-// ==========================================
-// 📡 Data Fetching & Sync Functions
-// ==========================================
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
         await fetchAllTasksRegistry();

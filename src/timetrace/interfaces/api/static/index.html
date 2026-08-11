@@ -30,7 +30,7 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Static Non-Scrolling Top Navigation Bar -->
+    <!-- Top Navigation Bar -->
     <header class="bg-[#12131d] border-b border-[#1a1c26] px-3 py-2 flex items-center justify-between shrink-0 gap-2 text-xs">
         <div class="flex items-center space-x-2 shrink-0">
             <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
@@ -40,6 +40,10 @@
                 <a href="/api/v1/habits-view" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-emerald-400 border border-emerald-500/40 font-bold flex items-center text-[11px]">Habits</a>
                 <a href="/api/v1/stats" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-700/50 font-bold flex items-center text-[11px]">Stats</a>
             </nav>
+
+            <button onclick="openSettingsModal()" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[#262938] font-bold flex items-center text-[11px]">
+                ⚙️ Settings
+            </button>
 
             <span id="vim_mode_indicator" class="h-7 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
                 -- NORMAL --
@@ -137,7 +141,110 @@
         </aside>
     </div>
 
-    <!-- Task Modal -->
+    <!-- ⚙️ User Settings Configuration Modal -->
+    <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[#161824] border border-[#262938] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex justify-between items-center border-b border-[#262938] pb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">⚙️</span>
+                    <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+                </div>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <!-- Default Calendar View -->
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Grid View</label>
+                        <span class="text-[10px] text-slate-400">Initial view on dashboard load</span>
+                    </div>
+                    <select id="setting_default_view" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="timeGridWeek">Week View</option>
+                        <option value="timeGridDay">Day View</option>
+                        <option value="dayGridMonth">Month View</option>
+                    </select>
+                </div>
+
+                <!-- First Day of Week -->
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">First Day of Week</label>
+                        <span class="text-[10px] text-slate-400">Calendar column start day</span>
+                    </div>
+                    <select id="setting_first_day" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="1">Monday</option>
+                        <option value="0">Sunday</option>
+                    </select>
+                </div>
+
+                <!-- Default Slot Duration -->
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Time Slot</label>
+                        <span class="text-[10px] text-slate-400">Grid slot interval in minutes</span>
+                    </div>
+                    <select id="setting_slot_duration" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="15">15 Minutes</option>
+                        <option value="30">30 Minutes</option>
+                        <option value="45">45 Minutes</option>
+                        <option value="60">60 Minutes</option>
+                    </select>
+                </div>
+
+                <!-- Default Session Tag -->
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Tag</label>
+                        <span class="text-[10px] text-slate-400">Tag assigned when none specified</span>
+                    </div>
+                    <input id="setting_default_tag" type="text" value="#general" placeholder="#tag" class="bg-[#181a28] border border-[#262938] text-purple-300 font-mono px-2 py-1 rounded text-xs w-28 text-right focus:outline-none">
+                </div>
+
+                <!-- Toggles Grid -->
+                <div class="space-y-2 pt-1">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>
+                            <span class="text-[10px] text-slate-400">Automatically freeze running timer on system idle</span>
+                        </div>
+                        <input id="setting_idle_detector" type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Hide Tasks Sidebar by Default</span>
+                            <span class="text-[10px] text-slate-400">Collapse left task cards panel on boot</span>
+                        </div>
+                        <input id="setting_hide_left_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar by Default</span>
+                            <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel on boot</span>
+                        </div>
+                        <input id="setting_hide_right_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Auto-Scroll to Current Hour</span>
+                            <span class="text-[10px] text-slate-400">Scroll calendar view to current time on load</span>
+                        </div>
+                        <input id="setting_auto_scroll" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-[#262938] flex justify-end space-x-2">
+                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel</button>
+                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Existing Task Modal -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3">
             <div class="flex justify-between items-center border-b border-[#262938] pb-2">
@@ -338,6 +445,7 @@
     <script src="/api/v1/static/js/timer_control.js"></script>
     <script src="/api/v1/static/js/modals.js"></script>
     <script src="/api/v1/static/js/vim_engine.js"></script>
+    <script src="/api/v1/static/js/settings.js"></script>
     <script src="/api/v1/static/js/dashboard.js"></script>
 </body>
 </html>
