@@ -56,7 +56,6 @@ function setupModalKeyboardListeners() {
                     items[0].click();
                 }
             } else if (e.key === 'Tab') {
-                // Close dropdown on Tab WITHOUT auto-accepting suggestions!
                 if (dropdown) dropdown.classList.add('hidden');
                 activeTaskSuggestionIndex = -1;
                 const tagInput = document.getElementById('session_modal_tags_input');
@@ -105,7 +104,6 @@ function setupModalKeyboardListeners() {
                     items[0].click();
                 }
             } else if (e.key === 'Tab') {
-                // Close dropdown on Tab WITHOUT auto-accepting suggestions!
                 if (dropdown) dropdown.classList.add('hidden');
                 activeTagSuggestionIndex = -1;
                 const notesInput = document.getElementById('session_modal_notes');
@@ -211,7 +209,10 @@ async function saveTask() {
             body: JSON.stringify(payload)
         });
     }
+
     closeTaskModal();
+    // Sync global registry so calendar sessions and drop downs receive the new task title & color immediately
+    await fetchAllTasksRegistry();
     fetchTasks();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
@@ -222,6 +223,7 @@ async function deleteTask() {
     if (confirm("Are you sure you want to delete this task slot?")) {
         await fetch(`/api/v1/tasks/${id}`, { method: 'DELETE' });
         closeTaskModal();
+        await fetchAllTasksRegistry();
         fetchTasks();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     }
@@ -244,7 +246,6 @@ function openEditSessionModal(sessionId) {
     const deleteBtn = document.getElementById('session_modal_delete_btn');
     if (deleteBtn) deleteBtn.classList.remove('hidden');
 
-    // Ensure floating dropdowns are hidden when modal opens
     const taskDropdown = document.getElementById('task_suggestions_dropdown');
     if (taskDropdown) taskDropdown.classList.add('hidden');
     const tagDropdown = document.getElementById('tag_suggestions_dropdown');
@@ -257,7 +258,7 @@ function openEditSessionModal(sessionId) {
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
     if (session.task_id && allTasksMap[session.task_id]) {
-        attachTaskById(session.task_id, true); // Pass preventFocus = true to avoid opening tag dropdown!
+        attachTaskById(session.task_id, true);
     } else {
         detachTask();
     }
@@ -267,7 +268,6 @@ function openEditSessionModal(sessionId) {
 
     document.getElementById('session_modal').classList.remove('hidden');
 
-    // Focus and select the Notes/Description field when editing an existing session
     setTimeout(() => {
         const notesInput = document.getElementById('session_modal_notes');
         if (notesInput) {
@@ -285,7 +285,6 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     const deleteBtn = document.getElementById('session_modal_delete_btn');
     if (deleteBtn) deleteBtn.classList.add('hidden');
 
-    // Ensure floating dropdowns are hidden when modal opens
     const taskDropdown = document.getElementById('task_suggestions_dropdown');
     if (taskDropdown) taskDropdown.classList.add('hidden');
     const tagDropdown = document.getElementById('tag_suggestions_dropdown');

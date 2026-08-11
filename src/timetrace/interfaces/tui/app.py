@@ -23,17 +23,28 @@ from timetrace.core.inline_parser import (
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
+def parse_utc_dt(iso_str: Optional[str]) -> datetime:
+    """Helper to convert API ISO strings safely into UTC datetime objects."""
+    if not iso_str:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        clean = str(iso_str)
+        if not clean.endswith("Z") and "+" not in clean and "-" not in clean[10:]:
+            clean += "Z"
+        dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        return datetime.min.replace(tzinfo=timezone.utc)
+
+
 def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> str:
     """Converts API UTC ISO string to user's system local timezone string."""
     if not iso_str:
         return ""
     try:
-        clean_str = str(iso_str)
-        if not clean_str.endswith("Z") and "+" not in clean_str and "-" not in clean_str[10:]:
-            clean_str += "Z"
-        dt = datetime.fromisoformat(clean_str.replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+        dt = parse_utc_dt(iso_str)
         return dt.astimezone().strftime(fmt)
     except Exception:
         return str(iso_str)[:16].replace("T", " ")
@@ -241,6 +252,7 @@ class TimeTraceTUI(App):
         super().__init__()
         self.loaded_tasks: List[Dict[str, Any]] = []
         self.loaded_sessions: List[Dict[str, Any]] = []
+        self.active_task_id: Optional[int] = None
         self.filter_modes = ["all", "hide_completed", "in_progress", "ongoing", "completed"]
         self.filter_index = 0
         self.sort_modes = ["priority", "created_at", "title", "status"]
@@ -424,13 +436,16 @@ class TimeTraceTUI(App):
                 if res.status_code == 200:
                     data = res.json()
                     if data["is_running"]:
+                        self.active_task_id = data.get("task_id")
                         elapsed_min = data["elapsed_seconds"] // 60
                         elapsed_sec = data["elapsed_seconds"] % 60
                         task_title = data.get("task_title") or data.get("tags") or "#session"
                         self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
                     else:
+                        self.active_task_id = None
                         self.timer_text = "[dim]Timer Idle[/dim]"
         except Exception:
+            self.active_task_id = None
             self.timer_text = "[bold red]Daemon Disconnected[/bold red]"
 
         self.query_one("#timer_display", Static).update(self.timer_text)
@@ -454,6 +469,7 @@ class TimeTraceTUI(App):
             pass
 
     def render_tasks(self) -> None:
+        """Renders tasks list cleanly according to active filter and sort mode."""
         table = self.query_one("#main_table", DataTable)
         table.clear()
 
@@ -469,17 +485,18 @@ class TimeTraceTUI(App):
 
         if not filtered:
             table.add_row("-", "-", "[dim]No tasks match current filter/search.[/dim]", "-", "-", "-")
-        else:
-            for task in filtered:
-                created_str = format_local_time(task.get("created_at"))
-                table.add_row(
-                    str(task["id"]),
-                    format_priority_badge(task.get("priority", "-")),
-                    f"[bold white]{task['title']}[/bold white]",
-                    format_status_badge(task.get("status", "in_progress")),
-                    f"[dim]{created_str}[/dim]",
-                    task.get("description") or ""
-                )
+            return
+
+        for task in filtered:
+            created_str = format_local_time(task.get("created_at"))
+            table.add_row(
+                str(task["id"]),
+                format_priority_badge(task.get("priority", "-")),
+                f"[bold white]{task['title']}[/bold white]",
+                format_status_badge(task.get("status", "in_progress")),
+                f"[dim]{created_str}[/dim]",
+                task.get("description") or ""
+            )
 
     async def load_sessions(self) -> None:
         try:
@@ -492,10 +509,11 @@ class TimeTraceTUI(App):
             pass
 
     def render_sessions(self) -> None:
+        """Renders sessions with default timeline grouping and proximity sorting."""
         table = self.query_one("#main_table", DataTable)
         table.clear()
 
-        filtered = list(reversed(self.loaded_sessions))
+        filtered = self.loaded_sessions
         if self.search_query:
             filtered = [
                 s for s in filtered
@@ -505,14 +523,76 @@ class TimeTraceTUI(App):
 
         if not filtered:
             table.add_row("-", "-", "[dim]No logged calendar sessions match search.[/dim]", "-", "-", "-")
-        else:
-            for s in filtered:
+            return
+
+        now = datetime.now(timezone.utc)
+
+        current_sessions = []
+        upcoming_sessions = []
+        past_sessions = []
+
+        for s in filtered:
+            s_start = parse_utc_dt(s.get("start_time"))
+            s_end = parse_utc_dt(s.get("end_time")) if s.get("end_time") else now
+
+            # 1. Current / Active Session
+            if s_start <= now <= s_end or (self.active_task_id and s.get("task_id") == self.active_task_id):
+                current_sessions.append(s)
+            # 2. Upcoming Sessions (start in future)
+            elif s_start > now:
+                upcoming_sessions.append(s)
+            # 3. Past / Ended Sessions
+            else:
+                past_sessions.append(s)
+
+        # Sort Upcoming: Start time ASCENDING (Next session to start is at the top)
+        upcoming_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")))
+
+        # Sort Past: Proximity to Current Time DESCENDING (Nearest ended session is at the top)
+        past_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")), reverse=True)
+
+        # --- Section 1: Current / Active Session ---
+        if current_sessions:
+            table.add_row("", "", "[bold cyan]--- CURRENT SESSION ---[/bold cyan]", "", "", "")
+            for s in current_sessions:
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
                 duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
                 table.add_row(
                     str(s["id"]),
                     f"[bold green]{s.get('tags') or '#general'}[/bold green]",
+                    f"[bold cyan]{start_str}[/bold cyan]",
+                    f"[bold cyan]{end_str}[/bold cyan]",
+                    f"[bold purple]{duration_mins}[/bold purple]",
+                    s.get("notes") or ""
+                )
+
+        # --- Section 2: Upcoming Sessions (Next to Start) ---
+        if upcoming_sessions:
+            table.add_row("", "", "[bold yellow]--- UPCOMING SESSIONS ---[/bold yellow]", "", "", "")
+            for s in upcoming_sessions:
+                start_str = format_local_time(s.get("start_time"))
+                end_str = format_local_time(s.get("end_time")) if s.get("end_time") else ""
+                duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
+                table.add_row(
+                    str(s["id"]),
+                    f"[bold yellow]{s.get('tags') or '#general'}[/bold yellow]",
+                    f"[bold yellow]{start_str}[/bold yellow]",
+                    f"[dim]{end_str}[/dim]",
+                    f"[bold purple]{duration_mins}[/bold purple]",
+                    s.get("notes") or ""
+                )
+
+        # --- Section 3: Past Sessions (Nearest First) ---
+        if past_sessions:
+            table.add_row("", "", "[bold dim]--- PAST SESSIONS ---[/bold dim]", "", "", "")
+            for s in past_sessions:
+                start_str = format_local_time(s.get("start_time"))
+                end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
+                duration_mins = round((s.get("duration_seconds") or 0) / 60, 1)
+                table.add_row(
+                    str(s["id"]),
+                    f"[dim green]{s.get('tags') or '#general'}[/dim green]",
                     f"[dim]{start_str}[/dim]",
                     f"[dim]{end_str}[/dim]",
                     f"[bold purple]{duration_mins}[/bold purple]",
