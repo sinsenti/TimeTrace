@@ -286,6 +286,7 @@ class TimeTraceTUI(App):
         self.sort_index = 0
         self.search_query: str = ""
         self.last_d_time: float = 0.0
+        self.client: Optional[httpx.AsyncClient] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -302,10 +303,18 @@ class TimeTraceTUI(App):
         yield Footer()
 
     def on_mount(self) -> None:
+        self.client = httpx.AsyncClient(
+            base_url=BASE_URL,
+            timeout=httpx.Timeout(1.0, connect=0.2)
+        )
         self.setup_table_columns()
         self.set_interval(1.0, self.update_timer)
         self.set_interval(3.0, self.load_current_view)
-        self.call_after_refresh(self.load_current_view)
+        self.run_worker(self.load_current_view())
+
+    async def on_unmount(self) -> None:
+        if self.client:
+            await self.client.aclose()
 
     def setup_table_columns(self) -> None:
         table = self.query_one("#main_table", DataTable)
@@ -383,6 +392,30 @@ class TimeTraceTUI(App):
             return int(clean_id) if clean_id.isdigit() else None
         except Exception:
             return None
+
+    def restore_cursor_position(self, saved_id: Optional[int], saved_row: Optional[int]) -> None:
+        """Restores cursor position to the exact same item ID or row index after re-rendering."""
+        table = self.query_one("#main_table", DataTable)
+        if table.row_count == 0:
+            return
+
+        target_row = 0
+        if saved_id is not None:
+            for idx in range(table.row_count):
+                row_vals = table.get_row_at(idx)
+                raw_cell = row_vals[0]
+                raw_str = raw_cell.plain if hasattr(raw_cell, "plain") else str(raw_cell)
+                clean_id = re.sub(r"[^\d]", "", raw_str).strip()
+                if clean_id.isdigit() and int(clean_id) == saved_id:
+                    target_row = idx
+                    break
+            else:
+                if saved_row is not None:
+                    target_row = min(saved_row, table.row_count - 1)
+        elif saved_row is not None:
+            target_row = min(saved_row, table.row_count - 1)
+
+        table.move_cursor(row=target_row)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search_input":
@@ -471,20 +504,21 @@ class TimeTraceTUI(App):
                 self.notify("Press 'd' again to delete row (dd)", timeout=1.2)
 
     async def update_timer(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/timer/status", timeout=2.0)
-                if res.status_code == 200:
-                    data = res.json()
-                    if data["is_running"]:
-                        self.active_task_id = data.get("task_id")
-                        elapsed_min = data["elapsed_seconds"] // 60
-                        elapsed_sec = data["elapsed_seconds"] % 60
-                        task_title = data.get("task_title") or data.get("tags") or "#session"
-                        self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
-                    else:
-                        self.active_task_id = None
-                        self.timer_text = "[dim]Timer Idle[/dim]"
+            res = await self.client.get("/timer/status")
+            if res.status_code == 200:
+                data = res.json()
+                if data["is_running"]:
+                    self.active_task_id = data.get("task_id")
+                    elapsed_min = data["elapsed_seconds"] // 60
+                    elapsed_sec = data["elapsed_seconds"] % 60
+                    task_title = data.get("task_title") or data.get("tags") or "#session"
+                    self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
+                else:
+                    self.active_task_id = None
+                    self.timer_text = "[dim]Timer Idle[/dim]"
         except Exception:
             self.active_task_id = None
             self.timer_text = "[bold red]Daemon Disconnected[/bold red]"
@@ -500,19 +534,23 @@ class TimeTraceTUI(App):
             await self.load_habits()
 
     async def load_tasks(self) -> None:
+        if not self.client:
+            return
         try:
             f_param = self.filter_modes[self.filter_index]
             s_param = self.sort_modes[self.sort_index]
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/tasks?status={f_param}&sort={s_param}", timeout=2.0)
-                if res.status_code == 200:
-                    self.loaded_tasks = res.json()
-                    self.render_tasks()
+            res = await self.client.get(f"/tasks?status={f_param}&sort={s_param}")
+            if res.status_code == 200:
+                self.loaded_tasks = res.json()
+                self.render_tasks()
         except Exception:
             pass
 
     def render_tasks(self) -> None:
         table = self.query_one("#main_table", DataTable)
+        saved_id = self.get_selected_item_id()
+        saved_row = table.cursor_row
+
         table.clear()
 
         filtered = self.loaded_tasks
@@ -538,18 +576,24 @@ class TimeTraceTUI(App):
                 task.get("description") or ""
             )
 
+        self.restore_cursor_position(saved_id, saved_row)
+
     async def load_sessions(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/sessions", timeout=2.0)
-                if res.status_code == 200:
-                    self.loaded_sessions = res.json()
-                    self.render_sessions()
+            res = await self.client.get("/sessions")
+            if res.status_code == 200:
+                self.loaded_sessions = res.json()
+                self.render_sessions()
         except Exception:
             pass
 
     def render_sessions(self) -> None:
         table = self.query_one("#main_table", DataTable)
+        saved_id = self.get_selected_item_id()
+        saved_row = table.cursor_row
+
         table.clear()
 
         filtered = self.loaded_sessions
@@ -628,18 +672,24 @@ class TimeTraceTUI(App):
                     s.get("notes") or ""
                 )
 
+        self.restore_cursor_position(saved_id, saved_row)
+
     async def load_habits(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/habits", timeout=2.0)
-                if res.status_code == 200:
-                    self.loaded_habits = res.json()
-                    self.render_habits()
+            res = await self.client.get("/habits")
+            if res.status_code == 200:
+                self.loaded_habits = res.json()
+                self.render_habits()
         except Exception:
             pass
 
     def render_habits(self) -> None:
         table = self.query_one("#main_table", DataTable)
+        saved_id = self.get_selected_item_id()
+        saved_row = table.cursor_row
+
         table.clear()
 
         if not self.loaded_habits:
@@ -676,8 +726,10 @@ class TimeTraceTUI(App):
                 f"[dim]{h.get('frequency', 'Every day')} @ {h.get('reminder_time', '09:00 AM')}[/dim]"
             )
 
+        self.restore_cursor_position(saved_id, saved_row)
+
     async def action_quick_toggle_habit(self) -> None:
-        if self.view_mode != "habits":
+        if self.view_mode != "habits" or not self.client:
             return
         item_id = self.get_selected_item_id()
         if not item_id:
@@ -700,19 +752,17 @@ class TimeTraceTUI(App):
             next_st = "erase"
 
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{BASE_URL}/habits/{item_id}/log",
-                    json={"date_str": today_str, "status": next_st},
-                    timeout=3.0
-                )
+            await self.client.post(
+                f"/habits/{item_id}/log",
+                json={"date_str": today_str, "status": next_st}
+            )
             self.notify(f"Habit #{item_id} updated: {next_st.upper()}", timeout=1.2)
             await self.load_habits()
         except Exception as e:
             self.notify(f"Error: {e}", severity="error")
 
     async def action_quick_inc_habit(self) -> None:
-        if self.view_mode != "habits":
+        if self.view_mode != "habits" or not self.client:
             return
         item_id = self.get_selected_item_id()
         if not item_id:
@@ -720,19 +770,17 @@ class TimeTraceTUI(App):
 
         today_str = datetime.now().strftime("%Y-%m-%d")
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{BASE_URL}/habits/{item_id}/log",
-                    json={"date_str": today_str, "delta_value": 1.0},
-                    timeout=3.0
-                )
+            await self.client.post(
+                f"/habits/{item_id}/log",
+                json={"date_str": today_str, "delta_value": 1.0}
+            )
             self.notify(f"Habit #{item_id} +1", timeout=1.0)
             await self.load_habits()
         except Exception:
             pass
 
     async def action_quick_dec_habit(self) -> None:
-        if self.view_mode != "habits":
+        if self.view_mode != "habits" or not self.client:
             return
         item_id = self.get_selected_item_id()
         if not item_id:
@@ -740,18 +788,16 @@ class TimeTraceTUI(App):
 
         today_str = datetime.now().strftime("%Y-%m-%d")
         try:
-            async with httpx.AsyncClient() as client:
-                await client.post(
-                    f"{BASE_URL}/habits/{item_id}/log",
-                    json={"date_str": today_str, "delta_value": -1.0},
-                    timeout=3.0
-                )
+            await self.client.post(
+                f"/habits/{item_id}/log",
+                json={"date_str": today_str, "delta_value": -1.0}
+            )
             self.notify(f"Habit #{item_id} -1", timeout=1.0)
             await self.load_habits()
         except Exception:
             pass
 
-    # Neovim Quick Actions (a, e, s, c, x, m, v)
+    # Neovim Quick Actions
     async def action_add_task_nvim(self) -> None:
         template = (
             "\n\n\n\n\n"
@@ -763,23 +809,22 @@ class TimeTraceTUI(App):
         with self.suspend():
             raw_text = open_in_nvim(template)
 
-        if raw_text:
+        if raw_text and self.client:
             parsed = parse_inline_task(raw_text)
             if parsed and parsed.get("title"):
                 try:
-                    async with httpx.AsyncClient() as client:
-                        res = await client.post(f"{BASE_URL}/tasks", json=parsed, timeout=3.0)
-                        if res.status_code == 201:
-                            self.notify("Task created!", timeout=1.5)
-                        else:
-                            self.notify(f"Failed to create task: {res.text}", severity="error")
+                    res = await self.client.post("/tasks", json=parsed)
+                    if res.status_code == 201:
+                        self.notify("Task created!", timeout=1.5)
+                    else:
+                        self.notify(f"Failed to create task: {res.text}", severity="error")
                     await self.load_current_view()
                 except Exception as e:
                     self.notify(f"Error: {e}", severity="error")
 
     async def action_edit_item_nvim(self) -> None:
         item_id = self.get_selected_item_id()
-        if not item_id:
+        if not item_id or not self.client:
             return
 
         if self.view_mode == "tasks":
@@ -804,8 +849,7 @@ class TimeTraceTUI(App):
                 parsed = parse_inline_task(raw_text)
                 if parsed and parsed.get("title"):
                     try:
-                        async with httpx.AsyncClient() as client:
-                            await client.put(f"{BASE_URL}/tasks/{task['id']}", json=parsed, timeout=3.0)
+                        await self.client.put(f"/tasks/{task['id']}", json=parsed)
                         await self.load_tasks()
                     except Exception:
                         pass
@@ -843,12 +887,11 @@ class TimeTraceTUI(App):
                     if "end_time" in parsed:
                         payload["end_time"] = parsed["end_time"].isoformat()
 
-                    async with httpx.AsyncClient() as client:
-                        res = await client.put(f"{BASE_URL}/sessions/{session['id']}", json=payload, timeout=3.0)
-                        if res.status_code == 200:
-                            self.notify("Session updated!", timeout=1.5)
-                        else:
-                            self.notify(f"Failed to update session: {res.text}", severity="error")
+                    res = await self.client.put(f"/sessions/{session['id']}", json=payload)
+                    if res.status_code == 200:
+                        self.notify("Session updated!", timeout=1.5)
+                    else:
+                        self.notify(f"Failed to update session: {res.text}", severity="error")
                     await self.load_sessions()
                 except Exception as e:
                     self.notify(f"Error: {e}", severity="error")
@@ -868,7 +911,7 @@ class TimeTraceTUI(App):
         with self.suspend():
             raw_text = open_in_nvim(template)
 
-        if raw_text:
+        if raw_text and self.client:
             parsed = parse_inline_timer(raw_text)
             if not parsed.get("task_id") and task_id:
                 parsed["task_id"] = task_id
@@ -876,18 +919,16 @@ class TimeTraceTUI(App):
             mode = "pomodoro" if parsed.get("pomo_minutes", 0) > 0 else "flowtime"
 
             try:
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"{BASE_URL}/timer/start",
-                        json={
-                            "task_id": parsed.get("task_id"),
-                            "tags": parsed.get("tags", "#general"),
-                            "notes": parsed.get("notes", ""),
-                            "mode": mode,
-                            "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
-                        },
-                        timeout=3.0
-                    )
+                await self.client.post(
+                    "/timer/start",
+                    json={
+                        "task_id": parsed.get("task_id"),
+                        "tags": parsed.get("tags", "#general"),
+                        "notes": parsed.get("notes", ""),
+                        "mode": mode,
+                        "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
+                    }
+                )
                 await self.update_timer()
             except Exception:
                 pass
@@ -903,52 +944,50 @@ class TimeTraceTUI(App):
         with self.suspend():
             raw_text = open_in_nvim(template)
 
-        if raw_text:
+        if raw_text and self.client:
             parsed = parse_inline_timer(raw_text)
             try:
-                async with httpx.AsyncClient() as client:
-                    await client.post(
-                        f"{BASE_URL}/timer/split",
-                        json={
-                            "new_tags": parsed.get("tags", "#general"),
-                            "new_notes": parsed.get("notes", "")
-                        },
-                        timeout=3.0
-                    )
+                await self.client.post(
+                    "/timer/split",
+                    json={
+                        "new_tags": parsed.get("tags", "#general"),
+                        "new_notes": parsed.get("notes", "")
+                    }
+                )
                 await self.update_timer()
             except Exception:
                 pass
 
     async def action_stop_timer_nvim(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.post(f"{BASE_URL}/timer/stop", timeout=3.0)
-                if res.status_code == 200:
-                    session_data = res.json()
-                    template = (
-                        "5/5 water, focus\n\n\n\n\n"
-                        "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2\n"
-                        "> Line 2+: Optional obstacle or session notes\n"
-                        "> Example: 5/5 water, focus, stretch\n"
-                        "> Minor CORS issue on WebSocket handshake"
+            res = await self.client.post("/timer/stop")
+            if res.status_code == 200:
+                session_data = res.json()
+                template = (
+                    "5/5 water, focus\n\n\n\n\n"
+                    "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2\n"
+                    "> Line 2+: Optional obstacle or session notes\n"
+                    "> Example: 5/5 water, focus, stretch\n"
+                    "> Minor CORS issue on WebSocket handshake"
+                )
+
+                raw_text = None
+                with self.suspend():
+                    raw_text = open_in_nvim(template)
+
+                if raw_text:
+                    parsed = parse_inline_reflection(raw_text)
+                    await self.client.post(
+                        "/reflections",
+                        json={
+                            "session_id": session_data["id"],
+                            "energy_level": parsed["energy_level"],
+                            "obstacles": parsed["obstacles"],
+                            "habits_completed": parsed["habits"]
+                        }
                     )
-
-                    raw_text = None
-                    with self.suspend():
-                        raw_text = open_in_nvim(template)
-
-                    if raw_text:
-                        parsed = parse_inline_reflection(raw_text)
-                        await client.post(
-                            f"{BASE_URL}/reflections",
-                            json={
-                                "session_id": session_data["id"],
-                                "energy_level": parsed["energy_level"],
-                                "obstacles": parsed["obstacles"],
-                                "habits_completed": parsed["habits"]
-                            },
-                            timeout=3.0
-                        )
             await self.update_timer()
             await self.load_current_view()
         except Exception:
@@ -969,7 +1008,7 @@ class TimeTraceTUI(App):
         with self.suspend():
             raw_text = open_in_nvim(template)
 
-        if raw_text:
+        if raw_text and self.client:
             parsed = parse_inline_retro(raw_text)
             try:
                 start_ago = parsed["start_mins_ago"]
@@ -986,34 +1025,31 @@ class TimeTraceTUI(App):
                     "notes": parsed["notes"]
                 }
 
-                async with httpx.AsyncClient() as client:
-                    res = await client.post(
-                        f"{BASE_URL}/sessions/retro",
-                        json=payload,
-                        timeout=3.0
-                    )
-                    if res.status_code == 201:
-                        self.notify("Retro session logged!", timeout=1.5)
-                    else:
-                        self.notify(f"Failed to log retro session: {res.text}", severity="error")
+                res = await self.client.post("/sessions/retro", json=payload)
+                if res.status_code == 201:
+                    self.notify("Retro session logged!", timeout=1.5)
+                else:
+                    self.notify(f"Failed to log retro session: {res.text}", severity="error")
                 await self.load_current_view()
             except Exception as e:
                 self.notify(f"Error: {e}", severity="error")
 
     async def action_view_stats(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.get(f"{BASE_URL}/analytics/summary", timeout=2.0)
-                if res.status_code == 200:
-                    summary = res.json()
-                    self.push_screen(StatsModal(summary=summary))
+            res = await self.client.get("/analytics/summary")
+            if res.status_code == 200:
+                summary = res.json()
+                self.push_screen(StatsModal(summary=summary))
         except Exception:
             pass
 
     async def action_clear_completed(self) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                await client.delete(f"{BASE_URL}/tasks/completed", timeout=3.0)
+            await self.client.delete("/tasks/completed")
             self.notify("Cleared completed tasks", timeout=1.5)
             await self.load_current_view()
         except Exception:
@@ -1027,11 +1063,12 @@ class TimeTraceTUI(App):
         self.run_worker(self._async_delete_item(endpoint, item_id))
 
     async def _async_delete_item(self, endpoint: str, item_id: int) -> None:
+        if not self.client:
+            return
         try:
-            async with httpx.AsyncClient() as client:
-                res = await client.delete(f"{BASE_URL}{endpoint}", timeout=3.0)
-                if res.status_code in (200, 204):
-                    self.notify(f"Deleted #{item_id}", timeout=1.5)
+            res = await self.client.delete(endpoint)
+            if res.status_code in (200, 204):
+                self.notify(f"Deleted #{item_id}", timeout=1.5)
             await self.load_current_view()
         except Exception as e:
             self.notify(f"Error deleting: {e}", severity="error")
