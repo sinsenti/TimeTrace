@@ -2,10 +2,19 @@ let calendar;
 let isRunning = false;
 let activeTasks = [];
 let allSessions = [];
+let allTasksMap = {}; // Global task registry for resolving titles across ALL tasks (active & completed)
 let currentFilter = 'all';
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
-let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899'];
+let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
 let idleDetectionEnabled = true;
+
+// ==========================================
+// 🏷️ Tag & Task State
+// ==========================================
+let currentTagChips = [];
+let attachedTask = null; // { id: number, title: str, color: str }
+let activeTagSuggestionIndex = -1;
+let activeTaskSuggestionIndex = -1;
 
 // ==========================================
 // 🧘 Neovim Mode Engine State
@@ -41,6 +50,24 @@ document.addEventListener('DOMContentLoaded', function() {
             droppable: true,
             defaultTimedEventDuration: `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`,
             events: fetchCalendarEvents,
+
+            // Calendar Event Renderer (Strict Hierarchy: Task Title -> Notes -> Tags)
+            eventContent: function(arg) {
+                const props = arg.event.extendedProps || {};
+                const taskTitle = props.taskTitle || '';
+                const notes = props.notes || '';
+                const tags = props.tags || '';
+
+                return {
+                    html: `
+                        <div class="fc-event-custom flex flex-col h-full w-full overflow-hidden leading-tight p-0.5 text-white">
+                            ${taskTitle ? `<div class="font-black text-[11px] truncate shrink-0">${taskTitle}</div>` : ''}
+                            ${notes ? `<div class="text-[10px] opacity-85 overflow-hidden line-clamp-1 shrink">${notes}</div>` : ''}
+                            ${tags ? `<div class="text-[9px] font-mono text-purple-200 opacity-90 truncate shrink-0 mt-auto">${tags}</div>` : ''}
+                        </div>
+                    `
+                };
+            },
 
             dayHeaderContent: function(arg) {
                 const dayName = arg.date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
@@ -108,6 +135,29 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
+    setupModalKeyboardListeners();
+
+    fetchAllTasksRegistry();
+    fetchTasks();
+    fetchTimerStatus();
+    setInterval(fetchTimerStatus, 1000);
+});
+
+function setupModalKeyboardListeners() {
+    // Task Modal: Ctrl+Enter to Save, Esc to Close
+    const taskModal = document.getElementById('task_modal');
+    if (taskModal) {
+        taskModal.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                saveTask();
+            } else if (e.key === 'Escape') {
+                closeTaskModal();
+            }
+        });
+    }
+
+    // Session Modal: Ctrl+Enter to Save, Esc to Close
     const sessionModal = document.getElementById('session_modal');
     if (sessionModal) {
         sessionModal.addEventListener('keydown', function(e) {
@@ -120,10 +170,114 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    fetchTasks();
-    fetchTimerStatus();
-    setInterval(fetchTimerStatus, 1000);
-});
+    // Attach Task Input Listeners
+    const taskSearchInput = document.getElementById('session_modal_task_search');
+    if (taskSearchInput) {
+        taskSearchInput.addEventListener('focus', () => renderTaskSuggestions(taskSearchInput.value));
+        taskSearchInput.addEventListener('input', () => renderTaskSuggestions(taskSearchInput.value));
+
+        taskSearchInput.addEventListener('keydown', function(e) {
+            const dropdown = document.getElementById('task_suggestions_dropdown');
+            const items = dropdown ? dropdown.querySelectorAll('.task-suggestion-item') : [];
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeTaskSuggestionIndex = (activeTaskSuggestionIndex + 1) % items.length;
+                    highlightTaskSuggestionItem(items);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeTaskSuggestionIndex = (activeTaskSuggestionIndex - 1 + items.length) % items.length;
+                    highlightTaskSuggestionItem(items);
+                }
+            } else if (e.key === 'Enter') {
+                e.preventDefault();
+                if (activeTaskSuggestionIndex >= 0 && items[activeTaskSuggestionIndex]) {
+                    items[activeTaskSuggestionIndex].click();
+                } else if (items.length > 0) {
+                    items[0].click();
+                }
+            } else if (e.key === 'Tab') {
+                if (items.length > 0 && activeTaskSuggestionIndex >= 0) {
+                    items[activeTaskSuggestionIndex].click();
+                }
+                if (dropdown) dropdown.classList.add('hidden');
+                // Shift focus to tag input on Tab
+                const tagInput = document.getElementById('session_modal_tags_input');
+                if (tagInput) setTimeout(() => tagInput.focus(), 10);
+            } else if (e.key === 'Backspace' && !taskSearchInput.value && attachedTask) {
+                detachTask();
+                renderTaskSuggestions('');
+            }
+        });
+    }
+
+    // Tag Input Event Handlers
+    const tagInput = document.getElementById('session_modal_tags_input');
+    if (tagInput) {
+        tagInput.addEventListener('focus', () => renderTagSuggestions(tagInput.value));
+        tagInput.addEventListener('input', () => renderTagSuggestions(tagInput.value));
+
+        tagInput.addEventListener('keydown', function(e) {
+            const dropdown = document.getElementById('tag_suggestions_dropdown');
+            const items = dropdown ? dropdown.querySelectorAll('.tag-suggestion-item') : [];
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeTagSuggestionIndex = (activeTagSuggestionIndex + 1) % items.length;
+                    highlightTagSuggestionItem(items);
+                }
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (items.length > 0) {
+                    activeTagSuggestionIndex = (activeTagSuggestionIndex - 1 + items.length) % items.length;
+                    highlightTagSuggestionItem(items);
+                }
+            } else if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                if (activeTagSuggestionIndex >= 0 && items[activeTagSuggestionIndex]) {
+                    items[activeTagSuggestionIndex].click();
+                } else if (tagInput.value.trim()) {
+                    addTagChip(tagInput.value.trim());
+                    tagInput.value = '';
+                    renderTagSuggestions('');
+                } else if (!tagInput.value.trim() && items.length > 0) {
+                    items[0].click(); // Select top suggestion (#progr) on Enter
+                }
+            } else if (e.key === 'Tab') {
+                // Apply tag on Tab without preventing default focus navigation to Notes!
+                if (activeTagSuggestionIndex >= 0 && items[activeTagSuggestionIndex]) {
+                    items[activeTagSuggestionIndex].click();
+                } else if (tagInput.value.trim()) {
+                    addTagChip(tagInput.value.trim());
+                    tagInput.value = '';
+                }
+                if (dropdown) dropdown.classList.add('hidden');
+            } else if (e.key === 'Backspace' && !tagInput.value && currentTagChips.length > 0) {
+                removeTagChip(currentTagChips.length - 1);
+                renderTagSuggestions('');
+            }
+        });
+    }
+
+    // Close floating dropdowns on outside click
+    document.addEventListener('click', function(e) {
+        const tagContainer = document.getElementById('tag_chips_container');
+        const tagDropdown = document.getElementById('tag_suggestions_dropdown');
+        if (tagContainer && tagDropdown && !tagContainer.contains(e.target) && !tagDropdown.contains(e.target)) {
+            tagDropdown.classList.add('hidden');
+        }
+
+        const taskContainer = document.getElementById('task_chip_container');
+        const taskDropdown = document.getElementById('task_suggestions_dropdown');
+        if (taskContainer && taskDropdown && !taskContainer.contains(e.target) && !taskDropdown.contains(e.target)) {
+            taskDropdown.classList.add('hidden');
+        }
+    });
+}
 
 // ==========================================
 // ⌨️ Neovim Motion & Visual Mode Engine
@@ -295,10 +449,10 @@ function updateVimModeIndicator() {
 
     if (vimMode === 'VISUAL') {
         el.innerText = '-- VISUAL --';
-        el.className = 'px-2.5 py-1 rounded text-[11px] font-black uppercase tracking-wider bg-amber-900/80 text-amber-300 border border-amber-600 shadow-md shadow-amber-500/20';
+        el.className = 'h-8 px-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider bg-amber-900/80 text-amber-300 border border-amber-600 shadow-md shadow-amber-500/20 flex items-center justify-center whitespace-nowrap';
     } else {
         el.innerText = '-- NORMAL --';
-        el.className = 'px-2.5 py-1 rounded text-[11px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700';
+        el.className = 'h-8 px-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap';
     }
 }
 
@@ -361,6 +515,251 @@ function formatIsoLocal(dt) {
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
 }
 
+function getTagColor(tagStr) {
+    let clean = tagStr.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (!clean) return defaultPalette[0];
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) hash += clean.charCodeAt(i);
+    return defaultPalette[hash % defaultPalette.length];
+}
+
+// ==========================================
+// ⏱️ Fast Time Stepper Controls
+// ==========================================
+function adjustStartTime(minutes) {
+    const startInput = document.getElementById('session_modal_start');
+    if (!startInput || !startInput.value) return;
+    const current = new Date(startInput.value);
+    current.setMinutes(current.getMinutes() + minutes);
+    startInput.value = formatIsoLocal(current);
+}
+
+function setStartTimeNow() {
+    const startInput = document.getElementById('session_modal_start');
+    if (!startInput) return;
+    startInput.value = formatIsoLocal(new Date());
+}
+
+function setDurationFromStart(minutes) {
+    const startInput = document.getElementById('session_modal_start');
+    const endInput = document.getElementById('session_modal_end');
+    if (!startInput || !endInput) return;
+
+    const startDt = startInput.value ? new Date(startInput.value) : new Date();
+    const endDt = new Date(startDt.getTime() + minutes * 60000);
+    endInput.value = formatIsoLocal(endDt);
+}
+
+// ==========================================
+// 🔗 Task Attach Autocomplete Engine
+// ==========================================
+async function fetchAllTasksRegistry() {
+    try {
+        const res = await fetch('/api/v1/tasks?status=all');
+        const tasks = await res.json();
+        allTasksMap = {};
+        tasks.forEach(t => {
+            allTasksMap[t.id] = t;
+        });
+    } catch(e) {}
+}
+
+function renderTaskSuggestions(query) {
+    const dropdown = document.getElementById('task_suggestions_dropdown');
+    if (!dropdown) return;
+
+    let q = (query || "").trim().toLowerCase();
+    const tasks = Object.values(allTasksMap);
+    let filtered = tasks.filter(t => !q || t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
+
+    if (filtered.length === 0) {
+        dropdown.classList.add('hidden');
+        activeTaskSuggestionIndex = -1;
+        return;
+    }
+
+    activeTaskSuggestionIndex = 0;
+    dropdown.innerHTML = filtered.map((t, idx) => `
+        <div onclick="attachTaskById(${t.id})" class="task-suggestion-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
+            <div>
+                <span class="font-bold text-white block">${t.title}</span>
+                <span class="text-[10px] text-slate-400 truncate block">${t.description || ''}</span>
+            </div>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${t.color || '#7c3aed'}">#${t.id}</span>
+        </div>
+    `).join('');
+
+    dropdown.classList.remove('hidden');
+}
+
+function highlightTaskSuggestionItem(items) {
+    items.forEach((item, idx) => {
+        if (idx === activeTaskSuggestionIndex) {
+            item.classList.add('bg-[#1a1c28]');
+        } else {
+            item.classList.remove('bg-[#1a1c28]');
+        }
+    });
+}
+
+function attachTaskById(taskId) {
+    const t = allTasksMap[taskId];
+    if (!t) return;
+    attachedTask = t;
+
+    document.getElementById('session_modal_task_id').value = t.id;
+    renderTaskChip();
+
+    const input = document.getElementById('session_modal_task_search');
+    if (input) input.value = '';
+
+    const dropdown = document.getElementById('task_suggestions_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+
+    // Automatically shift focus to Tag Input
+    const tagInput = document.getElementById('session_modal_tags_input');
+    if (tagInput) setTimeout(() => tagInput.focus(), 20);
+}
+
+function detachTask() {
+    attachedTask = null;
+    document.getElementById('session_modal_task_id').value = '';
+    renderTaskChip();
+}
+
+function renderTaskChip() {
+    const container = document.getElementById('task_chip_container');
+    const input = document.getElementById('session_modal_task_search');
+    if (!container || !input) return;
+
+    container.querySelectorAll('.task-chip-item').forEach(el => el.remove());
+
+    if (attachedTask) {
+        const chip = document.createElement('span');
+        chip.className = 'task-chip-item px-2.5 py-1 rounded text-xs font-bold text-white flex items-center space-x-1.5 shadow-sm shrink-0';
+        chip.style.backgroundColor = attachedTask.color || '#7c3aed';
+        chip.innerHTML = `
+            <span>✓ ${attachedTask.title}</span>
+            <button type="button" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
+        `;
+        container.insertBefore(chip, input);
+        input.placeholder = "Attached! Type to change task...";
+    } else {
+        input.placeholder = "Search/Type task... (Press Enter to attach top match)";
+    }
+}
+
+// ==========================================
+// 🏷️ Smart Tag Chips & Autocomplete Engine
+// ==========================================
+function setTagChips(tagStr) {
+    if (!tagStr) {
+        currentTagChips = [];
+    } else {
+        const raw = tagStr.split(' ').map(t => t.trim()).filter(t => t.startsWith('#'));
+        currentTagChips = [...new Set(raw)];
+    }
+    renderTagChips();
+}
+
+function addTagChip(rawTag) {
+    let clean = rawTag.trim();
+    if (!clean) return;
+    if (!clean.startsWith('#')) clean = `#${clean}`;
+    if (!currentTagChips.includes(clean)) {
+        currentTagChips.push(clean);
+        renderTagChips();
+    }
+}
+
+function removeTagChip(index) {
+    currentTagChips.splice(index, 1);
+    renderTagChips();
+}
+
+function renderTagChips() {
+    const container = document.getElementById('tag_chips_container');
+    const input = document.getElementById('session_modal_tags_input');
+    if (!container || !input) return;
+
+    container.querySelectorAll('.tag-chip').forEach(el => el.remove());
+
+    currentTagChips.forEach((tag, idx) => {
+        const color = getTagColor(tag);
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip px-2 py-0.5 rounded text-xs font-bold text-white flex items-center space-x-1 shadow-sm';
+        chip.style.backgroundColor = color;
+        chip.innerHTML = `
+            <span>${tag}</span>
+            <button type="button" onclick="removeTagChip(${idx})" class="hover:text-red-200 text-[10px] font-black ml-1">&times;</button>
+        `;
+        container.insertBefore(chip, input);
+    });
+}
+
+function getAllSystemTags() {
+    // Default system tags with #progr at top
+    let tagSet = new Set(['#progr', '#backend', '#frontend', '#meeting', '#planning', '#review', '#design', '#bugfix']);
+    
+    allSessions.forEach(s => {
+        if (s.tags) {
+            s.tags.split(' ').forEach(t => {
+                if (t.startsWith('#')) tagSet.add(t.trim());
+            });
+        }
+    });
+
+    return Array.from(tagSet);
+}
+
+function renderTagSuggestions(query) {
+    const dropdown = document.getElementById('tag_suggestions_dropdown');
+    if (!dropdown) return;
+
+    let q = (query || "").trim().toLowerCase();
+    if (q.startsWith('#')) q = q.slice(1);
+
+    const allTags = getAllSystemTags();
+    let filtered = allTags.filter(t => t.toLowerCase().includes(q) && !currentTagChips.includes(t));
+
+    if (filtered.length === 0) {
+        dropdown.classList.add('hidden');
+        activeTagSuggestionIndex = -1;
+        return;
+    }
+
+    activeTagSuggestionIndex = 0;
+    dropdown.innerHTML = filtered.map((tag, idx) => `
+        <div onclick="selectTagSuggestion('${tag}')" class="tag-suggestion-item px-3 py-1.5 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
+            <span class="font-bold text-purple-300">${tag}</span>
+            <span class="text-[10px] text-slate-500">Press Enter</span>
+        </div>
+    `).join('');
+
+    dropdown.classList.remove('hidden');
+}
+
+function selectTagSuggestion(tag) {
+    addTagChip(tag);
+    const input = document.getElementById('session_modal_tags_input');
+    if (input) {
+        input.value = '';
+        input.focus();
+    }
+    const dropdown = document.getElementById('tag_suggestions_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+}
+
+function highlightTagSuggestionItem(items) {
+    items.forEach((item, idx) => {
+        if (idx === activeTagSuggestionIndex) {
+            item.classList.add('bg-[#1a1c28]');
+        } else {
+            item.classList.remove('bg-[#1a1c28]');
+        }
+    });
+}
+
 // ==========================================
 // ⚡ Idle Detector Killer Switch & Resolution
 // ==========================================
@@ -377,17 +776,17 @@ function updateIdleSwitchUI() {
     if (!btn || !label) return;
 
     if (idleDetectionEnabled) {
-        label.innerText = '⚡ Idle Detector: ON';
-        btn.className = 'bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-2.5 py-1 rounded font-bold transition flex items-center space-x-1';
+        label.innerText = 'Idle Detector: ON';
+        btn.className = 'h-8 bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-3 rounded-lg font-bold transition flex items-center whitespace-nowrap';
     } else {
-        label.innerText = '⏸️ Idle Detector: OFF';
-        btn.className = 'bg-[#181a28] hover:bg-[#222536] text-slate-500 border border-slate-700 px-2.5 py-1 rounded font-bold transition flex items-center space-x-1';
+        label.innerText = 'Idle Detector: OFF';
+        btn.className = 'h-8 bg-[#181a28] hover:bg-[#222536] text-slate-500 border border-slate-700 px-3 rounded-lg font-bold transition flex items-center whitespace-nowrap';
     }
 }
 
 async function resolveIdleGap(option) {
     const retagInput = document.getElementById('idle_retag_input');
-    const newTags = retagInput ? retagInput.value.strip() || '#general' : '#general';
+    const newTags = retagInput ? retagInput.value.trim() || '#general' : '#general';
 
     await fetch('/api/v1/idle/resolve', {
         method: 'POST',
@@ -405,25 +804,6 @@ async function resolveIdleGap(option) {
 // ==========================================
 // 📅 Session & Task Modal Controllers
 // ==========================================
-function filterTaskDropdown(query) {
-    const q = (query || "").toLowerCase().trim();
-    const taskSelect = document.getElementById('session_modal_task_select');
-    if (!taskSelect) return;
-
-    const filtered = activeTasks.filter(t => 
-        !q || 
-        t.title.toLowerCase().includes(q) || 
-        (t.description && t.description.toLowerCase().includes(q))
-    );
-
-    taskSelect.innerHTML = '<option value="">-- Independent Session --</option>' +
-        filtered.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
-
-    if (q && filtered.length > 0) {
-        taskSelect.selectedIndex = 1;
-    }
-}
-
 function openEditSessionModal(sessionId) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
@@ -446,15 +826,13 @@ function openEditSessionModal(sessionId) {
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
-    document.getElementById('session_modal_task_search').value = "";
-    filterTaskDropdown("");
-    if (session.task_id) {
-        document.getElementById('session_modal_task_select').value = session.task_id;
+    if (session.task_id && allTasksMap[session.task_id]) {
+        attachTaskById(session.task_id);
     } else {
-        document.getElementById('session_modal_task_select').value = "";
+        detachTask();
     }
 
-    document.getElementById('session_modal_tags').value = session.tags || "#";
+    setTagChips(session.tags || "");
     document.getElementById('session_modal_notes').value = session.notes || "";
 
     document.getElementById('session_modal').classList.remove('hidden');
@@ -494,13 +872,13 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         startNowBtn.classList.add('hidden');
     }
 
-    document.getElementById('session_modal_task_search').value = "";
-    filterTaskDropdown("");
-    if (taskId) {
-        document.getElementById('session_modal_task_select').value = taskId;
+    if (taskId && allTasksMap[taskId]) {
+        attachTaskById(taskId);
+    } else {
+        detachTask();
     }
 
-    document.getElementById('session_modal_tags').value = "#";
+    setTagChips("");
     document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
 
     document.getElementById('session_modal').classList.remove('hidden');
@@ -521,11 +899,15 @@ function closeSessionModal() {
 
 async function saveSessionFromModal() {
     const sessionId = document.getElementById('edit_session_id').value;
-    const taskIdVal = document.getElementById('session_modal_task_select').value;
+    const taskIdVal = document.getElementById('session_modal_task_id').value;
     const startVal = document.getElementById('session_modal_start').value;
     const endVal = document.getElementById('session_modal_end').value;
-    const tagsVal = document.getElementById('session_modal_tags').value;
     const notesVal = document.getElementById('session_modal_notes').value;
+
+    const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
+    if (extraTypedTag) addTagChip(extraTypedTag);
+
+    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : '#general';
 
     if (!startVal || !endVal) return;
 
@@ -533,7 +915,7 @@ async function saveSessionFromModal() {
         task_id: taskIdVal ? parseInt(taskIdVal) : null,
         start_time: new Date(startVal).toISOString(),
         end_time: new Date(endVal).toISOString(),
-        tags: (tagsVal && tagsVal.trim() !== "#") ? tagsVal : "#general",
+        tags: tagsVal,
         notes: notesVal || ""
     };
 
@@ -567,8 +949,11 @@ async function deleteSessionFromModal() {
 }
 
 async function startTimerFromModal() {
-    const taskIdVal = document.getElementById('session_modal_task_select').value;
-    const tagsVal = document.getElementById('session_modal_tags').value;
+    const taskIdVal = document.getElementById('session_modal_task_id').value;
+    const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
+    if (extraTypedTag) addTagChip(extraTypedTag);
+
+    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : '#general';
     const notesVal = document.getElementById('session_modal_notes').value;
 
     await fetch('/api/v1/timer/start', {
@@ -576,7 +961,7 @@ async function startTimerFromModal() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             task_id: taskIdVal ? parseInt(taskIdVal) : null,
-            tags: (tagsVal && tagsVal.trim() !== "#") ? tagsVal : "#general",
+            tags: tagsVal,
             notes: notesVal || ""
         })
     });
@@ -611,8 +996,8 @@ function updateViewButtons(activeViewType) {
     const btnWeek = document.getElementById('btn_view_week');
     const btnMonth = document.getElementById('btn_view_month');
 
-    const activeClass = "px-2.5 py-1 rounded border text-white font-bold bg-purple-600 border-purple-400 shadow-md";
-    const inactiveClass = "px-2.5 py-1 rounded border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938]";
+    const activeClass = "h-8 px-2.5 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 whitespace-nowrap";
+    const inactiveClass = "h-8 px-2.5 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap";
 
     if (btnDay) btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
@@ -624,29 +1009,26 @@ function updateViewButtons(activeViewType) {
 // ==========================================
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
+        await fetchAllTasksRegistry(); // Sync full task lookup table
         const res = await fetch(`/api/v1/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
         allSessions = await res.json();
         
         const events = allSessions.map(s => {
-            const matchedTask = activeTasks.find(t => t.id === s.task_id);
+            const matchedTask = allTasksMap[s.task_id];
             const color = matchedTask ? matchedTask.color : '#7c3aed';
-            
-            let titleParts = [];
-            if (matchedTask && matchedTask.title) titleParts.push(matchedTask.title);
-            if (s.notes) titleParts.push(s.notes);
-            let mainTitle = titleParts.join(' - ');
-
-            let finalTitle = mainTitle;
-            if (s.tags) finalTitle = finalTitle ? `${finalTitle} ${s.tags}` : s.tags;
-            if (!finalTitle) finalTitle = '#session';
 
             return {
                 id: s.id,
-                title: finalTitle,
+                title: s.notes || s.tags || '#session',
                 start: s.start_time,
                 end: s.end_time || new Date().toISOString(),
                 backgroundColor: color,
-                borderColor: 'transparent'
+                borderColor: 'transparent',
+                extendedProps: {
+                    taskTitle: matchedTask ? matchedTask.title : '',
+                    notes: s.notes || '',
+                    tags: s.tags || ''
+                }
             };
         });
         successCallback(events);
@@ -662,7 +1044,6 @@ async function fetchTimerStatus() {
         idleDetectionEnabled = data.idle_detection_enabled;
         updateIdleSwitchUI();
 
-        // Handle Frozen AFK Modal Popup
         if (data.is_frozen_idle && data.pending_idle_gap) {
             const idleModal = document.getElementById('idle_resolution_modal');
             const idleLabel = document.getElementById('idle_time_summary_label');
@@ -685,14 +1066,14 @@ async function fetchTimerStatus() {
             if (label) label.innerText = `⏱️ ${timeStr} | ${taskName}`;
             if (btn) {
                 btn.innerText = 'Stop';
-                btn.className = 'bg-red-600 hover:bg-red-500 text-white font-medium px-3 py-1 rounded text-xs';
+                btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
             document.title = `⏱️ ${timeStr} - [${taskName}] ${data.tags}`;
         } else {
             if (label) label.innerText = data.is_frozen_idle ? '⏸️ Timer Frozen (AFK)' : 'Timer Idle';
             if (btn) {
                 btn.innerText = 'Start Timer';
-                btn.className = 'bg-purple-600 hover:bg-purple-500 text-white font-medium px-3 py-1 rounded text-xs';
+                btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
             document.title = data.is_frozen_idle ? '⚠️ AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
         }
@@ -865,6 +1246,11 @@ function openNewTaskModal() {
     document.getElementById('modal_input_color').value = defaultPalette[activeTasks.length % defaultPalette.length];
     document.getElementById('modal_delete_btn').classList.add('hidden');
     document.getElementById('task_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const titleInput = document.getElementById('modal_input_title');
+        if (titleInput) titleInput.focus();
+    }, 50);
 }
 
 function openEditTaskModal(id) {
@@ -880,6 +1266,11 @@ function openEditTaskModal(id) {
     document.getElementById('modal_input_color').value = t.color || '#7c3aed';
     document.getElementById('modal_delete_btn').classList.remove('hidden');
     document.getElementById('task_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const titleInput = document.getElementById('modal_input_title');
+        if (titleInput) titleInput.focus();
+    }, 50);
 }
 
 function closeTaskModal() {
