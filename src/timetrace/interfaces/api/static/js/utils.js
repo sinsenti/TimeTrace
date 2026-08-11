@@ -1,11 +1,23 @@
 let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 
+/**
+ * Determines task color based on theme and user preference.
+ * - If color is 'auto' or empty: uses dynamic theme palette.
+ * - If color is custom hex: preserves explicit user color across all themes.
+ */
+function getTaskColor(task, index = 0) {
+    if (!task) return defaultPalette[0];
+    if (!task.color || task.color === 'auto' || task.color === '') {
+        return defaultPalette[index % defaultPalette.length];
+    }
+    return task.color;
+}
+
 function parseApiDateTime(dtStr) {
     if (!dtStr) return null;
     if (typeof dtStr !== 'string') dtStr = String(dtStr);
     
-    // Check if the time portion contains a timezone offset or 'Z'
     const timePart = dtStr.includes('T') ? dtStr.split('T')[1] : dtStr;
     if (!dtStr.endsWith('Z') && !timePart.includes('+') && !timePart.includes('-')) {
         dtStr += 'Z';

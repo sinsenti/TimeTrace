@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
             initialView: userSettings.defaultView,
-            firstDay: userSettings.firstDayOfWeek, // 1 = Monday, 0 = Sunday
+            firstDay: userSettings.firstDayOfWeek,
             height: '100%',
             headerToolbar: false,
             slotMinTime: "00:00:00",
@@ -33,7 +33,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             defaultTimedEventDuration: `00:${String(userSettings.slotDuration).padStart(2,'0')}:00`,
             events: fetchCalendarEvents,
 
-            // Calendar Event Renderer
             eventContent: function(arg) {
                 const props = arg.event.extendedProps || {};
                 const taskTitle = props.taskTitle || '';
@@ -125,7 +124,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupModalKeyboardListeners();
     setupVimKeyboardListeners();
 
-    // Apply User Preferences
     await applyUserSettings(userSettings, true);
 
     if (userSettings.autoScrollNow) {
@@ -136,7 +134,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     fetchTasks();
     fetchTimerStatus();
 
-    // Dedicated Tab Title & Timer Status Pollers
     setInterval(fetchTimerStatus, 1000);
     setInterval(updateDocumentTitle, 1000);
 });
@@ -175,8 +172,8 @@ function updateViewButtons(activeViewType) {
     const btnWeek = document.getElementById('btn_view_week');
     const btnMonth = document.getElementById('btn_view_month');
 
-    const activeClass = "h-7 px-2 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 whitespace-nowrap text-[11px]";
-    const inactiveClass = "h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap text-[11px]";
+    const activeClass = "h-6 px-2 rounded text-white font-bold bg-purple-600 text-[11px]";
+    const inactiveClass = "h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]";
 
     if (btnDay) btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
@@ -189,7 +186,6 @@ function toggleSidebar(id) {
     el.classList.toggle('hidden');
     const isHidden = el.classList.contains('hidden');
 
-    // Update settings state on toggle
     const settings = getUserSettings();
     if (id === 'left_sidebar') settings.hideLeftSidebar = isHidden;
     if (id === 'right_sidebar') settings.hideRightSidebar = isHidden;
@@ -198,7 +194,6 @@ function toggleSidebar(id) {
     setSidebarVisibility(id, !isHidden);
 }
 
-// Dynamic Browser Tab Title Engine
 function updateDocumentTitle() {
     const now = new Date();
 
@@ -258,9 +253,9 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         const res = await fetch(`/api/v1/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
         allSessions = await res.json();
         
-        const events = allSessions.map(s => {
+        const events = allSessions.map((s, idx) => {
             const matchedTask = allTasksMap[s.task_id];
-            const color = matchedTask ? matchedTask.color : '#7c3aed';
+            const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
 
             return {
                 id: s.id,
@@ -289,7 +284,6 @@ async function fetchTimerStatus() {
         lastTimerData = data;
         isRunning = data.is_running;
         idleDetectionEnabled = data.idle_detection_enabled;
-        updateIdleSwitchUI();
 
         if (data.is_frozen_idle && data.pending_idle_gap) {
             const idleModal = document.getElementById('idle_resolution_modal');
@@ -365,7 +359,7 @@ async function fetchTasks() {
                 cardList.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tasks found.</div>';
             } else {
                 cardList.innerHTML = activeTasks.map((t, idx) => {
-                    const color = t.color || defaultPalette[idx % defaultPalette.length];
+                    const color = getTaskColor(t, idx);
                     const prioLabel = (t.priority || '-').toUpperCase();
                     return `
                         <div onclick="openEditTaskModal(${t.id})" data-task-id="${t.id}" data-task-title="${t.title}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
@@ -449,7 +443,7 @@ function fetchRangeTotals() {
             activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
         } else {
             activityList.innerHTML = sortedTags.map(([tag, secs]) => `
-                <div class="bg-[#161824] border border-[#262938] p-2.5 rounded-lg flex justify-between items-center">
+                <div class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center">
                     <span class="text-xs font-bold text-emerald-400">${tag}</span>
                     <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h</span>
                 </div>
@@ -460,7 +454,7 @@ function fetchRangeTotals() {
     const totalsList = document.getElementById('weekly_totals_list');
     if (totalsList) {
         totalsList.innerHTML = activeTasks.map((t, idx) => {
-            const color = t.color || defaultPalette[idx % defaultPalette.length];
+            const color = getTaskColor(t, idx);
             const hrs = ((taskHours[t.id] || 0) / 3600).toFixed(1);
             return `
                 <div style="background-color: ${color};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center">

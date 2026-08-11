@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="midnight">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,98 +7,101 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <style>
-        body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-        .fc { background-color: #0f1016; border: none !important; box-shadow: none !important; height: 100% !important; }
+        :root[data-theme="midnight"] {
+            --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #161824; --bg-sidebar: #12131d;
+            --border-color: #1a1c26; --border-muted: #262938; --accent-primary: #a855f7; --text-main: #e2e8f0;
+        }
+        :root[data-theme="nord"] {
+            --bg-main: #2e3440; --bg-header: #242933; --bg-card: #3b4252; --bg-sidebar: #242933;
+            --border-color: #434c5e; --border-muted: #4c566a; --accent-primary: #88c0d0; --text-main: #eceff4;
+        }
+        :root[data-theme="dracula"] {
+            --bg-main: #282a36; --bg-header: #21222c; --bg-card: #343746; --bg-sidebar: #21222c;
+            --border-color: #44475a; --border-muted: #6272a4; --accent-primary: #ff79c6; --text-main: #f8f8f2;
+        }
+        :root[data-theme="cyberpunk"] {
+            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #1d0847; --bg-sidebar: #150538;
+            --border-color: #2b0b5c; --border-muted: #ff0055; --accent-primary: #00f0ff; --text-main: #ffffff;
+        }
+        :root[data-theme="monokai"] {
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #3a373d; --bg-sidebar: #221f22;
+            --border-color: #4a474f; --border-muted: #5b5760; --accent-primary: #ffd866; --text-main: #fcfcfa;
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
+        .fc { background-color: var(--bg-main) !important; border: none !important; box-shadow: none !important; height: 100% !important; }
         .fc-theme-standard .fc-scrollgrid { border: none !important; }
         .fc-scrollgrid-section-header > th, .fc-scrollgrid-section-header > td { border-top: none !important; border-left: none !important; border-right: none !important; }
         .fc-scrollgrid-section-body > td { border-left: none !important; border-right: none !important; border-bottom: none !important; }
-        .fc-theme-standard td, .fc-theme-standard th { border-color: #1a1c26 !important; }
-        .fc-timegrid-slot { height: 2.2em !important; border-bottom: 1px dashed #161822 !important; }
+        .fc-theme-standard td, .fc-theme-standard th { border-color: var(--border-color) !important; }
+        .fc-timegrid-slot { height: 2.2em !important; border-bottom: 1px dashed var(--border-color) !important; }
         .fc-timegrid-slot-label { font-size: 0.72rem !important; color: #64748b !important; font-weight: 500; text-transform: uppercase; }
-        .fc-col-header-cell { background-color: #0f1016; padding: 6px 0; border-bottom: 1px solid #1a1c26 !important; }
+        .fc-col-header-cell { background-color: var(--bg-header); padding: 6px 0; border-bottom: 1px solid var(--border-color) !important; }
         .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .task-card { cursor: grab; }
         .task-card:active { cursor: grabbing; }
-        .fc .fc-day-today { background: transparent !important; background-color: transparent !important; }
-        .fc .fc-timegrid-now-indicator-line { border-color: #f87171 !important; border-width: 2px !important; box-shadow: 0 0 10px rgba(248, 113, 113, 0.7); z-index: 20 !important; }
-        .fc .fc-timegrid-now-indicator-arrow { border: none !important; width: 10px !important; height: 10px !important; background-color: #f87171 !important; border-radius: 50% !important; margin-top: -4px !important; margin-left: -5px !important; box-shadow: 0 0 12px rgba(248, 113, 113, 0.9); z-index: 21 !important; }
+        .fc .fc-day-today { background: transparent !important; }
+        .fc .fc-timegrid-now-indicator-line { border-color: #f87171 !important; border-width: 2px !important; z-index: 20 !important; }
+        .fc .fc-timegrid-now-indicator-arrow { border: none !important; width: 10px !important; height: 10px !important; background-color: #f87171 !important; border-radius: 50% !important; margin-top: -4px !important; margin-left: -5px !important; z-index: 21 !important; }
         .tz-header-label { font-size: 0.65rem; font-weight: 700; color: #64748b; padding: 4px; text-align: center; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0f1016; }
-        ::-webkit-scrollbar-thumb { background: #262938; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Top Navigation Bar -->
-    <header class="bg-[#12131d] border-b border-[#1a1c26] px-3 py-2 flex items-center justify-between shrink-0 gap-2 text-xs">
-        <div class="flex items-center space-x-2 shrink-0">
+    <!-- Unified Streamlined Top Navigation Bar -->
+    <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
+        <div class="flex items-center space-x-3 shrink-0">
             <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
             
-            <nav class="flex space-x-1">
-                <a href="/api/v1/dashboard" class="h-7 px-2 rounded-lg bg-purple-600 text-white font-bold flex items-center text-[11px]">Calendar</a>
-                <a href="/api/v1/habits-view" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-emerald-400 border border-emerald-500/40 font-bold flex items-center text-[11px]">Habits</a>
-                <a href="/api/v1/stats" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-700/50 font-bold flex items-center text-[11px]">Stats</a>
+            <nav class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
+                <a href="/api/v1/dashboard" class="h-6 px-2.5 rounded bg-purple-600 text-white font-bold flex items-center text-[11px]">Calendar</a>
+                <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded hover:bg-[#222536] text-emerald-400 font-semibold flex items-center text-[11px]">Habits</a>
+                <a href="/api/v1/stats" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Stats</a>
             </nav>
 
-            <button onclick="openSettingsModal()" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[#262938] font-bold flex items-center text-[11px]">
-                ⚙️ Settings
+            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px] space-x-1">
+                <span>⚙️</span>
+                <span>Settings</span>
             </button>
+        </div>
 
-            <span id="vim_mode_indicator" class="h-7 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
-                -- NORMAL --
-            </span>
-
-            <!-- Active Timer Control Pill -->
-            <div id="active_timer_pill" class="h-7 bg-[#181a28] border border-[#262938] px-2 rounded-lg flex items-center space-x-1.5 shrink-0">
-                <span id="timer_status_label" class="text-slate-300 font-medium whitespace-nowrap text-[11px]">Timer Idle</span>
-                <select id="timer_task_select" class="h-5 bg-[#12131d] border border-[#262938] text-slate-200 px-1 rounded text-[10px] focus:outline-none max-w-[120px] truncate">
+        <div class="flex items-center shrink-0">
+            <div id="active_timer_pill" class="h-8 bg-[#181a28] border border-[var(--border-muted)] px-3 rounded-lg flex items-center space-x-2 shrink-0">
+                <span id="timer_status_label" class="text-slate-200 font-medium whitespace-nowrap text-[11px]">Timer Idle</span>
+                <select id="timer_task_select" class="h-6 bg-[#12131d] border border-[var(--border-muted)] text-slate-200 px-1 rounded text-[10px] focus:outline-none max-w-[130px] truncate">
                     <option value="">-- Task --</option>
                 </select>
-                <button id="toggle_btn" onclick="toggleTimer()" class="h-5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2 rounded transition text-[10px] whitespace-nowrap">Start Timer</button>
+                <button id="toggle_btn" onclick="toggleTimer()" class="h-6 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 rounded transition text-[10px] whitespace-nowrap">Start Timer</button>
             </div>
         </div>
 
-        <div class="flex items-center space-x-1.5 shrink-0">
-            <button id="idle_killer_switch_btn" onclick="toggleIdleSwitch()" class="h-7 bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-2 rounded-lg font-bold transition flex items-center text-[10px] whitespace-nowrap">
-                <span id="idle_switch_label">Idle Detector: ON</span>
-            </button>
-
-            <div class="h-7 flex items-center bg-[#181a28] border border-[#262938] px-2 rounded-lg text-slate-300 space-x-1 whitespace-nowrap text-[10px]">
-                <span class="text-slate-400 font-semibold">Slot:</span>
-                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#12131d] text-white rounded px-1 py-0.5 text-[10px] font-bold border border-[#262938]">
-                    <option value="15" selected>15m</option>
-                    <option value="30">30m</option>
-                    <option value="45">45m</option>
-                    <option value="60">60m</option>
-                </select>
+        <div class="flex items-center space-x-2 shrink-0">
+            <div class="flex items-center bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
+                <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
+                <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-6 px-2 rounded text-white font-bold bg-purple-600 text-[11px]">Week</button>
+                <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Month</button>
             </div>
 
-            <button id="btn_toggle_left_sidebar" onclick="toggleSidebar('left_sidebar')" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Hide Tasks</button>
-            <button id="btn_toggle_right_sidebar" onclick="toggleSidebar('right_sidebar')" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Hide Totals</button>
-            
-            <div class="h-7 flex items-center bg-[#181a28] rounded-lg border border-[#262938] px-1 whitespace-nowrap text-[11px]">
+            <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[var(--border-muted)] px-1 whitespace-nowrap text-[11px]">
                 <button onclick="calendar.prev()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&lt;</button>
-                <span id="calendar_range_title" class="px-1.5 font-semibold text-slate-200">Date Range</span>
+                <span id="calendar_range_title" class="px-2 font-semibold text-slate-200">Date Range</span>
                 <button onclick="calendar.next()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&gt;</button>
             </div>
-            <button onclick="scrollToCurrentTime()" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Today</button>
             
-            <div class="flex items-center space-x-1 shrink-0">
-                <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] text-[11px] whitespace-nowrap">Day</button>
-                <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-7 px-2 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 text-[11px] whitespace-nowrap">Week</button>
-                <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] text-[11px] whitespace-nowrap">Month</button>
+            <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 rounded-lg border border-[var(--border-muted)] text-[11px] font-semibold">Today</button>
+            
+            <div class="flex items-center space-x-1.5 border-l border-[var(--border-color)] pl-2">
+                <span id="range_total_header" class="text-slate-400 font-semibold text-[11px]">Total</span>
+                <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
             </div>
-        </div>
-
-        <div class="flex items-center space-x-1.5 shrink-0 border-l border-[#1a1c26] pl-2">
-            <span id="range_total_header" class="text-slate-400 font-semibold text-[11px] whitespace-nowrap">Week Total</span>
-            <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
         </div>
     </header>
 
     <div class="flex-1 flex overflow-hidden">
-        <aside id="left_sidebar" class="w-64 bg-[#12131d] border-r border-[#1a1c26] p-3 flex flex-col shrink-0">
+        <aside id="left_sidebar" class="w-64 bg-[var(--bg-sidebar)] border-r border-[var(--border-color)] p-3 flex flex-col shrink-0">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
                 <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
@@ -118,13 +121,12 @@
             </div>
         </aside>
 
-        <!-- Seamless Edge-to-Edge Main Calendar Workspace -->
-        <main class="flex-1 bg-[#0f1016] overflow-hidden flex flex-col">
+        <main class="flex-1 bg-[var(--bg-main)] overflow-hidden flex flex-col">
             <div id="calendar" class="flex-1 h-full"></div>
         </main>
 
-        <aside id="right_sidebar" class="w-72 bg-[#12131d] border-l border-[#1a1c26] p-3 flex flex-col shrink-0 overflow-y-auto space-y-4">
-            <div class="flex justify-between items-center border-b border-[#1a1c26] pb-2">
+        <aside id="right_sidebar" class="w-72 bg-[var(--bg-sidebar)] border-l border-[var(--border-color)] p-3 flex flex-col shrink-0 overflow-y-auto space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-2">
                 <span id="range_breakdown_label" class="text-xs font-bold uppercase tracking-wider text-slate-400">Range Breakdown</span>
                 <span id="side_total_hours" class="text-xs font-black text-purple-400">0.0h</span>
             </div>
@@ -141,10 +143,10 @@
         </aside>
     </div>
 
-    <!-- ⚙️ User Settings Configuration Modal -->
+    <!-- Settings Modal -->
     <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[#262938] pb-3">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
                 <div class="flex items-center space-x-2">
                     <span class="text-lg">⚙️</span>
                     <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
@@ -153,38 +155,49 @@
             </div>
 
             <div class="space-y-3 text-xs">
-                <!-- Default Calendar View -->
-                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Color Theme</label>
+                        <span class="text-[10px] text-slate-400">Changes UI & dynamic task card palette</span>
+                    </div>
+                    <select id="setting_theme" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="midnight">Midnight (Dark Purple)</option>
+                        <option value="nord">Nord (Frost Blue)</option>
+                        <option value="dracula">Dracula (Vibrant Dark)</option>
+                        <option value="cyberpunk">Cyberpunk (Neon Cyan)</option>
+                        <option value="monokai">Monokai Pro (Warm Pastel)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                     <div>
                         <label class="font-bold text-slate-200 block">Default Grid View</label>
                         <span class="text-[10px] text-slate-400">Initial view on dashboard load</span>
                     </div>
-                    <select id="setting_default_view" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <select id="setting_default_view" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
                         <option value="timeGridWeek">Week View</option>
                         <option value="timeGridDay">Day View</option>
                         <option value="dayGridMonth">Month View</option>
                     </select>
                 </div>
 
-                <!-- First Day of Week -->
-                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                     <div>
                         <label class="font-bold text-slate-200 block">First Day of Week</label>
                         <span class="text-[10px] text-slate-400">Calendar column start day</span>
                     </div>
-                    <select id="setting_first_day" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <select id="setting_first_day" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
                         <option value="1">Monday</option>
                         <option value="0">Sunday</option>
                     </select>
                 </div>
 
-                <!-- Default Slot Duration -->
-                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                     <div>
                         <label class="font-bold text-slate-200 block">Default Time Slot</label>
                         <span class="text-[10px] text-slate-400">Grid slot interval in minutes</span>
                     </div>
-                    <select id="setting_slot_duration" class="bg-[#181a28] border border-[#262938] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <select id="setting_slot_duration" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
                         <option value="15">15 Minutes</option>
                         <option value="30">30 Minutes</option>
                         <option value="45">45 Minutes</option>
@@ -192,18 +205,16 @@
                     </select>
                 </div>
 
-                <!-- Default Session Tag -->
-                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[#262938]">
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                     <div>
                         <label class="font-bold text-slate-200 block">Default Tag</label>
                         <span class="text-[10px] text-slate-400">Tag assigned when none specified</span>
                     </div>
-                    <input id="setting_default_tag" type="text" value="#general" placeholder="#tag" class="bg-[#181a28] border border-[#262938] text-purple-300 font-mono px-2 py-1 rounded text-xs w-28 text-right focus:outline-none">
+                    <input id="setting_default_tag" type="text" value="#general" placeholder="#tag" class="bg-[#181a28] border border-[var(--border-muted)] text-purple-300 font-mono px-2 py-1 rounded text-xs w-28 text-right focus:outline-none">
                 </div>
 
-                <!-- Toggles Grid -->
                 <div class="space-y-2 pt-1">
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>
                             <span class="text-[10px] text-slate-400">Automatically freeze running timer on system idle</span>
@@ -211,7 +222,7 @@
                         <input id="setting_idle_detector" type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
                     </label>
 
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-slate-200 block">Hide Tasks Sidebar by Default</span>
                             <span class="text-[10px] text-slate-400">Collapse left task cards panel on boot</span>
@@ -219,7 +230,7 @@
                         <input id="setting_hide_left_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
                     </label>
 
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar by Default</span>
                             <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel on boot</span>
@@ -227,7 +238,7 @@
                         <input id="setting_hide_right_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
                     </label>
 
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[#262938] cursor-pointer hover:border-purple-500">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-slate-200 block">Auto-Scroll to Current Hour</span>
                             <span class="text-[10px] text-slate-400">Scroll calendar view to current time on load</span>
@@ -237,41 +248,41 @@
                 </div>
             </div>
 
-            <div class="pt-2 border-t border-[#262938] flex justify-end space-x-2">
+            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
                 <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel</button>
                 <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings</button>
             </div>
         </div>
     </div>
 
-    <!-- Existing Task Modal -->
+    <!-- Task Modal -->
     <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3">
-            <div class="flex justify-between items-center border-b border-[#262938] pb-2">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-3 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                 <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
                 <span class="text-[10px] text-slate-500 font-mono">Ctrl+Enter to save</span>
             </div>
             <input type="hidden" id="edit_task_id">
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Task Title / Code</label>
-                <input id="modal_input_title" type="text" placeholder="e.g. ALP-101 Portal Refresh" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_title" type="text" placeholder="e.g. ALP-101 Portal Refresh" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
             </div>
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
-                <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
             </div>
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Default Tags</label>
-                <input id="modal_input_tags" type="text" placeholder="e.g. #programming #backend" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-purple-300 focus:outline-none focus:border-purple-500">
+                <input id="modal_input_tags" type="text" placeholder="e.g. #programming #backend" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 focus:outline-none focus:border-purple-500">
             </div>
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
-                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
             <div class="grid grid-cols-3 gap-2">
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Priority</label>
-                    <select id="modal_input_priority" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
+                    <select id="modal_input_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="-">- (None)</option>
                         <option value="low">low</option>
                         <option value="medium">medium</option>
@@ -280,7 +291,7 @@
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Status</label>
-                    <select id="modal_input_status" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-2 rounded-lg text-xs text-white">
+                    <select id="modal_input_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="in_progress">in_progress</option>
                         <option value="ongoing">ongoing</option>
                         <option value="completed">completed</option>
@@ -288,7 +299,11 @@
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Color</label>
-                    <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-9 bg-[#0f1016] border border-[#262938] rounded-lg cursor-pointer p-1">
+                    <select id="modal_input_color_mode" onchange="toggleCustomColorPicker(this.value)" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-1 py-2 rounded-lg text-[11px] text-white">
+                        <option value="auto">Auto (Theme)</option>
+                        <option value="custom">Custom Color</option>
+                    </select>
+                    <input id="modal_input_color" type="color" value="#7c3aed" class="w-full h-8 mt-1 bg-[#0f1016] border border-[var(--border-muted)] rounded cursor-pointer p-0.5 hidden">
                 </div>
             </div>
             <div class="flex justify-between items-center pt-2">
@@ -301,55 +316,49 @@
         </div>
     </div>
 
-    <!-- Session Creation & Editing Modal -->
+    <!-- Session Modal -->
     <div id="session_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-[460px] rounded-xl p-5 shadow-2xl space-y-3">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <input type="hidden" id="edit_session_id">
-            <div class="flex justify-between items-center border-b border-[#262938] pb-2">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                 <h3 id="session_modal_title" class="font-bold text-lg text-white">Calendar Session Configuration</h3>
                 <span id="session_modal_type_badge" class="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700">Planned Slot</span>
             </div>
 
-            <!-- Attach Task Section -->
             <div class="relative">
                 <label class="text-xs text-slate-400 block mb-1">Attach Task</label>
-                <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[#262938] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
+                <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
                     <input id="session_modal_task_search" type="text" placeholder="Search/Type task... (Press Enter to attach top match)" class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[180px] px-1 py-0.5">
                 </div>
-                
-                <div id="task_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[#262938] rounded-lg shadow-xl max-h-40 overflow-y-auto hidden z-20"></div>
+                <div id="task_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-40 overflow-y-auto hidden z-20"></div>
                 <input type="hidden" id="session_modal_task_id">
             </div>
 
-            <!-- Tags Section -->
             <div class="relative">
                 <label class="text-xs text-slate-400 block mb-1">Tags</label>
-                <div id="tag_chips_container" class="w-full bg-[#0f1016] border border-[#262938] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
+                <div id="tag_chips_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
                     <input id="session_modal_tags_input" type="text" placeholder="Type tag or press Enter to apply #progr..." class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[160px] px-1 py-0.5">
                 </div>
-                
-                <div id="tag_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[#262938] rounded-lg shadow-xl max-h-36 overflow-y-auto hidden z-20"></div>
+                <div id="tag_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-36 overflow-y-auto hidden z-20"></div>
             </div>
 
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Notes / Description</label>
-                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[#262938] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
 
-            <!-- Start Time Section + Stepper Shortcuts -->
             <div>
                 <div class="flex justify-between items-center mb-1">
                     <label class="text-xs text-slate-400 block">Start Time</label>
                     <div class="flex space-x-1 text-[10px]">
-                        <button type="button" onclick="adjustStartTime(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">-15m</button>
-                        <button type="button" onclick="setStartTimeNow()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 px-1.5 py-0.5 rounded border border-[#262938] font-bold">Now</button>
-                        <button type="button" onclick="adjustStartTime(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">+15m</button>
+                        <button type="button" onclick="adjustStartTime(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-15m</button>
+                        <button type="button" onclick="setStartTimeNow()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)] font-bold">Now</button>
+                        <button type="button" onclick="adjustStartTime(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">+15m</button>
                     </div>
                 </div>
-                <input id="session_modal_start" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-1.5 rounded-lg text-xs text-white">
+                <input id="session_modal_start" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
             </div>
 
-            <!-- End Time Section + Fast Duration Presets -->
             <div>
                 <div class="flex justify-between items-center mb-1">
                     <label class="text-xs text-slate-400 block">End Time / Duration Presets</label>
@@ -361,10 +370,10 @@
                         <button type="button" onclick="setDurationFromStart(120)" class="bg-purple-950/60 hover:bg-purple-900 text-purple-300 px-1.5 py-0.5 rounded border border-purple-800/50 font-semibold">+2h</button>
                     </div>
                 </div>
-                <input id="session_modal_end" type="datetime-local" class="w-full bg-[#0f1016] border border-[#262938] px-2 py-1.5 rounded-lg text-xs text-white">
+                <input id="session_modal_end" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
             </div>
 
-            <div class="flex justify-between items-center pt-2 border-t border-[#262938]">
+            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
                 <button id="session_modal_delete_btn" onclick="deleteSessionFromModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
                 <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Start Timer Now</button>
                 <div class="flex space-x-2 ml-auto">
@@ -375,12 +384,12 @@
         </div>
     </div>
 
-    <!-- Custom Confirmation Modal -->
+    <!-- Confirm Modal -->
     <div id="custom_confirm_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
             <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
-            <div class="flex justify-end space-x-2 pt-2 border-t border-[#262938]">
+            <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
                 <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
                 <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Delete</button>
             </div>
@@ -389,8 +398,8 @@
 
     <!-- AFK Resolution Modal -->
     <div id="idle_resolution_modal" class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border-2 border-amber-500/80 w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex items-center space-x-3 border-b border-[#262938] pb-3">
+        <div class="bg-[var(--bg-card)] border-2 border-amber-500/80 w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex items-center space-x-3 border-b border-[var(--border-muted)] pb-3">
                 <span class="text-3xl">⚠️</span>
                 <div>
                     <h3 class="font-extrabold text-base text-amber-400">Inactivity Detected (AFK)</h3>
@@ -403,7 +412,7 @@
             </p>
 
             <div class="space-y-2">
-                <button onclick="resolveIdleGap('discard')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                <button onclick="resolveIdleGap('discard')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
                     <div>
                         <span class="font-bold text-slate-200 block">1. Discard Idle Time</span>
                         <span class="text-[10px] text-slate-400">Keep work session up to AFK start; drop the idle gap.</span>
@@ -411,7 +420,7 @@
                     <span class="text-slate-400 text-base">🗑️</span>
                 </button>
 
-                <button onclick="resolveIdleGap('break')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                <button onclick="resolveIdleGap('break')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
                     <div>
                         <span class="font-bold text-emerald-400 block">2. Log as #break</span>
                         <span class="text-[10px] text-slate-400">Save the AFK gap as an explicit break slot.</span>
@@ -419,7 +428,7 @@
                     <span class="text-slate-400 text-base">☕</span>
                 </button>
 
-                <button onclick="resolveIdleGap('claim_work')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[#262938] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
+                <button onclick="resolveIdleGap('claim_work')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
                     <div>
                         <span class="font-bold text-purple-400 block">3. Claim as Work</span>
                         <span class="text-[10px] text-slate-400">Include the AFK gap in your work session (offline work).</span>
@@ -427,10 +436,10 @@
                     <span class="text-slate-400 text-base">💼</span>
                 </button>
 
-                <div class="bg-[#1e2030] border border-[#262938] p-2.5 rounded-lg space-y-2">
+                <div class="bg-[#1e2030] border border-[var(--border-muted)] p-2.5 rounded-lg space-y-2">
                     <span class="font-bold text-blue-400 block text-xs">4. Re-tag Activity</span>
                     <div class="flex space-x-2">
-                        <input id="idle_retag_input" type="text" value="#meeting" placeholder="#tag" class="bg-[#0f1016] border border-[#262938] px-2 py-1 rounded text-xs text-white flex-1 focus:outline-none focus:border-purple-500">
+                        <input id="idle_retag_input" type="text" value="#meeting" placeholder="#tag" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white flex-1 focus:outline-none focus:border-purple-500">
                         <button onclick="resolveIdleGap('re_tag')" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1 rounded text-xs">Log Tag</button>
                     </div>
                 </div>

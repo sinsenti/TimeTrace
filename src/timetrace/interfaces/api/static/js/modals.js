@@ -1,6 +1,5 @@
 // Modal Keyboard Event Listeners
 function setupModalKeyboardListeners() {
-    // Task Modal: Ctrl+Enter to Save, Esc to Close
     const taskModal = document.getElementById('task_modal');
     if (taskModal) {
         taskModal.addEventListener('keydown', function(e) {
@@ -13,7 +12,6 @@ function setupModalKeyboardListeners() {
         });
     }
 
-    // Session Modal: Ctrl+Enter to Save, Esc to Close
     const sessionModal = document.getElementById('session_modal');
     if (sessionModal) {
         sessionModal.addEventListener('keydown', function(e) {
@@ -26,7 +24,6 @@ function setupModalKeyboardListeners() {
         });
     }
 
-    // Attach Task Search Input Listeners
     const taskSearchInput = document.getElementById('session_modal_task_search');
     if (taskSearchInput) {
         taskSearchInput.addEventListener('focus', () => renderTaskSuggestions(taskSearchInput.value));
@@ -70,7 +67,6 @@ function setupModalKeyboardListeners() {
         });
     }
 
-    // Tag Input Event Handlers
     const tagInput = document.getElementById('session_modal_tags_input');
     if (tagInput) {
         tagInput.addEventListener('focus', () => renderTagSuggestions(tagInput.value));
@@ -118,7 +114,6 @@ function setupModalKeyboardListeners() {
         });
     }
 
-    // Close floating dropdowns on outside click
     document.addEventListener('click', function(e) {
         const tagContainer = document.getElementById('tag_chips_container');
         const tagDropdown = document.getElementById('tag_suggestions_dropdown');
@@ -134,7 +129,16 @@ function setupModalKeyboardListeners() {
     });
 }
 
-// Task Modal Controllers
+function toggleCustomColorPicker(val) {
+    const picker = document.getElementById('modal_input_color');
+    if (!picker) return;
+    if (val === 'custom') {
+        picker.classList.remove('hidden');
+    } else {
+        picker.classList.add('hidden');
+    }
+}
+
 function openNewTaskModal() {
     const nowIso = formatIsoLocal(new Date());
     document.getElementById('edit_task_id').value = '';
@@ -145,7 +149,11 @@ function openNewTaskModal() {
     document.getElementById('modal_input_created').value = nowIso;
     document.getElementById('modal_input_priority').value = '-';
     document.getElementById('modal_input_status').value = 'in_progress';
-    document.getElementById('modal_input_color').value = defaultPalette[activeTasks.length % defaultPalette.length];
+    
+    const colorModeSelect = document.getElementById('modal_input_color_mode');
+    if (colorModeSelect) colorModeSelect.value = 'auto';
+    toggleCustomColorPicker('auto');
+
     document.getElementById('modal_delete_btn').classList.add('hidden');
     document.getElementById('task_modal').classList.remove('hidden');
 
@@ -166,7 +174,16 @@ function openEditTaskModal(id) {
     document.getElementById('modal_input_created').value = t.created_at ? formatIsoLocal(parseApiDateTime(t.created_at)) : '';
     document.getElementById('modal_input_priority').value = t.priority || '-';
     document.getElementById('modal_input_status').value = t.status || 'in_progress';
-    document.getElementById('modal_input_color').value = t.color || '#7c3aed';
+    
+    const isCustom = t.color && t.color !== 'auto';
+    const colorModeSelect = document.getElementById('modal_input_color_mode');
+    if (colorModeSelect) colorModeSelect.value = isCustom ? 'custom' : 'auto';
+    toggleCustomColorPicker(isCustom ? 'custom' : 'auto');
+
+    if (isCustom) {
+        document.getElementById('modal_input_color').value = t.color;
+    }
+
     document.getElementById('modal_delete_btn').classList.remove('hidden');
     document.getElementById('task_modal').classList.remove('hidden');
 
@@ -184,13 +201,16 @@ function closeTaskModal() {
 async function saveTask() {
     const id = document.getElementById('edit_task_id').value;
     const createdInput = document.getElementById('modal_input_created').value;
+    const colorMode = document.getElementById('modal_input_color_mode') ? document.getElementById('modal_input_color_mode').value : 'auto';
+    const chosenColor = colorMode === 'custom' ? document.getElementById('modal_input_color').value : 'auto';
+
     const payload = {
         title: document.getElementById('modal_input_title').value,
         description: document.getElementById('modal_input_desc').value,
         tags: document.getElementById('modal_input_tags').value,
         priority: document.getElementById('modal_input_priority').value,
         status: document.getElementById('modal_input_status').value,
-        color: document.getElementById('modal_input_color').value
+        color: chosenColor
     };
 
     if (createdInput) {
@@ -233,7 +253,6 @@ async function deleteTask() {
     }
 }
 
-// Session Modal Controllers
 function openEditSessionModal(sessionId) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
@@ -321,7 +340,8 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         detachTask();
     }
 
-    setTagChips("");
+    const settings = getUserSettings();
+    setTagChips(settings.defaultTag || "#general");
     document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
 
     document.getElementById('session_modal').classList.remove('hidden');
@@ -350,7 +370,8 @@ async function saveSessionFromModal() {
     const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
     if (extraTypedTag) addTagChip(extraTypedTag);
 
-    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : '#general';
+    const settings = getUserSettings();
+    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
 
     if (!startVal || !endVal) return;
 
@@ -397,7 +418,8 @@ async function startTimerFromModal() {
     const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
     if (extraTypedTag) addTagChip(extraTypedTag);
 
-    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : '#general';
+    const settings = getUserSettings();
+    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
     const notesVal = document.getElementById('session_modal_notes').value;
 
     await fetch('/api/v1/timer/start', {

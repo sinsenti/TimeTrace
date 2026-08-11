@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="midnight">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -7,43 +7,62 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-        .habit-card { background-color: #12131d; border: 1px solid #1a1c26; border-radius: 0.75rem; }
+        :root[data-theme="midnight"] {
+            --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
+        }
+        :root[data-theme="nord"] {
+            --bg-main: #2e3440; --bg-header: #242933; --bg-card: #242933; --border-color: #434c5e; --border-muted: #4c566a; --text-main: #eceff4;
+        }
+        :root[data-theme="dracula"] {
+            --bg-main: #282a36; --bg-header: #21222c; --bg-card: #21222c; --border-color: #44475a; --border-muted: #6272a4; --text-main: #f8f8f2;
+        }
+        :root[data-theme="cyberpunk"] {
+            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
+        }
+        :root[data-theme="monokai"] {
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #221f22; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
+        .habit-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; }
         .cell-completed { background-color: #059669 !important; color: white !important; font-weight: bold; }
         .cell-failed { background-color: #dc2626 !important; color: white !important; font-weight: bold; }
         .cell-skipped { background-color: #334155 !important; color: #94a3b8 !important; }
         .cell-in-progress { background-color: #d97706 !important; color: white !important; font-weight: bold; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #0b0c10; }
-        ::-webkit-scrollbar-thumb { background: #262938; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- Header Navigation -->
-    <header class="bg-[#12131d] border-b border-[#1a1c26] px-6 py-2.5 flex items-center justify-between shrink-0">
-        <div class="flex items-center space-x-6">
-            <span class="text-xl font-black text-emerald-400 tracking-wider">TimeTrace</span>
-            <nav class="flex space-x-2 text-xs font-semibold">
-                <a href="/api/v1/dashboard" class="px-3 py-1.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300">Calendar</a>
-                <a href="/api/v1/habits-view" class="px-3 py-1.5 rounded-lg bg-emerald-600 text-white font-bold">Habit Tracker</a>
-                <a href="/api/v1/stats" class="px-3 py-1.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300">Analytics</a>
+    <!-- Unified Header Navigation -->
+    <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
+        <div class="flex items-center space-x-3 shrink-0">
+            <span class="text-base font-black text-emerald-400 tracking-wider">TimeTrace</span>
+            <nav class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
+                <a href="/api/v1/dashboard" class="h-6 px-2.5 rounded hover:bg-[#222536] text-slate-300 font-semibold flex items-center text-[11px]">Calendar</a>
+                <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded bg-emerald-600 text-white font-bold flex items-center text-[11px]">Habits</a>
+                <a href="/api/v1/stats" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Stats</a>
             </nav>
+            <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px] space-x-1">
+                <span>⚙️</span>
+                <span>Settings</span>
+            </button>
         </div>
 
-        <div class="flex items-center space-x-3 text-xs">
-            <div class="flex bg-[#181a28] p-1 rounded-lg border border-[#262938]">
-                <button onclick="switchHabitTab('matrix')" id="tab_btn_matrix" class="px-3 py-1 rounded font-bold bg-emerald-600 text-white">Tracking Grid</button>
-                <button onclick="switchHabitTab('reminders')" id="tab_btn_reminders" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Reminders</button>
-                <button onclick="switchHabitTab('charts')" id="tab_btn_charts" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Charts & Trends</button>
-            </div>
-            <button onclick="openNewHabitModal()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 py-1.5 rounded-lg">+ New Habit</button>
+        <div class="flex items-center space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
+            <button onclick="switchHabitTab('matrix')" id="tab_btn_matrix" class="h-6 px-3 rounded font-bold bg-emerald-600 text-white text-[11px]">Tracking Grid</button>
+            <button onclick="switchHabitTab('reminders')" id="tab_btn_reminders" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Reminders</button>
+            <button onclick="switchHabitTab('charts')" id="tab_btn_charts" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Charts & Trends</button>
+        </div>
+
+        <div class="flex items-center">
+            <button onclick="openNewHabitModal()" class="h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3.5 rounded-lg transition text-xs">+ New Habit</button>
         </div>
     </header>
 
     <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-
-        <!-- Tab 1: Tracking Matrix View -->
         <section id="habit_tab_matrix" class="space-y-4">
             <div class="flex justify-between items-center">
                 <div>
@@ -57,49 +76,36 @@
                 </div>
             </div>
 
-            <!-- Matrix Table Container -->
             <div class="habit-card overflow-x-auto p-4">
                 <table class="w-full text-left border-collapse text-xs">
                     <thead>
-                        <tr id="matrix_table_header" class="border-b border-[#1a1c26] text-slate-400">
+                        <tr id="matrix_table_header" class="border-b border-[var(--border-color)] text-slate-400">
                             <th class="py-2.5 px-3 font-bold uppercase w-56">Habit Name</th>
-                            <!-- Dynamic Dates Render Here -->
                         </tr>
                     </thead>
-                    <tbody id="matrix_table_body" class="divide-y divide-[#1a1c26]">
-                        <!-- Habit Rows Render Here -->
-                    </tbody>
+                    <tbody id="matrix_table_body" class="divide-y divide-[var(--border-color)]"></tbody>
                 </table>
             </div>
         </section>
 
-        <!-- Tab 2: Reminders View -->
         <section id="habit_tab_reminders" class="hidden space-y-4 max-w-3xl mx-auto">
-            <div class="flex justify-between items-center border-b border-[#1a1c26] pb-3">
+            <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
                 <h2 class="text-lg font-bold text-white">Habit Reminders & Schedule</h2>
                 <span class="text-xs text-slate-400">Configured reminder notifications</span>
             </div>
-            <div id="reminders_card_list" class="space-y-3">
-                <!-- Reminder Cards Render Here -->
-            </div>
+            <div id="reminders_card_list" class="space-y-3"></div>
         </section>
 
-        <!-- Tab 3: Charts & Trends View -->
         <section id="habit_tab_charts" class="hidden space-y-6">
-            <div class="flex justify-between items-center bg-[#12131d] p-4 rounded-xl border border-[#1a1c26]">
+            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
                 <div>
                     <label class="text-xs text-slate-400 font-semibold block mb-1">Select Habit for Chart</label>
-                    <select id="chart_habit_select" onchange="renderSelectedHabitCharts()" class="bg-[#0f1016] border border-[#262938] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-emerald-500">
-                        <!-- Options populated via JS -->
-                    </select>
+                    <select id="chart_habit_select" onchange="renderSelectedHabitCharts()" class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-emerald-500"></select>
                 </div>
-                <div id="chart_habit_kpis" class="flex space-x-6 text-right">
-                    <!-- Dynamic KPI Badges -->
-                </div>
+                <div id="chart_habit_kpis" class="flex space-x-6 text-right"></div>
             </div>
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <!-- Doughnut Chart (Success/Fail Ratio) -->
                 <div class="habit-card p-5 flex flex-col space-y-3">
                     <h3 class="font-bold text-sm text-slate-200">Consistency Ratio</h3>
                     <div class="h-64 relative flex items-center justify-center">
@@ -107,7 +113,6 @@
                     </div>
                 </div>
 
-                <!-- Bar Chart (Trend Over Time) -->
                 <div class="habit-card p-5 col-span-2 flex flex-col space-y-3">
                     <h3 class="font-bold text-sm text-slate-200">Daily Progress History</h3>
                     <div class="h-64 relative">
@@ -116,12 +121,11 @@
                 </div>
             </div>
         </section>
-
     </main>
 
     <!-- Create/Edit Habit Modal -->
     <div id="habit_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3">
+        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <div class="flex justify-between items-center border-b border-[#262938] pb-2">
                 <h3 id="modal_habit_title" class="font-bold text-lg text-white">Create Habit</h3>
                 <button onclick="closeHabitModal()" class="text-slate-400 hover:text-white font-bold">&times;</button>
@@ -184,12 +188,124 @@
         </div>
     </div>
 
-    <!-- Custom Confirmation Modal -->
+    <!-- Settings Modal -->
+    <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-lg">⚙️</span>
+                    <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+                </div>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Color Theme</label>
+                        <span class="text-[10px] text-slate-400">Changes UI & dynamic task card palette</span>
+                    </div>
+                    <select id="setting_theme" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="midnight">Midnight (Dark Purple)</option>
+                        <option value="nord">Nord (Frost Blue)</option>
+                        <option value="dracula">Dracula (Vibrant Dark)</option>
+                        <option value="cyberpunk">Cyberpunk (Neon Cyan)</option>
+                        <option value="monokai">Monokai Pro (Warm Pastel)</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Grid View</label>
+                        <span class="text-[10px] text-slate-400">Initial view on dashboard load</span>
+                    </div>
+                    <select id="setting_default_view" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="timeGridWeek">Week View</option>
+                        <option value="timeGridDay">Day View</option>
+                        <option value="dayGridMonth">Month View</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">First Day of Week</label>
+                        <span class="text-[10px] text-slate-400">Calendar column start day</span>
+                    </div>
+                    <select id="setting_first_day" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="1">Monday</option>
+                        <option value="0">Sunday</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Time Slot</label>
+                        <span class="text-[10px] text-slate-400">Grid slot interval in minutes</span>
+                    </div>
+                    <select id="setting_slot_duration" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="15">15 Minutes</option>
+                        <option value="30">30 Minutes</option>
+                        <option value="45">45 Minutes</option>
+                        <option value="60">60 Minutes</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <label class="font-bold text-slate-200 block">Default Tag</label>
+                        <span class="text-[10px] text-slate-400">Tag assigned when none specified</span>
+                    </div>
+                    <input id="setting_default_tag" type="text" value="#general" placeholder="#tag" class="bg-[#181a28] border border-[var(--border-muted)] text-purple-300 font-mono px-2 py-1 rounded text-xs w-28 text-right focus:outline-none">
+                </div>
+
+                <div class="space-y-2 pt-1">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>
+                            <span class="text-[10px] text-slate-400">Automatically freeze running timer on system idle</span>
+                        </div>
+                        <input id="setting_idle_detector" type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Hide Tasks Sidebar by Default</span>
+                            <span class="text-[10px] text-slate-400">Collapse left task cards panel on boot</span>
+                        </div>
+                        <input id="setting_hide_left_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar by Default</span>
+                            <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel on boot</span>
+                        </div>
+                        <input id="setting_hide_right_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-slate-200 block">Auto-Scroll to Current Hour</span>
+                            <span class="text-[10px] text-slate-400">Scroll calendar view to current time on load</span>
+                        </div>
+                        <input id="setting_auto_scroll" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+                </div>
+            </div>
+
+            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
+                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel</button>
+                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirm Modal -->
     <div id="custom_confirm_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
             <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
-            <div class="flex justify-end space-x-2 pt-2 border-t border-[#262938]">
+            <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
                 <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
                 <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Delete</button>
             </div>
@@ -197,6 +313,7 @@
     </div>
 
     <script src="/api/v1/static/js/utils.js"></script>
+    <script src="/api/v1/static/js/settings.js"></script>
     <script src="/api/v1/static/js/habits.js"></script>
 </body>
 </html>
