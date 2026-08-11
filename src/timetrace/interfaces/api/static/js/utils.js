@@ -4,7 +4,10 @@ let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_durat
 function parseApiDateTime(dtStr) {
     if (!dtStr) return null;
     if (typeof dtStr !== 'string') dtStr = String(dtStr);
-    if (!dtStr.endsWith('Z') && !dtStr.includes('+') && !dtStr.includes('-')) {
+    
+    // Check if the time portion contains a timezone offset or 'Z'
+    const timePart = dtStr.includes('T') ? dtStr.split('T')[1] : dtStr;
+    if (!dtStr.endsWith('Z') && !timePart.includes('+') && !timePart.includes('-')) {
         dtStr += 'Z';
     }
     return new Date(dtStr);
@@ -57,7 +60,6 @@ function setSlotDuration(val) {
     }
 }
 
-// ⏱️ Fast Time Stepper Controls
 function adjustStartTime(minutes) {
     const startInput = document.getElementById('session_modal_start');
     if (!startInput || !startInput.value) return;
@@ -82,7 +84,6 @@ function setDurationFromStart(minutes) {
     endInput.value = formatIsoLocal(endDt);
 }
 
-// Custom Async Confirmation Modal Helper (Replaces window.confirm)
 function showCustomConfirm(title, message) {
     return new Promise((resolve) => {
         const modal = document.getElementById('custom_confirm_modal');

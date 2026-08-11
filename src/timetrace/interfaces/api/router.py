@@ -1,5 +1,5 @@
 import os
-from fastapi import APIRouter, Depends, HTTPException, status, Body, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from fastapi.responses import FileResponse, PlainTextResponse
 from sqlmodel import Session as DBSession, select
 from typing import List, Optional
@@ -30,6 +30,14 @@ from timetrace.interfaces.api.schemas import (
 router = APIRouter()
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+
+
+def ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
 
 
 # Static Web Serving
@@ -71,7 +79,6 @@ def list_habits(db: DBSession = Depends(get_session)):
     habits = db.exec(select(Habit)).all()
     today_dt = datetime.now().date()
     
-    # Query last 14 days of logs for matrix view
     start_date_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
     logs = db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
 
@@ -123,7 +130,6 @@ def log_habit_progress(habit_id: int, req: HabitLogRequest, db: DBSession = Depe
     if not db_habit:
         raise HTTPException(status_code=404, detail="Habit not found")
 
-    # Fetch existing log for date or create new
     log = db.exec(select(HabitLog).where(HabitLog.habit_id == habit_id, HabitLog.date_str == req.date_str)).first()
 
     if req.status == "erase":
@@ -143,7 +149,6 @@ def log_habit_progress(habit_id: int, req: HabitLogRequest, db: DBSession = Depe
     elif req.delta_value is not None:
         log.value = max(0.0, log.value + req.delta_value)
 
-    # Auto mark completed if target reached for numeric habit
     if db_habit.habit_type == "numeric":
         if log.value >= db_habit.target_value:
             log.status = "completed"
@@ -200,8 +205,8 @@ def resolve_idle_gap(req: IdleResolveRequest, db: DBSession = Depends(get_sessio
     if saved_session_data and saved_session_data.get("duration_seconds", 0) > 0:
         db_work = SessionModel(
             task_id=saved_session_data.get("task_id"),
-            start_time=datetime.fromisoformat(saved_session_data["start_time"]),
-            end_time=datetime.fromisoformat(saved_session_data["end_time"]),
+            start_time=ensure_utc(datetime.fromisoformat(saved_session_data["start_time"])),
+            end_time=ensure_utc(datetime.fromisoformat(saved_session_data["end_time"])),
             duration_seconds=saved_session_data["duration_seconds"],
             tags=saved_session_data.get("tags") or "#general",
             notes=saved_session_data.get("notes") or ""
@@ -209,8 +214,8 @@ def resolve_idle_gap(req: IdleResolveRequest, db: DBSession = Depends(get_sessio
         db.add(db_work)
         db.commit()
 
-    idle_start = datetime.fromisoformat(gap["idle_start"])
-    idle_end = datetime.fromisoformat(gap["idle_end"])
+    idle_start = ensure_utc(datetime.fromisoformat(gap["idle_start"]))
+    idle_end = ensure_utc(datetime.fromisoformat(gap["idle_end"]))
     idle_duration = int((idle_end - idle_start).total_seconds())
 
     if req.option == "break":
@@ -269,6 +274,8 @@ def get_detailed_analytics(db: DBSession = Depends(get_session)):
     session_dicts = []
     for s in sessions:
         s_dict = s.model_dump()
+        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
         if s.reflection:
             s_dict["reflection"] = s.reflection.model_dump()
         session_dicts.append(s_dict)
@@ -283,6 +290,8 @@ def export_markdown(db: DBSession = Depends(get_session)):
     session_dicts = []
     for s in sessions:
         s_dict = s.model_dump()
+        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
         if s.reflection:
             s_dict["reflection"] = s.reflection.model_dump()
         session_dicts.append(s_dict)
@@ -291,13 +300,16 @@ def export_markdown(db: DBSession = Depends(get_session)):
 
 
 @router.post("/markdown/import", status_code=status.HTTP_201_CREATED)
-def import_markdown(content: str = Body(..., media_type="text/plain"), db: DBSession = Depends(get_session)):
+async def import_markdown(request: Request, db: DBSession = Depends(get_session)):
+    body_bytes = await request.body()
+    content = body_bytes.decode("utf-8")
+    
     parsed_sessions = parse_markdown_to_sessions(content)
     added_count = 0
     for s in parsed_sessions:
         db_session = SessionModel(
-            start_time=s["start_time"],
-            end_time=s["end_time"],
+            start_time=ensure_utc(s["start_time"]),
+            end_time=ensure_utc(s["end_time"]),
             duration_seconds=s["duration_seconds"],
             tags=s["tags"],
             notes=s["notes"]
@@ -333,16 +345,13 @@ def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
         task_dict["color"] = get_auto_color(task_dict["title"])
 
     db_task = Task.model_validate(task_dict)
-    if db_task.created_at and db_task.created_at.tzinfo:
-        db_task.created_at = db_task.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+    if db_task.created_at:
+        db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
 
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
-
-    if db_task.created_at and not db_task.created_at.tzinfo:
-        db_task.created_at = db_task.created_at.replace(tzinfo=timezone.utc)
-
+    db_task.created_at = ensure_utc(db_task.created_at)
     return db_task
 
 
@@ -362,8 +371,7 @@ def list_tasks(
     tasks = db.exec(query).all()
 
     for t in tasks:
-        if t.created_at and not t.created_at.tzinfo:
-            t.created_at = t.created_at.replace(tzinfo=timezone.utc)
+        t.created_at = ensure_utc(t.created_at)
 
     priority_map = {"high": 4, "medium": 3, "low": 2, "-": 1}
 
@@ -376,7 +384,7 @@ def list_tasks(
             reverse=True
         )
     elif sort_by == "created_at":
-        tasks.sort(key=lambda t: t.created_at or datetime.min)
+        tasks.sort(key=lambda t: t.created_at or datetime.min.replace(tzinfo=timezone.utc))
     elif sort_by == "title":
         tasks.sort(key=lambda t: (t.title or "").lower())
     elif sort_by == "status":
@@ -398,16 +406,13 @@ def update_task(task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get
     for key, value in update_dict.items():
         setattr(db_task, key, value)
 
-    if db_task.created_at and db_task.created_at.tzinfo:
-        db_task.created_at = db_task.created_at.astimezone(timezone.utc).replace(tzinfo=None)
+    if db_task.created_at:
+        db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
 
     db.add(db_task)
     db.commit()
     db.refresh(db_task)
-
-    if db_task.created_at and not db_task.created_at.tzinfo:
-        db_task.created_at = db_task.created_at.replace(tzinfo=timezone.utc)
-
+    db_task.created_at = ensure_utc(db_task.created_at)
     return db_task
 
 
@@ -472,8 +477,8 @@ def split_timer(req: TimerSplitRequest, db: DBSession = Depends(get_session)):
 
     db_session = SessionModel(
         task_id=stopped_session_data["task_id"],
-        start_time=stopped_session_data["start_time"],
-        end_time=stopped_session_data["end_time"],
+        start_time=ensure_utc(stopped_session_data["start_time"]),
+        end_time=ensure_utc(stopped_session_data["end_time"]),
         duration_seconds=stopped_session_data["duration_seconds"],
         tags=stopped_session_data["tags"],
         notes=stopped_session_data["notes"]
@@ -481,6 +486,8 @@ def split_timer(req: TimerSplitRequest, db: DBSession = Depends(get_session)):
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
+    db_session.start_time = ensure_utc(db_session.start_time)
+    db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
 
 
@@ -493,8 +500,8 @@ def stop_timer(db: DBSession = Depends(get_session)):
 
     db_session = SessionModel(
         task_id=session_data["task_id"],
-        start_time=session_data["start_time"],
-        end_time=session_data["end_time"],
+        start_time=ensure_utc(session_data["start_time"]),
+        end_time=ensure_utc(session_data["end_time"]),
         duration_seconds=session_data["duration_seconds"],
         tags=session_data["tags"],
         notes=session_data["notes"]
@@ -502,20 +509,25 @@ def stop_timer(db: DBSession = Depends(get_session)):
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
+    db_session.start_time = ensure_utc(db_session.start_time)
+    db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
 
 
 # Session API Endpoints
 @router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
-    if req.end_time <= req.start_time:
+    start_utc = ensure_utc(req.start_time)
+    end_utc = ensure_utc(req.end_time)
+    
+    if end_utc <= start_utc:
         raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
 
-    duration = int((req.end_time - req.start_time).total_seconds())
+    duration = int((end_utc - start_utc).total_seconds())
     db_session = SessionModel(
         task_id=req.task_id,
-        start_time=req.start_time,
-        end_time=req.end_time,
+        start_time=start_utc,
+        end_time=end_utc,
         duration_seconds=duration,
         tags=req.tags,
         notes=req.notes
@@ -523,6 +535,8 @@ def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
+    db_session.start_time = ensure_utc(db_session.start_time)
+    db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
 
 
@@ -534,10 +548,10 @@ def list_sessions(
 ):
     query = select(SessionModel)
     if start:
-        naive_start = start.astimezone(timezone.utc).replace(tzinfo=None) if start.tzinfo else start
+        naive_start = ensure_utc(start).replace(tzinfo=None)
         query = query.where(SessionModel.start_time >= naive_start)
     if end:
-        naive_end = end.astimezone(timezone.utc).replace(tzinfo=None) if end.tzinfo else end
+        naive_end = ensure_utc(end).replace(tzinfo=None)
         query = query.where(SessionModel.start_time <= naive_end)
 
     sessions = db.exec(query).all()
@@ -545,9 +559,9 @@ def list_sessions(
     for s in sessions:
         s_dict = s.model_dump()
         if s.start_time:
-            s_dict["start_time"] = s.start_time.isoformat() if s.start_time.tzinfo else s.start_time.replace(tzinfo=timezone.utc).isoformat()
+            s_dict["start_time"] = ensure_utc(s.start_time).isoformat()
         if s.end_time:
-            s_dict["end_time"] = s.end_time.isoformat() if s.end_time.tzinfo else s.end_time.replace(tzinfo=timezone.utc).isoformat()
+            s_dict["end_time"] = ensure_utc(s.end_time).isoformat()
 
         if s.reflection:
             s_dict["reflection"] = s.reflection.model_dump()
@@ -563,14 +577,21 @@ def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(
 
     update_dict = req.model_dump(exclude_unset=True)
     for key, val in update_dict.items():
-        setattr(db_session, key, val)
+        if key in ("start_time", "end_time") and val is not None:
+            setattr(db_session, key, ensure_utc(val))
+        else:
+            setattr(db_session, key, val)
 
     if db_session.start_time and db_session.end_time:
-        db_session.duration_seconds = max(0, int((db_session.end_time - db_session.start_time).total_seconds()))
+        st = ensure_utc(db_session.start_time)
+        et = ensure_utc(db_session.end_time)
+        db_session.duration_seconds = max(0, int((et - st).total_seconds()))
 
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
+    db_session.start_time = ensure_utc(db_session.start_time)
+    db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
 
 
@@ -591,14 +612,17 @@ def delete_session(session_id: int, db: DBSession = Depends(get_session)):
 
 @router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
-    if req.end_time <= req.start_time:
+    start_utc = ensure_utc(req.start_time)
+    end_utc = ensure_utc(req.end_time)
+
+    if end_utc <= start_utc:
         raise HTTPException(status_code=400, detail="end_time must be strictly after start_time")
 
-    duration = int((req.end_time - req.start_time).total_seconds())
+    duration = int((end_utc - start_utc).total_seconds())
     db_session = SessionModel(
         task_id=req.task_id,
-        start_time=req.start_time,
-        end_time=req.end_time,
+        start_time=start_utc,
+        end_time=end_utc,
         duration_seconds=duration,
         tags=req.tags,
         notes=req.notes
@@ -606,6 +630,8 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     db.add(db_session)
     db.commit()
     db.refresh(db_session)
+    db_session.start_time = ensure_utc(db_session.start_time)
+    db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
 
 
@@ -615,11 +641,13 @@ def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session
     if not session_obj:
         raise HTTPException(status_code=404, detail="Session ID not found")
 
+    habits_str = ",".join(req.habits_completed) if isinstance(req.habits_completed, list) else str(req.habits_completed)
+
     db_reflection = Reflection(
         session_id=req.session_id,
         energy_level=req.energy_level,
         obstacles=req.obstacles,
-        habits_completed=",".join(req.habits_completed) if isinstance(req.habits_completed, list) else str(req.habits_completed)
+        habits_completed=habits_str
     )
     db.add(db_reflection)
     db.commit()

@@ -1,5 +1,5 @@
-from pydantic import BaseModel
-from typing import Optional, List
+from pydantic import BaseModel, field_validator
+from typing import Optional, List, Union
 from datetime import datetime
 
 
@@ -58,7 +58,14 @@ class ReflectionCreate(BaseModel):
     session_id: int
     energy_level: int
     obstacles: Optional[str] = ""
-    habits_completed: List[str] = []
+    habits_completed: Union[List[str], str] = []
+
+    @field_validator("habits_completed", mode="before")
+    @classmethod
+    def normalize_habits(cls, v):
+        if isinstance(v, str):
+            return [h.strip() for h in v.split(",") if h.strip()]
+        return v
 
 
 class RetroSessionCreate(BaseModel):
@@ -81,7 +88,7 @@ class IdleResolveRequest(BaseModel):
 
 class HabitCreate(BaseModel):
     name: str
-    habit_type: str = "boolean"  # "boolean" or "numeric"
+    habit_type: str = "boolean"
     target_value: float = 1.0
     unit: str = ""
     frequency: str = "Every day"
@@ -100,7 +107,7 @@ class HabitUpdate(BaseModel):
 
 
 class HabitLogRequest(BaseModel):
-    date_str: str                 # YYYY-MM-DD
-    status: Optional[str] = None   # "completed", "failed", "skipped", "erase"
-    delta_value: Optional[float] = None  # e.g., +5.0 or -1.0
-    set_value: Optional[float] = None    # Direct set e.g., 30.0
+    date_str: str
+    status: Optional[str] = None
+    delta_value: Optional[float] = None
+    set_value: Optional[float] = None

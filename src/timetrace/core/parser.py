@@ -15,7 +15,7 @@ def export_sessions_to_markdown(sessions: List[Dict[str, Any]], log_date: date) 
     content = "# Logged Sessions\n"
     for s in sessions:
         start_dt = datetime.fromisoformat(str(s["start_time"])) if isinstance(s["start_time"], str) else s["start_time"]
-        end_dt = datetime.fromisoformat(str(s["end_time"])) if isinstance(s.get("end_time"), str) else s.get("end_time")
+        end_dt = datetime.fromisoformat(str(s["end_time"])) if isinstance(s.get("end_time"), str) and s.get("end_time") else s.get("end_time")
 
         start_str = start_dt.strftime("%H:%M") if start_dt else "00:00"
         end_str = end_dt.strftime("%H:%M") if end_dt else "NOW"
@@ -38,10 +38,11 @@ def export_sessions_to_markdown(sessions: List[Dict[str, Any]], log_date: date) 
 
 def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
     post = frontmatter.loads(md_content)
-    base_date_str = str(post.metadata.get("date", date.today().isoformat()))
+    raw_date = post.metadata.get("date", date.today())
+    base_date_str = raw_date.isoformat() if isinstance(raw_date, (date, datetime)) else str(raw_date)
 
     sessions: List[Dict[str, Any]] = []
-    session_pattern = re.compile(r"^-\s*\[(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})\]\s*\|\s*([^|]+)\s*\|\s*(.+)")
+    session_pattern = re.compile(r"^-\s*\[(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}|NOW)\]\s*\|\s*([^|]+)\s*\|\s*(.+)")
     energy_pattern = re.compile(r"^\s*-\s*Energy:\s*(\d)/5", re.IGNORECASE)
     obstacles_pattern = re.compile(r"^\s*-\s*Obstacles:\s*(.+)", re.IGNORECASE)
     habits_pattern = re.compile(r"^\s*-\s*Habits:\s*(.+)", re.IGNORECASE)
@@ -57,13 +58,20 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
 
             start_hhmm, end_hhmm, tags, notes = match.groups()
             start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00").replace(tzinfo=timezone.utc)
-            end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00").replace(tzinfo=timezone.utc)
-            duration = int((end_dt - start_dt).total_seconds())
+            
+            if end_hhmm.upper() == "NOW":
+                end_dt = datetime.now(timezone.utc)
+            else:
+                end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00").replace(tzinfo=timezone.utc)
+                if end_dt < start_dt:
+                    end_dt += timedelta(days=1)
+
+            duration = max(0, int((end_dt - start_dt).total_seconds()))
 
             current_session = {
                 "start_time": start_dt,
                 "end_time": end_dt,
-                "duration_seconds": max(duration, 0),
+                "duration_seconds": duration,
                 "tags": tags.strip(),
                 "notes": notes.strip(),
                 "reflection": None

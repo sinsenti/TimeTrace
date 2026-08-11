@@ -52,11 +52,11 @@ timetrace daemon
 
 ```
 
-*Runs locally at `http://127.0.0.1:8000/*`
+*Runs locally at `http://127.0.0.1:8002/*`
 
 ### 3. Usage Modes
 
-* **Web Dashboard**: Open `http://127.0.0.1:8000/` in your browser.
+* **Web Dashboard**: Open `http://127.0.0.1:8002/` in your browser.
 * **Interactive TUI**: Run `timetrace` in a new terminal tab.
 * **CLI Commands**: Use subcommands like `timetrace start -t "#programming"` or `timetrace summary`.
 
