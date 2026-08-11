@@ -19,6 +19,7 @@ const DEFAULT_SETTINGS = {
     firstDayOfWeek: 1,
     slotDuration: 15,
     idleDetectorEnabled: true,
+    enableVimMotions: true,
     hideLeftSidebar: false,
     hideRightSidebar: false,
     autoScrollNow: true,
@@ -59,6 +60,9 @@ function openSettingsModal() {
     
     const themeSelect = document.getElementById('setting_theme');
     if (themeSelect) themeSelect.value = s.theme || 'midnight';
+
+    const vimCheck = document.getElementById('setting_enable_vim');
+    if (vimCheck) vimCheck.checked = s.enableVimMotions !== false;
     
     const viewSelect = document.getElementById('setting_default_view');
     if (viewSelect) viewSelect.value = s.defaultView;
@@ -100,6 +104,7 @@ function closeSettingsModal() {
 async function saveSettingsFromModal() {
     const newSettings = {
         theme: document.getElementById('setting_theme') ? document.getElementById('setting_theme').value : 'midnight',
+        enableVimMotions: document.getElementById('setting_enable_vim') ? document.getElementById('setting_enable_vim').checked : true,
         defaultView: document.getElementById('setting_default_view') ? document.getElementById('setting_default_view').value : 'timeGridWeek',
         firstDayOfWeek: document.getElementById('setting_first_day') ? parseInt(document.getElementById('setting_first_day').value) : 1,
         slotDuration: document.getElementById('setting_slot_duration') ? parseInt(document.getElementById('setting_slot_duration').value) : 15,
@@ -119,7 +124,7 @@ async function saveSettingsFromModal() {
 async function applyUserSettings(s = null, isInitialBoot = false) {
     if (!s) s = getUserSettings();
 
-    // 1. Apply Theme & Dynamic Palette to UI CSS variables
+    // 1. Apply Theme & Dynamic Palette
     const themeName = s.theme || 'midnight';
     document.documentElement.setAttribute('data-theme', themeName);
     
@@ -127,7 +132,12 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         defaultPalette = THEME_PALETTES[themeName] || THEME_PALETTES.midnight;
     }
 
-    // 2. Sync Idle Detector toggle with Backend API
+    // 2. Update Vim Mode Indicator status based on preference
+    if (typeof updateVimModeIndicator === 'function') {
+        updateVimModeIndicator();
+    }
+
+    // 3. Sync Idle Detector toggle with Backend API
     if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
         try {
             await fetch('/api/v1/idle/toggle', {
@@ -140,12 +150,12 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         } catch(e) {}
     }
 
-    // 3. Set Slot Duration
+    // 4. Set Slot Duration
     if (typeof setSlotDuration === 'function') {
         setSlotDuration(s.slotDuration);
     }
 
-    // 4. Configure FullCalendar if initialized
+    // 5. Configure FullCalendar if initialized
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.setOption('firstDay', s.firstDayOfWeek);
         if (!isInitialBoot) {
@@ -154,11 +164,11 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         calendar.refetchEvents();
     }
 
-    // 5. Set Sidebar Visibilities
+    // 6. Set Sidebar Visibilities
     setSidebarVisibility('left_sidebar', !s.hideLeftSidebar);
     setSidebarVisibility('right_sidebar', !s.hideRightSidebar);
 
-    // 6. Re-evaluate and re-render task cards
+    // 7. Refresh task card lists
     if (typeof fetchTasks === 'function') {
         fetchTasks();
     }

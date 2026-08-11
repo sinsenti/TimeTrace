@@ -351,6 +351,12 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     const badge = document.getElementById('session_modal_type_badge');
     const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
+    // Rule: Discard variable visual selection size when a task is specified or created
+    // Default to a clean 15-minute slot start
+    if (taskId) {
+        endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
+    }
+
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 

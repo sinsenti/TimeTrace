@@ -113,6 +113,10 @@ function setDurationFromStart(minutes) {
     endInput.value = formatIsoLocal(endDt);
 }
 
+/**
+ * Displays custom confirmation modal.
+ * Supports pressing Enter to confirm immediately and Escape to cancel.
+ */
 function showCustomConfirm(title, message) {
     return new Promise((resolve) => {
         const modal = document.getElementById('custom_confirm_modal');
@@ -134,12 +138,26 @@ function showCustomConfirm(title, message) {
             modal.classList.add('hidden');
             cancelBtn.removeEventListener('click', onCancel);
             proceedBtn.removeEventListener('click', onProceed);
+            document.removeEventListener('keydown', onKeyDown, true);
         };
 
         const onCancel = () => { cleanup(); resolve(false); };
         const onProceed = () => { cleanup(); resolve(true); };
 
+        const onKeyDown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                e.stopPropagation();
+                onProceed();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancel();
+            }
+        };
+
         cancelBtn.addEventListener('click', onCancel);
         proceedBtn.addEventListener('click', onProceed);
+        document.addEventListener('keydown', onKeyDown, true);
     });
 }

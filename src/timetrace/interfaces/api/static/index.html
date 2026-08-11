@@ -65,6 +65,10 @@
             <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
                 Settings
             </button>
+
+            <span id="vim_mode_indicator" class="h-8 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
+                -- NORMAL --
+            </span>
         </div>
 
         <div class="flex items-center shrink-0">
@@ -213,6 +217,14 @@
                 </div>
 
                 <div class="space-y-2 pt-1">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-purple-400 block">Enable Vim Keyboard Shortcuts</span>
+                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, gt in calendar</span>
+                        </div>
+                        <input id="setting_enable_vim" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>

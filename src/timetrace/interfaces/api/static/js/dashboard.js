@@ -5,7 +5,7 @@ let currentFilter = 'all';
 let lastTimerData = null;
 
 // ==========================================
-// 🚀 Main Entry Orchestrator
+// Main Entry Orchestrator
 // ==========================================
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             selectable: true,
             selectMirror: true,
             droppable: true,
-            defaultTimedEventDuration: `00:${String(userSettings.slotDuration).padStart(2,'0')}:00`,
+            defaultTimedEventDuration: `00:15:00`,
             events: fetchCalendarEvents,
 
             eventContent: function(arg) {
@@ -69,12 +69,13 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
 
             select: function(selectionInfo) {
+                // Ignore callback if selected programmatically by Vim engine to avoid cursor resets
+                if (suppressModalOnSelect) {
+                    return;
+                }
                 cursorStart = selectionInfo.start;
                 cursorEnd = selectionInfo.end;
-
-                if (!suppressModalOnSelect) {
-                    openCreateSessionModal(selectionInfo.start, selectionInfo.end);
-                }
+                openCreateSessionModal(selectionInfo.start, selectionInfo.end);
             },
 
             eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
@@ -88,7 +89,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const taskTitle = info.event.title;
                 const taskId = info.event.extendedProps.taskId;
                 const startTime = info.event.start;
-                const endTime = new Date(startTime.getTime() + defaultDurationMinutes * 60000);
+                const endTime = new Date(startTime.getTime() + 15 * 60 * 1000);
 
                 info.event.remove();
                 openCreateSessionModal(startTime, endTime, taskId, taskTitle);
@@ -201,17 +202,17 @@ function updateDocumentTitle() {
         const taskName = lastTimerData.task_title || lastTimerData.notes || lastTimerData.tags || 'Active Session';
         if (lastTimerData.mode === 'pomodoro' && lastTimerData.remaining_seconds !== null) {
             const minsLeft = Math.max(0, Math.ceil(lastTimerData.remaining_seconds / 60));
-            document.title = `▶️ ${minsLeft}m left | ${taskName}`;
+            document.title = `${minsLeft}m left | ${taskName}`;
         } else {
             const minsElapsed = Math.floor(lastTimerData.elapsed_seconds / 60);
             const secs = lastTimerData.elapsed_seconds % 60;
-            document.title = `▶️ ${minsElapsed}m ${String(secs).padStart(2,'0')}s | ${taskName}`;
+            document.title = `${minsElapsed}m ${String(secs).padStart(2,'0')}s | ${taskName}`;
         }
         return;
     }
 
     if (lastTimerData && lastTimerData.is_frozen_idle) {
-        document.title = '⚠️ AFK Frozen - TimeTrace';
+        document.title = 'AFK Frozen - TimeTrace';
         return;
     }
 
@@ -226,7 +227,7 @@ function updateDocumentTitle() {
         const minsLeft = Math.max(1, Math.ceil((end - now) / 60000));
         const matchedTask = allTasksMap[currentSession.task_id];
         const titleName = (matchedTask ? matchedTask.title : null) || currentSession.notes || currentSession.tags || 'Current Task';
-        document.title = `⏱️ ${minsLeft}m left | ${titleName}`;
+        document.title = `${minsLeft}m left | ${titleName}`;
         return;
     }
 
@@ -240,7 +241,7 @@ function updateDocumentTitle() {
         const minsUntilNext = Math.max(1, Math.ceil((nextStart - now) / 60000));
         const matchedTask = allTasksMap[nextSession.task_id];
         const titleName = (matchedTask ? matchedTask.title : null) || nextSession.notes || nextSession.tags || 'Next Task';
-        document.title = `⏳ in ${minsUntilNext}m | ${titleName}`;
+        document.title = `in ${minsUntilNext}m | ${titleName}`;
         return;
     }
 
@@ -304,13 +305,13 @@ async function fetchTimerStatus() {
             const timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
             const taskName = data.task_title || (data.tags || 'Task');
             
-            if (label) label.innerText = `⏱️ ${timeStr} | ${taskName}`;
+            if (label) label.innerText = `${timeStr} | ${taskName}`;
             if (btn) {
                 btn.innerText = 'Stop';
                 btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
         } else {
-            if (label) label.innerText = data.is_frozen_idle ? '⏸️ Timer Frozen (AFK)' : 'Timer Idle';
+            if (label) label.innerText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
             if (btn) {
                 btn.innerText = 'Start Timer';
                 btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';

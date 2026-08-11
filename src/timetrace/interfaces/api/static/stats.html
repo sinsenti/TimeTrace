@@ -33,7 +33,7 @@
 </head>
 <body class="min-h-screen flex flex-col">
 
-    <!-- Unified Header Navigation -->
+    <!-- Header Navigation -->
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         <div class="flex items-center space-x-3 shrink-0">
             <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
@@ -220,6 +220,14 @@
                 </div>
 
                 <div class="space-y-2 pt-1">
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
+                            <span class="font-bold text-purple-400 block">Enable Vim Keyboard Shortcuts</span>
+                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, gt in calendar</span>
+                        </div>
+                        <input id="setting_enable_vim" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>
