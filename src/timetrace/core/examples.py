@@ -24,20 +24,24 @@ total_sessions: 3
 Productive focus block in the morning. Afternoon session faced a slight dip in energy.
 """
 
-INLINE_GRAMMAR_EXAMPLE_MD = """# Neovim & Inline Quick Syntax Examples
+INLINE_GRAMMAR_EXAMPLE_MD = """# Neovim & Inline Quick Syntax Examples (With Shorthand Aliases)
 
 When you trigger quick actions in Neovim/TUI (a, s, x, m), type 1-2 lines and save (`:x` or `ZZ`):
 
 ## 1. Add Task (`a`)
 Format: `Title #tags !priority @status`
-Example:
-  Refactor FastAPI WebSocket pool #backend #async !high @in_progress
-  Need to prevent race conditions during reconnect.
+Shorthands:
+  - Priority: !high (!h) | !medium (!m) | !low (!l) | !-
+  - Status:   @in_progress (@ip) | @ongoing (@og) | @completed (@c / @done)
+Examples:
+  Refactor FastAPI WebSocket pool #backend !h @ip
+  Project(a1labs) #progr #work !m @og
 
 ## 2. Start Active Timer (`s`)
 Format: `Working notes #tags @task_id !pomo_mins`
-Example:
+Examples:
   Fixing WebSocket mutex lock #backend @14 !25m
+  Code review for API router #review !15m
 
 ## 3. Post-Session Reflection (`x`)
 Format: `[Energy 1-5]/5 habit1, habit2`
@@ -46,9 +50,10 @@ Example:
   Minor CORS issue on WebSocket handshake.
 
 ## 4. Retroactive Session Log (`m`)
-Format: `Activity notes #tags -start_ago duration_mins`
-Example:
-  Reviewed open PRs #review -90m 30m
+Format: `Activity notes #tags @task_id -start_ago duration_mins`
+Examples:
+  Reviewed open PRs #review @12 -90m 30m
+  Team sync meeting #meeting -2h 45m
 """
 
 FULL_EXAMPLES_MARKDOWN = f"""[bold magenta]1. Daily Markdown Log File Template (Importable via :import-md)[/bold magenta]
@@ -56,7 +61,7 @@ FULL_EXAMPLES_MARKDOWN = f"""[bold magenta]1. Daily Markdown Log File Template (
 {DAILY_LOG_EXAMPLE_MD}
 ─────────────────────────────────────────────────────────────────────────────
 
-[bold cyan]2. Inline Neovim / Buffer Quick Syntax Grammars[/bold cyan]
+[bold cyan]2. Inline Neovim / Buffer Quick Syntax Grammars & Shorthands[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 {INLINE_GRAMMAR_EXAMPLE_MD}
 """

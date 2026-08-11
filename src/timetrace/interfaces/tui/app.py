@@ -51,22 +51,22 @@ def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> st
 
 def format_priority_badge(priority: str) -> str:
     p = str(priority).lower().strip()
-    if p == "high":
+    if p in ("high", "h"):
         return "[bold white on red] HIGH [/bold white on red]"
-    elif p in ("medium", "med"):
+    elif p in ("medium", "med", "m"):
         return "[bold black on yellow] MED [/bold black on yellow]"
-    elif p == "low":
+    elif p in ("low", "l"):
         return "[bold white on #4b5563] LOW [/bold white on #4b5563]"
     return "[dim]-[/dim]"
 
 
 def format_status_badge(status: str) -> str:
     s = str(status).lower().strip()
-    if s == "in_progress":
+    if s in ("in_progress", "ip"):
         return "[bold cyan]in_progress[/bold cyan]"
-    elif s == "ongoing":
+    elif s in ("ongoing", "og"):
         return "[bold magenta]ongoing[/bold magenta]"
-    elif s == "completed":
+    elif s in ("completed", "done", "c"):
         return "[bold green]completed[/bold green]"
     return f"[dim]{s}[/dim]"
 
@@ -85,35 +85,33 @@ class HelpModal(ModalScreen):
 [bold cyan]Navigation & Search Shortcuts[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]j / k[/bold white]         Move selection down / up
+[bold white]gg / G[/bold white]        Jump to top (gg) or bottom (G) of table
 [bold white]/[/bold white]             Search text in real-time
 [bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow] ↔ [bold yellow]Habits[/bold yellow])
-[bold white]f[/bold white]             Cycle status filters
-[bold white]o[/bold white]             Cycle sort modes
-[bold white]r[/bold white]             Refresh current table data
+[bold white]f / o[/bold white]         Cycle status filters / Cycle sort modes
+[bold white]r[/bold white]             Refresh table data
 
 [bold cyan]Fast Habit Tracking Controls (in Habits View)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]Space[/bold white]         Toggle Today's Status (Done ✓ / Fail ✗ / Skip ↷)
 [bold white]+ / -[/bold white]         Increment / Decrement numeric habit (e.g. +1 pull-up)
 
-[bold cyan]Ultra-Fast Neovim Actions[/bold cyan]
+[bold cyan]Ultra-Fast Neovim Actions & Shorthands[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
-[bold white]a[/bold white]             Add Task  -> [dim]Title #tags !high @ip[/dim]
-[bold white]e[/bold white]             Edit Row  -> [dim]Modify task, session, or habit in Neovim[/dim]
+[bold white]a[/bold white]             Add Task  -> [dim]Title #tags !h|!m|!l @ip|@og|@c[/dim]
+[bold white]e[/bold white]             Edit Row  -> [dim]Modify in Neovim buffer[/dim]
 [bold white]dd[/bold white]            Delete Row ([dim]press 'd' twice[/dim])
 [bold white]D[/bold white]             Clear Completed Tasks
 [bold white]s[/bold white]             Start Timer -> [dim]Working notes #tags @task_id !25m[/dim]
 [bold white]c[/bold white]             Split Timer -> [dim]New activity notes #newtag[/dim]
 [bold white]x[/bold white]             Stop & Reflect -> [dim]5/5 water, focus[/dim]
-[bold white]m[/bold white]             Retro Session  -> [dim]Past activity #tags @task_id -90m 30m[/dim]
-[bold white]v[/bold white]             View Analytics Summary
+[bold white]m[/bold white]             Retro Session  -> [dim]Past activity #tags -90m 30m[/dim]
 
 [bold cyan]Command Line Mode (:)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
 [bold white]:ex, :examples[/bold white] Open Markdown examples
 [bold white]:habits[/bold white]       Switch to Habits View
 [bold white]:help, :keys[/bold white]   Open help screen
-[bold white]:theme[/bold white]        Toggle dark / light theme
 [bold white]:start, :stop, :split, :add, :retro, :stats, :clear, :quit[/bold white] Execute
 """
         yield Container(
@@ -286,6 +284,7 @@ class TimeTraceTUI(App):
         self.sort_index = 0
         self.search_query: str = ""
         self.last_d_time: float = 0.0
+        self.last_g_time: float = 0.0
         self.client: Optional[httpx.AsyncClient] = None
 
     def compose(self) -> ComposeResult:
@@ -394,7 +393,6 @@ class TimeTraceTUI(App):
             return None
 
     def restore_cursor_position(self, saved_id: Optional[int], saved_row: Optional[int]) -> None:
-        """Restores cursor position to the exact same item ID or row index after re-rendering."""
         table = self.query_one("#main_table", DataTable)
         if table.row_count == 0:
             return
@@ -416,6 +414,15 @@ class TimeTraceTUI(App):
             target_row = min(saved_row, table.row_count - 1)
 
         table.move_cursor(row=target_row)
+
+    def render_current_view(self) -> None:
+        """Renders active table view depending on current view_mode."""
+        if self.view_mode == "tasks":
+            self.render_tasks()
+        elif self.view_mode == "sessions":
+            self.render_sessions()
+        else:
+            self.render_habits()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id == "search_input":
@@ -494,6 +501,7 @@ class TimeTraceTUI(App):
             self.notify("Search filter cleared", timeout=1.0)
             return
 
+        # Double 'd' (dd) press handler for deleting rows
         if event.key == "d":
             now = time.time()
             if now - self.last_d_time < 0.6:
@@ -502,6 +510,22 @@ class TimeTraceTUI(App):
             else:
                 self.last_d_time = now
                 self.notify("Press 'd' again to delete row (dd)", timeout=1.2)
+
+        # Vim 'gg' (top) and 'G' (bottom) Jump Handlers
+        elif event.key == "g":
+            now = time.time()
+            if now - self.last_g_time < 0.6:
+                self.last_g_time = 0.0
+                table = self.query_one("#main_table", DataTable)
+                if table.row_count > 0:
+                    table.move_cursor(row=0)
+            else:
+                self.last_g_time = now
+
+        elif event.key == "G":
+            table = self.query_one("#main_table", DataTable)
+            if table.row_count > 0:
+                table.move_cursor(row=table.row_count - 1)
 
     async def update_timer(self) -> None:
         if not self.client:
@@ -628,7 +652,10 @@ class TimeTraceTUI(App):
         past_sessions.sort(key=lambda s: parse_utc_dt(s.get("start_time")), reverse=True)
 
         if current_sessions:
-            table.add_row("", "", "[bold cyan]--- CURRENT SESSION ---[/bold cyan]", "", "", "")
+            curr_s = current_sessions[0]
+            curr_end = parse_utc_dt(curr_s.get("end_time")) if curr_s.get("end_time") else now + timedelta(minutes=15)
+            mins_left = max(1, int((curr_end - now).total_seconds() / 60))
+            table.add_row("", "", f"[bold cyan]--- CURRENT SESSION ({mins_left} min left) ---[/bold cyan]", "", "", "")
             for s in current_sessions:
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
@@ -643,7 +670,9 @@ class TimeTraceTUI(App):
                 )
 
         if upcoming_sessions:
-            table.add_row("", "", "[bold yellow]--- UPCOMING SESSIONS ---[/bold yellow]", "", "", "")
+            next_start = parse_utc_dt(upcoming_sessions[0].get("start_time"))
+            mins_until = max(1, int((next_start - now).total_seconds() / 60))
+            table.add_row("", "", f"[bold yellow]--- UPCOMING SESSIONS (in {mins_until} min) ---[/bold yellow]", "", "", "")
             for s in upcoming_sessions:
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else ""
@@ -658,7 +687,16 @@ class TimeTraceTUI(App):
                 )
 
         if past_sessions:
-            table.add_row("", "", "[bold dim]--- PAST SESSIONS ---[/bold dim]", "", "", "")
+            if upcoming_sessions:
+                next_start = parse_utc_dt(upcoming_sessions[0].get("start_time"))
+                mins_before_next = max(1, int((next_start - now).total_seconds() / 60))
+                past_label = f"--- PAST SESSIONS ({mins_before_next} min before start) ---"
+            else:
+                last_end = parse_utc_dt(past_sessions[0].get("end_time")) if past_sessions[0].get("end_time") else now
+                mins_ago = max(1, int((now - last_end).total_seconds() / 60))
+                past_label = f"--- PAST SESSIONS ({mins_ago} min ago) ---"
+
+            table.add_row("", "", f"[bold dim]{past_label}[/bold dim]", "", "", "")
             for s in past_sessions:
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else "NOW"
@@ -802,8 +840,8 @@ class TimeTraceTUI(App):
         template = (
             "\n\n\n\n\n"
             "> ADD TASK SYNTAX HELP: Title #tags !priority @status\n"
-            "> Priority: !high !medium !low   Status: @in_progress @ongoing @completed\n"
-            "> Example: Project(a1labs) #progr #work !medium @in_progress"
+            "> Priority: !h(!high) !m(!medium) !l(!low)   Status: @ip(@in_progress) @og(@ongoing) @c(@completed)\n"
+            "> Example: Project(a1labs) #progr #work !m @ip"
         )
         raw_text = None
         with self.suspend():
@@ -836,7 +874,7 @@ class TimeTraceTUI(App):
             help_text = (
                 "\n\n\n\n\n"
                 "> EDIT TASK SYNTAX HELP: Title #tags !priority @status\n"
-                "> Priority: !high !medium !low   Status: @in_progress @ongoing @completed\n"
+                "> Priority: !h(!high) !m(!medium) !l(!low)   Status: @ip(@in_progress) @og(@ongoing) @c(@completed)\n"
                 "> Line 2+: Task description"
             )
             pre_text = f"{task['title']} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}{help_text}".strip()

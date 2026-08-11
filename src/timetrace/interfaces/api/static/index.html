@@ -8,7 +8,10 @@
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <style>
         body { background-color: #0b0c10; color: #e2e8f0; font-family: system-ui, -apple-system, sans-serif; }
-        .fc { background-color: #0f1016; border-radius: 0.75rem; border: 1px solid #1a1c26; }
+        .fc { background-color: #0f1016; border-radius: 0.75rem; border: none !important; box-shadow: none !important; }
+        .fc-theme-standard .fc-scrollgrid { border: none !important; }
+        .fc-scrollgrid-section-header > th, .fc-scrollgrid-section-header > td { border-top: none !important; border-left: none !important; border-right: none !important; }
+        .fc-scrollgrid-section-body > td { border-left: none !important; border-right: none !important; border-bottom: none !important; }
         .fc-theme-standard td, .fc-theme-standard th { border-color: #1a1c26 !important; }
         .fc-timegrid-slot { height: 2.2em !important; border-bottom: 1px dashed #161822 !important; }
         .fc-timegrid-slot-label { font-size: 0.72rem !important; color: #64748b !important; font-weight: 500; text-transform: uppercase; }
@@ -27,70 +30,66 @@
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
-    <!-- Top Navigation Bar -->
-    <header class="bg-[#12131d] border-b border-[#1a1c26] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs overflow-x-auto">
-        <div class="flex items-center space-x-2.5 shrink-0">
-            <span class="text-lg font-black text-purple-400 tracking-wider">TimeTrace</span>
+    <!-- Static Non-Scrolling Top Navigation Bar -->
+    <header class="bg-[#12131d] border-b border-[#1a1c26] px-3 py-2 flex items-center justify-between shrink-0 gap-2 text-xs">
+        <div class="flex items-center space-x-2 shrink-0">
+            <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
             
             <nav class="flex space-x-1">
-                <a href="/api/v1/dashboard" class="h-8 px-2.5 rounded-lg bg-purple-600 text-white font-bold flex items-center">Calendar</a>
-                <a href="/api/v1/habits-view" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-emerald-400 border border-emerald-500/40 font-bold flex items-center space-x-1">
-                    <span>⚡ Habits</span>
-                </a>
+                <a href="/api/v1/dashboard" class="h-7 px-2 rounded-lg bg-purple-600 text-white font-bold flex items-center text-[11px]">Calendar</a>
+                <a href="/api/v1/habits-view" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-emerald-400 border border-emerald-500/40 font-bold flex items-center text-[11px]">Habits</a>
+                <a href="/api/v1/stats" class="h-7 px-2 rounded-lg bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-700/50 font-bold flex items-center text-[11px]">Stats</a>
             </nav>
 
-            <span id="vim_mode_indicator" class="h-8 px-2.5 rounded-lg text-[11px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
+            <span id="vim_mode_indicator" class="h-7 px-2 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
                 -- NORMAL --
             </span>
 
-            <!-- Active Timer Control Pill -->
-            <div id="active_timer_pill" class="h-8 bg-[#181a28] border border-[#262938] px-2.5 rounded-lg flex items-center space-x-2 shrink-0">
-                <span id="timer_status_label" class="text-slate-300 font-medium whitespace-nowrap">Timer Idle</span>
-                <select id="timer_task_select" class="h-6 bg-[#12131d] border border-[#262938] text-slate-200 px-2 rounded text-[11px] focus:outline-none">
-                    <option value="">-- Attach Task --</option>
+            <!-- Active Timer Control Pill (Narrow Select) -->
+            <div id="active_timer_pill" class="h-7 bg-[#181a28] border border-[#262938] px-2 rounded-lg flex items-center space-x-1.5 shrink-0">
+                <span id="timer_status_label" class="text-slate-300 font-medium whitespace-nowrap text-[11px]">Timer Idle</span>
+                <select id="timer_task_select" class="h-5 bg-[#12131d] border border-[#262938] text-slate-200 px-1 rounded text-[10px] focus:outline-none max-w-[120px] truncate">
+                    <option value="">-- Task --</option>
                 </select>
-                <button id="toggle_btn" onclick="toggleTimer()" class="h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded transition text-[11px] whitespace-nowrap">Start Timer</button>
+                <button id="toggle_btn" onclick="toggleTimer()" class="h-5 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2 rounded transition text-[10px] whitespace-nowrap">Start Timer</button>
             </div>
         </div>
 
-        <div class="flex items-center space-x-2 shrink-0">
-            <button id="idle_killer_switch_btn" onclick="toggleIdleSwitch()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-3 rounded-lg font-bold transition flex items-center whitespace-nowrap">
+        <div class="flex items-center space-x-1.5 shrink-0">
+            <button id="idle_killer_switch_btn" onclick="toggleIdleSwitch()" class="h-7 bg-[#181a28] hover:bg-[#222536] text-amber-400 border border-amber-500/40 px-2 rounded-lg font-bold transition flex items-center text-[10px] whitespace-nowrap">
                 <span id="idle_switch_label">Idle Detector: ON</span>
             </button>
 
-            <div class="h-8 flex items-center bg-[#181a28] border border-[#262938] px-2.5 rounded-lg text-slate-300 space-x-1.5 whitespace-nowrap">
+            <div class="h-7 flex items-center bg-[#181a28] border border-[#262938] px-2 rounded-lg text-slate-300 space-x-1 whitespace-nowrap text-[10px]">
                 <span class="text-slate-400 font-semibold">Slot:</span>
-                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#12131d] text-white rounded px-1.5 py-0.5 text-xs font-bold border border-[#262938]">
-                    <option value="15" selected>15 min</option>
-                    <option value="30">30 min</option>
-                    <option value="45">45 min</option>
-                    <option value="60">60 min</option>
+                <select id="config_slot_duration" onchange="setSlotDuration(this.value)" class="bg-[#12131d] text-white rounded px-1 py-0.5 text-[10px] font-bold border border-[#262938]">
+                    <option value="15" selected>15m</option>
+                    <option value="30">30m</option>
+                    <option value="45">45m</option>
+                    <option value="60">60m</option>
                 </select>
             </div>
 
-            <a href="/api/v1/stats" class="h-8 bg-purple-900/40 hover:bg-purple-800/60 text-purple-300 font-semibold px-3 rounded-lg border border-purple-700/50 flex items-center whitespace-nowrap">
-                <span>Custom Stats</span>
-            </a>
-            <button onclick="toggleSidebar('left_sidebar')" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-3 rounded-lg border border-[#262938] whitespace-nowrap">Hide Tasks</button>
-            <button onclick="toggleSidebar('right_sidebar')" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-3 rounded-lg border border-[#262938] whitespace-nowrap">Hide Totals</button>
+            <button id="btn_toggle_left_sidebar" onclick="toggleSidebar('left_sidebar')" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Hide Tasks</button>
+            <button id="btn_toggle_right_sidebar" onclick="toggleSidebar('right_sidebar')" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Hide Totals</button>
             
-            <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[#262938] px-1 whitespace-nowrap">
-                <button onclick="calendar.prev()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold">&lt;</button>
-                <span id="calendar_range_title" class="px-2 font-semibold text-slate-200">Date Range</span>
-                <button onclick="calendar.next()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold">&gt;</button>
+            <div class="h-7 flex items-center bg-[#181a28] rounded-lg border border-[#262938] px-1 whitespace-nowrap text-[11px]">
+                <button onclick="calendar.prev()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&lt;</button>
+                <span id="calendar_range_title" class="px-1.5 font-semibold text-slate-200">Date Range</span>
+                <button onclick="calendar.next()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&gt;</button>
             </div>
-            <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-3 rounded-lg border border-[#262938] whitespace-nowrap">Today</button>
+            <button onclick="scrollToCurrentTime()" class="h-7 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2 rounded-lg border border-[#262938] text-[11px] whitespace-nowrap">Today</button>
             
             <div class="flex items-center space-x-1 shrink-0">
-                <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-8 px-2.5 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap">Day</button>
-                <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-8 px-2.5 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 whitespace-nowrap">Week</button>
-                <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-8 px-2.5 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] whitespace-nowrap">Month</button>
+                <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] text-[11px] whitespace-nowrap">Day</button>
+                <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-7 px-2 rounded-lg border text-white font-bold bg-purple-600 border-purple-400 text-[11px] whitespace-nowrap">Week</button>
+                <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-7 px-2 rounded-lg border text-slate-300 bg-[#181a28] hover:bg-[#222536] border-[#262938] text-[11px] whitespace-nowrap">Month</button>
             </div>
         </div>
 
-        <div class="flex items-center space-x-2 shrink-0 border-l border-[#1a1c26] pl-3">
-            <span id="range_total_header" class="text-slate-400 font-semibold whitespace-nowrap">Week Total</span>
-            <span id="weekly_total_badge" class="text-base font-black text-purple-400">0.0h</span>
+        <div class="flex items-center space-x-1.5 shrink-0 border-l border-[#1a1c26] pl-2">
+            <span id="range_total_header" class="text-slate-400 font-semibold text-[11px] whitespace-nowrap">Week Total</span>
+            <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
         </div>
     </header>
 
