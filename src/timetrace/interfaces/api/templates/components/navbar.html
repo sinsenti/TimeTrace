@@ -1,0 +1,17 @@
+<div class="flex items-center space-x-3 shrink-0">
+    <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
+    <nav class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
+        <a href="/api/v1/dashboard" class="h-6 px-2.5 rounded {% if active_page == 'dashboard' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-slate-300 font-semibold{% endif %} flex items-center text-[11px]">Calendar</a>
+        <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded {% if active_page == 'habits' %}bg-emerald-600 text-white font-bold{% else %}hover:bg-[#222536] text-emerald-400 font-semibold{% endif %} flex items-center text-[11px]">Habits</a>
+        <a href="/api/v1/stats" class="h-6 px-2.5 rounded {% if active_page == 'stats' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-purple-300 font-semibold{% endif %} flex items-center text-[11px]">Stats</a>
+        <a href="/api/v1/revision#overview" class="h-6 px-2.5 rounded {% if active_page == 'revision' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-purple-300 font-semibold{% endif %} flex items-center text-[11px]">Revision</a>
+    </nav>
+    <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
+        Settings
+    </button>
+    {% if active_page == 'dashboard' %}
+    <span id="vim_mode_indicator" class="h-8 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
+        -- NORMAL --
+    </span>
+    {% endif %}
+</div>

@@ -1,29 +1,50 @@
 import os
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Request, HTTPException
 from fastapi.responses import FileResponse
+from fastapi.templating import Jinja2Templates
 
 router = APIRouter(tags=["Web Pages"])
-STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "static")
+BASE_DIR = os.path.dirname(os.path.dirname(__file__))
+TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+
+templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 
-@router.get("/dashboard", response_class=FileResponse)
-def get_web_dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+@router.get("/dashboard")
+def get_web_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="dashboard.html",
+        context={"active_page": "dashboard"}
+    )
 
 
-@router.get("/stats", response_class=FileResponse)
-def get_stats_dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "stats.html"))
+@router.get("/stats")
+def get_stats_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="stats.html",
+        context={"active_page": "stats"}
+    )
 
 
-@router.get("/habits-view", response_class=FileResponse)
-def get_habits_dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "habits.html"))
+@router.get("/habits-view")
+def get_habits_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="habits.html",
+        context={"active_page": "habits"}
+    )
 
 
-@router.get("/revision", response_class=FileResponse)
-def get_revision_dashboard():
-    return FileResponse(os.path.join(STATIC_DIR, "revision.html"))
+@router.get("/revision")
+def get_revision_dashboard(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="revision.html",
+        context={"active_page": "revision"}
+    )
 
 
 @router.get("/static/{file_path:path}")

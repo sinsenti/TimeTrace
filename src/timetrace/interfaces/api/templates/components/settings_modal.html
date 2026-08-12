@@ -1,0 +1,135 @@
+<!-- Settings Modal -->
+<div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
+            <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+            <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+            <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                <div>
+                    <label class="font-bold text-slate-200 block">Color Theme</label>
+                    <span class="text-[10px] text-slate-400">Changes UI & dynamic task card palette</span>
+                </div>
+                <select id="setting_theme" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <option value="midnight">Midnight (Dark Purple)</option>
+                    <option value="nord">Nord (Frost Blue)</option>
+                    <option value="dracula">Dracula (Vibrant Dark)</option>
+                    <option value="cyberpunk">Cyberpunk (Neon Cyan)</option>
+                    <option value="monokai">Monokai Pro (Warm Pastel)</option>
+                </select>
+            </div>
+
+            <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                <div>
+                    <label class="font-bold text-slate-200 block">Default Grid View</label>
+                    <span class="text-[10px] text-slate-400">Initial view on dashboard load</span>
+                </div>
+                <select id="setting_default_view" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <option value="auto">Auto (Remembers Last Picked)</option>
+                    <option value="timeGridWeek">Week View</option>
+                    <option value="timeGridThreeDay">3 Day View</option>
+                    <option value="timeGridDay">Day View</option>
+                    <option value="dayGridMonth">Month View</option>
+                </select>
+            </div>
+
+            <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                <div>
+                    <label class="font-bold text-slate-200 block">First Day of Week</label>
+                    <span class="text-[10px] text-slate-400">Calendar column start day</span>
+                </div>
+                <select id="setting_first_day" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <option value="1">Monday</option>
+                    <option value="0">Sunday</option>
+                </select>
+            </div>
+
+            <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                <div>
+                    <label class="font-bold text-slate-200 block">Default Time Slot</label>
+                    <span class="text-[10px] text-slate-400">Grid slot interval in minutes</span>
+                </div>
+                <select id="setting_slot_duration" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                    <option value="auto">Auto (Remembers Last Picked)</option>
+                    <option value="15">15 Minutes</option>
+                    <option value="30">30 Minutes</option>
+                    <option value="45">45 Minutes</option>
+                    <option value="60">60 Minutes</option>
+                </select>
+            </div>
+
+            <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                <div>
+                    <label class="font-bold text-slate-200 block">Default Tag</label>
+                    <span class="text-[10px] text-slate-400">Tag assigned when none specified</span>
+                </div>
+                <input id="setting_default_tag" type="text" value="#general" placeholder="#tag" class="bg-[#181a28] border border-[var(--border-muted)] text-purple-300 font-mono px-2 py-1 rounded text-xs w-28 text-right focus:outline-none">
+            </div>
+
+            <div class="space-y-2 pt-1">
+                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div>
+                        <span class="font-bold text-purple-400 block">Enable Vim Keyboard Shortcuts</span>
+                        <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, e, gt in calendar</span>
+                    </div>
+                    <input id="setting_enable_vim" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
+                </label>
+
+                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div>
+                        <span class="font-bold text-purple-400 block">Enable Session Review</span>
+                        <span class="text-[10px] text-slate-400">Show Session Review tab in Revision engine</span>
+                    </div>
+                    <input id="setting_enable_session_review" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
+                </label>
+
+                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div>
+                        <span class="font-bold text-amber-400 block">Enable Inactivity Detector</span>
+                        <span class="text-[10px] text-slate-400">Automatically freeze running timer on system idle</span>
+                    </div>
+                    <input id="setting_idle_detector" type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
+                </label>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <span class="font-bold text-slate-200 block">Hide Tasks Sidebar</span>
+                        <span class="text-[10px] text-slate-400">Collapse left task cards panel</span>
+                    </div>
+                    <select id="setting_hide_left_sidebar" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="auto">Auto (Remembers Last)</option>
+                        <option value="false">Always Show</option>
+                        <option value="true">Always Hide</option>
+                    </select>
+                </div>
+
+                <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
+                    <div>
+                        <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar</span>
+                        <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel</span>
+                    </div>
+                    <select id="setting_hide_right_sidebar" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="auto">Auto (Remembers Last)</option>
+                        <option value="false">Always Show</option>
+                        <option value="true">Always Hide</option>
+                    </select>
+                </div>
+
+                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div>
+                        <span class="font-bold text-slate-200 block">Auto-Scroll to Current Hour</span>
+                        <span class="text-[10px] text-slate-400">Scroll calendar view to current time on load</span>
+                    </div>
+                    <input id="setting_auto_scroll" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
+                </label>
+            </div>
+        </div>
+
+        <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
+            <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+            <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+        </div>
+    </div>
+</div>

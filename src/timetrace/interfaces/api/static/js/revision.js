@@ -1,7 +1,6 @@
 /**
  * TimeTrace Revision Engine JavaScript Module
- * Handles Day Reviews, Day History Overview, Sessions Inspection, Task Post-Mortems,
- * Custom Ratings, Sub-Routing (Hashes), and Typeahead Task Inspector Search.
+ * Fully integrated with centralized ApiClient (api.get, api.post, api.put, api.delete).
  */
 
 let currentActiveRevTab = 'overview';
@@ -177,8 +176,7 @@ async function loadDayReviewData() {
 
     const dateStr = dateInput.value;
     try {
-        const res = await fetch(`/api/v1/revision/day-summary?date_str=${dateStr}`);
-        const data = await res.json();
+        const data = await api.get(`/api/v1/revision/day-summary?date_str=${dateStr}`);
 
         const badge = document.getElementById('day_review_status_badge');
         const saveBtn = document.getElementById('day_form_save_btn');
@@ -294,12 +292,7 @@ async function saveDayReviewForm() {
         review_skipped: false
     };
 
-    await fetch('/api/v1/revision/day-review', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-
+    await api.post('/api/v1/revision/day-review', payload);
     await submitCustomRatings('day', dateStr);
     loadDayReviewData();
 }
@@ -325,12 +318,7 @@ async function dismissDayReview() {
             review_skipped: true
         };
 
-        await fetch('/api/v1/revision/day-review', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
+        await api.post('/api/v1/revision/day-review', payload);
         loadDayReviewData();
     }
 }
@@ -340,8 +328,7 @@ async function dismissDayReview() {
 // ==========================================
 async function loadDayHistoryOverview() {
     try {
-        const res = await fetch('/api/v1/revision/day-history');
-        allDayHistoryList = await res.json();
+        allDayHistoryList = await api.get('/api/v1/revision/day-history');
         renderDayHistoryGrid();
     } catch (e) {
         console.error("Failed to load day history overview:", e);
@@ -419,9 +406,7 @@ function jumpToDayReview(dateStr) {
 // ==========================================
 async function openSessionReviewModal(sessionId) {
     try {
-        const res = await fetch(`/api/v1/sessions/${sessionId}`);
-        if (!res.ok) return;
-        const session = await res.json();
+        const session = await api.get(`/api/v1/sessions/${sessionId}`);
 
         document.getElementById('session_rev_modal_id').value = session.id;
 
@@ -436,10 +421,8 @@ async function openSessionReviewModal(sessionId) {
         const skipCheck = document.getElementById('session_rev_modal_skip_check');
         if (skipCheck) skipCheck.checked = session.review_skipped === true;
 
-        const entriesRes = await fetch(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
-        const entries = entriesRes.ok ? await entriesRes.json() : [];
-        
-        await renderCustomRatingsInputs('session', sessionId, 'session_custom_ratings_container', entries);
+        const entries = await api.get(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
+        await renderCustomRatingsInputs('session', sessionId, 'session_custom_ratings_container', entries || []);
 
         document.getElementById('session_review_modal').classList.remove('hidden');
 
@@ -470,12 +453,7 @@ async function saveSessionReviewModal() {
     const notesVal = document.getElementById('session_rev_modal_notes').value.trim();
     const skipVal = document.getElementById('session_rev_modal_skip_check') ? document.getElementById('session_rev_modal_skip_check').checked : false;
 
-    await fetch(`/api/v1/sessions/${sessionId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: tagsVal, notes: notesVal, review_skipped: skipVal })
-    });
-
+    await api.put(`/api/v1/sessions/${sessionId}`, { tags: tagsVal, notes: notesVal, review_skipped: skipVal });
     await submitCustomRatings('session', sessionId);
 
     closeSessionReviewModal();
@@ -492,15 +470,8 @@ async function resetSessionReview() {
     );
 
     if (confirmed) {
-        await fetch(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`, {
-            method: 'DELETE'
-        });
-
-        await fetch(`/api/v1/sessions/${sessionId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ review_skipped: false })
-        });
+        await api.delete(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
+        await api.put(`/api/v1/sessions/${sessionId}`, { review_skipped: false });
 
         closeSessionReviewModal();
         loadCurrentRevisionView();
@@ -509,13 +480,7 @@ async function resetSessionReview() {
 
 async function quickDismissSessionReview(sessionId, event) {
     if (event) event.stopPropagation();
-
-    await fetch(`/api/v1/sessions/${sessionId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_skipped: true })
-    });
-
+    await api.put(`/api/v1/sessions/${sessionId}`, { review_skipped: true });
     loadCurrentRevisionView();
 }
 
@@ -525,7 +490,7 @@ async function deleteSessionFromReviewModal() {
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log? This action cannot be undone.");
     if (confirmed) {
-        await fetch(`/api/v1/sessions/${sessionId}`, { method: 'DELETE' });
+        await api.delete(`/api/v1/sessions/${sessionId}`);
         closeSessionReviewModal();
         loadCurrentRevisionView();
     }
@@ -536,8 +501,7 @@ async function deleteSessionFromReviewModal() {
 // ==========================================
 async function loadTaskInspectorRegistry() {
     try {
-        const res = await fetch('/api/v1/tasks?status=all');
-        allTasksList = await res.json();
+        allTasksList = await api.get('/api/v1/tasks?status=all');
         renderTaskQuickChipsBar();
     } catch (e) {}
 }
@@ -672,8 +636,7 @@ async function loadTaskInspectorStats(taskId) {
     selectedInspectedTaskId = taskId;
 
     try {
-        const res = await fetch(`/api/v1/tasks/${taskId}/stats`);
-        const data = await res.json();
+        const data = await api.get(`/api/v1/tasks/${taskId}/stats`);
         const task = data.task;
 
         if (body) body.classList.remove('hidden');
@@ -758,12 +721,7 @@ async function saveTaskReviewForm() {
         key_takeaways: document.getElementById('task_rev_takeaways').value
     };
 
-    await fetch('/api/v1/task-reviews', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-
+    await api.post('/api/v1/task-reviews', payload);
     await submitCustomRatings('task', taskId);
     loadTaskInspectorStats(taskId);
 }
@@ -773,10 +731,9 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const res = await fetch(`/api/v1/rating-definitions?target_type=${targetType}`);
-    const defs = await res.json();
+    const defs = await api.get(`/api/v1/rating-definitions?target_type=${targetType}`);
 
-    if (defs.length === 0) {
+    if (!defs || defs.length === 0) {
         container.innerHTML = '';
         return;
     }
@@ -859,16 +816,12 @@ async function submitCustomRatings(targetType, targetId) {
         const input = card.querySelector('.custom-rating-input');
         if (input) {
             const isDismissed = input.disabled;
-            await fetch('/api/v1/rating-entries', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    rating_definition_id: defId,
-                    target_type: targetType,
-                    target_id: String(targetId),
-                    score: isDismissed ? 0 : parseInt(input.value),
-                    dismissed: isDismissed
-                })
+            await api.post('/api/v1/rating-entries', {
+                rating_definition_id: defId,
+                target_type: targetType,
+                target_id: String(targetId),
+                score: isDismissed ? 0 : parseInt(input.value),
+                dismissed: isDismissed
             });
         }
     }
@@ -877,24 +830,18 @@ async function submitCustomRatings(targetType, targetId) {
 // 7. All Sessions Review & Filter Engine
 async function loadAllSessionsReview() {
     try {
-        const res = await fetch('/api/v1/sessions');
-        if (!res.ok) return;
-        allRevisionSessions = await res.json();
+        allRevisionSessions = await api.get('/api/v1/sessions') || [];
         
         let tasksMap = {};
         try {
-            const tasksRes = await fetch('/api/v1/tasks?status=all');
-            if (tasksRes.ok) {
-                const tasks = await tasksRes.json();
-                tasks.forEach(t => { tasksMap[t.id] = t; });
-            }
+            const tasks = await api.get('/api/v1/tasks?status=all');
+            if (tasks) tasks.forEach(t => { tasksMap[t.id] = t; });
         } catch (e) {}
 
         let reviewedSessionIds = new Set();
         try {
-            const entriesRes = await fetch('/api/v1/rating-entries?target_type=session&target_id=all');
-            if (entriesRes.ok) {
-                const entries = await entriesRes.json();
+            const entries = await api.get('/api/v1/rating-entries?target_type=session&target_id=all');
+            if (entries) {
                 entries.forEach(e => {
                     if (!e.dismissed) reviewedSessionIds.add(String(e.target_id));
                 });
@@ -1007,8 +954,7 @@ async function loadRatingDefinitionsList() {
     if (!container) return;
 
     try {
-        const res = await fetch('/api/v1/rating-definitions');
-        allRatingDefinitions = await res.json();
+        allRatingDefinitions = await api.get('/api/v1/rating-definitions') || [];
 
         if (allRatingDefinitions.length === 0) {
             container.innerHTML = '<div class="text-xs text-slate-500 text-center py-8">No custom rating definitions created yet. Click "+ New Rating Scale" to create your first evaluation metric!</div>';
@@ -1092,17 +1038,9 @@ async function saveRatingDefinition() {
     if (!payload.name) return;
 
     if (id) {
-        await fetch(`/api/v1/rating-definitions/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        await api.put(`/api/v1/rating-definitions/${id}`, payload);
     } else {
-        await fetch('/api/v1/rating-definitions', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        await api.post('/api/v1/rating-definitions', payload);
     }
 
     closeRatingDefModal();
@@ -1115,7 +1053,7 @@ async function deleteRatingDefinition() {
 
     const confirmed = await showCustomConfirm("Delete Rating Definition", "Are you sure you want to delete this custom rating scale? Attached rating entries will also be removed.");
     if (confirmed) {
-        await fetch(`/api/v1/rating-definitions/${id}`, { method: 'DELETE' });
+        await api.delete(`/api/v1/rating-definitions/${id}`);
         closeRatingDefModal();
         loadRatingDefinitionsList();
     }

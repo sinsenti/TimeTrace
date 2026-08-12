@@ -1,6 +1,6 @@
 /**
  * TimeTrace User Settings & Theme Manager
- * Persists preferences in localStorage and syncs daemon state.
+ * Fully integrated with centralized ApiClient (api.post).
  */
 
 const SETTINGS_KEY = 'timetrace_user_settings';
@@ -151,11 +151,7 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
 
     if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
         try {
-            await fetch('/api/v1/idle/toggle', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: s.idleDetectorEnabled })
-            });
+            await api.post('/api/v1/idle/toggle', { enabled: s.idleDetectorEnabled });
             idleDetectionEnabled = s.idleDetectorEnabled;
             if (typeof updateIdleSwitchUI === 'function') updateIdleSwitchUI();
         } catch(e) {}
