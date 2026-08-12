@@ -15,13 +15,17 @@ const THEME_PALETTES = {
 
 const DEFAULT_SETTINGS = {
     theme: 'midnight',
-    defaultView: 'timeGridWeek',
+    defaultView: 'auto',
+    lastSelectedView: 'timeGridWeek',
     firstDayOfWeek: 1,
-    slotDuration: 15,
+    slotDuration: 'auto',
+    lastSelectedSlot: 15,
     idleDetectorEnabled: true,
     enableVimMotions: true,
-    hideLeftSidebar: false,
-    hideRightSidebar: false,
+    hideLeftSidebar: 'auto',
+    lastHideLeftSidebar: false,
+    hideRightSidebar: 'auto',
+    lastHideRightSidebar: false,
     autoScrollNow: true,
     defaultTag: '#general'
 };
@@ -65,22 +69,22 @@ function openSettingsModal() {
     if (vimCheck) vimCheck.checked = s.enableVimMotions !== false;
     
     const viewSelect = document.getElementById('setting_default_view');
-    if (viewSelect) viewSelect.value = s.defaultView;
+    if (viewSelect) viewSelect.value = s.defaultView || 'auto';
 
     const daySelect = document.getElementById('setting_first_day');
     if (daySelect) daySelect.value = String(s.firstDayOfWeek);
 
     const slotSelect = document.getElementById('setting_slot_duration');
-    if (slotSelect) slotSelect.value = String(s.slotDuration);
+    if (slotSelect) slotSelect.value = String(s.slotDuration || 'auto');
 
     const idleCheck = document.getElementById('setting_idle_detector');
     if (idleCheck) idleCheck.checked = s.idleDetectorEnabled;
 
-    const leftCheck = document.getElementById('setting_hide_left_sidebar');
-    if (leftCheck) leftCheck.checked = s.hideLeftSidebar;
+    const leftSelect = document.getElementById('setting_hide_left_sidebar');
+    if (leftSelect) leftSelect.value = String(s.hideLeftSidebar);
 
-    const rightCheck = document.getElementById('setting_hide_right_sidebar');
-    if (rightCheck) rightCheck.checked = s.hideRightSidebar;
+    const rightSelect = document.getElementById('setting_hide_right_sidebar');
+    if (rightSelect) rightSelect.value = String(s.hideRightSidebar);
 
     const scrollCheck = document.getElementById('setting_auto_scroll');
     if (scrollCheck) scrollCheck.checked = s.autoScrollNow;
@@ -102,15 +106,20 @@ function closeSettingsModal() {
 }
 
 async function saveSettingsFromModal() {
+    const current = getUserSettings();
+    const rawSlot = document.getElementById('setting_slot_duration') ? document.getElementById('setting_slot_duration').value : 'auto';
+    const parsedSlot = rawSlot === 'auto' ? 'auto' : parseInt(rawSlot);
+
     const newSettings = {
+        ...current,
         theme: document.getElementById('setting_theme') ? document.getElementById('setting_theme').value : 'midnight',
         enableVimMotions: document.getElementById('setting_enable_vim') ? document.getElementById('setting_enable_vim').checked : true,
-        defaultView: document.getElementById('setting_default_view') ? document.getElementById('setting_default_view').value : 'timeGridWeek',
+        defaultView: document.getElementById('setting_default_view') ? document.getElementById('setting_default_view').value : 'auto',
         firstDayOfWeek: document.getElementById('setting_first_day') ? parseInt(document.getElementById('setting_first_day').value) : 1,
-        slotDuration: document.getElementById('setting_slot_duration') ? parseInt(document.getElementById('setting_slot_duration').value) : 15,
+        slotDuration: parsedSlot,
         idleDetectorEnabled: document.getElementById('setting_idle_detector') ? document.getElementById('setting_idle_detector').checked : true,
-        hideLeftSidebar: document.getElementById('setting_hide_left_sidebar') ? document.getElementById('setting_hide_left_sidebar').checked : false,
-        hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').checked : false,
+        hideLeftSidebar: document.getElementById('setting_hide_left_sidebar') ? document.getElementById('setting_hide_left_sidebar').value : 'auto',
+        hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').value : 'auto',
         autoScrollNow: document.getElementById('setting_auto_scroll') ? document.getElementById('setting_auto_scroll').checked : true,
         defaultTag: document.getElementById('setting_default_tag') ? document.getElementById('setting_default_tag').value.trim() || '#general' : '#general'
     };
@@ -124,7 +133,6 @@ async function saveSettingsFromModal() {
 async function applyUserSettings(s = null, isInitialBoot = false) {
     if (!s) s = getUserSettings();
 
-    // 1. Apply Theme & Dynamic Palette
     const themeName = s.theme || 'midnight';
     document.documentElement.setAttribute('data-theme', themeName);
     
@@ -132,12 +140,10 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         defaultPalette = THEME_PALETTES[themeName] || THEME_PALETTES.midnight;
     }
 
-    // 2. Update Vim Mode Indicator status based on preference
     if (typeof updateVimModeIndicator === 'function') {
         updateVimModeIndicator();
     }
 
-    // 3. Sync Idle Detector toggle with Backend API
     if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
         try {
             await fetch('/api/v1/idle/toggle', {
@@ -150,25 +156,26 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         } catch(e) {}
     }
 
-    // 4. Set Slot Duration
+    const effectiveSlot = (s.slotDuration === 'auto' || !s.slotDuration) ? (s.lastSelectedSlot || 15) : parseInt(s.slotDuration);
     if (typeof setSlotDuration === 'function') {
-        setSlotDuration(s.slotDuration);
+        setSlotDuration(effectiveSlot, false);
     }
 
-    // 5. Configure FullCalendar if initialized
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.setOption('firstDay', s.firstDayOfWeek);
         if (!isInitialBoot) {
-            calendar.changeView(s.defaultView);
+            const effectiveView = (s.defaultView === 'auto' || !s.defaultView) ? (s.lastSelectedView || 'timeGridWeek') : s.defaultView;
+            calendar.changeView(effectiveView);
         }
         calendar.refetchEvents();
     }
 
-    // 6. Set Sidebar Visibilities
-    setSidebarVisibility('left_sidebar', !s.hideLeftSidebar);
-    setSidebarVisibility('right_sidebar', !s.hideRightSidebar);
+    const hideLeft = (s.hideLeftSidebar === 'auto' || s.hideLeftSidebar === undefined) ? (s.lastHideLeftSidebar || false) : (s.hideLeftSidebar === 'true' || s.hideLeftSidebar === true);
+    const hideRight = (s.hideRightSidebar === 'auto' || s.hideRightSidebar === undefined) ? (s.lastHideRightSidebar || false) : (s.hideRightSidebar === 'true' || s.hideRightSidebar === true);
 
-    // 7. Refresh task card lists
+    setSidebarVisibility('left_sidebar', !hideLeft);
+    setSidebarVisibility('right_sidebar', !hideRight);
+
     if (typeof fetchTasks === 'function') {
         fetchTasks();
     }

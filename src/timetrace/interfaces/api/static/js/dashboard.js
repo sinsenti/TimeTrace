@@ -5,7 +5,7 @@ let currentFilter = 'all';
 let lastTimerData = null;
 
 // ==========================================
-// Main Entry Orchestrator
+// 🚀 Main Entry Orchestrator
 // ==========================================
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
@@ -16,13 +16,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     const calendarEl = document.getElementById('calendar');
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: userSettings.defaultView,
+            initialView: userSettings.defaultView === 'auto' ? (userSettings.lastSelectedView || 'timeGridWeek') : userSettings.defaultView,
             firstDay: userSettings.firstDayOfWeek,
             height: '100%',
             headerToolbar: false,
             slotMinTime: "00:00:00",
             slotMaxTime: "24:00:00",
-            slotDuration: `00:${String(userSettings.slotDuration).padStart(2,'0')}:00`,
+            slotDuration: `00:${String(userSettings.slotDuration === 'auto' ? (userSettings.lastSelectedSlot || 15) : userSettings.slotDuration).padStart(2,'0')}:00`,
             scrollTime: getInitialScrollTime(),
             scrollTimeReset: false,
             nowIndicator: true,
@@ -31,6 +31,20 @@ document.addEventListener('DOMContentLoaded', async function() {
             selectMirror: true,
             droppable: true,
             defaultTimedEventDuration: `00:15:00`,
+            views: {
+                timeGridThreeDay: {
+                    type: 'timeGrid',
+                    duration: { days: 3 },
+                    buttonText: '3 Day',
+                    visibleRange: function(currentDate) {
+                        const start = new Date(currentDate);
+                        start.setDate(start.getDate() - 1);
+                        const end = new Date(currentDate);
+                        end.setDate(end.getDate() + 2);
+                        return { start: start, end: end };
+                    }
+                }
+            },
             events: fetchCalendarEvents,
 
             eventContent: function(arg) {
@@ -69,7 +83,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
 
             select: function(selectionInfo) {
-                // Ignore callback if selected programmatically by Vim engine to avoid cursor resets
                 if (suppressModalOnSelect) {
                     return;
                 }
@@ -101,6 +114,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                 updateViewButtons(info.view.type);
                 fetchRangeTotals();
                 injectTimezoneLabel();
+
+                const settings = typeof getUserSettings === 'function' ? getUserSettings() : null;
+                if (settings && settings.lastSelectedView !== info.view.type) {
+                    settings.lastSelectedView = info.view.type;
+                    if (typeof saveUserSettings === 'function') saveUserSettings(settings);
+                }
             }
         });
         calendar.render();
@@ -166,10 +185,16 @@ function switchView(viewName) {
     if (viewName !== 'dayGridMonth') {
         setTimeout(() => calendar.scrollToTime(getInitialScrollTime()), 50);
     }
+    const settings = typeof getUserSettings === 'function' ? getUserSettings() : null;
+    if (settings) {
+        settings.lastSelectedView = viewName;
+        if (typeof saveUserSettings === 'function') saveUserSettings(settings);
+    }
 }
 
 function updateViewButtons(activeViewType) {
     const btnDay = document.getElementById('btn_view_day');
+    const btnThreeDay = document.getElementById('btn_view_three_day');
     const btnWeek = document.getElementById('btn_view_week');
     const btnMonth = document.getElementById('btn_view_month');
 
@@ -177,6 +202,7 @@ function updateViewButtons(activeViewType) {
     const inactiveClass = "h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]";
 
     if (btnDay) btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
+    if (btnThreeDay) btnThreeDay.className = (activeViewType === 'timeGridThreeDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
     if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
 }
@@ -188,8 +214,18 @@ function toggleSidebar(id) {
     const isHidden = el.classList.contains('hidden');
 
     const settings = getUserSettings();
-    if (id === 'left_sidebar') settings.hideLeftSidebar = isHidden;
-    if (id === 'right_sidebar') settings.hideRightSidebar = isHidden;
+    if (id === 'left_sidebar') {
+        settings.lastHideLeftSidebar = isHidden;
+        if (settings.hideLeftSidebar !== 'auto') {
+            settings.hideLeftSidebar = isHidden;
+        }
+    }
+    if (id === 'right_sidebar') {
+        settings.lastHideRightSidebar = isHidden;
+        if (settings.hideRightSidebar !== 'auto') {
+            settings.hideRightSidebar = isHidden;
+        }
+    }
     saveUserSettings(settings);
 
     setSidebarVisibility(id, !isHidden);
@@ -398,6 +434,7 @@ function fetchRangeTotals() {
     const viewType = calendar.view.type;
     let rangeLabel = "Week";
     if (viewType === 'timeGridDay') rangeLabel = "Day";
+    if (viewType === 'timeGridThreeDay') rangeLabel = "3 Day";
     if (viewType === 'dayGridMonth') rangeLabel = "Month";
 
     const labelEl = document.getElementById('range_breakdown_label');

@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 
 copy.py
+log.md
 
 # C extensions
 *.so

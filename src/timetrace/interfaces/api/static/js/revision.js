@@ -38,6 +38,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.addEventListener('hashchange', handleHashChange);
     
+    const dateInput = document.getElementById('day_review_date_input');
+    if (dateInput && !dateInput.value) {
+        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
+    }
+
     const initialHash = window.location.hash || '#day';
     const initialTab = HASH_TAB_MAP[initialHash] || 'day';
     switchRevisionTab(initialTab, false);
@@ -117,12 +122,11 @@ function loadCurrentRevisionView() {
     }
 }
 
-// 1. Day Review
+// 1. Day Review & Dynamic Button State Engine
 function setDayReviewToday() {
     const dateInput = document.getElementById('day_review_date_input');
     if (dateInput) {
-        const todayStr = new Date().toISOString().slice(0, 10);
-        dateInput.value = todayStr;
+        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
         loadDayReviewData();
     }
 }
@@ -137,7 +141,11 @@ function markDayFormDirty() {
 
 async function loadDayReviewData() {
     const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput || !dateInput.value) return;
+    if (!dateInput) return;
+
+    if (!dateInput.value) {
+        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
+    }
 
     const dateStr = dateInput.value;
     try {

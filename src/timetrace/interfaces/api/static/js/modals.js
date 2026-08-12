@@ -342,7 +342,7 @@ function openEditSessionModal(sessionId) {
     if (tagDropdown) tagDropdown.classList.add('hidden');
 
     const startDate = parseApiDateTime(session.start_time);
-    const endDate = session.end_time ? parseApiDateTime(session.end_time) : new Date();
+    const endDate = session.end_time ? parseApiDateTime(session.end_time) : new Date(startDate.getTime() + (session.duration_seconds || 900) * 1000);
 
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
@@ -356,6 +356,8 @@ function openEditSessionModal(sessionId) {
     setTagChips(session.tags || "");
     document.getElementById('session_modal_notes').value = session.notes || "";
 
+    // Instantly calculate and set duration badge on open
+    updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
 
     setTimeout(() => {
@@ -383,7 +385,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     const now = new Date();
     const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
-    if (taskId) {
+    if (!endDate || endDate <= startDate) {
         endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
     }
 
@@ -411,6 +413,8 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
     document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
 
+    // Instantly calculate and set duration badge on open
+    updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
 
     setTimeout(() => {

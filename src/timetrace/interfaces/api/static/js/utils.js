@@ -8,12 +8,10 @@ let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_durat
 function getTaskColor(task, index = 0) {
     if (!task) return defaultPalette[0];
     
-    // 1. Custom Color Check (Database Storage Layer override)
     if (task.color && task.color !== 'auto' && task.color !== '' && task.color.startsWith('#')) {
         return task.color;
     }
     
-    // 2. Auto Theme Palette Check (State Management Layer)
     const activePalette = (typeof defaultPalette !== 'undefined' && defaultPalette.length > 0)
         ? defaultPalette
         : ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
@@ -27,7 +25,6 @@ function getTaskColor(task, index = 0) {
         return activePalette[hash % activePalette.length];
     }
     
-    // 3. Fallback Default
     return activePalette[index % activePalette.length];
 }
 
@@ -46,6 +43,14 @@ function formatIsoLocal(dt) {
     if (!dt || isNaN(dt.getTime())) return '';
     const pad = (n) => String(n).padStart(2, '0');
     return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+function getLocalTodayStr() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 }
 
 function getInitialScrollTime() {
@@ -79,8 +84,18 @@ function getTagColor(tagStr) {
     return defaultPalette[hash % defaultPalette.length];
 }
 
-function setSlotDuration(val) {
-    defaultDurationMinutes = parseInt(val) || 15;
+function setSlotDuration(val, updateSettings = true) {
+    let mins = parseInt(val);
+    if (isNaN(mins)) {
+        const s = typeof getUserSettings === 'function' ? getUserSettings() : {};
+        mins = s.lastSelectedSlot || 15;
+    } else if (updateSettings) {
+        const s = typeof getUserSettings === 'function' ? getUserSettings() : {};
+        s.lastSelectedSlot = mins;
+        if (typeof saveUserSettings === 'function') saveUserSettings(s);
+    }
+
+    defaultDurationMinutes = mins;
     localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
     if (typeof calendar !== 'undefined' && calendar) {
         const durStr = `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`;
@@ -89,34 +104,72 @@ function setSlotDuration(val) {
     }
 }
 
+// Fast Time Steppers & Duration Controls
 function adjustStartTime(minutes) {
     const startInput = document.getElementById('session_modal_start');
     if (!startInput || !startInput.value) return;
     const current = new Date(startInput.value);
     current.setMinutes(current.getMinutes() + minutes);
     startInput.value = formatIsoLocal(current);
+    updateSessionModalDurationBadge();
 }
 
 function setStartTimeNow() {
     const startInput = document.getElementById('session_modal_start');
     if (!startInput) return;
     startInput.value = formatIsoLocal(new Date());
+    updateSessionModalDurationBadge();
 }
 
-function setDurationFromStart(minutes) {
+function updateSessionModalDurationBadge() {
+    const startInput = document.getElementById('session_modal_start');
+    const endInput = document.getElementById('session_modal_end');
+    const badge = document.getElementById('session_modal_duration_badge');
+    if (!startInput || !endInput || !badge) return;
+
+    if (!startInput.value || !endInput.value) {
+        badge.innerText = '0m';
+        return;
+    }
+
+    const startDt = new Date(startInput.value);
+    const endDt = new Date(endInput.value);
+    let diffMins = Math.round((endDt - startDt) / 60000);
+
+    if (diffMins <= 0) diffMins = 0;
+
+    if (diffMins < 60) {
+        badge.innerText = `${diffMins}m`;
+    } else {
+        const hrs = Math.floor(diffMins / 60);
+        const mins = diffMins % 60;
+        if (mins === 0) {
+            badge.innerText = `${hrs}h`;
+        } else if (mins === 30) {
+            badge.innerText = `${hrs}.5h`;
+        } else {
+            badge.innerText = `${hrs}h ${mins}m`;
+        }
+    }
+}
+
+function adjustDurationMinutes(deltaMins) {
     const startInput = document.getElementById('session_modal_start');
     const endInput = document.getElementById('session_modal_end');
     if (!startInput || !endInput) return;
 
     const startDt = startInput.value ? new Date(startInput.value) : new Date();
-    const endDt = new Date(startDt.getTime() + minutes * 60000);
-    endInput.value = formatIsoLocal(endDt);
+    let endDt = endInput.value ? new Date(endInput.value) : new Date(startDt.getTime() + 15 * 60000);
+
+    let newEndMs = endDt.getTime() + deltaMins * 60000;
+    if (newEndMs <= startDt.getTime()) {
+        newEndMs = startDt.getTime() + 15 * 60000;
+    }
+
+    endInput.value = formatIsoLocal(new Date(newEndMs));
+    updateSessionModalDurationBadge();
 }
 
-/**
- * Displays custom confirmation modal.
- * Supports pressing Enter to confirm immediately and Escape to cancel.
- */
 function showCustomConfirm(title, message) {
     return new Promise((resolve) => {
         const modal = document.getElementById('custom_confirm_modal');
