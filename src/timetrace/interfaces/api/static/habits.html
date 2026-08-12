@@ -44,7 +44,7 @@
                 <a href="/api/v1/dashboard" class="h-6 px-2.5 rounded hover:bg-[#222536] text-slate-300 font-semibold flex items-center text-[11px]">Calendar</a>
                 <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded bg-emerald-600 text-white font-bold flex items-center text-[11px]">Habits</a>
                 <a href="/api/v1/stats" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Stats</a>
-                <a href="/api/v1/revision" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Revision</a>
+                <a href="/api/v1/revision#overview" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Revision</a>
             </nav>
             <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
                 Settings
@@ -192,10 +192,7 @@
     <div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-                <div>
-                    <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
-                    <span class="text-[10px] text-slate-400">Press Ctrl+Enter to save, Esc to close</span>
-                </div>
+                <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
                 <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
 
@@ -220,7 +217,9 @@
                         <span class="text-[10px] text-slate-400">Initial view on dashboard load</span>
                     </div>
                     <select id="setting_default_view" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="auto">Auto (Remembers Last Picked)</option>
                         <option value="timeGridWeek">Week View</option>
+                        <option value="timeGridThreeDay">3 Day View</option>
                         <option value="timeGridDay">Day View</option>
                         <option value="dayGridMonth">Month View</option>
                     </select>
@@ -243,6 +242,7 @@
                         <span class="text-[10px] text-slate-400">Grid slot interval in minutes</span>
                     </div>
                     <select id="setting_slot_duration" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                        <option value="auto">Auto (Remembers Last Picked)</option>
                         <option value="15">15 Minutes</option>
                         <option value="30">30 Minutes</option>
                         <option value="45">45 Minutes</option>
@@ -269,27 +269,43 @@
 
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
+                            <span class="font-bold text-purple-400 block">Enable Session Review</span>
+                            <span class="text-[10px] text-slate-400">Show Session Review tab in Revision engine</span>
+                        </div>
+                        <input id="setting_enable_session_review" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
+                    </label>
+
+                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                        <div>
                             <span class="font-bold text-amber-400 block">Idle Detector (AFK Auto-Freeze)</span>
                             <span class="text-[10px] text-slate-400">Automatically freeze running timer on system idle</span>
                         </div>
                         <input id="setting_idle_detector" type="checkbox" class="w-4 h-4 accent-amber-500 rounded">
                     </label>
 
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                         <div>
-                            <span class="font-bold text-slate-200 block">Hide Tasks Sidebar by Default</span>
-                            <span class="text-[10px] text-slate-400">Collapse left task cards panel on boot</span>
+                            <span class="font-bold text-slate-200 block">Hide Tasks Sidebar</span>
+                            <span class="text-[10px] text-slate-400">Collapse left task cards panel</span>
                         </div>
-                        <input id="setting_hide_left_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-                    </label>
+                        <select id="setting_hide_left_sidebar" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                            <option value="auto">Auto (Remembers Last)</option>
+                            <option value="false">Always Show</option>
+                            <option value="true">Always Hide</option>
+                        </select>
+                    </div>
 
-                    <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                         <div>
-                            <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar by Default</span>
-                            <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel on boot</span>
+                            <span class="font-bold text-slate-200 block">Hide Range Totals Sidebar</span>
+                            <span class="text-[10px] text-slate-400">Collapse right totals breakdown panel</span>
                         </div>
-                        <input id="setting_hide_right_sidebar" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-                    </label>
+                        <select id="setting_hide_right_sidebar" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
+                            <option value="auto">Auto (Remembers Last)</option>
+                            <option value="false">Always Show</option>
+                            <option value="true">Always Hide</option>
+                        </select>
+                    </div>
 
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
@@ -302,8 +318,8 @@
             </div>
 
             <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3.5 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
-                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Save Settings (Ctrl+Enter)</button>
+                <button onclick="closeSettingsModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+                <button onclick="saveSettingsFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
             </div>
         </div>
     </div>
@@ -314,8 +330,8 @@
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
             <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
             <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
-                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
-                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Confirm (Enter)</button>
+                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
+                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Confirm</button>
             </div>
         </div>
     </div>

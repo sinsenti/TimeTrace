@@ -22,6 +22,7 @@ const DEFAULT_SETTINGS = {
     lastSelectedSlot: 15,
     idleDetectorEnabled: true,
     enableVimMotions: true,
+    enableSessionReview: true,
     hideLeftSidebar: 'auto',
     lastHideLeftSidebar: false,
     hideRightSidebar: 'auto',
@@ -45,16 +46,16 @@ function saveUserSettings(settings) {
 }
 
 function setupSettingsKeyboardShortcuts() {
-    const modal = document.getElementById('settings_modal');
-    if (!modal) return;
-    
-    modal.addEventListener('keydown', function(e) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            e.preventDefault();
-            saveSettingsFromModal();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            closeSettingsModal();
+    document.addEventListener('keydown', function(e) {
+        const modal = document.getElementById('settings_modal');
+        if (modal && !modal.classList.contains('hidden')) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                saveSettingsFromModal();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                closeSettingsModal();
+            }
         }
     });
 }
@@ -68,6 +69,9 @@ function openSettingsModal() {
     const vimCheck = document.getElementById('setting_enable_vim');
     if (vimCheck) vimCheck.checked = s.enableVimMotions !== false;
     
+    const sessionReviewCheck = document.getElementById('setting_enable_session_review');
+    if (sessionReviewCheck) sessionReviewCheck.checked = s.enableSessionReview !== false;
+
     const viewSelect = document.getElementById('setting_default_view');
     if (viewSelect) viewSelect.value = s.defaultView || 'auto';
 
@@ -114,6 +118,7 @@ async function saveSettingsFromModal() {
         ...current,
         theme: document.getElementById('setting_theme') ? document.getElementById('setting_theme').value : 'midnight',
         enableVimMotions: document.getElementById('setting_enable_vim') ? document.getElementById('setting_enable_vim').checked : true,
+        enableSessionReview: document.getElementById('setting_enable_session_review') ? document.getElementById('setting_enable_session_review').checked : true,
         defaultView: document.getElementById('setting_default_view') ? document.getElementById('setting_default_view').value : 'auto',
         firstDayOfWeek: document.getElementById('setting_first_day') ? parseInt(document.getElementById('setting_first_day').value) : 1,
         slotDuration: parsedSlot,
@@ -175,6 +180,10 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
 
     setSidebarVisibility('left_sidebar', !hideLeft);
     setSidebarVisibility('right_sidebar', !hideRight);
+
+    if (typeof updateSessionReviewTabVisibility === 'function') {
+        updateSessionReviewTabVisibility();
+    }
 
     if (typeof fetchTasks === 'function') {
         fetchTasks();

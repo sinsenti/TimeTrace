@@ -49,9 +49,19 @@ document.addEventListener('DOMContentLoaded', () => {
     switchRevisionTab(initialTab, false);
 });
 
+function updateSessionReviewTabVisibility() {
+    switchRevisionTab(currentActiveRevTab, false);
+}
+
 function handleHashChange() {
     const currentHash = window.location.hash || '#overview';
-    const targetTab = HASH_TAB_MAP[currentHash] || 'overview';
+    let targetTab = HASH_TAB_MAP[currentHash] || 'overview';
+    
+    const s = typeof getUserSettings === 'function' ? getUserSettings() : { enableSessionReview: true };
+    if (targetTab === 'sessions' && s.enableSessionReview === false) {
+        targetTab = 'overview';
+    }
+
     if (targetTab !== currentActiveRevTab) {
         switchRevisionTab(targetTab, false);
     }
@@ -88,6 +98,13 @@ function setupRevisionKeyboardShortcuts() {
 }
 
 function switchRevisionTab(tabName, updateHash = true) {
+    const s = typeof getUserSettings === 'function' ? getUserSettings() : { enableSessionReview: true };
+    const isSessionReviewEnabled = s.enableSessionReview !== false;
+
+    if (tabName === 'sessions' && !isSessionReviewEnabled) {
+        tabName = 'overview';
+    }
+
     currentActiveRevTab = tabName;
 
     if (updateHash && TAB_HASH_MAP[tabName]) {
@@ -98,13 +115,21 @@ function switchRevisionTab(tabName, updateHash = true) {
         const el = document.getElementById(`rev_tab_${t}`);
         const btn = document.getElementById(`rev_tab_btn_${t}`);
         if (el) el.classList.add('hidden');
-        if (btn) btn.className = "h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]";
+
+        if (btn) {
+            const isCurrent = (t === tabName);
+            const shouldHideBtn = (t === 'sessions' && !isSessionReviewEnabled);
+
+            btn.className = `h-6 px-3 rounded font-bold text-[11px] ${
+                isCurrent 
+                    ? "bg-purple-600 text-white" 
+                    : "text-slate-400 hover:text-white"
+            } ${shouldHideBtn ? "hidden" : ""}`.trim();
+        }
     });
 
     const activeEl = document.getElementById(`rev_tab_${tabName}`);
-    const activeBtn = document.getElementById(`rev_tab_btn_${tabName}`);
     if (activeEl) activeEl.classList.remove('hidden');
-    if (activeBtn) activeBtn.className = "h-6 px-3 rounded font-bold bg-purple-600 text-white text-[11px]";
 
     loadCurrentRevisionView();
 }
@@ -238,7 +263,7 @@ async function loadDayReviewData() {
                                     ${s.task.description ? `<div class="text-xs text-slate-400 line-clamp-1">${s.task.description}</div>` : ''}
                                 </div>
                             ` : ''}
-                            <div class="text-slate-200 font-medium">${s.notes || 'No session notes'}</div>
+                            ${s.notes ? `<div class="text-slate-200 font-medium">${s.notes}</div>` : ''}
                         </div>
                     `;
                 }).join('');
@@ -696,7 +721,7 @@ async function loadTaskInspectorStats(taskId) {
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>
                             </div>
-                            <div class="text-white font-semibold">${s.notes || 'No session notes'}</div>
+                            ${s.notes ? `<div class="text-white font-semibold">${s.notes}</div>` : ''}
                         </div>
                     `;
                 }).join('');
@@ -970,7 +995,7 @@ function filterSessionsReviewList() {
                         ${attachedTask.description ? `<div class="text-xs text-slate-400 line-clamp-1">${attachedTask.description}</div>` : ''}
                     </div>
                 ` : ''}
-                <div class="text-slate-200 font-medium">${s.notes || 'No description notes'}</div>
+                ${s.notes ? `<div class="text-slate-200 font-medium">${s.notes}</div>` : ''}
             </div>
         `;
     }).join('');
