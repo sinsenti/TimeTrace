@@ -1,19 +1,21 @@
 # TimeTrace
 
-**TimeTrace** is an open-source, local-first time management and productivity engine built for developers. It unifies **CLI/TUI terminal workflows**, a **visual calendar dashboard**, **qualitative post-session reflections**, and **plain-text Markdown syncing** through a single local background daemon.
+**TimeTrace** is an open-source, local-first time management and productivity engine built for developers. It unifies **CLI/TUI terminal workflows**, a **visual calendar dashboard**, **revision retrospectives**, **habit tracking**, **custom evaluation ratings**, and **plain-text Markdown syncing** through a single local background daemon running at `http://127.0.0.1:8002`.
 
 ---
 
 ## ✨ Features
 
-- 🚀 **Local-First Daemon**: Single FastAPI background service powering all clients (CLI, TUI, Web UI, Tmux, Neovim).
-- 💻 **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`) and a `tuicr`-inspired interactive TUI (`Textual`).
-- 📅 **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with dynamic view view-switching (**Day**, **Week**, **Month**) and synchronized range totals.
-- 🎨 **Custom Task Slots**: Create, edit, recolor, and delete task cards with progress status tags (`in progress`, `ongoing`, `completed`).
-- 🧠 **Post-Session Reflections**: Capture qualitative effort data after every session (Energy level 1–5, obstacles faced, habits completed).
-- 📊 **Activity & Tag Observability**: Aggregate tracked hours by activity (`#programming`, `#design`) and view real-time tab titles in your browser window (`⏱️ 00:24:15 - [Task Name] (#tags)`).
+- 🚀 **Local-First Daemon**: Single FastAPI background service (port **8002**) powering CLI, TUI, Web UI, and Tmux integration.
+- 💻 **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`) and a Textual-powered interactive TUI.
+- 📅 **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with view-switching (**Day**, **3-Day**, **Week**, **Month**), auto-scrolling, and range totals.
+- 🔄 **Revision & Retrospective Engine**: Review past days with structured **Highlights** and **Daily Friction** reflections, task post-mortems, and session timeline inspections.
+- ⚡ **Per-Item & Per-Rating Dismissal**: Option to dismiss entire day/session reviews or individually dismiss custom rating metrics.
+- 📊 **Habit Tracker Matrix**: 14-day interactive grid for tracking daily habits (Boolean checkmarks or numeric metrics) with consistency doughnut charts.
+- 📈 **Custom Rating Scales**: Define custom evaluation metrics (1–5 or 1–10 ranges, essential/optional) for sessions, tasks, and days.
+- 💤 **AFK / Idle Detection**: Automatically freezes running timers during 10 minutes of inactivity and provides an AFK resolution modal (Discard, Log as Break, Claim Work, or Re-tag).
+- ⌨️ **Vim Navigation & Clean UI**: Navigation shortcuts (`h`/`j`/`k`/`l`, `v`, `i`, `o`, `x`), compact single-line modal controls with micro shortcut badges (`Ctrl+↵`, `Esc`), and toggleable UI sidebars.
 - 📝 **Markdown Sync Engine**: Bidirectional import and export of structured `.md` log files with YAML frontmatter.
-- 🔌 **Tmux & Editor Ready**: Status bar string formatter (`timetrace status --tmux`) and Lua hooks for Neovim.
 
 ---
 
@@ -22,12 +24,12 @@
 | Component | Technology |
 | :--- | :--- |
 | **Language** | Python 3.11+ |
-| **Daemon Engine** | FastAPI + Uvicorn |
-| **Database** | SQLite + SQLModel (SQLAlchemy + Pydantic v2) |
+| **Daemon Engine** | FastAPI + Uvicorn (Port 8002) |
+| **Database** | SQLite (`~/.timetrace/timetrace.db`) + SQLModel |
 | **Terminal UI (TUI)** | Textual |
 | **CLI Framework** | Typer + HTTPX |
-| **Web UI** | FullCalendar.js + Tailwind CSS |
-| **Markdown Parser** | `python-frontmatter` |
+| **Web UI** | FullCalendar.js + Tailwind CSS + Chart.js |
+| **Frontend API Layer** | Centralized `ApiClient` |
 
 ---
 
@@ -66,10 +68,10 @@ timetrace daemon
 
 | Command | Usage | Description |
 | --- | --- | --- |
-| `timetrace daemon` | `timetrace daemon` | Start the local background service |
+| `timetrace daemon` | `timetrace daemon` | Start the local background service on port 8002 |
 | `timetrace` | `timetrace` | Launch the interactive Terminal UI (TUI) |
-| `timetrace start` | `timetrace start -t "#tags" -n "notes" -k 1` | Start active timer |
-| `timetrace split` | `timetrace split -t "#newtag" -n "new notes"` | Save active session and start new one immediately |
+| `timetrace start` | `timetrace start -t "#tags" -n "notes"` | Start active timer |
+| `timetrace split` | `timetrace split -t "#newtag" -n "notes"` | Save active session and start new one immediately |
 | `timetrace stop` | `timetrace stop` | Stop active timer and save session |
 | `timetrace retro` | `timetrace retro -s 120 -d 45 -t "#tags"` | Retroactively log a past session |
 | `timetrace summary` | `timetrace summary` | View time totals grouped by `#tags` |
@@ -90,11 +92,12 @@ total_sessions: 2
 ---
 
 # Logged Sessions
-- [08:00 - 09:30] | #programming | Core FastAPI Daemon Setup
-  - Energy: 5/5
-  - Obstacles: None
-- [10:00 - 11:15] | #tui | Configured Textual Keybindings
-  - Energy: 4/5
+- [08:00 - 09:30] | #programming | Core FastAPI Daemon Refactoring
+  - Highlights: Modular router architecture, sub-second API responses
+  - Friction: Intermittent SQLite constraint issues
+- [10:00 - 11:15] | #tui | Configured Vim Navigation Bindings
+  - Highlights: Smooth h/j/k/l grid navigation
+
 
 ```
 

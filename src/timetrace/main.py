@@ -1,29 +1,45 @@
-import typer
-import uvicorn
+import sys
+import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
+from contextlib import asynccontextmanager
 
+from timetrace.config import settings
 from timetrace.db.session import init_db
+from timetrace.core.timer import timer_manager
+from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.interfaces.api.routers import api_router
 
-app = typer.Typer(
-    name="timetrace",
-    help="TimeTrace - Lightweight Time Tracking & Retrospective Engine",
-    add_completion=False,
-)
+
+async def idle_checker_loop():
+    while True:
+        await asyncio.sleep(10)
+        try:
+            if (
+                settings.idle_detection_enabled
+                and timer_manager.idle_detection_enabled
+                and timer_manager.is_running
+            ):
+                idle_secs = get_idle_seconds()
+                if idle_secs >= timer_manager.idle_threshold_seconds:
+                    timer_manager.freeze_for_idle(idle_secs)
+        except Exception as exc:
+            print(f"Warning: Idle loop error: {exc}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    idle_task = asyncio.create_task(idle_checker_loop())
+    yield
+    idle_task.cancel()
 
 
 def create_daemon_app() -> FastAPI:
-    init_db()
+    app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
 
-    daemon_app = FastAPI(
-        title="TimeTrace API Engine",
-        version="1.0.0",
-        docs_url="/docs",
-        redoc_url="/redoc",
-    )
-
-    daemon_app.add_middleware(
+    app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_credentials=True,
@@ -31,25 +47,42 @@ def create_daemon_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Mount master aggregated router under /api/v1
-    daemon_app.include_router(api_router, prefix="/api/v1")
-    return daemon_app
+    app.include_router(api_router, prefix="/api/v1")
 
+    @app.get("/")
+    def root_redirect():
+        return RedirectResponse(url="/api/v1/dashboard")
 
-@app.command()
-def daemon(
-    host: str = typer.Option("127.0.0.1", "--host", "-h", help="Host address to bind"),
-    port: int = typer.Option(8002, "--port", "-p", help="Port number to bind"),
-    reload: bool = typer.Option(
-        False, "--reload", help="Enable auto-reload on code changes"
-    ),
-):
-    """Starts the TimeTrace daemon web server."""
-    typer.echo(f"🚀 Starting TimeTrace Daemon at http://{host}:{port}/api/v1/dashboard")
-    uvicorn.run("timetrace.main:daemon_app", host=host, port=port, reload=reload)
+    @app.get("/health")
+    def health_check():
+        return {
+            "status": "ok",
+            "app": settings.app_name,
+            "port": settings.port,
+            "db_file": str(settings.db_file),
+        }
+
+    return app
 
 
 daemon_app = create_daemon_app()
+
+
+def app():
+    if len(sys.argv) == 1:
+        from timetrace.interfaces.cli.client import ensure_daemon_running
+
+        ensure_daemon_running()
+
+        from timetrace.interfaces.tui.app import TimeTraceTUI
+
+        tui = TimeTraceTUI()
+        tui.run()
+    else:
+        from timetrace.interfaces.cli.commands import cli_app
+
+        cli_app()
+
 
 if __name__ == "__main__":
     app()

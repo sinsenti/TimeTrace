@@ -14,5 +14,10 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="TIMETRACE_")
 
+    @property
+    def database_url(self) -> str:
+        self.db_file.parent.mkdir(parents=True, exist_ok=True)
+        return f"sqlite:///{self.db_file}"
+
 
 settings = Settings()
