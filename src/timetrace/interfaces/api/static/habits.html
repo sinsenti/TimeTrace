@@ -44,6 +44,7 @@
                 <a href="/api/v1/dashboard" class="h-6 px-2.5 rounded hover:bg-[#222536] text-slate-300 font-semibold flex items-center text-[11px]">Calendar</a>
                 <a href="/api/v1/habits-view" class="h-6 px-2.5 rounded bg-emerald-600 text-white font-bold flex items-center text-[11px]">Habits</a>
                 <a href="/api/v1/stats" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Stats</a>
+                <a href="/api/v1/revision" class="h-6 px-2.5 rounded hover:bg-[#222536] text-purple-300 font-semibold flex items-center text-[11px]">Revision</a>
             </nav>
             <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
                 Settings
@@ -261,7 +262,7 @@
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-purple-400 block">Enable Vim Keyboard Shortcuts</span>
-                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, gt in calendar</span>
+                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, e, gt in calendar</span>
                         </div>
                         <input id="setting_enable_vim" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
                     </label>
@@ -313,8 +314,8 @@
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
             <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
             <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
-                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
-                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Delete</button>
+                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
+                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Confirm (Enter)</button>
             </div>
         </div>
     </div>
