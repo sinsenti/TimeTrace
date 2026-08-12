@@ -14,11 +14,14 @@ class Task(SQLModel, table=True):
     priority: str = Field(default="-")  # "-", "low", "medium", "high"
     estimated_minutes: Optional[int] = None
     status: str = Field(default="in_progress")  # in_progress, ongoing, completed
-    color: str = Field(default="auto")  # "auto" or custom hex (e.g. "#ff0055")
+    color: str = Field(default="auto")
     tags: str = Field(default="")
     created_at: datetime = Field(default_factory=utc_now)
 
     sessions: List["Session"] = Relationship(back_populates="task")
+    review: Optional["TaskReview"] = Relationship(
+        back_populates="task", sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"}
+    )
 
 
 class Session(SQLModel, table=True):
@@ -46,10 +49,53 @@ class Reflection(SQLModel, table=True):
     session: Optional[Session] = Relationship(back_populates="reflection")
 
 
+class TaskReview(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    task_id: int = Field(foreign_key="task.id", unique=True)
+    difficulty: int = Field(default=3)  # Scale 1-10 or 1-5
+    what_went_well: Optional[str] = None
+    blockers: Optional[str] = None
+    key_takeaways: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+    task: Optional[Task] = Relationship(back_populates="review")
+
+
+class DayReview(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    date_str: str = Field(index=True, unique=True)  # YYYY-MM-DD
+    rating: int = Field(default=3)
+    wins: Optional[str] = None
+    blockers: Optional[str] = None
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class RatingDefinition(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    name: str
+    target_type: str = Field(default="session")  # "session", "task", "day"
+    min_score: int = Field(default=1)
+    max_score: int = Field(default=10)
+    is_required: bool = Field(default=False)
+    description: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+
+class RatingEntry(SQLModel, table=True):
+    id: Optional[int] = Field(default=None, primary_key=True)
+    rating_definition_id: int = Field(foreign_key="ratingdefinition.id")
+    target_type: str = Field(index=True)  # "session", "task", "day"
+    target_id: str = Field(index=True)    # Entity ID or date_str
+    score: int
+    notes: Optional[str] = None
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class Habit(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     name: str
-    habit_type: str = Field(default="boolean")  # "boolean" or "numeric"
+    habit_type: str = Field(default="boolean")
     target_value: float = Field(default=1.0)
     unit: str = Field(default="")
     frequency: str = Field(default="Every day")

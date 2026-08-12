@@ -8,7 +8,7 @@ class TaskCreate(BaseModel):
     description: Optional[str] = None
     priority: str = "-"
     status: str = "in_progress"
-    color: str = "#7c3aed"
+    color: str = "auto"
     tags: str = ""
     estimated_minutes: Optional[int] = None
     created_at: Optional[datetime] = None
@@ -68,6 +68,48 @@ class ReflectionCreate(BaseModel):
         return v
 
 
+class DayReviewCreate(BaseModel):
+    date_str: str
+    rating: int = 3
+    wins: Optional[str] = ""
+    blockers: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+class TaskReviewCreate(BaseModel):
+    task_id: int
+    difficulty: int = 3
+    what_went_well: Optional[str] = ""
+    blockers: Optional[str] = ""
+    key_takeaways: Optional[str] = ""
+
+
+class RatingDefinitionCreate(BaseModel):
+    name: str
+    target_type: str = "session"  # "session", "task", "day"
+    min_score: int = 1
+    max_score: int = 10
+    is_required: bool = False
+    description: Optional[str] = None
+
+
+class RatingDefinitionUpdate(BaseModel):
+    name: Optional[str] = None
+    target_type: Optional[str] = None
+    min_score: Optional[int] = None
+    max_score: Optional[int] = None
+    is_required: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class RatingEntryCreate(BaseModel):
+    rating_definition_id: int
+    target_type: str
+    target_id: str
+    score: int
+    notes: Optional[str] = None
+
+
 class RetroSessionCreate(BaseModel):
     task_id: Optional[int] = None
     start_time: datetime
@@ -81,7 +123,7 @@ class IdleToggleRequest(BaseModel):
 
 
 class IdleResolveRequest(BaseModel):
-    option: str  # "discard", "break", "claim_work", "re_tag"
+    option: str
     new_tags: Optional[str] = "#general"
     new_notes: Optional[str] = ""
 

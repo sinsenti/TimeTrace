@@ -6,28 +6,22 @@ from typing import List, Optional
 from datetime import datetime, date, timezone, timedelta
 
 from timetrace.db.session import get_session
-from timetrace.db.models import Task, Session as SessionModel, Reflection, Habit, HabitLog
+from timetrace.db.models import (
+    Task, Session as SessionModel, Reflection, TaskReview,
+    DayReview, RatingDefinition, RatingEntry, Habit, HabitLog
+)
 from timetrace.core.timer import timer_manager
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
 from timetrace.core.analytics import calculate_tag_summaries, calculate_detailed_analytics
 from timetrace.interfaces.api.schemas import (
-    TaskCreate,
-    TaskUpdate,
-    SessionCreate,
-    SessionUpdate,
-    TimerStartRequest,
-    TimerSplitRequest,
-    ReflectionCreate,
-    RetroSessionCreate,
-    IdleToggleRequest,
-    IdleResolveRequest,
-    HabitCreate,
-    HabitUpdate,
-    HabitLogRequest
+    TaskCreate, TaskUpdate, SessionCreate, SessionUpdate,
+    TimerStartRequest, TimerSplitRequest, ReflectionCreate,
+    DayReviewCreate, TaskReviewCreate, RatingDefinitionCreate,
+    RatingDefinitionUpdate, RatingEntryCreate, RetroSessionCreate,
+    IdleToggleRequest, IdleResolveRequest, HabitCreate, HabitUpdate, HabitLogRequest
 )
 
 router = APIRouter()
-
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
 
@@ -39,7 +33,7 @@ def ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-# Static Web Serving
+# Static Web Routes
 @router.get("/dashboard", response_class=FileResponse)
 def get_web_dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
@@ -55,12 +49,299 @@ def get_habits_dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "habits.html"))
 
 
+@router.get("/revision", response_class=FileResponse)
+def get_revision_dashboard():
+    return FileResponse(os.path.join(STATIC_DIR, "revision.html"))
+
+
 @router.get("/static/{file_path:path}")
 def get_static_file(file_path: str):
     full_path = os.path.join(STATIC_DIR, file_path)
     if os.path.exists(full_path) and os.path.isfile(full_path):
         return FileResponse(full_path)
     raise HTTPException(status_code=404, detail="Static asset not found")
+
+
+# Custom Rating Definitions & Entries API
+@router.post("/rating-definitions", response_model=RatingDefinition, status_code=status.HTTP_201_CREATED)
+def create_rating_definition(req: RatingDefinitionCreate, db: DBSession = Depends(get_session)):
+    db_def = RatingDefinition.model_validate(req.model_dump())
+    db.add(db_def)
+    db.commit()
+    db.refresh(db_def)
+    return db_def
+
+
+@router.get("/rating-definitions", response_model=List[RatingDefinition])
+def list_rating_definitions(
+    target_type: Optional[str] = Query(None),
+    db: DBSession = Depends(get_session)
+):
+    query = select(RatingDefinition)
+    if target_type:
+        query = query.where(RatingDefinition.target_type == target_type)
+    return db.exec(query).all()
+
+
+@router.put("/rating-definitions/{def_id}", response_model=RatingDefinition)
+def update_rating_definition(def_id: int, req: RatingDefinitionUpdate, db: DBSession = Depends(get_session)):
+    db_def = db.get(RatingDefinition, def_id)
+    if not db_def:
+        raise HTTPException(status_code=404, detail="Rating definition not found")
+    
+    update_dict = req.model_dump(exclude_unset=True)
+    for k, v in update_dict.items():
+        setattr(db_def, k, v)
+    
+    db.add(db_def)
+    db.commit()
+    db.refresh(db_def)
+    return db_def
+
+
+@router.delete("/rating-definitions/{def_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rating_definition(def_id: int, db: DBSession = Depends(get_session)):
+    db_def = db.get(RatingDefinition, def_id)
+    if not db_def:
+        raise HTTPException(status_code=404, detail="Rating definition not found")
+    
+    entries = db.exec(select(RatingEntry).where(RatingEntry.rating_definition_id == def_id)).all()
+    for entry in entries:
+        db.delete(entry)
+        
+    db.delete(db_def)
+    db.commit()
+    return None
+
+
+@router.post("/rating-entries", response_model=RatingEntry, status_code=status.HTTP_201_CREATED)
+def create_rating_entry(req: RatingEntryCreate, db: DBSession = Depends(get_session)):
+    db_def = db.get(RatingDefinition, req.rating_definition_id)
+    if not db_def:
+        raise HTTPException(status_code=404, detail="Rating definition ID not found")
+
+    if req.score < db_def.min_score or req.score > db_def.max_score:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Score must be between {db_def.min_score} and {db_def.max_score}"
+        )
+
+    # Upsert rating entry for entity
+    existing = db.exec(
+        select(RatingEntry).where(
+            RatingEntry.rating_definition_id == req.rating_definition_id,
+            RatingEntry.target_type == req.target_type,
+            RatingEntry.target_id == str(req.target_id)
+        )
+    ).first()
+
+    if existing:
+        existing.score = req.score
+        existing.notes = req.notes
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        entry = RatingEntry.model_validate(req.model_dump())
+        entry.target_id = str(req.target_id)
+        db.add(entry)
+        db.commit()
+        db.refresh(entry)
+        return entry
+
+
+@router.get("/rating-entries")
+def get_rating_entries(
+    target_type: str = Query(...),
+    target_id: str = Query(...),
+    db: DBSession = Depends(get_session)
+):
+    entries = db.exec(
+        select(RatingEntry).where(
+            RatingEntry.target_type == target_type,
+            RatingEntry.target_id == str(target_id)
+        )
+    ).all()
+
+    result = []
+    for e in entries:
+        r_def = db.get(RatingDefinition, e.rating_definition_id)
+        e_dict = e.model_dump()
+        e_dict["definition"] = r_def.model_dump() if r_def else None
+        result.append(e_dict)
+    return result
+
+
+# Task Review API Endpoints
+@router.post("/task-reviews", response_model=TaskReview, status_code=status.HTTP_201_CREATED)
+def create_or_update_task_review(req: TaskReviewCreate, db: DBSession = Depends(get_session)):
+    task = db.get(Task, req.task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    existing = db.exec(select(TaskReview).where(TaskReview.task_id == req.task_id)).first()
+    if existing:
+        existing.difficulty = req.difficulty
+        existing.what_went_well = req.what_went_well
+        existing.blockers = req.blockers
+        existing.key_takeaways = req.key_takeaways
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        review = TaskReview.model_validate(req.model_dump())
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        return review
+
+
+@router.get("/task-reviews/{task_id}")
+def get_task_review(task_id: int, db: DBSession = Depends(get_session)):
+    review = db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()
+    if not review:
+        return None
+    return review
+
+
+# Day Review & Revision API Endpoints
+@router.get("/revision/day-summary")
+def get_day_summary(date_str: str = Query(..., description="YYYY-MM-DD"), db: DBSession = Depends(get_session)):
+    sessions = db.exec(select(SessionModel)).all()
+    matching_sessions = []
+    
+    for s in sessions:
+        if s.start_time:
+            local_dt = ensure_utc(s.start_time).astimezone()
+            if local_dt.strftime("%Y-%m-%d") == date_str:
+                matching_sessions.append(s)
+
+    tasks = db.exec(select(Task)).all()
+    tasks_map = {t.id: t for t in tasks}
+
+    completed_tasks = [t for t in tasks if t.status == "completed" and t.created_at and ensure_utc(t.created_at).astimezone().strftime("%Y-%m-%d") == date_str]
+
+    total_seconds = sum(s.duration_seconds or 0 for s in matching_sessions)
+    
+    reflections = [s.reflection for s in matching_sessions if s.reflection]
+    avg_energy = round(sum(r.energy_level for r in reflections) / len(reflections), 1) if reflections else None
+
+    saved_review = db.exec(select(DayReview).where(DayReview.date_str == date_str)).first()
+
+    session_details = []
+    for s in matching_sessions:
+        s_dict = s.model_dump()
+        s_dict["task"] = tasks_map.get(s.task_id).model_dump() if s.task_id and s.task_id in tasks_map else None
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        session_details.append(s_dict)
+
+    # Fetch Day Custom Ratings
+    day_ratings = db.exec(
+        select(RatingEntry).where(RatingEntry.target_type == "day", RatingEntry.target_id == date_str)
+    ).all()
+    
+    ratings_detailed = []
+    for r in day_ratings:
+        r_def = db.get(RatingDefinition, r.rating_definition_id)
+        r_dict = r.model_dump()
+        r_dict["definition"] = r_def.model_dump() if r_def else None
+        ratings_detailed.append(r_dict)
+
+    return {
+        "date_str": date_str,
+        "total_hours": round(total_seconds / 3600.0, 2),
+        "total_sessions": len(matching_sessions),
+        "completed_tasks_count": len(completed_tasks),
+        "avg_energy": avg_energy,
+        "sessions": session_details,
+        "day_review": saved_review.model_dump() if saved_review else None,
+        "custom_ratings": ratings_detailed
+    }
+
+
+@router.post("/revision/day-review", response_model=DayReview)
+def save_day_review(req: DayReviewCreate, db: DBSession = Depends(get_session)):
+    existing = db.exec(select(DayReview).where(DayReview.date_str == req.date_str)).first()
+    if existing:
+        existing.rating = req.rating
+        existing.wins = req.wins
+        existing.blockers = req.blockers
+        existing.notes = req.notes
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        review = DayReview(
+            date_str=req.date_str,
+            rating=req.rating,
+            wins=req.wins,
+            blockers=req.blockers,
+            notes=req.notes
+        )
+        db.add(review)
+        db.commit()
+        db.refresh(review)
+        return review
+
+
+# Task Statistics Inspector Endpoint
+@router.get("/tasks/{task_id}/stats")
+def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
+    task = db.get(Task, task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    sessions = db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
+    sessions.sort(key=lambda s: s.start_time or datetime.min)
+
+    total_seconds = sum(s.duration_seconds or 0 for s in sessions)
+    total_hours = round(total_seconds / 3600.0, 2)
+
+    est_minutes = task.estimated_minutes or 0
+    est_hours = round(est_minutes / 60.0, 2)
+    progress_pct = round((total_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None
+
+    reflections = [s.reflection for s in sessions if s.reflection]
+    avg_energy = round(sum(r.energy_level for r in reflections) / len(reflections), 1) if reflections else None
+
+    session_list = []
+    for s in sessions:
+        s_dict = s.model_dump()
+        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+        if s.reflection:
+            s_dict["reflection"] = s.reflection.model_dump()
+        session_list.append(s_dict)
+
+    review = db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()
+
+    # Fetch Task Custom Ratings
+    task_ratings = db.exec(
+        select(RatingEntry).where(RatingEntry.target_type == "task", RatingEntry.target_id == str(task_id))
+    ).all()
+    
+    ratings_detailed = []
+    for r in task_ratings:
+        r_def = db.get(RatingDefinition, r.rating_definition_id)
+        r_dict = r.model_dump()
+        r_dict["definition"] = r_def.model_dump() if r_def else None
+        ratings_detailed.append(r_dict)
+
+    return {
+        "task": task.model_dump(),
+        "total_hours": total_hours,
+        "total_sessions": len(sessions),
+        "estimated_hours": est_hours,
+        "progress_pct": progress_pct,
+        "avg_energy": avg_energy,
+        "sessions": session_list,
+        "task_review": review.model_dump() if review else None,
+        "custom_ratings": ratings_detailed
+    }
 
 
 # Habit Tracker API Endpoints
