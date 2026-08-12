@@ -220,7 +220,7 @@
                     <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
                         <div>
                             <span class="font-bold text-purple-400 block">Enable Vim Keyboard Shortcuts</span>
-                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, gt in calendar</span>
+                            <span class="text-[10px] text-slate-400">Use h/j/k/l, v, i, o, x, c, e, gt in calendar</span>
                         </div>
                         <input id="setting_enable_vim" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
                     </label>
@@ -329,7 +329,7 @@
             </div>
 
             <div class="flex justify-between items-center pt-2">
-                <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete</button>
+                <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
                 <div class="space-x-2">
                     <button onclick="closeTaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
                     <button onclick="saveTask()" class="bg-purple-600 hover:bg-purple-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save Task (Ctrl+Enter)</button>
@@ -343,14 +343,16 @@
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <input type="hidden" id="edit_session_id">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="session_modal_title" class="font-bold text-lg text-white">Calendar Session Configuration</h3>
-                <span id="session_modal_type_badge" class="px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700">Planned Slot</span>
+                <h3 id="session_modal_title" class="font-bold text-lg text-white">Calendar Session</h3>
             </div>
 
             <div class="relative">
-                <label class="text-xs text-slate-400 block mb-1">Attach Task</label>
+                <div class="flex justify-between items-center mb-1">
+                    <label class="text-xs text-slate-400 block">Attach Task</label>
+                    <button type="button" onclick="openTaskModalFromSessionModal()" class="text-[10px] bg-purple-900/60 hover:bg-purple-800 text-purple-300 font-bold px-2 py-0.5 rounded border border-purple-700/50">+ Task</button>
+                </div>
                 <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
-                    <input id="session_modal_task_search" type="text" placeholder="Search/Type task... (Press Enter to attach top match)" class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[180px] px-1 py-0.5">
+                    <input id="session_modal_task_search" type="text" placeholder="Search/Type task... (Press Enter to attach top match, + for new task)" class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[180px] px-1 py-0.5">
                 </div>
                 <div id="task_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-40 overflow-y-auto hidden z-20"></div>
                 <input type="hidden" id="session_modal_task_id">
@@ -412,8 +414,8 @@
             <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
             <p id="confirm_modal_message" class="text-xs text-slate-300 leading-relaxed"></p>
             <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
-                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
-                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Delete</button>
+                <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel (Esc)</button>
+                <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Confirm (Enter)</button>
             </div>
         </div>
     </div>

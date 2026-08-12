@@ -1,3 +1,5 @@
+let sessionModalStateBackup = null;
+
 // Modal Keyboard Event Listeners
 function setupModalKeyboardListeners() {
     const taskModal = document.getElementById('task_modal');
@@ -15,11 +17,17 @@ function setupModalKeyboardListeners() {
     const sessionModal = document.getElementById('session_modal');
     if (sessionModal) {
         sessionModal.addEventListener('keydown', function(e) {
+            const activeEl = document.activeElement;
+            const isTypingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
+
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 saveSessionFromModal();
             } else if (e.key === 'Escape') {
                 closeSessionModal();
+            } else if ((e.key === '+' || e.key === '=') && !isTypingText) {
+                e.preventDefault();
+                openTaskModalFromSessionModal();
             }
         });
     }
@@ -63,6 +71,9 @@ function setupModalKeyboardListeners() {
             } else if (e.key === 'Backspace' && !taskSearchInput.value && attachedTask) {
                 detachTask();
                 renderTaskSuggestions('');
+            } else if (e.key === '+') {
+                e.preventDefault();
+                openTaskModalFromSessionModal();
             }
         });
     }
@@ -135,6 +146,17 @@ function setupModalKeyboardListeners() {
             if (hexLabel) hexLabel.innerText = e.target.value.toUpperCase();
         });
     }
+}
+
+function openTaskModalFromSessionModal() {
+    sessionModalStateBackup = {
+        startVal: document.getElementById('session_modal_start').value,
+        endVal: document.getElementById('session_modal_end').value,
+        notesVal: document.getElementById('session_modal_notes').value,
+        tags: [...currentTagChips]
+    };
+    closeSessionModal();
+    openNewTaskModal();
 }
 
 function renderColorSwatches(activeHex = '') {
@@ -253,24 +275,41 @@ async function saveTask() {
 
     if (!payload.title) return;
 
+    let createdTask = null;
     if (id) {
-        await fetch(`/api/v1/tasks/${id}`, {
+        const res = await fetch(`/api/v1/tasks/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        createdTask = await res.json();
     } else {
-        await fetch('/api/v1/tasks', {
+        const res = await fetch('/api/v1/tasks', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
+        createdTask = await res.json();
     }
 
     closeTaskModal();
     await fetchAllTasksRegistry();
     fetchTasks();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+
+    // If task was created from within session modal, return back to session modal with task attached
+    if (sessionModalStateBackup && createdTask && createdTask.id) {
+        const backup = sessionModalStateBackup;
+        sessionModalStateBackup = null;
+
+        const startDt = backup.startVal ? new Date(backup.startVal) : new Date();
+        const endDt = backup.endVal ? new Date(backup.endVal) : new Date(startDt.getTime() + 15 * 60000);
+
+        openCreateSessionModal(startDt, endDt, createdTask.id, createdTask.title);
+        if (backup.notesVal) {
+            document.getElementById('session_modal_notes').value = backup.notesVal;
+        }
+    }
 }
 
 async function deleteTask() {
@@ -294,10 +333,6 @@ function openEditSessionModal(sessionId) {
     document.getElementById('edit_session_id').value = session.id;
     const titleEl = document.getElementById('session_modal_title');
     if (titleEl) titleEl.innerText = "Edit Session";
-
-    const badge = document.getElementById('session_modal_type_badge');
-    badge.innerText = "Logged Session";
-    badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700";
 
     document.getElementById('session_modal_start_now_btn').classList.add('hidden');
     const deleteBtn = document.getElementById('session_modal_delete_btn');
@@ -337,7 +372,7 @@ function openEditSessionModal(sessionId) {
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
     document.getElementById('edit_session_id').value = "";
     const titleEl = document.getElementById('session_modal_title');
-    if (titleEl) titleEl.innerText = "Calendar Session Configuration";
+    if (titleEl) titleEl.innerText = "Calendar Session";
 
     const deleteBtn = document.getElementById('session_modal_delete_btn');
     if (deleteBtn) deleteBtn.classList.add('hidden');
@@ -348,11 +383,8 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     if (tagDropdown) tagDropdown.classList.add('hidden');
 
     const now = new Date();
-    const badge = document.getElementById('session_modal_type_badge');
     const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
-    // Rule: Discard variable visual selection size when a task is specified or created
-    // Default to a clean 15-minute slot start
     if (taskId) {
         endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
     }
@@ -360,28 +392,26 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
-    if (endDate <= now) {
-        badge.innerText = "Logged Past Session";
-        badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-blue-900/60 text-blue-300 border border-blue-700";
-        startNowBtn.classList.add('hidden');
-    } else if (startDate <= now && endDate > now) {
-        badge.innerText = "Active / Present Slot";
-        badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-emerald-900/60 text-emerald-300 border border-emerald-700";
-        startNowBtn.classList.remove('hidden');
+    if (startDate <= now && endDate > now) {
+        if (startNowBtn) startNowBtn.classList.remove('hidden');
     } else {
-        badge.innerText = "Planned Slot";
-        badge.className = "px-2 py-0.5 text-[10px] font-black uppercase rounded bg-purple-900/60 text-purple-300 border border-purple-700";
-        startNowBtn.classList.add('hidden');
-    }
-
-    if (taskId && allTasksMap[taskId]) {
-        attachTaskById(taskId, true);
-    } else {
-        detachTask();
+        if (startNowBtn) startNowBtn.classList.add('hidden');
     }
 
     const settings = getUserSettings();
-    setTagChips(settings.defaultTag || "#general");
+
+    // Attach Task and preserve its tags. Fallback to settings.defaultTag only if task has no tags.
+    if (taskId && allTasksMap[taskId]) {
+        attachTaskById(taskId, true);
+        const attachedTaskObj = allTasksMap[taskId];
+        if (!attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
+            setTagChips(settings.defaultTag || "#general");
+        }
+    } else {
+        detachTask();
+        setTagChips(settings.defaultTag || "#general");
+    }
+
     document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
 
     document.getElementById('session_modal').classList.remove('hidden');

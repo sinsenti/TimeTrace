@@ -117,7 +117,6 @@ function setupVimKeyboardListeners() {
             initVimCursor();
         }
 
-        // Handle multi-key 'g' sequences (gt / gT)
         if (pendingGKey) {
             pendingGKey = false;
             if (pendingGTimer) clearTimeout(pendingGTimer);
@@ -143,7 +142,6 @@ function setupVimKeyboardListeners() {
         const isMonthView = typeof calendar !== 'undefined' && calendar && calendar.view.type === 'dayGridMonth';
 
         switch (e.key) {
-            // Toggle Visual Mode
             case 'v':
             case 'V':
                 e.preventDefault();
@@ -159,7 +157,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Move Down (Fixed 15 Minutes)
             case 'j':
                 e.preventDefault();
                 const stepDownMs = isMonthView ? (7 * VIM_DAY_MS) : VIM_STEP_MS;
@@ -169,7 +166,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Move Up (Fixed 15 Minutes)
             case 'k':
                 e.preventDefault();
                 const stepUpMs = isMonthView ? (7 * VIM_DAY_MS) : VIM_STEP_MS;
@@ -179,7 +175,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Move Left (1 Day Back)
             case 'h':
                 e.preventDefault();
                 cursorStart = new Date(cursorStart.getTime() - VIM_DAY_MS);
@@ -188,7 +183,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Move Right (1 Day Forward)
             case 'l':
                 e.preventDefault();
                 cursorStart = new Date(cursorStart.getTime() + VIM_DAY_MS);
@@ -197,7 +191,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Open Session After / Before
             case 'o':
                 e.preventDefault();
                 handleOpenSessionAfter();
@@ -207,13 +200,13 @@ function setupVimKeyboardListeners() {
                 handleOpenSessionBefore();
                 break;
 
-            // Delete Session Under Cursor with Confirmation
             case 'x':
                 e.preventDefault();
                 handleDeleteUnderCursor();
                 break;
 
-            // Change Session Under Cursor
+            // Edit Session under cursor (both 'e' and 'c')
+            case 'e':
             case 'c':
                 e.preventDefault();
                 const sessionToEdit = getSessionUnderCursor();
@@ -222,7 +215,6 @@ function setupVimKeyboardListeners() {
                 }
                 break;
 
-            // Insert Mode: Start Session Creation Modal
             case 'i':
             case 's':
             case 'Enter':
@@ -233,7 +225,6 @@ function setupVimKeyboardListeners() {
                 }
                 break;
 
-            // Jump to Today
             case 't':
                 e.preventDefault();
                 initVimCursor();
@@ -243,7 +234,6 @@ function setupVimKeyboardListeners() {
                 renderHighlightSelection();
                 break;
 
-            // Calendar View Switchers
             case 'd':
                 if (typeof switchView === 'function') switchView('timeGridDay');
                 break;
@@ -254,13 +244,11 @@ function setupVimKeyboardListeners() {
                 if (typeof switchView === 'function') switchView('dayGridMonth');
                 break;
 
-            // Add Task Modal
             case 'a':
                 e.preventDefault();
                 if (typeof openNewTaskModal === 'function') openNewTaskModal();
                 break;
 
-            // Reset Mode to NORMAL on Escape
             case 'Escape':
                 if (vimMode === 'VISUAL') {
                     vimMode = 'NORMAL';
