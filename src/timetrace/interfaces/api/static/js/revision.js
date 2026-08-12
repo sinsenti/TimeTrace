@@ -1,6 +1,6 @@
 /**
  * TimeTrace Revision Engine JavaScript Module
- * Supports Day Reviews, Day History Overview, Sessions Inspection, Task Post-Mortems,
+ * Handles Day Reviews, Day History Overview, Sessions Inspection, Task Post-Mortems,
  * Custom Ratings, Sub-Routing (Hashes), and Typeahead Task Inspector Search.
  */
 
@@ -13,6 +13,7 @@ let allDayHistoryList = [];
 let dayReviewHasExisting = false;
 let currentDayHistoryFilter = 'all';
 
+let selectedInspectedTaskId = null;
 let activeTaskInspectorSearchIdx = -1;
 
 const TAB_HASH_MAP = {
@@ -52,31 +53,35 @@ function handleHashChange() {
 }
 
 function setupRevisionKeyboardShortcuts() {
-    const sessionRevModal = document.getElementById('session_review_modal');
-    if (sessionRevModal) {
-        sessionRevModal.addEventListener('keydown', (e) => {
+    document.addEventListener('keydown', (e) => {
+        // Session Review Modal Shortcuts
+        const sessionRevModal = document.getElementById('session_review_modal');
+        if (sessionRevModal && !sessionRevModal.classList.contains('hidden')) {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 saveSessionReviewModal();
+                return;
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 closeSessionReviewModal();
+                return;
             }
-        });
-    }
+        }
 
-    const ratingDefModal = document.getElementById('rating_def_modal');
-    if (ratingDefModal) {
-        ratingDefModal.addEventListener('keydown', (e) => {
+        // Custom Rating Definition Modal Shortcuts
+        const ratingDefModal = document.getElementById('rating_def_modal');
+        if (ratingDefModal && !ratingDefModal.classList.contains('hidden')) {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 saveRatingDefinition();
+                return;
             } else if (e.key === 'Escape') {
                 e.preventDefault();
                 closeRatingDefModal();
+                return;
             }
-        });
-    }
+        }
+    });
 }
 
 function switchRevisionTab(tabName, updateHash = true) {
@@ -367,6 +372,11 @@ async function openSessionReviewModal(sessionId) {
 
         document.getElementById('session_review_modal').classList.remove('hidden');
 
+        setTimeout(() => {
+            const tagsInput = document.getElementById('session_rev_modal_tags');
+            if (tagsInput) tagsInput.focus();
+        }, 50);
+
     } catch (e) {
         console.error("Failed to open session review modal:", e);
     }
@@ -451,7 +461,7 @@ function renderTaskQuickChipsBar() {
         const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
         return `
             <button onclick="selectTaskInspectorById(${t.id})" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${color};">
-                <span>#${t.id} ${t.title}</span>
+                <span>${t.title}</span>
                 <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${t.status}</span>
             </button>
         `;
@@ -508,7 +518,6 @@ function renderTaskInspectorSuggestions(query) {
     if (q) {
         filtered = filtered.filter(t => 
             t.title.toLowerCase().includes(q) || 
-            String(t.id) === q || 
             (t.description && t.description.toLowerCase().includes(q))
         );
     }
@@ -523,7 +532,7 @@ function renderTaskInspectorSuggestions(query) {
     dropdown.innerHTML = filtered.map((t, idx) => `
         <div onclick="selectTaskInspectorById(${t.id})" class="task-inspect-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
             <div>
-                <span class="font-bold text-white block">#${t.id} ${t.title}</span>
+                <span class="font-bold text-white block">${t.title}</span>
                 <span class="text-[10px] text-slate-400 block">${t.description || 'No description'}</span>
             </div>
             <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white uppercase" style="background-color: ${t.color && t.color !== 'auto' ? t.color : '#7c3aed'}">${t.status}</span>
@@ -548,8 +557,10 @@ function selectTaskInspectorById(taskId) {
     const searchInput = document.getElementById('task_inspector_search');
     const dropdown = document.getElementById('task_inspector_dropdown');
 
+    selectedInspectedTaskId = taskId;
+
     if (searchInput && task) {
-        searchInput.value = `#${task.id} ${task.title}`;
+        searchInput.value = task.title;
     }
     if (dropdown) dropdown.classList.add('hidden');
 
@@ -565,6 +576,8 @@ async function loadTaskInspectorStats(taskId) {
         if (body) body.classList.add('hidden');
         return;
     }
+
+    selectedInspectedTaskId = taskId;
 
     try {
         const res = await fetch(`/api/v1/tasks/${taskId}/stats`);
@@ -646,13 +659,9 @@ async function loadTaskInspectorStats(taskId) {
 }
 
 async function saveTaskReviewForm() {
-    const searchInput = document.getElementById('task_inspector_search');
-    if (!searchInput || !searchInput.value) return;
+    if (!selectedInspectedTaskId) return;
 
-    const match = searchInput.value.match(/#(\d+)/);
-    if (!match) return;
-
-    const taskId = parseInt(match[1]);
+    const taskId = selectedInspectedTaskId;
 
     if (!validateRequiredCustomRatings('task', taskId)) {
         return;
@@ -830,7 +839,7 @@ async function loadRatingDefinitionsList() {
         }
 
         container.innerHTML = allRatingDefinitions.map(d => `
-            <div class="rev-card flex items-center justify-between hover:border-purple-500 transition">
+            <div onclick="openEditRatingDefModal(${d.id})" class="rev-card flex items-center justify-between hover:border-purple-500 cursor-pointer transition">
                 <div class="space-y-1">
                     <div class="flex items-center space-x-2">
                         <span class="font-bold text-sm text-white">${d.name}</span>
@@ -841,7 +850,6 @@ async function loadRatingDefinitionsList() {
                 </div>
                 <div class="flex items-center space-x-4">
                     <span class="font-mono text-xs font-bold text-purple-300 bg-[#0f1016] px-2.5 py-1 rounded border border-[var(--border-muted)]">Scale: ${d.min_score} - ${d.max_score}</span>
-                    <button onclick="openEditRatingDefModal(${d.id})" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
                 </div>
             </div>
         `).join('');
@@ -861,6 +869,11 @@ function openNewRatingDefModal() {
     document.getElementById('modal_rating_desc').value = '';
     document.getElementById('modal_rating_delete_btn').classList.add('hidden');
     document.getElementById('rating_def_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const nameInput = document.getElementById('modal_rating_name');
+        if (nameInput) nameInput.focus();
+    }, 50);
 }
 
 function openEditRatingDefModal(id) {
@@ -877,6 +890,11 @@ function openEditRatingDefModal(id) {
     document.getElementById('modal_rating_desc').value = d.description || '';
     document.getElementById('modal_rating_delete_btn').classList.remove('hidden');
     document.getElementById('rating_def_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const nameInput = document.getElementById('modal_rating_name');
+        if (nameInput) nameInput.focus();
+    }, 50);
 }
 
 function closeRatingDefModal() {

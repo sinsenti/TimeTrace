@@ -147,11 +147,10 @@
         <!-- Tab 4: Fast Task Inspector & Post-Mortem -->
         <section id="rev_tab_task_inspector" class="hidden space-y-6">
             <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)] gap-4">
-                <!-- Typeahead Fast Combobox -->
                 <div class="relative flex-1 max-w-md">
                     <label class="text-xs text-slate-400 font-semibold block mb-1">Search & Select Task</label>
                     <div id="task_inspector_combobox" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex items-center focus-within:border-purple-500">
-                        <input id="task_inspector_search" type="text" onfocus="renderTaskInspectorSuggestions(this.value)" oninput="renderTaskInspectorSuggestions(this.value)" placeholder="Type title or #ID... (Enter to select top match)" class="bg-transparent text-xs text-white focus:outline-none w-full px-1 py-0.5" autocomplete="off">
+                        <input id="task_inspector_search" type="text" onfocus="renderTaskInspectorSuggestions(this.value)" oninput="renderTaskInspectorSuggestions(this.value)" placeholder="Type task title... (Enter to select top match)" class="bg-transparent text-xs text-white focus:outline-none w-full px-1 py-0.5" autocomplete="off">
                     </div>
                     <div id="task_inspector_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-2xl max-h-52 overflow-y-auto hidden z-30"></div>
                 </div>
@@ -159,7 +158,6 @@
                 <div id="task_inspector_kpis" class="flex space-x-6 text-right"></div>
             </div>
 
-            <!-- Quick-Select Active Task Chips -->
             <div class="space-y-1.5">
                 <span class="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Quick Select Task:</span>
                 <div id="task_quick_chips_bar" class="flex flex-wrap gap-2"></div>
