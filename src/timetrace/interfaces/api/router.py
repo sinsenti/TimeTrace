@@ -62,6 +62,42 @@ def get_static_file(file_path: str):
     raise HTTPException(status_code=404, detail="Static asset not found")
 
 
+# Day Revisions History Overview Endpoint
+@router.get("/revision/day-history")
+def get_day_history_overview(db: DBSession = Depends(get_session)):
+    sessions = db.exec(select(SessionModel)).all()
+    reviews = db.exec(select(DayReview)).all()
+    reviews_map = {r.date_str: r for r in reviews}
+
+    day_stats = {}
+    for s in sessions:
+        if s.start_time:
+            local_dt = ensure_utc(s.start_time).astimezone()
+            d_str = local_dt.strftime("%Y-%m-%d")
+            if d_str not in day_stats:
+                day_stats[d_str] = {"total_seconds": 0, "session_count": 0}
+            day_stats[d_str]["total_seconds"] += s.duration_seconds or 0
+            day_stats[d_str]["session_count"] += 1
+
+    all_dates = set(day_stats.keys()).union(set(reviews_map.keys()))
+
+    history = []
+    for d_str in sorted(all_dates, reverse=True):
+        stats = day_stats.get(d_str, {"total_seconds": 0, "session_count": 0})
+        rev = reviews_map.get(d_str)
+        history.append({
+            "date_str": d_str,
+            "total_hours": round(stats["total_seconds"] / 3600.0, 2),
+            "session_count": stats["session_count"],
+            "has_review": rev is not None,
+            "rating": rev.rating if rev else None,
+            "wins": rev.wins if rev else None,
+            "blockers": rev.blockers if rev else None
+        })
+
+    return history
+
+
 # Custom Rating Definitions & Entries API
 @router.post("/rating-definitions", response_model=RatingDefinition, status_code=status.HTTP_201_CREATED)
 def create_rating_definition(req: RatingDefinitionCreate, db: DBSession = Depends(get_session)):
@@ -126,7 +162,6 @@ def create_rating_entry(req: RatingEntryCreate, db: DBSession = Depends(get_sess
             detail=f"Score must be between {db_def.min_score} and {db_def.max_score}"
         )
 
-    # Upsert rating entry for entity
     existing = db.exec(
         select(RatingEntry).where(
             RatingEntry.rating_definition_id == req.rating_definition_id,
@@ -238,7 +273,6 @@ def get_day_summary(date_str: str = Query(..., description="YYYY-MM-DD"), db: DB
             s_dict["reflection"] = s.reflection.model_dump()
         session_details.append(s_dict)
 
-    # Fetch Day Custom Ratings
     day_ratings = db.exec(
         select(RatingEntry).where(RatingEntry.target_type == "day", RatingEntry.target_id == date_str)
     ).all()
@@ -319,7 +353,6 @@ def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
 
     review = db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()
 
-    # Fetch Task Custom Ratings
     task_ratings = db.exec(
         select(RatingEntry).where(RatingEntry.target_type == "task", RatingEntry.target_id == str(task_id))
     ).all()
@@ -847,6 +880,23 @@ def list_sessions(
     return result
 
 
+@router.get("/sessions/{session_id}")
+def get_session_by_id(session_id: int, db: DBSession = Depends(get_session)):
+    s = db.get(SessionModel, session_id)
+    if not s:
+        raise HTTPException(status_code=404, detail="Session not found")
+    
+    s_dict = s.model_dump()
+    s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+    s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+    if s.reflection:
+        s_dict["reflection"] = s.reflection.model_dump()
+    if s.task:
+        s_dict["task"] = s.task.model_dump()
+        
+    return s_dict
+
+
 @router.put("/sessions/{session_id}", response_model=SessionModel)
 def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(get_session)):
     db_session = db.get(SessionModel, session_id)
@@ -921,13 +971,23 @@ def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session
 
     habits_str = ",".join(req.habits_completed) if isinstance(req.habits_completed, list) else str(req.habits_completed)
 
-    db_reflection = Reflection(
-        session_id=req.session_id,
-        energy_level=req.energy_level,
-        obstacles=req.obstacles,
-        habits_completed=habits_str
-    )
-    db.add(db_reflection)
-    db.commit()
-    db.refresh(db_reflection)
-    return db_reflection
+    existing = db.exec(select(Reflection).where(Reflection.session_id == req.session_id)).first()
+    if existing:
+        existing.energy_level = req.energy_level
+        existing.obstacles = req.obstacles
+        existing.habits_completed = habits_str
+        db.add(existing)
+        db.commit()
+        db.refresh(existing)
+        return existing
+    else:
+        db_reflection = Reflection(
+            session_id=req.session_id,
+            energy_level=req.energy_level,
+            obstacles=req.obstacles,
+            habits_completed=habits_str
+        )
+        db.add(db_reflection)
+        db.commit()
+        db.refresh(db_reflection)
+        return db_reflection
