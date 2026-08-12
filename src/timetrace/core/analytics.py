@@ -54,7 +54,7 @@ def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dic
             dur = (s.get("duration_seconds") or 0) / 3600.0
             daily_trend[st_date] = round(daily_trend[st_date] + dur, 2)
 
-    # Hourly Focus Distribution (00:00 to 23:00 Heatmap - Localized)
+    # Hourly Focus Distribution (00:00 to 23:00 Heatmap)
     hourly_distribution = {f"{h:02d}:00": 0.0 for h in range(24)}
     for s in sessions:
         st_raw = s.get("start_time")
@@ -66,7 +66,6 @@ def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dic
             else:
                 st_dt = st_raw
             
-            # Convert to local time for user-accurate peak hour display
             local_dt = st_dt.astimezone() if st_dt.tzinfo else st_dt.replace(tzinfo=timezone.utc).astimezone()
             hour_key = f"{local_dt.hour:02d}:00"
             dur = (s.get("duration_seconds") or 0) / 3600.0
@@ -74,31 +73,6 @@ def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dic
                 hourly_distribution[hour_key] = round(hourly_distribution[hour_key] + dur, 2)
         except Exception:
             pass
-
-    # Energy & Habits Analytics
-    energy_levels: List[Dict[str, Any]] = []
-    habit_counts: Dict[str, int] = {}
-    obstacles_list: List[str] = []
-
-    for s in sorted(sessions, key=lambda x: str(x.get("start_time") or "")):
-        ref = s.get("reflection")
-        if ref:
-            st_raw = str(s.get("start_time", ""))[:10]
-            if ref.get("energy_level"):
-                energy_levels.append({
-                    "date": st_raw,
-                    "energy": ref["energy_level"]
-                })
-            
-            habits_raw = ref.get("habits_completed") or ""
-            habits = [h.strip() for h in habits_raw.split(",") if h.strip()] if isinstance(habits_raw, str) else habits_raw
-            for h in habits:
-                habit_counts[h] = habit_counts.get(h, 0) + 1
-
-            if ref.get("obstacles"):
-                obstacles_list.append(f"{st_raw}: {ref['obstacles']}")
-
-    avg_energy = round(sum(e["energy"] for e in energy_levels) / len(energy_levels), 2) if energy_levels else None
 
     # Task Status & Priority Breakdown
     task_status_counts = {"in_progress": 0, "ongoing": 0, "completed": 0}
@@ -116,15 +90,11 @@ def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dic
         "summary": {
             "total_hours": total_hours,
             "total_sessions": total_sessions,
-            "avg_energy": avg_energy,
             "tasks_count": len(tasks)
         },
         "tags_summary": calculate_tag_summaries(sessions),
         "daily_trend": daily_trend,
         "hourly_distribution": hourly_distribution,
-        "energy_trend": energy_levels,
-        "habits_summary": habit_counts,
-        "obstacles": obstacles_list[-10:],
         "task_status": task_status_counts,
         "task_priority": task_priority_counts
     }

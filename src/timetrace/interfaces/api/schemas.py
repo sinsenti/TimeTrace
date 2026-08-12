@@ -1,5 +1,5 @@
-from pydantic import BaseModel, field_validator
-from typing import Optional, List, Union
+from pydantic import BaseModel
+from typing import Optional
 from datetime import datetime
 
 
@@ -52,20 +52,6 @@ class TimerStartRequest(BaseModel):
 class TimerSplitRequest(BaseModel):
     new_tags: str
     new_notes: str = ""
-
-
-class ReflectionCreate(BaseModel):
-    session_id: int
-    energy_level: int
-    obstacles: Optional[str] = ""
-    habits_completed: Union[List[str], str] = []
-
-    @field_validator("habits_completed", mode="before")
-    @classmethod
-    def normalize_habits(cls, v):
-        if isinstance(v, str):
-            return [h.strip() for h in v.split(",") if h.strip()]
-        return v
 
 
 class DayReviewCreate(BaseModel):

@@ -7,7 +7,7 @@ from datetime import datetime, date, timezone, timedelta
 
 from timetrace.db.session import get_session
 from timetrace.db.models import (
-    Task, Session as SessionModel, Reflection, TaskReview,
+    Task, Session as SessionModel, TaskReview,
     DayReview, RatingDefinition, RatingEntry, Habit, HabitLog
 )
 from timetrace.core.timer import timer_manager
@@ -15,10 +15,10 @@ from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to
 from timetrace.core.analytics import calculate_tag_summaries, calculate_detailed_analytics
 from timetrace.interfaces.api.schemas import (
     TaskCreate, TaskUpdate, SessionCreate, SessionUpdate,
-    TimerStartRequest, TimerSplitRequest, ReflectionCreate,
-    DayReviewCreate, TaskReviewCreate, RatingDefinitionCreate,
-    RatingDefinitionUpdate, RatingEntryCreate, RetroSessionCreate,
-    IdleToggleRequest, IdleResolveRequest, HabitCreate, HabitUpdate, HabitLogRequest
+    TimerStartRequest, TimerSplitRequest, DayReviewCreate,
+    TaskReviewCreate, RatingDefinitionCreate, RatingDefinitionUpdate,
+    RatingEntryCreate, RetroSessionCreate, IdleToggleRequest,
+    IdleResolveRequest, HabitCreate, HabitUpdate, HabitLogRequest
 )
 
 router = APIRouter()
@@ -259,18 +259,12 @@ def get_day_summary(date_str: str = Query(..., description="YYYY-MM-DD"), db: DB
     completed_tasks = [t for t in tasks if t.status == "completed" and t.created_at and ensure_utc(t.created_at).astimezone().strftime("%Y-%m-%d") == date_str]
 
     total_seconds = sum(s.duration_seconds or 0 for s in matching_sessions)
-    
-    reflections = [s.reflection for s in matching_sessions if s.reflection]
-    avg_energy = round(sum(r.energy_level for r in reflections) / len(reflections), 1) if reflections else None
-
     saved_review = db.exec(select(DayReview).where(DayReview.date_str == date_str)).first()
 
     session_details = []
     for s in matching_sessions:
         s_dict = s.model_dump()
         s_dict["task"] = tasks_map.get(s.task_id).model_dump() if s.task_id and s.task_id in tasks_map else None
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
         session_details.append(s_dict)
 
     day_ratings = db.exec(
@@ -289,7 +283,6 @@ def get_day_summary(date_str: str = Query(..., description="YYYY-MM-DD"), db: DB
         "total_hours": round(total_seconds / 3600.0, 2),
         "total_sessions": len(matching_sessions),
         "completed_tasks_count": len(completed_tasks),
-        "avg_energy": avg_energy,
         "sessions": session_details,
         "day_review": saved_review.model_dump() if saved_review else None,
         "custom_ratings": ratings_detailed
@@ -339,16 +332,11 @@ def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
     est_hours = round(est_minutes / 60.0, 2)
     progress_pct = round((total_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None
 
-    reflections = [s.reflection for s in sessions if s.reflection]
-    avg_energy = round(sum(r.energy_level for r in reflections) / len(reflections), 1) if reflections else None
-
     session_list = []
     for s in sessions:
         s_dict = s.model_dump()
         s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
         s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
         session_list.append(s_dict)
 
     review = db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()
@@ -370,7 +358,6 @@ def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
         "total_sessions": len(sessions),
         "estimated_hours": est_hours,
         "progress_pct": progress_pct,
-        "avg_energy": avg_energy,
         "sessions": session_list,
         "task_review": review.model_dump() if review else None,
         "custom_ratings": ratings_detailed
@@ -589,8 +576,6 @@ def get_detailed_analytics(db: DBSession = Depends(get_session)):
         s_dict = s.model_dump()
         s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
         s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
         session_dicts.append(s_dict)
 
     task_dicts = [t.model_dump() for t in tasks]
@@ -605,8 +590,6 @@ def export_markdown(db: DBSession = Depends(get_session)):
         s_dict = s.model_dump()
         s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
         s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
         session_dicts.append(s_dict)
 
     return export_sessions_to_markdown(session_dicts, date.today())
@@ -630,22 +613,6 @@ async def import_markdown(request: Request, db: DBSession = Depends(get_session)
         db.add(db_session)
         db.commit()
         db.refresh(db_session)
-
-        if s.get("reflection"):
-            ref_data = s["reflection"]
-            habits_str = ref_data.get("habits_completed", "")
-            if isinstance(habits_str, list):
-                habits_str = ",".join(habits_str)
-
-            db_ref = Reflection(
-                session_id=db_session.id,
-                energy_level=ref_data.get("energy_level", 3),
-                obstacles=ref_data.get("obstacles", ""),
-                habits_completed=habits_str
-            )
-            db.add(db_ref)
-            db.commit()
-
         added_count += 1
     return {"status": "success", "imported_sessions": added_count}
 
@@ -873,9 +840,6 @@ def list_sessions(
             s_dict["start_time"] = ensure_utc(s.start_time).isoformat()
         if s.end_time:
             s_dict["end_time"] = ensure_utc(s.end_time).isoformat()
-
-        if s.reflection:
-            s_dict["reflection"] = s.reflection.model_dump()
         result.append(s_dict)
     return result
 
@@ -889,8 +853,6 @@ def get_session_by_id(session_id: int, db: DBSession = Depends(get_session)):
     s_dict = s.model_dump()
     s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
     s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-    if s.reflection:
-        s_dict["reflection"] = s.reflection.model_dump()
     if s.task:
         s_dict["task"] = s.task.model_dump()
         
@@ -929,10 +891,6 @@ def delete_session(session_id: int, db: DBSession = Depends(get_session)):
     if not db_session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    reflections = db.exec(select(Reflection).where(Reflection.session_id == session_id)).all()
-    for ref in reflections:
-        db.delete(ref)
-
     db.delete(db_session)
     db.commit()
     return None
@@ -961,33 +919,3 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     db_session.start_time = ensure_utc(db_session.start_time)
     db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
-
-
-@router.post("/reflections", response_model=Reflection, status_code=status.HTTP_201_CREATED)
-def create_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session)):
-    session_obj = db.get(SessionModel, req.session_id)
-    if not session_obj:
-        raise HTTPException(status_code=404, detail="Session ID not found")
-
-    habits_str = ",".join(req.habits_completed) if isinstance(req.habits_completed, list) else str(req.habits_completed)
-
-    existing = db.exec(select(Reflection).where(Reflection.session_id == req.session_id)).first()
-    if existing:
-        existing.energy_level = req.energy_level
-        existing.obstacles = req.obstacles
-        existing.habits_completed = habits_str
-        db.add(existing)
-        db.commit()
-        db.refresh(existing)
-        return existing
-    else:
-        db_reflection = Reflection(
-            session_id=req.session_id,
-            energy_level=req.energy_level,
-            obstacles=req.obstacles,
-            habits_completed=habits_str
-        )
-        db.add(db_reflection)
-        db.commit()
-        db.refresh(db_reflection)
-        return db_reflection

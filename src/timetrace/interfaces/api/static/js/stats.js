@@ -3,7 +3,6 @@ let widgetConfig = JSON.parse(localStorage.getItem('timetrace_widget_config') ||
     daily_trend: true,
     hourly_heatmap: true,
     tags_pie: true,
-    energy_line: true,
     habits: true,
     obstacles: true
 }));
@@ -27,7 +26,6 @@ function renderWidgetToggleControls() {
         { id: 'daily_trend', label: 'Daily Focus Trend (Bar Chart)' },
         { id: 'hourly_heatmap', label: 'Peak Focus Hours (24h Distribution)' },
         { id: 'tags_pie', label: 'Activity Breakdown (#tags Doughnut)' },
-        { id: 'energy_line', label: 'Energy Level Trend' },
         { id: 'habits', label: 'Habit Frequency & Streaks' },
         { id: 'obstacles', label: 'Recent Obstacles & Distractions Log' }
     ];
@@ -66,16 +64,11 @@ async function loadAnalyticsData() {
 
         document.getElementById('kpi_total_hours').innerText = `${data.summary.total_hours}h`;
         document.getElementById('kpi_total_sessions').innerText = data.summary.total_sessions;
-        document.getElementById('kpi_avg_energy').innerText = data.summary.avg_energy ? `${data.summary.avg_energy} / 5` : 'N/A';
         document.getElementById('kpi_total_tasks').innerText = data.summary.tasks_count;
 
         renderDailyChart(data.daily_trend);
         renderHourlyChart(data.hourly_distribution);
         renderTagsPieChart(data.tags_summary);
-        renderEnergyLineChart(data.energy_trend);
-
-        renderHabitsList(data.habits_summary);
-        renderObstaclesList(data.obstacles);
 
     } catch (err) {
         console.error("Failed to load detailed analytics:", err);
@@ -161,64 +154,3 @@ function renderTagsPieChart(tagsData) {
         }
     });
 }
-
-function renderEnergyLineChart(energyData) {
-    const ctx = document.getElementById('chart_energy_line').getContext('2d');
-    if (charts.energy) charts.energy.destroy();
-
-    charts.energy = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: energyData.map(e => e.date),
-            datasets: [{
-                label: 'Energy (1-5)',
-                data: energyData.map(e => e.energy),
-                borderColor: '#f59e0b',
-                backgroundColor: 'rgba(245, 158, 11, 0.1)',
-                fill: true,
-                tension: 0.3
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { min: 1, max: 5, ticks: { color: '#64748b', stepSize: 1 }, grid: { color: '#1a1c26' } }
-            }
-        }
-    });
-}
-
-function renderHabitsList(habits) {
-    const container = document.getElementById('habits_pill_container');
-    const entries = Object.entries(habits);
-
-    if (entries.length === 0) {
-        container.innerHTML = '<span class="text-xs text-slate-500">No habit reflections logged yet.</span>';
-        return;
-    }
-
-    container.innerHTML = entries.map(([habit, count]) => `
-        <div class="bg-[#0f1016] border border-[#262938] px-3 py-1.5 rounded-lg flex items-center space-x-2 text-xs">
-            <span class="font-bold text-slate-200">${habit}</span>
-            <span class="bg-purple-900/60 text-purple-300 font-extrabold px-2 py-0.5 rounded text-[10px]">${count}x</span>
-        </div>
-    `).join('');
-}
-
-function renderObstaclesList(obstacles) {
-    const container = document.getElementById('obstacles_list');
-    if (obstacles.length === 0) {
-        container.innerHTML = '<div class="text-slate-500">No friction points logged.</div>';
-        return;
-    }
-
-    container.innerHTML = obstacles.map(obs => `
-        <div class="bg-[#0f1016] border border-[#1a1c26] p-2.5 rounded-lg">
-            ${obs}
-        </div>
-    `).join('');
-}
-

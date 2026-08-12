@@ -1,6 +1,5 @@
 let sessionModalStateBackup = null;
 
-// Modal Keyboard Event Listeners
 function setupModalKeyboardListeners() {
     const taskModal = document.getElementById('task_modal');
     if (taskModal) {
@@ -297,7 +296,6 @@ async function saveTask() {
     fetchTasks();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 
-    // If task was created from within session modal, return back to session modal with task attached
     if (sessionModalStateBackup && createdTask && createdTask.id) {
         const backup = sessionModalStateBackup;
         sessionModalStateBackup = null;
@@ -400,7 +398,6 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
     const settings = getUserSettings();
 
-    // Attach Task and preserve its tags. Fallback to settings.defaultTag only if task has no tags.
     if (taskId && allTasksMap[taskId]) {
         attachTaskById(taskId, true);
         const attachedTaskObj = allTasksMap[taskId];

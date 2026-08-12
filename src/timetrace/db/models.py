@@ -34,25 +34,12 @@ class Session(SQLModel, table=True):
     notes: Optional[str] = None
 
     task: Optional[Task] = Relationship(back_populates="sessions")
-    reflection: Optional["Reflection"] = Relationship(
-        back_populates="session", sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"}
-    )
-
-
-class Reflection(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    session_id: int = Field(foreign_key="session.id", unique=True)
-    energy_level: int = Field(default=3)
-    obstacles: Optional[str] = None
-    habits_completed: str = Field(default="")
-
-    session: Optional[Session] = Relationship(back_populates="reflection")
 
 
 class TaskReview(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     task_id: int = Field(foreign_key="task.id", unique=True)
-    difficulty: int = Field(default=3)  # Scale 1-10 or 1-5
+    difficulty: int = Field(default=3)
     what_went_well: Optional[str] = None
     blockers: Optional[str] = None
     key_takeaways: Optional[str] = None

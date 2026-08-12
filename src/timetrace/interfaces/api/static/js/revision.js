@@ -36,7 +36,6 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRevisionKeyboardShortcuts();
     setupTaskInspectorSearchListeners();
 
-    // Process Hash Subrouting on Initial Load & Listen for Hash Changes
     window.addEventListener('hashchange', handleHashChange);
     
     const initialHash = window.location.hash || '#day';
@@ -54,7 +53,6 @@ function handleHashChange() {
 
 function setupRevisionKeyboardShortcuts() {
     document.addEventListener('keydown', (e) => {
-        // Session Review Modal Shortcuts
         const sessionRevModal = document.getElementById('session_review_modal');
         if (sessionRevModal && !sessionRevModal.classList.contains('hidden')) {
             if (e.ctrlKey && e.key === 'Enter') {
@@ -68,7 +66,6 @@ function setupRevisionKeyboardShortcuts() {
             }
         }
 
-        // Custom Rating Definition Modal Shortcuts
         const ratingDefModal = document.getElementById('rating_def_modal');
         if (ratingDefModal && !ratingDefModal.classList.contains('hidden')) {
             if (e.ctrlKey && e.key === 'Enter') {
@@ -120,9 +117,7 @@ function loadCurrentRevisionView() {
     }
 }
 
-// ==========================================
-// 1. Day Review & Dynamic Button State Engine
-// ==========================================
+// 1. Day Review
 function setDayReviewToday() {
     const dateInput = document.getElementById('day_review_date_input');
     if (dateInput) {
@@ -189,10 +184,6 @@ async function loadDayReviewData() {
                     <span class="text-[10px] text-slate-400 uppercase font-semibold block">Tasks Completed</span>
                     <span class="text-lg font-black text-blue-400">${data.completed_tasks_count}</span>
                 </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Avg Energy</span>
-                    <span class="text-lg font-black text-amber-400">${data.avg_energy ? `${data.avg_energy}/5` : 'N/A'}</span>
-                </div>
             `;
         }
 
@@ -213,7 +204,6 @@ async function loadDayReviewData() {
                     const stStr = s.start_time ? new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '00:00';
                     const etStr = s.end_time ? new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NOW';
                     const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
-                    const ref = s.reflection;
 
                     return `
                         <div onclick="openSessionReviewModal(${s.id})" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg flex flex-col space-y-1.5 text-xs cursor-pointer transition">
@@ -223,13 +213,6 @@ async function loadDayReviewData() {
                             </div>
                             <div class="text-white font-semibold">${s.notes || 'No description notes'}</div>
                             ${s.task ? `<div class="text-[10px] text-blue-400 font-bold">Attached Task: ${s.task.title}</div>` : ''}
-                            ${ref ? `
-                                <div class="bg-[#181a28] p-2 rounded text-[11px] space-y-0.5 mt-1 border border-[var(--border-muted)]">
-                                    <div class="text-amber-400 font-bold">Energy: ${ref.energy_level}/5</div>
-                                    ${ref.obstacles ? `<div class="text-slate-300">Obstacles: ${ref.obstacles}</div>` : ''}
-                                    ${ref.habits_completed ? `<div class="text-emerald-400">Habits: ${ref.habits_completed}</div>` : ''}
-                                </div>
-                            ` : ''}
                         </div>
                     `;
                 }).join('');
@@ -269,9 +252,7 @@ async function saveDayReviewForm() {
     loadDayReviewData();
 }
 
-// ==========================================
 // 2. Day Revisions History Overview
-// ==========================================
 async function loadDayHistoryOverview() {
     try {
         const res = await fetch('/api/v1/revision/day-history');
@@ -341,9 +322,7 @@ function jumpToDayReview(dateStr) {
     }
 }
 
-// ==========================================
 // 3. Session Review & Inspector Modal
-// ==========================================
 async function openSessionReviewModal(sessionId) {
     try {
         const res = await fetch(`/api/v1/sessions/${sessionId}`);
@@ -359,11 +338,6 @@ async function openSessionReviewModal(sessionId) {
 
         document.getElementById('session_rev_modal_tags').value = session.tags || '';
         document.getElementById('session_rev_modal_notes').value = session.notes || '';
-
-        const ref = session.reflection;
-        document.getElementById('session_rev_modal_energy').value = ref ? ref.energy_level : 3;
-        document.getElementById('session_rev_modal_habits').value = ref ? (ref.habits_completed || '') : '';
-        document.getElementById('session_rev_modal_obstacles').value = ref ? (ref.obstacles || '') : '';
 
         const entriesRes = await fetch(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
         const entries = entriesRes.ok ? await entriesRes.json() : [];
@@ -404,21 +378,6 @@ async function saveSessionReviewModal() {
         body: JSON.stringify({ tags: tagsVal, notes: notesVal })
     });
 
-    const energyVal = parseInt(document.getElementById('session_rev_modal_energy').value) || 3;
-    const habitsVal = document.getElementById('session_rev_modal_habits').value.trim();
-    const obstaclesVal = document.getElementById('session_rev_modal_obstacles').value.trim();
-
-    await fetch('/api/v1/reflections', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            session_id: parseInt(sessionId),
-            energy_level: energyVal,
-            obstacles: obstaclesVal,
-            habits_completed: habitsVal
-        })
-    });
-
     await submitCustomRatings('session', sessionId);
 
     closeSessionReviewModal();
@@ -437,9 +396,7 @@ async function deleteSessionFromReviewModal() {
     }
 }
 
-// ==========================================
 // 4. Fast Typeahead Task Inspector Search & Quick Bar
-// ==========================================
 async function loadTaskInspectorRegistry() {
     try {
         const res = await fetch('/api/v1/tasks?status=all');
@@ -567,9 +524,7 @@ function selectTaskInspectorById(taskId) {
     loadTaskInspectorStats(taskId);
 }
 
-// ==========================================
 // 5. Task Inspector Stats Loader
-// ==========================================
 async function loadTaskInspectorStats(taskId) {
     const body = document.getElementById('task_inspector_body');
     if (!taskId) {
@@ -590,7 +545,6 @@ async function loadTaskInspectorStats(taskId) {
         document.getElementById('inspect_task_desc').innerText = task.description || 'No description provided';
         document.getElementById('inspect_task_status_badge').innerText = task.status;
 
-        // KPI Badges & Estimation Ratio
         const kpiContainer = document.getElementById('task_inspector_kpis');
         if (kpiContainer) {
             const ratioStr = data.progress_pct !== null ? `${data.progress_pct}%` : 'N/A';
@@ -607,21 +561,15 @@ async function loadTaskInspectorStats(taskId) {
                     <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimation Ratio</span>
                     <span class="text-lg font-black text-blue-400">${ratioStr}</span>
                 </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Avg Energy</span>
-                    <span class="text-lg font-black text-amber-400">${data.avg_energy ? `${data.avg_energy}/5` : 'N/A'}</span>
-                </div>
             `;
         }
 
-        // Progress Bar
         const pBar = document.getElementById('inspect_task_progress_bar');
         if (pBar) {
             const pct = data.progress_pct !== null ? Math.min(data.progress_pct, 100) : 0;
             pBar.style.width = `${pct}%`;
         }
 
-        // Session List
         const list = document.getElementById('inspect_task_sessions_list');
         if (list) {
             if (data.sessions.length === 0) {
@@ -643,14 +591,12 @@ async function loadTaskInspectorStats(taskId) {
             }
         }
 
-        // Fill Task Review Form
         const rev = data.task_review;
         document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
         document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
         document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
         document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
 
-        // Custom Task Ratings
         await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings);
 
     } catch (e) {
@@ -685,9 +631,7 @@ async function saveTaskReviewForm() {
     loadTaskInspectorStats(taskId);
 }
 
-// ==========================================
 // 6. Custom Ratings Form Engine
-// ==========================================
 async function renderCustomRatingsInputs(targetType, targetId, containerId, existingEntries = []) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -756,9 +700,7 @@ async function submitCustomRatings(targetType, targetId) {
     }
 }
 
-// ==========================================
 // 7. All Sessions Review
-// ==========================================
 async function loadAllSessionsReview() {
     try {
         const res = await fetch('/api/v1/sessions');
@@ -798,7 +740,6 @@ function filterSessionsReviewList() {
         const dateLabel = st.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
         const timeLabel = `${st.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${s.end_time ? new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NOW'}`;
         const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
-        const ref = s.reflection;
 
         return `
             <div onclick="openSessionReviewModal(${s.id})" class="rev-card hover:border-purple-500 cursor-pointer space-y-2 text-xs transition">
@@ -810,21 +751,12 @@ function filterSessionsReviewList() {
                     </div>
                 </div>
                 <div class="text-white text-sm font-semibold">${s.notes || 'No description notes'}</div>
-                ${ref ? `
-                    <div class="bg-[#0f1016] p-2.5 rounded border border-[var(--border-muted)] flex space-x-4 text-[11px]">
-                        <div><span class="text-slate-400">Energy:</span> <span class="font-bold text-amber-400">${ref.energy_level}/5</span></div>
-                        ${ref.obstacles ? `<div><span class="text-slate-400">Obstacle:</span> <span class="text-slate-200">${ref.obstacles}</span></div>` : ''}
-                        ${ref.habits_completed ? `<div><span class="text-slate-400">Habits:</span> <span class="text-emerald-400">${ref.habits_completed}</span></div>` : ''}
-                    </div>
-                ` : ''}
             </div>
         `;
     }).join('');
 }
 
-// ==========================================
 // 8. Custom Rating Definitions Manager
-// ==========================================
 async function loadRatingDefinitionsList() {
     const container = document.getElementById('rating_defs_card_list');
     if (!container) return;
