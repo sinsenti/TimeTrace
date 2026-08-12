@@ -33,7 +33,7 @@ def ensure_utc(dt: Optional[datetime]) -> Optional[datetime]:
     return dt.astimezone(timezone.utc)
 
 
-# Static Web Routes
+# Static Web Serving Routes
 @router.get("/dashboard", response_class=FileResponse)
 def get_web_dashboard():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
@@ -89,10 +89,11 @@ def get_day_history_overview(db: DBSession = Depends(get_session)):
             "date_str": d_str,
             "total_hours": round(stats["total_seconds"] / 3600.0, 2),
             "session_count": stats["session_count"],
-            "has_review": rev is not None,
+            "has_review": rev is not None and not rev.review_skipped,
+            "review_skipped": rev.review_skipped if rev else False,
             "rating": rev.rating if rev else None,
-            "wins": rev.wins if rev else None,
-            "blockers": rev.blockers if rev else None
+            "highlights": rev.highlights if rev else None,
+            "friction": rev.friction if rev else None
         })
 
     return history
@@ -156,11 +157,12 @@ def create_rating_entry(req: RatingEntryCreate, db: DBSession = Depends(get_sess
     if not db_def:
         raise HTTPException(status_code=404, detail="Rating definition ID not found")
 
-    if req.score < db_def.min_score or req.score > db_def.max_score:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Score must be between {db_def.min_score} and {db_def.max_score}"
-        )
+    if not req.dismissed and req.score is not None:
+        if req.score < db_def.min_score or req.score > db_def.max_score:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Score must be between {db_def.min_score} and {db_def.max_score}"
+            )
 
     existing = db.exec(
         select(RatingEntry).where(
@@ -170,16 +172,21 @@ def create_rating_entry(req: RatingEntryCreate, db: DBSession = Depends(get_sess
         )
     ).first()
 
+    effective_score = req.score if req.score is not None else 0
+
     if existing:
-        existing.score = req.score
+        existing.score = effective_score
+        existing.dismissed = req.dismissed
         existing.notes = req.notes
         db.add(existing)
         db.commit()
         db.refresh(existing)
         return existing
     else:
-        entry = RatingEntry.model_validate(req.model_dump())
-        entry.target_id = str(req.target_id)
+        entry_dict = req.model_dump()
+        entry_dict["score"] = effective_score
+        entry_dict["target_id"] = str(req.target_id)
+        entry = RatingEntry.model_validate(entry_dict)
         db.add(entry)
         db.commit()
         db.refresh(entry)
@@ -188,6 +195,27 @@ def create_rating_entry(req: RatingEntryCreate, db: DBSession = Depends(get_sess
 
 @router.get("/rating-entries")
 def get_rating_entries(
+    target_type: str = Query(...),
+    target_id: Optional[str] = Query(None),
+    db: DBSession = Depends(get_session)
+):
+    query = select(RatingEntry).where(RatingEntry.target_type == target_type)
+    if target_id and target_id != "all":
+        query = query.where(RatingEntry.target_id == str(target_id))
+    
+    entries = db.exec(query).all()
+
+    result = []
+    for e in entries:
+        r_def = db.get(RatingDefinition, e.rating_definition_id)
+        e_dict = e.model_dump()
+        e_dict["definition"] = r_def.model_dump() if r_def else None
+        result.append(e_dict)
+    return result
+
+
+@router.delete("/rating-entries", status_code=status.HTTP_204_NO_CONTENT)
+def delete_rating_entries(
     target_type: str = Query(...),
     target_id: str = Query(...),
     db: DBSession = Depends(get_session)
@@ -198,14 +226,10 @@ def get_rating_entries(
             RatingEntry.target_id == str(target_id)
         )
     ).all()
-
-    result = []
-    for e in entries:
-        r_def = db.get(RatingDefinition, e.rating_definition_id)
-        e_dict = e.model_dump()
-        e_dict["definition"] = r_def.model_dump() if r_def else None
-        result.append(e_dict)
-    return result
+    for entry in entries:
+        db.delete(entry)
+    db.commit()
+    return None
 
 
 # Task Review API Endpoints
@@ -294,9 +318,10 @@ def save_day_review(req: DayReviewCreate, db: DBSession = Depends(get_session)):
     existing = db.exec(select(DayReview).where(DayReview.date_str == req.date_str)).first()
     if existing:
         existing.rating = req.rating
-        existing.wins = req.wins
-        existing.blockers = req.blockers
+        existing.highlights = req.highlights
+        existing.friction = req.friction
         existing.notes = req.notes
+        existing.review_skipped = req.review_skipped
         db.add(existing)
         db.commit()
         db.refresh(existing)
@@ -305,9 +330,10 @@ def save_day_review(req: DayReviewCreate, db: DBSession = Depends(get_session)):
         review = DayReview(
             date_str=req.date_str,
             rating=req.rating,
-            wins=req.wins,
-            blockers=req.blockers,
-            notes=req.notes
+            highlights=req.highlights,
+            friction=req.friction,
+            notes=req.notes,
+            review_skipped=req.review_skipped
         )
         db.add(review)
         db.commit()
@@ -808,7 +834,8 @@ def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
         end_time=end_utc,
         duration_seconds=duration,
         tags=req.tags,
-        notes=req.notes
+        notes=req.notes,
+        review_skipped=req.review_skipped
     )
     db.add(db_session)
     db.commit()

@@ -11,6 +11,7 @@ class TaskCreate(BaseModel):
     color: str = "auto"
     tags: str = ""
     estimated_minutes: Optional[int] = None
+    requires_session_review: bool = True
     created_at: Optional[datetime] = None
 
 
@@ -22,6 +23,7 @@ class TaskUpdate(BaseModel):
     color: Optional[str] = None
     tags: Optional[str] = None
     estimated_minutes: Optional[int] = None
+    requires_session_review: Optional[bool] = None
     created_at: Optional[datetime] = None
 
 
@@ -31,6 +33,7 @@ class SessionCreate(BaseModel):
     end_time: datetime
     tags: str = "#general"
     notes: str = ""
+    review_skipped: bool = False
 
 
 class SessionUpdate(BaseModel):
@@ -39,6 +42,7 @@ class SessionUpdate(BaseModel):
     tags: Optional[str] = None
     notes: Optional[str] = None
     task_id: Optional[int] = None
+    review_skipped: Optional[bool] = None
 
 
 class TimerStartRequest(BaseModel):
@@ -57,9 +61,10 @@ class TimerSplitRequest(BaseModel):
 class DayReviewCreate(BaseModel):
     date_str: str
     rating: int = 3
-    wins: Optional[str] = ""
-    blockers: Optional[str] = ""
+    highlights: Optional[str] = ""
+    friction: Optional[str] = ""
     notes: Optional[str] = ""
+    review_skipped: bool = False
 
 
 class TaskReviewCreate(BaseModel):
@@ -72,7 +77,7 @@ class TaskReviewCreate(BaseModel):
 
 class RatingDefinitionCreate(BaseModel):
     name: str
-    target_type: str = "session"  # "session", "task", "day"
+    target_type: str = "session"
     min_score: int = 1
     max_score: int = 10
     is_required: bool = False
@@ -92,7 +97,8 @@ class RatingEntryCreate(BaseModel):
     rating_definition_id: int
     target_type: str
     target_id: str
-    score: int
+    score: Optional[int] = None
+    dismissed: bool = False
     notes: Optional[str] = None
 
 

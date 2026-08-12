@@ -4,7 +4,7 @@
  * Custom Ratings, Sub-Routing (Hashes), and Typeahead Task Inspector Search.
  */
 
-let currentActiveRevTab = 'day';
+let currentActiveRevTab = 'overview';
 let allRevisionSessions = [];
 let allTasksList = [];
 let allRatingDefinitions = [];
@@ -12,6 +12,7 @@ let allDayHistoryList = [];
 
 let dayReviewHasExisting = false;
 let currentDayHistoryFilter = 'all';
+let currentSessionReviewFilter = 'all';
 
 let selectedInspectedTaskId = null;
 let activeTaskInspectorSearchIdx = -1;
@@ -43,14 +44,14 @@ document.addEventListener('DOMContentLoaded', () => {
         dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
     }
 
-    const initialHash = window.location.hash || '#day';
-    const initialTab = HASH_TAB_MAP[initialHash] || 'day';
+    const initialHash = window.location.hash || '#overview';
+    const initialTab = HASH_TAB_MAP[initialHash] || 'overview';
     switchRevisionTab(initialTab, false);
 });
 
 function handleHashChange() {
-    const currentHash = window.location.hash || '#day';
-    const targetTab = HASH_TAB_MAP[currentHash] || 'day';
+    const currentHash = window.location.hash || '#overview';
+    const targetTab = HASH_TAB_MAP[currentHash] || 'overview';
     if (targetTab !== currentActiveRevTab) {
         switchRevisionTab(targetTab, false);
     }
@@ -122,7 +123,9 @@ function loadCurrentRevisionView() {
     }
 }
 
+// ==========================================
 // 1. Day Review & Dynamic Button State Engine
+// ==========================================
 function setDayReviewToday() {
     const dateInput = document.getElementById('day_review_date_input');
     if (dateInput) {
@@ -155,11 +158,21 @@ async function loadDayReviewData() {
         const badge = document.getElementById('day_review_status_badge');
         const saveBtn = document.getElementById('day_form_save_btn');
 
-        if (data.day_review) {
+        if (data.day_review && !data.day_review.review_skipped) {
             dayReviewHasExisting = true;
             if (badge) {
                 badge.innerText = `Reviewed (${data.day_review.rating}/5)`;
                 badge.className = "px-2.5 py-1 rounded text-xs font-bold bg-emerald-900/60 text-emerald-300 border border-emerald-700";
+            }
+            if (saveBtn) {
+                saveBtn.innerText = "Save Updates";
+                saveBtn.className = "w-full bg-[#222536] hover:bg-[#2d3046] text-slate-300 font-bold py-2 rounded-lg text-xs transition border border-[var(--border-muted)]";
+            }
+        } else if (data.day_review && data.day_review.review_skipped) {
+            dayReviewHasExisting = true;
+            if (badge) {
+                badge.innerText = "Dismissed";
+                badge.className = "px-2.5 py-1 rounded text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700";
             }
             if (saveBtn) {
                 saveBtn.innerText = "Save Updates";
@@ -197,8 +210,8 @@ async function loadDayReviewData() {
 
         const review = data.day_review;
         document.getElementById('day_form_rating').value = review ? review.rating : 3;
-        document.getElementById('day_form_wins').value = review ? (review.wins || "") : "";
-        document.getElementById('day_form_blockers').value = review ? (review.blockers || "") : "";
+        document.getElementById('day_form_highlights').value = review ? (review.highlights || "") : "";
+        document.getElementById('day_form_friction').value = review ? (review.friction || "") : "";
         document.getElementById('day_form_notes').value = review ? (review.notes || "") : "";
 
         await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings);
@@ -219,8 +232,13 @@ async function loadDayReviewData() {
                                 <span class="font-mono text-purple-300 font-bold">[${stStr} - ${etStr}] (${durMins}m)</span>
                                 <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800">${s.tags || '#general'}</span>
                             </div>
-                            <div class="text-white font-semibold">${s.notes || 'No description notes'}</div>
-                            ${s.task ? `<div class="text-[10px] text-blue-400 font-bold">Attached Task: ${s.task.title}</div>` : ''}
+                            ${s.task ? `
+                                <div class="space-y-0.5">
+                                    <div class="font-black text-sm text-white">${s.task.title}</div>
+                                    ${s.task.description ? `<div class="text-xs text-slate-400 line-clamp-1">${s.task.description}</div>` : ''}
+                                </div>
+                            ` : ''}
+                            <div class="text-slate-200 font-medium">${s.notes || 'No session notes'}</div>
                         </div>
                     `;
                 }).join('');
@@ -245,9 +263,10 @@ async function saveDayReviewForm() {
     const payload = {
         date_str: dateStr,
         rating: parseInt(document.getElementById('day_form_rating').value),
-        wins: document.getElementById('day_form_wins').value,
-        blockers: document.getElementById('day_form_blockers').value,
-        notes: document.getElementById('day_form_notes').value
+        highlights: document.getElementById('day_form_highlights').value,
+        friction: document.getElementById('day_form_friction').value,
+        notes: document.getElementById('day_form_notes').value,
+        review_skipped: false
     };
 
     await fetch('/api/v1/revision/day-review', {
@@ -260,7 +279,40 @@ async function saveDayReviewForm() {
     loadDayReviewData();
 }
 
+async function dismissDayReview() {
+    const dateInput = document.getElementById('day_review_date_input');
+    if (!dateInput || !dateInput.value) return;
+
+    const dateStr = dateInput.value;
+
+    const confirmed = await showCustomConfirm(
+        "Dismiss Day Review",
+        `Mark day review for ${dateStr} as dismissed?`
+    );
+
+    if (confirmed) {
+        const payload = {
+            date_str: dateStr,
+            rating: parseInt(document.getElementById('day_form_rating').value) || 3,
+            highlights: document.getElementById('day_form_highlights').value,
+            friction: document.getElementById('day_form_friction').value,
+            notes: document.getElementById('day_form_notes').value,
+            review_skipped: true
+        };
+
+        await fetch('/api/v1/revision/day-review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        loadDayReviewData();
+    }
+}
+
+// ==========================================
 // 2. Day Revisions History Overview
+// ==========================================
 async function loadDayHistoryOverview() {
     try {
         const res = await fetch('/api/v1/revision/day-history');
@@ -273,7 +325,7 @@ async function loadDayHistoryOverview() {
 
 function setHistoryFilter(filter) {
     currentDayHistoryFilter = filter;
-    ['all', 'reviewed', 'missed'].forEach(f => {
+    ['all', 'reviewed', 'missed', 'dismissed'].forEach(f => {
         const btn = document.getElementById(`hist_filter_${f}`);
         if (btn) btn.className = f === filter 
             ? "px-3 py-1 rounded font-bold bg-purple-600 text-white" 
@@ -288,9 +340,11 @@ function renderDayHistoryGrid() {
 
     let filtered = allDayHistoryList;
     if (currentDayHistoryFilter === 'reviewed') {
-        filtered = filtered.filter(d => d.has_review);
+        filtered = filtered.filter(d => d.has_review && !d.review_skipped);
     } else if (currentDayHistoryFilter === 'missed') {
-        filtered = filtered.filter(d => !d.has_review);
+        filtered = filtered.filter(d => !d.has_review && !d.review_skipped);
+    } else if (currentDayHistoryFilter === 'dismissed') {
+        filtered = filtered.filter(d => d.review_skipped);
     }
 
     if (filtered.length === 0) {
@@ -302,20 +356,25 @@ function renderDayHistoryGrid() {
         const dateObj = new Date(d.date_str + "T00:00:00");
         const formattedDate = dateObj.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
         
+        let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/80 text-amber-400 border border-amber-800">Missing Review</span>';
+        if (d.review_skipped) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">Dismissed</span>';
+        } else if (d.has_review) {
+            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/60 text-emerald-300 border border-emerald-700">Reviewed (${d.rating}/5)</span>`;
+        }
+
         return `
             <div onclick="jumpToDayReview('${d.date_str}')" class="rev-card hover:border-purple-500 cursor-pointer transition space-y-2">
                 <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                     <span class="font-bold text-sm text-white">${formattedDate}</span>
-                    ${d.has_review 
-                        ? `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/60 text-emerald-300 border border-emerald-700">Reviewed (${d.rating}/5)</span>`
-                        : `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/80 text-amber-400 border border-amber-800">Missing Review</span>`
-                    }
+                    ${statusBadge}
                 </div>
                 <div class="flex justify-between items-center text-xs text-slate-400">
                     <span>${d.total_hours} focus hours</span>
                     <span>${d.session_count} sessions</span>
                 </div>
-                ${d.wins ? `<p class="text-xs text-slate-300 line-clamp-2 italic">${d.wins}</p>` : '<p class="text-[10px] text-slate-500 italic">No notes recorded.</p>'}
+                ${d.highlights ? `<p class="text-xs text-slate-300 line-clamp-2"><span class="font-bold text-emerald-400">Highlights:</span> ${d.highlights}</p>` : ''}
+                ${d.friction ? `<p class="text-xs text-slate-300 line-clamp-2"><span class="font-bold text-amber-400">Friction:</span> ${d.friction}</p>` : ''}
             </div>
         `;
     }).join('');
@@ -330,7 +389,9 @@ function jumpToDayReview(dateStr) {
     }
 }
 
+// ==========================================
 // 3. Session Review & Inspector Modal
+// ==========================================
 async function openSessionReviewModal(sessionId) {
     try {
         const res = await fetch(`/api/v1/sessions/${sessionId}`);
@@ -346,6 +407,9 @@ async function openSessionReviewModal(sessionId) {
 
         document.getElementById('session_rev_modal_tags').value = session.tags || '';
         document.getElementById('session_rev_modal_notes').value = session.notes || '';
+
+        const skipCheck = document.getElementById('session_rev_modal_skip_check');
+        if (skipCheck) skipCheck.checked = session.review_skipped === true;
 
         const entriesRes = await fetch(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
         const entries = entriesRes.ok ? await entriesRes.json() : [];
@@ -379,16 +443,54 @@ async function saveSessionReviewModal() {
 
     const tagsVal = document.getElementById('session_rev_modal_tags').value.trim();
     const notesVal = document.getElementById('session_rev_modal_notes').value.trim();
+    const skipVal = document.getElementById('session_rev_modal_skip_check') ? document.getElementById('session_rev_modal_skip_check').checked : false;
 
     await fetch(`/api/v1/sessions/${sessionId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: tagsVal, notes: notesVal })
+        body: JSON.stringify({ tags: tagsVal, notes: notesVal, review_skipped: skipVal })
     });
 
     await submitCustomRatings('session', sessionId);
 
     closeSessionReviewModal();
+    loadCurrentRevisionView();
+}
+
+async function resetSessionReview() {
+    const sessionId = document.getElementById('session_rev_modal_id').value;
+    if (!sessionId) return;
+
+    const confirmed = await showCustomConfirm(
+        "Reset Session Review",
+        "Are you sure you want to remove all review ratings for this session and mark it as unreviewed?"
+    );
+
+    if (confirmed) {
+        await fetch(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`, {
+            method: 'DELETE'
+        });
+
+        await fetch(`/api/v1/sessions/${sessionId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ review_skipped: false })
+        });
+
+        closeSessionReviewModal();
+        loadCurrentRevisionView();
+    }
+}
+
+async function quickDismissSessionReview(sessionId, event) {
+    if (event) event.stopPropagation();
+
+    await fetch(`/api/v1/sessions/${sessionId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_skipped: true })
+    });
+
     loadCurrentRevisionView();
 }
 
@@ -404,7 +506,9 @@ async function deleteSessionFromReviewModal() {
     }
 }
 
+// ==========================================
 // 4. Fast Typeahead Task Inspector Search & Quick Bar
+// ==========================================
 async function loadTaskInspectorRegistry() {
     try {
         const res = await fetch('/api/v1/tasks?status=all');
@@ -653,26 +757,60 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
     }
 
     const existingMap = {};
+    const dismissedMap = {};
     if (existingEntries) {
-        existingEntries.forEach(e => { existingMap[e.rating_definition_id] = e.score; });
+        existingEntries.forEach(e => {
+            existingMap[e.rating_definition_id] = e.score;
+            dismissedMap[e.rating_definition_id] = e.dismissed === true;
+        });
     }
 
     container.innerHTML = `
         <div class="text-xs font-bold text-slate-300 mb-2 border-b border-[var(--border-muted)] pb-1">Custom Ratings (${targetType.toUpperCase()})</div>
         ${defs.map(d => {
-            const currentScore = existingMap[d.id] !== undefined ? existingMap[d.id] : Math.ceil((d.min_score + d.max_score) / 2);
+            const isDismissed = dismissedMap[d.id] === true;
+            const currentScore = existingMap[d.id] !== undefined && existingMap[d.id] !== null ? existingMap[d.id] : Math.ceil((d.min_score + d.max_score) / 2);
             return `
-                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-1" data-rating-def-id="${d.id}" data-required="${d.is_required}">
+                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-1.5" data-rating-def-id="${d.id}" data-required="${d.is_required}">
                     <div class="flex justify-between items-center text-xs">
                         <span class="font-bold text-slate-200">${d.name} ${d.is_required ? '<span class="text-red-400">*</span>' : ''}</span>
-                        <span id="score_label_${d.id}" class="font-mono text-purple-400 font-bold">${currentScore} / ${d.max_score}</span>
+                        <div class="flex items-center space-x-2">
+                            <span id="score_label_${d.id}" class="font-mono ${isDismissed ? 'text-slate-500' : 'text-purple-400'} font-bold">${isDismissed ? 'Dismissed' : `${currentScore} / ${d.max_score}`}</span>
+                            <button type="button" onclick="toggleDismissRatingInput(${d.id}, ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
+                        </div>
                     </div>
                     ${d.description ? `<p class="text-[10px] text-slate-400">${d.description}</p>` : ''}
-                    <input type="range" min="${d.min_score}" max="${d.max_score}" value="${currentScore}" oninput="document.getElementById('score_label_${d.id}').innerText = this.value + ' / ${d.max_score}'; if(typeof markDayFormDirty === 'function') markDayFormDirty();" class="custom-rating-input w-full accent-purple-600">
+                    <input type="range" min="${d.min_score}" max="${d.max_score}" value="${currentScore}" ${isDismissed ? 'disabled' : ''} id="rating_range_input_${d.id}" oninput="document.getElementById('score_label_${d.id}').innerText = this.value + ' / ${d.max_score}'; if(typeof markDayFormDirty === 'function') markDayFormDirty();" class="custom-rating-input w-full accent-purple-600 ${isDismissed ? 'opacity-30 cursor-not-allowed' : ''}">
                 </div>
             `;
         }).join('')}
     `;
+}
+
+function toggleDismissRatingInput(defId, maxScore) {
+    const input = document.getElementById(`rating_range_input_${defId}`);
+    const label = document.getElementById(`score_label_${defId}`);
+    const btn = document.getElementById(`dismiss_btn_${defId}`);
+    if (!input || !label || !btn) return;
+
+    const isCurrentlyDismissed = input.disabled;
+    if (isCurrentlyDismissed) {
+        input.disabled = false;
+        input.classList.remove('opacity-30', 'cursor-not-allowed');
+        label.innerText = `${input.value} / ${maxScore}`;
+        label.className = "font-mono text-purple-400 font-bold";
+        btn.innerText = "Dismiss";
+        btn.className = "px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 hover:text-white";
+    } else {
+        input.disabled = true;
+        input.classList.add('opacity-30', 'cursor-not-allowed');
+        label.innerText = "Dismissed";
+        label.className = "font-mono text-slate-500 font-bold";
+        btn.innerText = "Undismiss";
+        btn.className = "px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700";
+    }
+
+    if (typeof markDayFormDirty === 'function') markDayFormDirty();
 }
 
 function validateRequiredCustomRatings(targetType, targetId) {
@@ -680,7 +818,8 @@ function validateRequiredCustomRatings(targetType, targetId) {
     for (let el of inputs) {
         const isReq = el.getAttribute('data-required') === 'true';
         const input = el.querySelector('.custom-rating-input');
-        if (isReq && input && (!input.value || input.value === '')) {
+        const isDismissed = input ? input.disabled : false;
+        if (isReq && !isDismissed && input && (!input.value || input.value === '')) {
             alert(`Please complete essential rating: ${el.querySelector('.font-bold').innerText}`);
             return false;
         }
@@ -693,7 +832,8 @@ async function submitCustomRatings(targetType, targetId) {
     for (let card of cards) {
         const defId = parseInt(card.getAttribute('data-rating-def-id'));
         const input = card.querySelector('.custom-rating-input');
-        if (input && input.value !== '') {
+        if (input) {
+            const isDismissed = input.disabled;
             await fetch('/api/v1/rating-entries', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -701,23 +841,66 @@ async function submitCustomRatings(targetType, targetId) {
                     rating_definition_id: defId,
                     target_type: targetType,
                     target_id: String(targetId),
-                    score: parseInt(input.value)
+                    score: isDismissed ? 0 : parseInt(input.value),
+                    dismissed: isDismissed
                 })
             });
         }
     }
 }
 
-// 7. All Sessions Review
+// 7. All Sessions Review & Filter Engine
 async function loadAllSessionsReview() {
     try {
         const res = await fetch('/api/v1/sessions');
+        if (!res.ok) return;
         allRevisionSessions = await res.json();
+        
+        let tasksMap = {};
+        try {
+            const tasksRes = await fetch('/api/v1/tasks?status=all');
+            if (tasksRes.ok) {
+                const tasks = await tasksRes.json();
+                tasks.forEach(t => { tasksMap[t.id] = t; });
+            }
+        } catch (e) {}
+
+        let reviewedSessionIds = new Set();
+        try {
+            const entriesRes = await fetch('/api/v1/rating-entries?target_type=session&target_id=all');
+            if (entriesRes.ok) {
+                const entries = await entriesRes.json();
+                entries.forEach(e => {
+                    if (!e.dismissed) reviewedSessionIds.add(String(e.target_id));
+                });
+            }
+        } catch (e) {}
+
+        allRevisionSessions.forEach(s => {
+            s.is_reviewed = reviewedSessionIds.has(String(s.id));
+            const attachedTask = s.task_id ? tasksMap[s.task_id] : null;
+            s.attachedTask = attachedTask;
+            const isExempt = s.review_skipped === true || (attachedTask && attachedTask.requires_session_review === false);
+            s.is_exempt = isExempt;
+            s.is_missed = !s.is_reviewed && !isExempt;
+        });
+
         allRevisionSessions.sort((a, b) => new Date(b.start_time) - new Date(a.start_time));
         filterSessionsReviewList();
     } catch (e) {
         console.error("Failed to load sessions for review:", e);
     }
+}
+
+function setSessionReviewFilter(filter) {
+    currentSessionReviewFilter = filter;
+    ['all', 'reviewed', 'missed', 'dismissed'].forEach(f => {
+        const btn = document.getElementById(`sess_filter_${f}`);
+        if (btn) btn.className = f === filter 
+            ? "px-2.5 py-0.5 rounded font-bold bg-purple-600 text-white" 
+            : "px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white";
+    });
+    filterSessionsReviewList();
 }
 
 function filterSessionsReviewList() {
@@ -729,10 +912,20 @@ function filterSessionsReviewList() {
     if (!container) return;
 
     let filtered = allRevisionSessions;
+
+    if (currentSessionReviewFilter === 'reviewed') {
+        filtered = filtered.filter(s => s.is_reviewed);
+    } else if (currentSessionReviewFilter === 'missed') {
+        filtered = filtered.filter(s => s.is_missed);
+    } else if (currentSessionReviewFilter === 'dismissed') {
+        filtered = filtered.filter(s => s.is_exempt);
+    }
+
     if (query) {
         filtered = filtered.filter(s => 
             (s.notes && s.notes.toLowerCase().includes(query)) ||
-            (s.tags && s.tags.toLowerCase().includes(query))
+            (s.tags && s.tags.toLowerCase().includes(query)) ||
+            (s.attachedTask && s.attachedTask.title.toLowerCase().includes(query))
         );
     }
 
@@ -749,16 +942,35 @@ function filterSessionsReviewList() {
         const timeLabel = `${st.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${s.end_time ? new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NOW'}`;
         const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
 
+        let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/80 text-amber-400 border border-amber-800">Missed Review</span>';
+        if (s.is_reviewed) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/60 text-emerald-300 border border-emerald-700">Reviewed</span>';
+        } else if (s.is_exempt) {
+            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">Dismissed</span>';
+        }
+
+        const attachedTask = s.attachedTask;
+
         return `
             <div onclick="openSessionReviewModal(${s.id})" class="rev-card hover:border-purple-500 cursor-pointer space-y-2 text-xs transition">
                 <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                    <span class="font-bold text-purple-400">${dateLabel} (${timeLabel})</span>
                     <div class="flex items-center space-x-2">
+                        <span class="font-bold text-purple-400">${dateLabel} (${timeLabel})</span>
+                        ${statusBadge}
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        ${!s.is_reviewed && !s.is_exempt ? `<button onclick="quickDismissSessionReview(${s.id}, event)" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/80 transition">Dismiss</button>` : ''}
                         <span class="font-mono font-bold text-slate-300">${durMins} mins</span>
                         <span class="px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 font-bold border border-purple-800">${s.tags || '#general'}</span>
                     </div>
                 </div>
-                <div class="text-white text-sm font-semibold">${s.notes || 'No description notes'}</div>
+                ${attachedTask ? `
+                    <div class="space-y-0.5">
+                        <div class="font-black text-sm text-white">${attachedTask.title}</div>
+                        ${attachedTask.description ? `<div class="text-xs text-slate-400 line-clamp-1">${attachedTask.description}</div>` : ''}
+                    </div>
+                ` : ''}
+                <div class="text-slate-200 font-medium">${s.notes || 'No description notes'}</div>
             </div>
         `;
     }).join('');

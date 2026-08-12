@@ -202,6 +202,9 @@ function openNewTaskModal() {
     document.getElementById('modal_input_priority').value = '-';
     document.getElementById('modal_input_status').value = 'in_progress';
     
+    const reqReviewCheck = document.getElementById('modal_input_requires_review');
+    if (reqReviewCheck) reqReviewCheck.checked = true;
+
     const colorModeSelect = document.getElementById('modal_input_color_mode');
     if (colorModeSelect) colorModeSelect.value = 'auto';
     toggleCustomColorPicker('auto');
@@ -227,6 +230,9 @@ function openEditTaskModal(id) {
     document.getElementById('modal_input_priority').value = t.priority || '-';
     document.getElementById('modal_input_status').value = t.status || 'in_progress';
     
+    const reqReviewCheck = document.getElementById('modal_input_requires_review');
+    if (reqReviewCheck) reqReviewCheck.checked = t.requires_session_review !== false;
+
     const isCustom = t.color && t.color !== 'auto';
     const colorModeSelect = document.getElementById('modal_input_color_mode');
     if (colorModeSelect) colorModeSelect.value = isCustom ? 'custom' : 'auto';
@@ -265,7 +271,8 @@ async function saveTask() {
         tags: document.getElementById('modal_input_tags').value,
         priority: document.getElementById('modal_input_priority').value,
         status: document.getElementById('modal_input_status').value,
-        color: chosenColor
+        color: chosenColor,
+        requires_session_review: document.getElementById('modal_input_requires_review') ? document.getElementById('modal_input_requires_review').checked : true
     };
 
     if (createdInput) {
@@ -356,7 +363,6 @@ function openEditSessionModal(sessionId) {
     setTagChips(session.tags || "");
     document.getElementById('session_modal_notes').value = session.notes || "";
 
-    // Instantly calculate and set duration badge on open
     updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
 
@@ -413,7 +419,6 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
     document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
 
-    // Instantly calculate and set duration badge on open
     updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
 

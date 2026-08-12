@@ -16,6 +16,7 @@ class Task(SQLModel, table=True):
     status: str = Field(default="in_progress")  # in_progress, ongoing, completed
     color: str = Field(default="auto")
     tags: str = Field(default="")
+    requires_session_review: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utc_now)
 
     sessions: List["Session"] = Relationship(back_populates="task")
@@ -32,6 +33,7 @@ class Session(SQLModel, table=True):
     duration_seconds: Optional[int] = None
     tags: str = Field(default="")
     notes: Optional[str] = None
+    review_skipped: bool = Field(default=False)
 
     task: Optional[Task] = Relationship(back_populates="sessions")
 
@@ -52,9 +54,10 @@ class DayReview(SQLModel, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     date_str: str = Field(index=True, unique=True)  # YYYY-MM-DD
     rating: int = Field(default=3)
-    wins: Optional[str] = None
-    blockers: Optional[str] = None
+    highlights: Optional[str] = None
+    friction: Optional[str] = None
     notes: Optional[str] = None
+    review_skipped: bool = Field(default=False)
     created_at: datetime = Field(default_factory=utc_now)
 
 
@@ -74,7 +77,8 @@ class RatingEntry(SQLModel, table=True):
     rating_definition_id: int = Field(foreign_key="ratingdefinition.id")
     target_type: str = Field(index=True)  # "session", "task", "day"
     target_id: str = Field(index=True)    # Entity ID or date_str
-    score: int
+    score: Optional[int] = Field(default=0, nullable=True)
+    dismissed: bool = Field(default=False)
     notes: Optional[str] = None
     created_at: datetime = Field(default_factory=utc_now)
 
