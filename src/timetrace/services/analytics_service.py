@@ -14,12 +14,12 @@ class AnalyticsService:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_summary() -> list[dict[str, Any]]:
+    def get_summary(self) -> list[dict[str, Any]]:
         sessions = self.db.exec(select(SessionModel)).all()
         session_dicts = [s.model_dump() for s in sessions]
         return calculate_tag_summaries(session_dicts)
 
-    def get_detailed() -> dict[str, Any]:
+    def get_detailed(self) -> dict[str, Any]:
         sessions = self.db.exec(select(SessionModel)).all()
         tasks = self.db.exec(select(Task)).all()
 
@@ -33,7 +33,7 @@ class AnalyticsService:
         task_dicts = [t.model_dump() for t in tasks]
         return calculate_detailed_analytics(session_dicts, task_dicts)
 
-    def export_markdown() -> str:
+    def export_markdown(self) -> str:
         sessions = self.db.exec(select(SessionModel)).all()
         session_dicts = []
         for s in sessions:

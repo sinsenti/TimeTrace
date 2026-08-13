@@ -95,7 +95,10 @@ class Habit(SQLModel, table=True):
     color: str = Field(default="#10b981")
     created_at: datetime = Field(default_factory=utc_now)
 
-    logs: list["HabitLog"] = Relationship(back_populates="habit", sa_relationship_kwargs={"cascade": "all, delete-orphan"})
+    logs: list["HabitLog"] = Relationship(
+        back_populates="habit",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class HabitLog(SQLModel, table=True):

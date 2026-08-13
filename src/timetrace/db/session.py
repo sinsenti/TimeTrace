@@ -1,7 +1,8 @@
 from pathlib import Path
-from sqlmodel import SQLModel, create_engine, Session, text
-from alembic.config import Config
+
 from alembic import command
+from alembic.config import Config
+from sqlmodel import Session, SQLModel, create_engine, text
 
 from timetrace.config import settings
 

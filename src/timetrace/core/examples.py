@@ -56,7 +56,7 @@ Examples:
   Team sync meeting #meeting -2h 45m
 """
 
-FULL_EXAMPLES_MARKDOWN = f"""[bold magenta]1. Daily Markdown Log File Template (Importable via :import-md)[/bold magenta]
+FULL_EXAMPLES_MARKDOWN = f"""[bold magenta]1. Daily Markdown Log Template (Import via :import-md)[/bold magenta]
 ─────────────────────────────────────────────────────────────────────────────
 {DAILY_LOG_EXAMPLE_MD}
 ─────────────────────────────────────────────────────────────────────────────

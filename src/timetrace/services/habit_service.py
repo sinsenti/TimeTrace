@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta
-from typing import Any
-
+from typing import Any, Dict, List
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
@@ -19,18 +18,18 @@ class HabitService:
         self.db.refresh(db_habit)
         return db_habit
 
-    def list_habits(self) -> list[dict[str, Any]]:
+    def list_habits(self) -> List[Dict[str, Any]]:
         habits = self.db.exec(select(Habit)).all()
         today_dt = datetime.now().date()
 
         start_date_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
         logs = self.db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
 
-        log_map: dict[int, dict[str, Any]] = {}
-        for l in logs:
-            if l.habit_id not in log_map:
-                log_map[l.habit_id] = {}
-            log_map[l.habit_id][l.date_str] = l.model_dump()
+        log_map: Dict[int, Dict[str, Any]] = {}
+        for log_entry in logs:
+            if log_entry.habit_id not in log_map:
+                log_map[log_entry.habit_id] = {}
+            log_map[log_entry.habit_id][log_entry.date_str] = log_entry.model_dump()
 
         result = []
         for h in habits:
@@ -62,7 +61,7 @@ class HabitService:
         self.db.delete(db_habit)
         self.db.commit()
 
-    def log_progress(self, habit_id: int, req: HabitLogRequest) -> dict[str, Any] | HabitLog:
+    def log_progress(self, habit_id: int, req: HabitLogRequest) -> Dict[str, Any] | HabitLog:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -99,7 +98,7 @@ class HabitService:
         self.db.refresh(log)
         return log
 
-    def get_stats(self, habit_id: int) -> dict[str, Any]:
+    def get_stats(self, habit_id: int) -> Dict[str, Any]:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -107,11 +106,14 @@ class HabitService:
         logs = self.db.exec(select(HabitLog).where(HabitLog.habit_id == habit_id)).all()
         logs.sort(key=lambda x: x.date_str)
 
-        completed_count = sum(1 for l in logs if l.status == "completed")
-        failed_count = sum(1 for l in logs if l.status == "failed")
-        skipped_count = sum(1 for l in logs if l.status == "skipped")
+        completed_count = sum(1 for log_item in logs if log_item.status == "completed")
+        failed_count = sum(1 for log_item in logs if log_item.status == "failed")
+        skipped_count = sum(1 for log_item in logs if log_item.status == "skipped")
 
-        history = [{"date": l.date_str, "value": l.value, "status": l.status} for l in logs[-30:]]
+        history = [
+            {"date": log_item.date_str, "value": log_item.value, "status": log_item.status}
+            for log_item in logs[-30:]
+        ]
 
         return {
             "habit": db_habit.model_dump(),

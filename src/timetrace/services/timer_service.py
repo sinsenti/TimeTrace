@@ -39,13 +39,13 @@ class TimerService:
                 target_minutes=req.target_minutes,
             )
         except ValueError as exc:
-            raise TimerError(str(exc))
+            raise TimerError(str(exc)) from exc
 
     def split_timer(self, req: TimerSplitRequest) -> SessionModel:
         try:
             stopped_data = timer_manager.split(new_tags=req.new_tags, new_notes=req.new_notes)
         except ValueError as exc:
-            raise TimerError(str(exc))
+            raise TimerError(str(exc)) from exc
 
         db_session = SessionModel(
             task_id=stopped_data["task_id"],
@@ -66,7 +66,7 @@ class TimerService:
         try:
             session_data = timer_manager.stop()
         except ValueError as exc:
-            raise TimerError(str(exc))
+            raise TimerError(str(exc)) from exc
 
         db_session = SessionModel(
             task_id=session_data["task_id"],

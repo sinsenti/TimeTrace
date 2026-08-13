@@ -10,7 +10,7 @@ from timetrace.interfaces.cli.client import ensure_daemon_running, get_client
 cli_app = typer.Typer(
     name="timetrace",
     help="TimeTrace: Developer-centric time tracking & productivity engine.",
-    no_args_is_help=False
+    no_args_is_help=False,
 )
 
 db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
@@ -44,6 +44,7 @@ def run_daemon():
 def db_migrate():
     """Run all pending Alembic database migrations."""
     from timetrace.db.session import run_migrations
+
     print("Running database migrations...")
     run_migrations()
     print("Database is up to date.")
@@ -54,13 +55,14 @@ def db_revision(message: str = typer.Option(..., "--message", "-m", help="Revisi
     """Generate a new auto-detected migration revision."""
     from alembic import command
     from alembic.config import Config
+
     project_root = Path(__file__).resolve().parents[4]
     ini_path = project_root / "alembic.ini"
-    
+
     if not ini_path.exists():
         print(f"Error: Could not locate alembic.ini at {ini_path}")
         raise typer.Exit(1)
-        
+
     alembic_cfg = Config(str(ini_path))
     alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
     command.revision(alembic_cfg, message=message, autogenerate=True)
@@ -84,19 +86,22 @@ def start_timer(
     tags: str = typer.Option("", "--tags", "-t", help="Tags for session (e.g. '#programming')"),
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
     task_id: int | None = typer.Option(None, "--task", "-k", help="Task ID to attach"),
-    pomo: int | None = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes")
+    pomo: int | None = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes"),
 ):
     """Start active session timer."""
     ensure_daemon_running()
     mode = "pomodoro" if pomo and pomo > 0 else "flowtime"
     with get_client() as client:
-        res = client.post("/timer/start", json={
-            "task_id": task_id,
-            "tags": tags,
-            "notes": notes,
-            "mode": mode,
-            "target_minutes": pomo
-        })
+        res = client.post(
+            "/timer/start",
+            json={
+                "task_id": task_id,
+                "tags": tags,
+                "notes": notes,
+                "mode": mode,
+                "target_minutes": pomo,
+            },
+        )
         if res.status_code == 200:
             print(f"Timer started ({mode}).")
         else:
@@ -106,7 +111,7 @@ def start_timer(
 @cli_app.command("split")
 def split_timer(
     tags: str = typer.Option("", "--tags", "-t", help="New tags for switched activity"),
-    notes: str = typer.Option("", "--notes", "-n", help="New notes for switched activity")
+    notes: str = typer.Option("", "--notes", "-n", help="New notes for switched activity"),
 ):
     """Split active timer and start a new session immediately."""
     ensure_daemon_running()
@@ -137,7 +142,7 @@ def retro_session(
     start_mins_ago: int = typer.Option(60, "--start-ago", "-s", help="Minutes ago session started"),
     duration_mins: int = typer.Option(30, "--duration", "-d", help="Duration of past session in minutes"),
     tags: str = typer.Option("#general", "--tags", "-t", help="Tags for session"),
-    notes: str = typer.Option("", "--notes", "-n", help="Notes for session")
+    notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
 ):
     """Retroactively log a past untracked session."""
     ensure_daemon_running()
@@ -145,12 +150,15 @@ def retro_session(
     start_dt = end_dt - timedelta(minutes=duration_mins)
 
     with get_client() as client:
-        res = client.post("/sessions/retro", json={
-            "start_time": start_dt.isoformat(),
-            "end_time": end_dt.isoformat(),
-            "tags": tags,
-            "notes": notes
-        })
+        res = client.post(
+            "/sessions/retro",
+            json={
+                "start_time": start_dt.isoformat(),
+                "end_time": end_dt.isoformat(),
+                "tags": tags,
+                "notes": notes,
+            },
+        )
         if res.status_code == 201:
             data = res.json()
             print(f"Retroactive Session #{data['id']} saved ({duration_mins} mins).")
@@ -159,9 +167,7 @@ def retro_session(
 
 
 @cli_app.command("status")
-def timer_status(
-    tmux: bool = typer.Option(False, "--tmux", help="Output minimal format for Tmux status bar")
-):
+def timer_status(tmux: bool = typer.Option(False, "--tmux", help="Output minimal format for Tmux status bar")):
     """Check active timer status."""
     try:
         with get_client() as client:
@@ -206,8 +212,13 @@ def summary_stats():
 
 @cli_app.command("tasks")
 def list_tasks_cli(
-    status_filter: str = typer.Option("all", "--status", "-s", help="Filter status: all, in_progress, ongoing, completed, hide_completed"),
-    sort_by: str = typer.Option("priority", "--sort", "-o", help="Sort by: priority, created_at, title, status")
+    status_filter: str = typer.Option(
+        "all",
+        "--status",
+        "-s",
+        help="Filter status: all, in_progress, ongoing, completed, hide_completed",
+    ),
+    sort_by: str = typer.Option("priority", "--sort", "-o", help="Sort by: priority, created_at, title, status"),
 ):
     """List tasks with filtering and sorting."""
     ensure_daemon_running()
@@ -221,8 +232,9 @@ def list_tasks_cli(
                 print("No tasks found.")
             for t in tasks:
                 created_str = format_local_cli_time(t.get("created_at"))
-                t_tags = f"[{t.get('tags', '')}]" if t.get('tags') else ""
-                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {t['title']} {t_tags}")
+                t_tags = f"[{t.get('tags', '')}]" if t.get("tags") else ""
+                title_str = f"{t['title']} {t_tags}".strip()
+                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {title_str}")
             print("-" * 75 + "\n")
 
 
@@ -231,15 +243,26 @@ def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
     priority: str = typer.Option("-", "--priority", "-p", help="Priority (-, low, medium, high)"),
     tags: str = typer.Option("", "--tags", "-t", help="Default tags for task (e.g. '#backend')"),
-    est: int | None = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
+    est: int | None = typer.Option(None, "--est", "-e", help="Estimated time in minutes"),
 ):
     """Create a new task slot."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.post("/tasks", json={"title": title, "priority": priority.lower(), "tags": tags, "estimated_minutes": est})
+        res = client.post(
+            "/tasks",
+            json={
+                "title": title,
+                "priority": priority.lower(),
+                "tags": tags,
+                "estimated_minutes": est,
+            },
+        )
         if res.status_code == 201:
             task = res.json()
-            print(f"Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']}, Tags: {task.get('tags', 'none')})")
+            print(
+                f"Created Task #{task['id']}: '{task['title']}' "
+                f"(Priority: {task['priority']}, Tags: {task.get('tags', 'none')})"
+            )
         else:
             print("Failed to create task.")
 
@@ -270,9 +293,7 @@ def clean_completed_tasks_cli():
 
 
 @cli_app.command("export-md")
-def export_markdown(
-    out_file: Path | None = typer.Option(None, "--out", "-o", help="File path to save markdown log")
-):
+def export_markdown(out_file: Path | None = typer.Option(None, "--out", "-o", help="File path to save markdown log")):
     """Export tracked sessions to structured Markdown format."""
     ensure_daemon_running()
     with get_client() as client:
@@ -287,9 +308,7 @@ def export_markdown(
 
 
 @cli_app.command("import-md")
-def import_markdown(
-    in_file: Path = typer.Argument(..., help="Path to markdown file to import")
-):
+def import_markdown(in_file: Path = typer.Argument(..., help="Path to markdown file to import")):
     """Import sessions and reflections from a structured Markdown log."""
     ensure_daemon_running()
     if not in_file.exists():

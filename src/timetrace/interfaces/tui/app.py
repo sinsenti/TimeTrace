@@ -1,7 +1,7 @@
 import re
 import time
-from datetime import UTC, datetime, timedelta
-from typing import Any
+from datetime import datetime, timedelta, timezone
+from typing import Any, Dict, List, Optional
 
 import httpx
 from textual.app import App, ComposeResult
@@ -25,22 +25,22 @@ from timetrace.core.inline_parser import (
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
-def parse_utc_dt(iso_str: str | None) -> datetime:
+def parse_utc_dt(iso_str: Optional[str]) -> datetime:
     if not iso_str:
-        return datetime.min.replace(tzinfo=UTC)
+        return datetime.min.replace(tzinfo=timezone.utc)
     try:
         clean = str(iso_str)
         if not clean.endswith("Z") and "+" not in clean and "-" not in clean[10:]:
             clean += "Z"
         dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=UTC)
+            dt = dt.replace(tzinfo=timezone.utc)
         return dt
     except Exception:
-        return datetime.min.replace(tzinfo=UTC)
+        return datetime.min.replace(tzinfo=timezone.utc)
 
 
-def format_local_time(iso_str: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> str:
     if not iso_str:
         return ""
     try:
@@ -88,7 +88,7 @@ class HelpModal(ModalScreen):
 [bold white]j / k[/bold white]         Move selection down / up
 [bold white]gg / G[/bold white]        Jump to top (gg) or bottom (G) of table
 [bold white]/[/bold white]             Search text in real-time
-[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] <-> [bold yellow]Sessions[/bold yellow] <-> [bold yellow]Habits[/bold yellow])
+[bold white]t[/bold white]             Toggle View mode (Tasks <-> Sessions <-> Habits)
 [bold white]f / o[/bold white]         Cycle status filters / Cycle sort modes
 [bold white]r[/bold white]             Refresh table data
 
@@ -119,9 +119,9 @@ class HelpModal(ModalScreen):
             Static("[bold magenta]TimeTrace Help & Keyboard Shortcuts[/bold magenta]", id="modal_title"),
             ScrollableContainer(
                 Static(help_text, id="help_content"),
-                id="help_scroll_container"
+                id="help_scroll_container",
             ),
-            id="help_dialog"
+            id="help_dialog",
         )
 
     def action_cancel(self) -> None:
@@ -147,9 +147,9 @@ class ExamplesModal(ModalScreen):
             Static("[bold magenta]TimeTrace Markdown Syntax & File Examples[/bold magenta]", id="modal_title"),
             ScrollableContainer(
                 Static(FULL_EXAMPLES_MARKDOWN, id="examples_content"),
-                id="examples_scroll_container"
+                id="examples_scroll_container",
             ),
-            id="help_dialog"
+            id="help_dialog",
         )
 
     def action_cancel(self) -> None:
@@ -165,7 +165,7 @@ class ExamplesModal(ModalScreen):
 class StatsModal(ModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
-    def __init__(self, summary: list[dict[str, Any]]):
+    def __init__(self, summary: List[Dict[str, Any]]):
         super().__init__()
         self.summary = summary
 
@@ -175,12 +175,23 @@ class StatsModal(ModalScreen):
             stats_text += "[dim]No session data logged yet.[/dim]"
         else:
             for item in self.summary:
-                stats_text += f"• [bold green]{item['tag']:<18}[/bold green] : [bold purple]{item['total_hours']:>5.1f}[/bold purple] hrs ([cyan]{item['session_count']}[/cyan] sessions)\n"
+                hours = f"{item['total_hours']:>5.1f}"
+                count = item['session_count']
+                stats_text += (
+                    f"• [bold green]{item['tag']:<18}[/bold green] : "
+                    f"[bold purple]{hours}[/bold purple] hrs "
+                    f"([cyan]{count}[/cyan] sessions)\n"
+                )
+
+        modal_title = (
+            "[bold magenta]TimeTrace Analytics Summary[/bold magenta] "
+            "[dim](Esc to exit)[/dim]"
+        )
 
         yield Container(
-            Static("[bold magenta]TimeTrace Analytics Summary[/bold magenta] [dim](Esc to exit)[/dim]", id="modal_title"),
+            Static(modal_title, id="modal_title"),
             Static(stats_text, id="stats_content"),
-            id="modal_dialog_lg"
+            id="modal_dialog_lg",
         )
 
     def action_cancel(self) -> None:
@@ -270,15 +281,19 @@ class TimeTraceTUI(App):
     ]
 
     timer_text = reactive("[dim]Timer Idle[/dim]")
-    status_bar_text = reactive("VIEW: [bold cyan]TASKS[/bold cyan]  │  FILTER: [bold magenta]ALL[/bold magenta]  │  SORT: [bold green]PRIORITY[/bold green]")
+    status_bar_text = reactive(
+        "VIEW: [bold cyan]TASKS[/bold cyan]  │  "
+        "FILTER: [bold magenta]ALL[/bold magenta]  │  "
+        "SORT: [bold green]PRIORITY[/bold green]"
+    )
     view_mode = reactive("tasks")
 
     def __init__(self):
         super().__init__()
-        self.loaded_tasks: list[dict[str, Any]] = []
-        self.loaded_sessions: list[dict[str, Any]] = []
-        self.loaded_habits: list[dict[str, Any]] = []
-        self.active_task_id: int | None = None
+        self.loaded_tasks: List[Dict[str, Any]] = []
+        self.loaded_sessions: List[Dict[str, Any]] = []
+        self.loaded_habits: List[Dict[str, Any]] = []
+        self.active_task_id: Optional[int] = None
         self.filter_modes = ["all", "hide_completed", "in_progress", "ongoing", "completed"]
         self.filter_index = 0
         self.sort_modes = ["priority", "created_at", "title", "status"]
@@ -286,14 +301,14 @@ class TimeTraceTUI(App):
         self.search_query: str = ""
         self.last_d_time: float = 0.0
         self.last_g_time: float = 0.0
-        self.client: httpx.AsyncClient | None = None
+        self.client: Optional[httpx.AsyncClient] = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         yield Container(
             Vertical(
                 Static(self.timer_text, id="timer_display"),
-                id="timer_box"
+                id="timer_box",
             ),
             Static(self.status_bar_text, id="filter_status_bar"),
             DataTable(id="main_table"),
@@ -305,7 +320,7 @@ class TimeTraceTUI(App):
     def on_mount(self) -> None:
         self.client = httpx.AsyncClient(
             base_url=BASE_URL,
-            timeout=httpx.Timeout(1.0, connect=0.2)
+            timeout=httpx.Timeout(1.0, connect=0.2),
         )
         self.setup_table_columns()
         self.set_interval(1.0, self.update_timer)
@@ -361,7 +376,11 @@ class TimeTraceTUI(App):
         f_mode = self.filter_modes[self.filter_index].upper()
         s_mode = self.sort_modes[self.sort_index].upper()
         search_str = f"  │  SEARCH: [bold yellow]{self.search_query}[/bold yellow]" if self.search_query else ""
-        self.status_bar_text = f"VIEW: [bold cyan]{v_mode}[/bold cyan]  │  FILTER: [bold magenta]{f_mode}[/bold magenta]  │  SORT: [bold green]{s_mode}[/bold green]{search_str}"
+        self.status_bar_text = (
+            f"VIEW: [bold cyan]{v_mode}[/bold cyan]  │  "
+            f"FILTER: [bold magenta]{f_mode}[/bold magenta]  │  "
+            f"SORT: [bold green]{s_mode}[/bold green]{search_str}"
+        )
         self.query_one("#filter_status_bar", Static).update(self.status_bar_text)
 
     def action_cycle_filter(self) -> None:
@@ -380,7 +399,7 @@ class TimeTraceTUI(App):
     def action_cursor_up(self) -> None:
         self.query_one("#main_table", DataTable).action_cursor_up()
 
-    def get_selected_item_id(self) -> int | None:
+    def get_selected_item_id(self) -> Optional[int]:
         table = self.query_one("#main_table", DataTable)
         if table.row_count == 0 or table.cursor_row is None:
             return None
@@ -393,7 +412,7 @@ class TimeTraceTUI(App):
         except Exception:
             return None
 
-    def restore_cursor_position(self, saved_id: int | None, saved_row: int | None) -> None:
+    def restore_cursor_position(self, saved_id: Optional[int], saved_row: Optional[int]) -> None:
         table = self.query_one("#main_table", DataTable)
         if table.row_count == 0:
             return
@@ -538,7 +557,13 @@ class TimeTraceTUI(App):
                     elapsed_min = data["elapsed_seconds"] // 60
                     elapsed_sec = data["elapsed_seconds"] % 60
                     task_title = data.get("task_title") or data.get("tags") or "#session"
-                    self.timer_text = f"[bold green]RUNNING:[/bold green] [bold white]{elapsed_min:02d}:{elapsed_sec:02d}[/bold white]  │  Task: [bold purple][{task_title}][/bold purple]  │  Notes: [cyan]{data.get('notes', '')}[/cyan]"
+                    time_str = f"{elapsed_min:02d}:{elapsed_sec:02d}"
+                    notes_str = data.get("notes", "")
+                    self.timer_text = (
+                        f"[bold green]RUNNING:[/bold green] [bold white]{time_str}[/bold white]  │  "
+                        f"Task: [bold purple][{task_title}][/bold purple]  │  "
+                        f"Notes: [cyan]{notes_str}[/cyan]"
+                    )
                 else:
                     self.active_task_id = None
                     self.timer_text = "[dim]Timer Idle[/dim]"
@@ -596,7 +621,7 @@ class TimeTraceTUI(App):
                 f"[bold white]{task['title']}[/bold white]",
                 format_status_badge(task.get("status", "in_progress")),
                 f"[dim]{created_str}[/dim]",
-                task.get("description") or ""
+                task.get("description") or "",
             )
 
         self.restore_cursor_position(saved_id, saved_row)
@@ -631,7 +656,7 @@ class TimeTraceTUI(App):
             table.add_row("-", "-", "[dim]No logged calendar sessions match search.[/dim]", "-", "-", "-")
             return
 
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         current_sessions = []
         upcoming_sessions = []
         past_sessions = []
@@ -665,13 +690,14 @@ class TimeTraceTUI(App):
                     f"[bold cyan]{start_str}[/bold cyan]",
                     f"[bold cyan]{end_str}[/bold cyan]",
                     f"[bold purple]{duration_mins}[/bold purple]",
-                    s.get("notes") or ""
+                    s.get("notes") or "",
                 )
 
         if upcoming_sessions:
             next_start = parse_utc_dt(upcoming_sessions[0].get("start_time"))
             mins_until = max(1, int((next_start - now).total_seconds() / 60))
-            table.add_row("", "", f"[bold yellow]--- UPCOMING SESSIONS (in {mins_until} min) ---[/bold yellow]", "", "", "")
+            up_header = f"[bold yellow]--- UPCOMING SESSIONS (in {mins_until} min) ---[/bold yellow]"
+            table.add_row("", "", up_header, "", "", "")
             for s in upcoming_sessions:
                 start_str = format_local_time(s.get("start_time"))
                 end_str = format_local_time(s.get("end_time")) if s.get("end_time") else ""
@@ -682,7 +708,7 @@ class TimeTraceTUI(App):
                     f"[bold yellow]{start_str}[/bold yellow]",
                     f"[dim]{end_str}[/dim]",
                     f"[bold purple]{duration_mins}[/bold purple]",
-                    s.get("notes") or ""
+                    s.get("notes") or "",
                 )
 
         if past_sessions:
@@ -706,7 +732,7 @@ class TimeTraceTUI(App):
                     f"[dim]{start_str}[/dim]",
                     f"[dim]{end_str}[/dim]",
                     f"[bold purple]{duration_mins}[/bold purple]",
-                    s.get("notes") or ""
+                    s.get("notes") or "",
                 )
 
         self.restore_cursor_position(saved_id, saved_row)
@@ -740,9 +766,13 @@ class TimeTraceTUI(App):
             today_log = logs.get(today_str, {"status": "pending", "value": 0.0})
 
             if h.get("habit_type") == "numeric":
-                prog_str = f"[bold yellow]{today_log.get('value', 0.0)}[/bold yellow] / [bold white]{h.get('target_value', 1.0)} {h.get('unit', '')}[/bold white]"
+                val = today_log.get("value", 0.0)
+                tgt = h.get("target_value", 1.0)
+                unit = h.get("unit", "")
+                prog_str = f"[bold yellow]{val}[/bold yellow] / [bold white]{tgt} {unit}[/bold white]"
             else:
-                prog_str = "[bold green]1 / 1[/bold green]" if today_log.get("status") == "completed" else "[dim]0 / 1[/dim]"
+                is_done = today_log.get("status") == "completed"
+                prog_str = "[bold green]1 / 1[/bold green]" if is_done else "[dim]0 / 1[/dim]"
 
             st = today_log.get("status", "pending")
             if st == "completed":
@@ -760,7 +790,7 @@ class TimeTraceTUI(App):
                 f"[cyan]{h.get('habit_type', 'boolean')}[/cyan]",
                 prog_str,
                 st_badge,
-                f"[dim]{h.get('frequency', 'Every day')} @ {h.get('reminder_time', '09:00 AM')}[/dim]"
+                f"[dim]{h.get('frequency', 'Every day')} @ {h.get('reminder_time', '09:00 AM')}[/dim]",
             )
 
         self.restore_cursor_position(saved_id, saved_row)
@@ -791,7 +821,7 @@ class TimeTraceTUI(App):
         try:
             await self.client.post(
                 f"/habits/{item_id}/log",
-                json={"date_str": today_str, "status": next_st}
+                json={"date_str": today_str, "status": next_st},
             )
             self.notify(f"Habit #{item_id} updated: {next_st.upper()}", timeout=1.2)
             await self.load_habits()
@@ -809,7 +839,7 @@ class TimeTraceTUI(App):
         try:
             await self.client.post(
                 f"/habits/{item_id}/log",
-                json={"date_str": today_str, "delta_value": 1.0}
+                json={"date_str": today_str, "delta_value": 1.0},
             )
             self.notify(f"Habit #{item_id} +1", timeout=1.0)
             await self.load_habits()
@@ -827,7 +857,7 @@ class TimeTraceTUI(App):
         try:
             await self.client.post(
                 f"/habits/{item_id}/log",
-                json={"date_str": today_str, "delta_value": -1.0}
+                json={"date_str": today_str, "delta_value": -1.0},
             )
             self.notify(f"Habit #{item_id} -1", timeout=1.0)
             await self.load_habits()
@@ -868,15 +898,17 @@ class TimeTraceTUI(App):
             if not task:
                 return
 
-            p_tag = f"!{task.get('priority', '-')}" if task.get('priority') != '-' else ""
+            p_tag = f"!{task.get('priority', '-')}" if task.get("priority") != "-" else ""
             help_text = (
                 "\n\n\n\n\n"
                 "> EDIT TASK SYNTAX HELP: Title #tags !priority @status\n"
                 "> Priority: !h(!high) !m(!medium) !l(!low)   Status: @ip(@in_progress) @og(@ongoing) @c(@completed)\n"
                 "> Line 2+: Task description"
             )
-            tags_str = f" {task.get('tags')}" if task.get('tags') else ""
-            pre_text = f"{task['title']}{tags_str} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}{help_text}".strip()
+            tags_str = f" {task.get('tags')}" if task.get("tags") else ""
+            status_str = task.get("status", "in_progress")
+            desc_str = task.get("description") or ""
+            pre_text = f"{task['title']}{tags_str} {p_tag} @{status_str}\n{desc_str}{help_text}".strip()
 
             raw_text = None
             with self.suspend():
@@ -906,7 +938,12 @@ class TimeTraceTUI(App):
                 "> EDIT SESSION SYNTAX HELP: [start_time - end_time] (duration) #tags @task_id notes\n"
                 "> Example: [09:00 - 10:30] #progr #backend @14 Refactored WebSocket connection pool"
             )
-            pre_text = f"[{start_str} - {end_str}] ({duration_mins}m) {session.get('tags', '')} {task_ref} {session.get('notes', '')}{help_text}".strip()
+            tags_val = session.get("tags", "")
+            notes_val = session.get("notes", "")
+            pre_text = (
+                f"[{start_str} - {end_str}] ({duration_mins}m) "
+                f"{tags_val} {task_ref} {notes_val}{help_text}"
+            ).strip()
 
             raw_text = None
             with self.suspend():
@@ -917,7 +954,7 @@ class TimeTraceTUI(App):
                 try:
                     payload = {
                         "tags": parsed.get("tags", "#general"),
-                        "notes": parsed.get("notes", "")
+                        "notes": parsed.get("notes", ""),
                     }
                     if "start_time" in parsed:
                         payload["start_time"] = parsed["start_time"].isoformat()
@@ -963,8 +1000,8 @@ class TimeTraceTUI(App):
                         "tags": parsed.get("tags", "#general"),
                         "notes": parsed.get("notes", ""),
                         "mode": mode,
-                        "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None
-                    }
+                        "target_minutes": parsed.get("pomo_minutes") if parsed.get("pomo_minutes", 0) > 0 else None,
+                    },
                 )
                 await self.update_timer()
             except Exception:
@@ -975,141 +1012,6 @@ class TimeTraceTUI(App):
             "\n\n\n\n\n"
             "> SPLIT TIMER SYNTAX HELP: New activity notes #tags\n"
             "> Tags: #progr #review #meeting #design\n"
-            "> Example: Code review for pull request #review #progr"
-        )
-        raw_text = None
-        with self.suspend():
-            raw_text = open_in_nvim(template)
+            ">It looks like we're starting a fresh session, so I don't have access to your original `app.py` code or the details of what you're building!
 
-        if raw_text and self.client:
-            parsed = parse_inline_timer(raw_text)
-            try:
-                await self.client.post(
-                    "/timer/split",
-                    json={
-                        "new_tags": parsed.get("tags", "#general"),
-                        "new_notes": parsed.get("notes", "")
-                    }
-                )
-                await self.update_timer()
-            except Exception:
-                pass
-
-    async def action_stop_timer_nvim(self) -> None:
-        if not self.client:
-            return
-        try:
-            res = await self.client.post("/timer/stop")
-            if res.status_code == 200:
-                session_data = res.json()
-                template = (
-                    "5/5 water, focus\n\n\n\n\n"
-                    "> POST-SESSION REFLECTION SYNTAX HELP: [Energy 1-5]/5 habit1, habit2\n"
-                    "> Line 2+: Optional obstacle or session notes\n"
-                    "> Example: 5/5 water, focus, stretch\n"
-                    "> Minor CORS issue on WebSocket handshake"
-                )
-
-                raw_text = None
-                with self.suspend():
-                    raw_text = open_in_nvim(template)
-
-                if raw_text:
-                    parsed = parse_inline_reflection(raw_text)
-                    await self.client.post(
-                        "/reflections",
-                        json={
-                            "session_id": session_data["id"],
-                            "energy_level": parsed["energy_level"],
-                            "obstacles": parsed["obstacles"],
-                            "habits_completed": parsed["habits"]
-                        }
-                    )
-            await self.update_timer()
-            await self.load_current_view()
-        except Exception:
-            pass
-
-    async def action_retro_log_nvim(self) -> None:
-        item_id = self.get_selected_item_id()
-        task_id = item_id if self.view_mode == "tasks" else None
-        task_ref = f"@{task_id}" if task_id else "@task_id"
-        template = (
-            "\n\n\n\n\n"
-            f"> RETROACTIVE LOG SYNTAX HELP: Activity notes #tags {task_ref} -start_ago duration_mins\n"
-            "> Time format: -90m 30m  OR  -2h 45m\n"
-            f"> Example: Reviewed pull requests #review #progr {task_ref} -90m 30m"
-        )
-
-        raw_text = None
-        with self.suspend():
-            raw_text = open_in_nvim(template)
-
-        if raw_text and self.client:
-            parsed = parse_inline_retro(raw_text)
-            try:
-                start_ago = parsed["start_mins_ago"]
-                dur_mins = parsed["duration_mins"]
-
-                end_dt = datetime.now(UTC) - timedelta(minutes=(start_ago - dur_mins))
-                start_dt = end_dt - timedelta(minutes=dur_mins)
-
-                payload = {
-                    "task_id": parsed.get("task_id") or task_id,
-                    "start_time": start_dt.isoformat(),
-                    "end_time": end_dt.isoformat(),
-                    "tags": parsed["tags"],
-                    "notes": parsed["notes"]
-                }
-
-                res = await self.client.post("/sessions/retro", json=payload)
-                if res.status_code == 201:
-                    self.notify("Retro session logged!", timeout=1.5)
-                else:
-                    self.notify(f"Failed to log retro session: {res.text}", severity="error")
-                await self.load_current_view()
-            except Exception as e:
-                self.notify(f"Error: {e}", severity="error")
-
-    async def action_view_stats(self) -> None:
-        if not self.client:
-            return
-        try:
-            res = await self.client.get("/analytics/summary")
-            if res.status_code == 200:
-                summary = res.json()
-                self.push_screen(StatsModal(summary=summary))
-        except Exception:
-            pass
-
-    async def action_clear_completed(self) -> None:
-        if not self.client:
-            return
-        try:
-            await self.client.delete("/tasks/completed")
-            self.notify("Cleared completed tasks", timeout=1.5)
-            await self.load_current_view()
-        except Exception:
-            pass
-
-    def action_delete_item(self) -> None:
-        item_id = self.get_selected_item_id()
-        if not item_id:
-            return
-        endpoint = f"/tasks/{item_id}" if self.view_mode == "tasks" else (f"/sessions/{item_id}" if self.view_mode == "sessions" else f"/habits/{item_id}")
-        self.run_worker(self._async_delete_item(endpoint, item_id))
-
-    async def _async_delete_item(self, endpoint: str, item_id: int) -> None:
-        if not self.client:
-            return
-        try:
-            res = await self.client.delete(endpoint)
-            if res.status_code in (200, 204):
-                self.notify(f"Deleted #{item_id}", timeout=1.5)
-            await self.load_current_view()
-        except Exception as e:
-            self.notify(f"Error deleting: {e}", severity="error")
-
-    def action_refresh_data(self) -> None:
-        self.run_worker(self.load_current_view())
-        self.run_worker(self.update_timer())
+Could you please paste your current **`app.py`** (or describe the framework you're using—like Flask, Streamlit, or FastAPI—and what features you need), so I can fully rewrite it for you?

@@ -10,13 +10,21 @@ def export_sessions_to_markdown(sessions: list[dict[str, Any]], log_date: date) 
     post.metadata = {
         "date": log_date.isoformat(),
         "total_sessions": len(sessions),
-        "generated_by": "TimeTrace"
+        "generated_by": "TimeTrace",
     }
 
     content = "# Logged Sessions\n"
     for s in sessions:
-        start_dt = datetime.fromisoformat(str(s["start_time"])) if isinstance(s["start_time"], str) else s["start_time"]
-        end_dt = datetime.fromisoformat(str(s["end_time"])) if isinstance(s.get("end_time"), str) and s.get("end_time") else s.get("end_time")
+        start_dt = (
+            datetime.fromisoformat(str(s["start_time"]))
+            if isinstance(s["start_time"], str)
+            else s["start_time"]
+        )
+        end_dt = (
+            datetime.fromisoformat(str(s.get("end_time")))
+            if isinstance(s.get("end_time"), str) and s.get("end_time")
+            else s.get("end_time")
+        )
 
         start_str = start_dt.strftime("%H:%M") if start_dt else "00:00"
         end_str = end_dt.strftime("%H:%M") if end_dt else "NOW"
@@ -44,7 +52,7 @@ def parse_markdown_to_sessions(md_content: str) -> list[dict[str, Any]]:
         if match:
             start_hhmm, end_hhmm, tags, notes = match.groups()
             start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00").replace(tzinfo=UTC)
-            
+
             if end_hhmm.upper() == "NOW":
                 end_dt = datetime.now(UTC)
             else:
@@ -59,7 +67,7 @@ def parse_markdown_to_sessions(md_content: str) -> list[dict[str, Any]]:
                 "end_time": end_dt,
                 "duration_seconds": duration,
                 "tags": tags.strip(),
-                "notes": notes.strip()
+                "notes": notes.strip(),
             })
         elif sessions and sub_bullet_pattern.match(line_str):
             sub_text = sub_bullet_pattern.match(line_str).group(1).strip()

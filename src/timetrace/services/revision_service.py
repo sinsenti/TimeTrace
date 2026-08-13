@@ -61,7 +61,11 @@ class RevisionService:
 
         completed_tasks = [
             t for t in tasks
-            if t.status == "completed" and t.created_at and ensure_utc(t.created_at).astimezone().strftime("%Y-%m-%d") == date_str
+            if (
+                t.status == "completed"
+                and t.created_at
+                and ensure_utc(t.created_at).astimezone().strftime("%Y-%m-%d") == date_str
+            )
         ]
 
         total_seconds = sum(s.duration_seconds or 0 for s in matching_sessions)
@@ -97,7 +101,7 @@ class RevisionService:
     def save_day_review(self, req: DayReviewCreate) -> DayReview:
         existing = self.db.exec(select(DayReview).where(DayReview.date_str == req.date_str)).first()
         effective_rating = req.rating if req.rating is not None else 3
-        
+
         if existing:
             existing.rating = effective_rating
             existing.highlights = req.highlights or ""
