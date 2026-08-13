@@ -35,7 +35,21 @@
         .fc-scrollgrid-section-body > td { border-left: none !important; border-right: none !important; border-bottom: none !important; }
         .fc-theme-standard td, .fc-theme-standard th { border-color: var(--border-color) !important; }
         .fc-timegrid-slot { height: 2.2em !important; border-bottom: 1px dashed var(--border-color) !important; }
-        .fc-timegrid-slot-label { font-size: 0.72rem !important; color: #64748b !important; font-weight: 500; text-transform: uppercase; }
+        
+        /* Position time label exactly centered over the horizontal grid line */
+        .fc-timegrid-slot-label { 
+            font-size: 0.72rem !important; 
+            color: #64748b !important; 
+            font-weight: 500; 
+            text-transform: uppercase; 
+            overflow: visible !important;
+        }
+        .fc .fc-timegrid-slot-label-cushion {
+            transform: translateY(-50%) !important;
+            display: inline-block !important;
+            margin-top: 0 !important;
+        }
+
         .fc-col-header-cell { background-color: var(--bg-header); padding: 6px 0; border-bottom: 1px solid var(--border-color) !important; }
         .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
         .task-card { cursor: grab; }
