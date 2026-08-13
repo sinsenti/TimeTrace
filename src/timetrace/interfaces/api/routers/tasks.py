@@ -113,7 +113,7 @@ def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
         raise HTTPException(status_code=404, detail="Task not found")
 
     sessions = db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
-    sessions.sort(key=lambda s: s.start_time or datetime.min)
+    sessions.sort(key=lambda s: ensure_utc(s.start_time) or datetime.min.replace(tzinfo=timezone.utc))
 
     total_seconds = sum(s.duration_seconds or 0 for s in sessions)
     total_hours = round(total_seconds / 3600.0, 2)

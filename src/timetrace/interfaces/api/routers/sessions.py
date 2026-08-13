@@ -5,13 +5,13 @@ from datetime import datetime
 
 from timetrace.db.session import get_session
 from timetrace.db.models import Session as SessionModel
-from timetrace.interfaces.api.schemas import SessionCreate, SessionUpdate, RetroSessionCreate
+from timetrace.interfaces.api.schemas import SessionCreate, SessionUpdate, RetroSessionCreate, ReflectionCreate
 from timetrace.interfaces.api.utils import ensure_utc
 
-router = APIRouter(prefix="/sessions", tags=["Sessions"])
+router = APIRouter(prefix="", tags=["Sessions"])
 
 
-@router.post("", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+@router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
     start_utc = ensure_utc(req.start_time)
     end_utc = ensure_utc(req.end_time)
@@ -37,7 +37,7 @@ def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
     return db_session
 
 
-@router.get("", response_model=List[dict])
+@router.get("/sessions", response_model=List[dict])
 def list_sessions(
     start: Optional[datetime] = Query(None),
     end: Optional[datetime] = Query(None),
@@ -63,7 +63,7 @@ def list_sessions(
     return result
 
 
-@router.get("/{session_id}")
+@router.get("/sessions/{session_id}")
 def get_session_by_id(session_id: int, db: DBSession = Depends(get_session)):
     s = db.get(SessionModel, session_id)
     if not s:
@@ -78,7 +78,7 @@ def get_session_by_id(session_id: int, db: DBSession = Depends(get_session)):
     return s_dict
 
 
-@router.put("/{session_id}", response_model=SessionModel)
+@router.put("/sessions/{session_id}", response_model=SessionModel)
 def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(get_session)):
     db_session = db.get(SessionModel, session_id)
     if not db_session:
@@ -104,7 +104,7 @@ def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(
     return db_session
 
 
-@router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(session_id: int, db: DBSession = Depends(get_session)):
     db_session = db.get(SessionModel, session_id)
     if not db_session:
@@ -115,7 +115,7 @@ def delete_session(session_id: int, db: DBSession = Depends(get_session)):
     return None
 
 
-@router.post("/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+@router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
 def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
     start_utc = ensure_utc(req.start_time)
     end_utc = ensure_utc(req.end_time)
@@ -138,3 +138,28 @@ def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_se
     db_session.start_time = ensure_utc(db_session.start_time)
     db_session.end_time = ensure_utc(db_session.end_time)
     return db_session
+
+
+@router.post("/reflections", status_code=status.HTTP_201_CREATED)
+def record_session_reflection(req: ReflectionCreate, db: DBSession = Depends(get_session)):
+    db_session = db.get(SessionModel, req.session_id)
+    if not db_session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    reflection_notes = []
+    reflection_notes.append(f"Energy: {req.energy_level}/5")
+    if req.habits_completed:
+        reflection_notes.append(f"Habits: {', '.join(req.habits_completed)}")
+    if req.obstacles:
+        reflection_notes.append(f"Obstacles: {req.obstacles}")
+
+    additional_note = " | ".join(reflection_notes)
+    if db_session.notes:
+        db_session.notes = f"{db_session.notes}\n{additional_note}"
+    else:
+        db_session.notes = additional_note
+
+    db.add(db_session)
+    db.commit()
+    db.refresh(db_session)
+    return {"status": "success", "session_id": db_session.id, "reflection": additional_note}

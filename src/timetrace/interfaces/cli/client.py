@@ -16,6 +16,6 @@ def ensure_daemon_running():
             if res.status_code == 200:
                 return True
     except httpx.RequestError:
-        print("❌ TimeTrace daemon is not running!")
-        print("👉 Please start the daemon in the background using: timetrace daemon")
+        print("TimeTrace daemon is not running.")
+        print("Please start the daemon in the background using: timetrace daemon")
         sys.exit(1)

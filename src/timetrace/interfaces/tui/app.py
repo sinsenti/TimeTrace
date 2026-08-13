@@ -87,13 +87,13 @@ class HelpModal(ModalScreen):
 [bold white]j / k[/bold white]         Move selection down / up
 [bold white]gg / G[/bold white]        Jump to top (gg) or bottom (G) of table
 [bold white]/[/bold white]             Search text in real-time
-[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] ↔ [bold yellow]Sessions[/bold yellow] ↔ [bold yellow]Habits[/bold yellow])
+[bold white]t[/bold white]             Toggle View mode ([bold yellow]Tasks[/bold yellow] <-> [bold yellow]Sessions[/bold yellow] <-> [bold yellow]Habits[/bold yellow])
 [bold white]f / o[/bold white]         Cycle status filters / Cycle sort modes
 [bold white]r[/bold white]             Refresh table data
 
 [bold cyan]Fast Habit Tracking Controls (in Habits View)[/bold cyan]
 ─────────────────────────────────────────────────────────────────────────────
-[bold white]Space[/bold white]         Toggle Today's Status (Done ✓ / Fail ✗ / Skip ↷)
+[bold white]Space[/bold white]         Toggle Today's Status (Done / Fail / Skip)
 [bold white]+ / -[/bold white]         Increment / Decrement numeric habit (e.g. +1 pull-up)
 
 [bold cyan]Ultra-Fast Neovim Actions & Shorthands[/bold cyan]
@@ -501,7 +501,6 @@ class TimeTraceTUI(App):
             self.notify("Search filter cleared", timeout=1.0)
             return
 
-        # Double 'd' (dd) press handler for deleting rows
         if event.key == "d":
             now = time.time()
             if now - self.last_d_time < 0.6:
@@ -511,7 +510,6 @@ class TimeTraceTUI(App):
                 self.last_d_time = now
                 self.notify("Press 'd' again to delete row (dd)", timeout=1.2)
 
-        # Vim 'gg' (top) and 'G' (bottom) Jump Handlers
         elif event.key == "g":
             now = time.time()
             if now - self.last_g_time < 0.6:
@@ -747,11 +745,11 @@ class TimeTraceTUI(App):
 
             st = today_log.get("status", "pending")
             if st == "completed":
-                st_badge = "[bold white on #059669] DONE ✓ [/bold white on #059669]"
+                st_badge = "[bold white on #059669] DONE [/bold white on #059669]"
             elif st == "failed":
-                st_badge = "[bold white on #dc2626] FAILED ✗ [/bold white on #dc2626]"
+                st_badge = "[bold white on #dc2626] FAILED [/bold white on #dc2626]"
             elif st == "skipped":
-                st_badge = "[bold white on #475569] SKIPPED ↷ [/bold white on #475569]"
+                st_badge = "[bold white on #475569] SKIPPED [/bold white on #475569]"
             else:
                 st_badge = "[bold black on #d97706] PENDING [/bold black on #d97706]"
 
@@ -835,7 +833,6 @@ class TimeTraceTUI(App):
         except Exception:
             pass
 
-    # Neovim Quick Actions
     async def action_add_task_nvim(self) -> None:
         template = (
             "\n\n\n\n\n"
@@ -877,7 +874,8 @@ class TimeTraceTUI(App):
                 "> Priority: !h(!high) !m(!medium) !l(!low)   Status: @ip(@in_progress) @og(@ongoing) @c(@completed)\n"
                 "> Line 2+: Task description"
             )
-            pre_text = f"{task['title']} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}{help_text}".strip()
+            tags_str = f" {task.get('tags')}" if task.get('tags') else ""
+            pre_text = f"{task['title']}{tags_str} {p_tag} @{task.get('status', 'in_progress')}\n{task.get('description') or ''}{help_text}".strip()
 
             raw_text = None
             with self.suspend():

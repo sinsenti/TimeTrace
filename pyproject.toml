@@ -12,6 +12,7 @@ dependencies = [
     "fastapi>=0.110.0",
     "uvicorn>=0.28.0",
     "sqlmodel>=0.0.16",
+    "alembic>=1.13.0",
     "typer>=0.9.0",
     "textual>=0.52.0",
     "python-frontmatter>=1.1.0",

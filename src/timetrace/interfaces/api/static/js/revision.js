@@ -283,12 +283,15 @@ async function saveDayReviewForm() {
         return;
     }
 
+    const ratingEl = document.getElementById('day_form_rating');
+    const parsedRating = ratingEl ? parseInt(ratingEl.value) : 3;
+
     const payload = {
         date_str: dateStr,
-        rating: parseInt(document.getElementById('day_form_rating').value),
-        highlights: document.getElementById('day_form_highlights').value,
-        friction: document.getElementById('day_form_friction').value,
-        notes: document.getElementById('day_form_notes').value,
+        rating: isNaN(parsedRating) ? 3 : parsedRating,
+        highlights: document.getElementById('day_form_highlights') ? document.getElementById('day_form_highlights').value || "" : "",
+        friction: document.getElementById('day_form_friction') ? document.getElementById('day_form_friction').value || "" : "",
+        notes: document.getElementById('day_form_notes') ? document.getElementById('day_form_notes').value || "" : "",
         review_skipped: false
     };
 
@@ -309,12 +312,15 @@ async function dismissDayReview() {
     );
 
     if (confirmed) {
+        const ratingEl = document.getElementById('day_form_rating');
+        const parsedRating = ratingEl ? parseInt(ratingEl.value) : 3;
+
         const payload = {
             date_str: dateStr,
-            rating: parseInt(document.getElementById('day_form_rating').value) || 3,
-            highlights: document.getElementById('day_form_highlights').value,
-            friction: document.getElementById('day_form_friction').value,
-            notes: document.getElementById('day_form_notes').value,
+            rating: isNaN(parsedRating) ? 3 : parsedRating,
+            highlights: document.getElementById('day_form_highlights') ? document.getElementById('day_form_highlights').value || "" : "",
+            friction: document.getElementById('day_form_friction') ? document.getElementById('day_form_friction').value || "" : "",
+            notes: document.getElementById('day_form_notes') ? document.getElementById('day_form_notes').value || "" : "",
             review_skipped: true
         };
 
@@ -713,12 +719,15 @@ async function saveTaskReviewForm() {
         return;
     }
 
+    const diffEl = document.getElementById('task_rev_difficulty');
+    const parsedDiff = diffEl ? parseInt(diffEl.value) : 3;
+
     const payload = {
         task_id: taskId,
-        difficulty: parseInt(document.getElementById('task_rev_difficulty').value),
-        what_went_well: document.getElementById('task_rev_went_well').value,
-        blockers: document.getElementById('task_rev_blockers').value,
-        key_takeaways: document.getElementById('task_rev_takeaways').value
+        difficulty: isNaN(parsedDiff) ? 3 : parsedDiff,
+        what_went_well: document.getElementById('task_rev_went_well') ? document.getElementById('task_rev_went_well').value || "" : "",
+        blockers: document.getElementById('task_rev_blockers') ? document.getElementById('task_rev_blockers').value || "" : "",
+        key_takeaways: document.getElementById('task_rev_takeaways') ? document.getElementById('task_rev_takeaways').value || "" : ""
     };
 
     await api.post('/api/v1/task-reviews', payload);
@@ -816,11 +825,12 @@ async function submitCustomRatings(targetType, targetId) {
         const input = card.querySelector('.custom-rating-input');
         if (input) {
             const isDismissed = input.disabled;
+            const parsedScore = parseInt(input.value);
             await api.post('/api/v1/rating-entries', {
                 rating_definition_id: defId,
                 target_type: targetType,
                 target_id: String(targetId),
-                score: isDismissed ? 0 : parseInt(input.value),
+                score: isDismissed || isNaN(parsedScore) ? 0 : parsedScore,
                 dismissed: isDismissed
             });
         }

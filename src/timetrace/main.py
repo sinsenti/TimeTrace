@@ -1,8 +1,11 @@
 import sys
 import asyncio
-from fastapi import FastAPI
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.encoders import jsonable_encoder
 from contextlib import asynccontextmanager
 
 from timetrace.config import settings
@@ -10,6 +13,10 @@ from timetrace.db.session import init_db
 from timetrace.core.timer import timer_manager
 from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.interfaces.api.routers import api_router
+
+# Configure logging format
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("timetrace")
 
 
 async def idle_checker_loop():
@@ -25,7 +32,7 @@ async def idle_checker_loop():
                 if idle_secs >= timer_manager.idle_threshold_seconds:
                     timer_manager.freeze_for_idle(idle_secs)
         except Exception as exc:
-            print(f"Warning: Idle loop error: {exc}")
+            logger.warning(f"Idle loop error: {exc}")
 
 
 @asynccontextmanager
@@ -46,6 +53,26 @@ def create_daemon_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # 422 Validation Error Logger Middleware
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        try:
+            body = await request.body()
+            body_str = body.decode("utf-8")
+        except Exception:
+            body_str = "<failed to read body>"
+
+        logger.error("=" * 60)
+        logger.error(f"HTTP 422 Validation Error on {request.method} {request.url.path}")
+        logger.error(f"Incoming Request Body: {body_str}")
+        logger.error(f"Validation Failure Details: {exc.errors()}")
+        logger.error("=" * 60)
+
+        return JSONResponse(
+            status_code=422,
+            content={"detail": jsonable_encoder(exc.errors())},
+        )
 
     app.include_router(api_router, prefix="/api/v1")
 

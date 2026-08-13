@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -60,16 +60,16 @@ class TimerSplitRequest(BaseModel):
 
 class DayReviewCreate(BaseModel):
     date_str: str
-    rating: int = 3
+    rating: Optional[int] = 3
     highlights: Optional[str] = ""
     friction: Optional[str] = ""
     notes: Optional[str] = ""
-    review_skipped: bool = False
+    review_skipped: Optional[bool] = False
 
 
 class TaskReviewCreate(BaseModel):
     task_id: int
-    difficulty: int = 3
+    difficulty: Optional[int] = 3
     what_went_well: Optional[str] = ""
     blockers: Optional[str] = ""
     key_takeaways: Optional[str] = ""
@@ -97,8 +97,8 @@ class RatingEntryCreate(BaseModel):
     rating_definition_id: int
     target_type: str
     target_id: str
-    score: Optional[int] = None
-    dismissed: bool = False
+    score: Optional[int] = 0
+    dismissed: Optional[bool] = False
     notes: Optional[str] = None
 
 
@@ -108,6 +108,13 @@ class RetroSessionCreate(BaseModel):
     end_time: datetime
     tags: str = ""
     notes: str = ""
+
+
+class ReflectionCreate(BaseModel):
+    session_id: int
+    energy_level: Optional[int] = 3
+    obstacles: Optional[str] = ""
+    habits_completed: List[str] = []
 
 
 class IdleToggleRequest(BaseModel):

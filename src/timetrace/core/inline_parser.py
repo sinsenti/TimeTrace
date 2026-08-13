@@ -59,6 +59,7 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
         "description": description,
         "priority": priority,
         "status": status,
+        "tags": " ".join(tags) if tags else "",
     }
 
 

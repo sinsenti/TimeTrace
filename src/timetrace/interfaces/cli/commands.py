@@ -13,6 +13,9 @@ cli_app = typer.Typer(
     no_args_is_help=False
 )
 
+db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
+cli_app.add_typer(db_cli, name="db")
+
 
 def format_local_cli_time(iso_str: Optional[str]) -> str:
     """Helper to convert UTC ISO strings to local system timezone string for CLI."""
@@ -33,8 +36,35 @@ def format_local_cli_time(iso_str: Optional[str]) -> str:
 @cli_app.command("daemon")
 def run_daemon():
     """Start the TimeTrace FastAPI background daemon."""
-    print(f"🚀 Starting TimeTrace daemon on http://{settings.host}:{settings.port}...")
+    print(f"Starting TimeTrace daemon on http://{settings.host}:{settings.port}...")
     uvicorn.run("timetrace.main:daemon_app", host=settings.host, port=settings.port, reload=False)
+
+
+@db_cli.command("migrate")
+def db_migrate():
+    """Run all pending Alembic database migrations."""
+    from timetrace.db.session import run_migrations
+    print("Running database migrations...")
+    run_migrations()
+    print("Database is up to date.")
+
+
+@db_cli.command("revision")
+def db_revision(message: str = typer.Option(..., "--message", "-m", help="Revision description message")):
+    """Generate a new auto-detected migration revision."""
+    from alembic.config import Config
+    from alembic import command
+    project_root = Path(__file__).resolve().parents[4]
+    ini_path = project_root / "alembic.ini"
+    
+    if not ini_path.exists():
+        print(f"Error: Could not locate alembic.ini at {ini_path}")
+        raise typer.Exit(1)
+        
+    alembic_cfg = Config(str(ini_path))
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
+    command.revision(alembic_cfg, message=message, autogenerate=True)
+    print(f"Generated revision: {message}")
 
 
 @cli_app.command("idle-toggle")
@@ -45,7 +75,7 @@ def toggle_idle_cli():
         res = client.post("/idle/toggle", json={})
         if res.status_code == 200:
             state = res.json()["idle_detection_enabled"]
-            status_str = "ENABLED ⚡" if state else "DISABLED ⏸️"
+            status_str = "ENABLED" if state else "DISABLED"
             print(f"Inactivity Idle Detector is now {status_str}")
 
 
@@ -68,9 +98,9 @@ def start_timer(
             "target_minutes": pomo
         })
         if res.status_code == 200:
-            print(f"⏱️ Timer started ({mode})!")
+            print(f"Timer started ({mode}).")
         else:
-            print(f"❌ Error: {res.json().get('detail')}")
+            print(f"Error: {res.json().get('detail')}")
 
 
 @cli_app.command("split")
@@ -83,9 +113,9 @@ def split_timer(
     with get_client() as client:
         res = client.post("/timer/split", json={"new_tags": tags, "new_notes": notes})
         if res.status_code == 200:
-            print("✂️ Timer split successfully! New session started.")
+            print("Timer split successfully. New session started.")
         else:
-            print(f"❌ Error: {res.json().get('detail')}")
+            print(f"Error: {res.json().get('detail')}")
 
 
 @cli_app.command("stop")
@@ -97,9 +127,9 @@ def stop_timer():
         if res.status_code == 200:
             data = res.json()
             duration_min = round(data.get("duration_seconds", 0) / 60, 1)
-            print(f"🛑 Timer stopped! Saved Session #{data['id']} ({duration_min} mins).")
+            print(f"Timer stopped. Saved Session #{data['id']} ({duration_min} mins).")
         else:
-            print(f"❌ Error: {res.json().get('detail')}")
+            print(f"Error: {res.json().get('detail')}")
 
 
 @cli_app.command("retro")
@@ -123,9 +153,9 @@ def retro_session(
         })
         if res.status_code == 201:
             data = res.json()
-            print(f"✅ Retroactive Session #{data['id']} saved ({duration_mins} mins).")
+            print(f"Retroactive Session #{data['id']} saved ({duration_mins} mins).")
         else:
-            print(f"❌ Error: {res.json().get('detail')}")
+            print(f"Error: {res.json().get('detail')}")
 
 
 @cli_app.command("status")
@@ -140,9 +170,9 @@ def timer_status(
                 data = res.json()
                 if not data["is_running"]:
                     if data.get("is_frozen_idle"):
-                        msg = "⏸️ AFK Frozen" if tmux else "⚠️ Timer frozen due to AFK inactivity."
+                        msg = "AFK Frozen" if tmux else "Timer frozen due to AFK inactivity."
                     else:
-                        msg = "⏹️ Idle" if tmux else "⏸️ No timer currently running."
+                        msg = "Idle" if tmux else "No timer currently running."
                     print(msg)
                     return
 
@@ -152,14 +182,11 @@ def timer_status(
                 tags = data.get("tags", "")
 
                 if tmux:
-                    print(f"⏱️ {time_str} [{tags}]")
+                    print(f"{time_str} [{tags}]")
                 else:
-                    print(f"⏱️ Active Timer: {time_str} | Tags: {tags} | Notes: {data.get('notes', '')}")
+                    print(f"Active Timer: {time_str} | Tags: {tags} | Notes: {data.get('notes', '')}")
     except Exception:
-        if tmux:
-            print("❌ Daemon Offline")
-        else:
-            print("❌ Daemon Offline")
+        print("Daemon Offline")
 
 
 @cli_app.command("summary")
@@ -170,7 +197,7 @@ def summary_stats():
         res = client.get("/analytics/summary")
         if res.status_code == 200:
             data = res.json()
-            print("\n📊 TimeTrace Activity Breakdown:")
+            print("\nTimeTrace Activity Breakdown:")
             print("-" * 40)
             for item in data:
                 print(f"• {item['tag']:<20} : {item['total_hours']:>5.1f} hrs ({item['session_count']} sessions)")
@@ -188,7 +215,7 @@ def list_tasks_cli(
         res = client.get(f"/tasks?status={status_filter}&sort={sort_by}")
         if res.status_code == 200:
             tasks = res.json()
-            print(f"\n📋 Tasks [{status_filter.upper()}] sorted by [{sort_by.upper()}]:")
+            print(f"\nTasks [{status_filter.upper()}] sorted by [{sort_by.upper()}]:")
             print("-" * 75)
             if not tasks:
                 print("No tasks found.")
@@ -212,9 +239,9 @@ def add_task(
         res = client.post("/tasks", json={"title": title, "priority": priority.lower(), "tags": tags, "estimated_minutes": est})
         if res.status_code == 201:
             task = res.json()
-            print(f"✅ Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']}, Tags: {task.get('tags', 'none')})")
+            print(f"Created Task #{task['id']}: '{task['title']}' (Priority: {task['priority']}, Tags: {task.get('tags', 'none')})")
         else:
-            print("❌ Failed to create task.")
+            print("Failed to create task.")
 
 
 @cli_app.command("task-delete")
@@ -224,9 +251,9 @@ def delete_task_cli(task_id: int = typer.Argument(..., help="ID of the task to d
     with get_client() as client:
         res = client.delete(f"/tasks/{task_id}")
         if res.status_code == 204:
-            print(f"🗑️ Task #{task_id} deleted successfully.")
+            print(f"Task #{task_id} deleted successfully.")
         else:
-            print(f"❌ Failed to delete Task #{task_id}.")
+            print(f"Failed to delete Task #{task_id}.")
 
 
 @cli_app.command("task-clean")
@@ -237,9 +264,9 @@ def clean_completed_tasks_cli():
         res = client.delete("/tasks/completed")
         if res.status_code == 200:
             data = res.json()
-            print(f"🧹 Cleaned up {data['deleted_count']} completed tasks.")
+            print(f"Cleaned up {data['deleted_count']} completed tasks.")
         else:
-            print("❌ Failed to clean completed tasks.")
+            print("Failed to clean completed tasks.")
 
 
 @cli_app.command("export-md")
@@ -254,7 +281,7 @@ def export_markdown(
             content = res.text
             if out_file:
                 out_file.write_text(content, encoding="utf-8")
-                print(f"📄 Log exported to {out_file}")
+                print(f"Log exported to {out_file}")
             else:
                 print(content)
 
@@ -266,7 +293,7 @@ def import_markdown(
     """Import sessions and reflections from a structured Markdown log."""
     ensure_daemon_running()
     if not in_file.exists():
-        print(f"❌ File '{in_file}' not found.")
+        print(f"File '{in_file}' not found.")
         return
 
     content = in_file.read_text(encoding="utf-8")
@@ -274,6 +301,6 @@ def import_markdown(
         res = client.post("/markdown/import", content=content, headers={"Content-Type": "text/plain"})
         if res.status_code == 201:
             data = res.json()
-            print(f"✅ Imported {data['imported_sessions']} sessions from '{in_file}'.")
+            print(f"Imported {data['imported_sessions']} sessions from '{in_file}'.")
         else:
-            print("❌ Failed to import markdown file.")
+            print("Failed to import markdown file.")

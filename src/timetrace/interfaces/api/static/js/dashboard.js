@@ -5,7 +5,7 @@ let currentFilter = 'all';
 let lastTimerData = null;
 
 // ==========================================
-// 🚀 Main Entry Orchestrator
+// Main Entry Orchestrator
 // ==========================================
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
@@ -100,7 +100,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             eventReceive: function(info) {
                 const taskTitle = info.event.title;
-                const taskId = info.event.extendedProps.taskId;
+                const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
                 const startTime = info.event.start;
                 const endTime = new Date(startTime.getTime() + 15 * 60 * 1000);
 
@@ -130,11 +130,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         new FullCalendar.Draggable(taskCardList, {
             itemSelector: '.task-card',
             eventData: function(eventEl) {
+                const card = eventEl.closest('.task-card') || eventEl;
+                const rawId = card.getAttribute('data-task-id');
                 return {
-                    title: eventEl.getAttribute('data-task-title'),
-                    backgroundColor: eventEl.getAttribute('data-task-color'),
+                    title: card.getAttribute('data-task-title') || '',
+                    backgroundColor: card.getAttribute('data-task-color') || '#7c3aed',
                     extendedProps: {
-                        taskId: parseInt(eventEl.getAttribute('data-task-id'))
+                        taskId: rawId ? parseInt(rawId) : null
                     }
                 };
             }

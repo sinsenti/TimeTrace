@@ -4,22 +4,22 @@
 
 ---
 
-## ✨ Features
+## Features
 
-- 🚀 **Local-First Daemon**: Single FastAPI background service (port **8002**) powering CLI, TUI, Web UI, and Tmux integration.
-- 💻 **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`) and a Textual-powered interactive TUI.
-- 📅 **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with view-switching (**Day**, **3-Day**, **Week**, **Month**), auto-scrolling, and range totals.
-- 🔄 **Revision & Retrospective Engine**: Review past days with structured **Highlights** and **Daily Friction** reflections, task post-mortems, and session timeline inspections.
-- ⚡ **Per-Item & Per-Rating Dismissal**: Option to dismiss entire day/session reviews or individually dismiss custom rating metrics.
-- 📊 **Habit Tracker Matrix**: 14-day interactive grid for tracking daily habits (Boolean checkmarks or numeric metrics) with consistency doughnut charts.
-- 📈 **Custom Rating Scales**: Define custom evaluation metrics (1–5 or 1–10 ranges, essential/optional) for sessions, tasks, and days.
-- 💤 **AFK / Idle Detection**: Automatically freezes running timers during 10 minutes of inactivity and provides an AFK resolution modal (Discard, Log as Break, Claim Work, or Re-tag).
-- ⌨️ **Vim Navigation & Clean UI**: Navigation shortcuts (`h`/`j`/`k`/`l`, `v`, `i`, `o`, `x`), compact single-line modal controls with micro shortcut badges (`Ctrl+↵`, `Esc`), and toggleable UI sidebars.
-- 📝 **Markdown Sync Engine**: Bidirectional import and export of structured `.md` log files with YAML frontmatter.
+- **Local-First Daemon**: Single FastAPI background service (port **8002**) powering CLI, TUI, Web UI, and Tmux integration.
+- **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`) and a Textual-powered interactive TUI.
+- **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with view-switching (**Day**, **3-Day**, **Week**, **Month**), auto-scrolling, and range totals.
+- **Revision & Retrospective Engine**: Review past days with structured **Highlights** and **Daily Friction** reflections, task post-mortems, and session timeline inspections.
+- **Per-Item & Per-Rating Dismissal**: Option to dismiss entire day/session reviews or individually dismiss custom rating metrics.
+- **Habit Tracker Matrix**: 14-day interactive grid for tracking daily habits (Boolean checkmarks or numeric metrics) with consistency doughnut charts.
+- **Custom Rating Scales**: Define custom evaluation metrics (1–5 or 1–10 ranges, essential/optional) for sessions, tasks, and days.
+- **AFK / Idle Detection**: Automatically freezes running timers during 10 minutes of inactivity and provides an AFK resolution modal (Discard, Log as Break, Claim Work, or Re-tag).
+- **Vim Navigation & Clean UI**: Navigation shortcuts (`h`/`j`/`k`/`l`, `v`, `i`, `o`, `x`), compact single-line modal controls with micro shortcut badges (`Ctrl+↵`, `Esc`), and toggleable UI sidebars.
+- **Markdown Sync Engine**: Bidirectional import and export of structured `.md` log files with YAML frontmatter.
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 | Component | Technology |
 | :--- | :--- |
@@ -33,7 +33,7 @@
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### 1. Installation
 
@@ -64,7 +64,7 @@ timetrace daemon
 
 ---
 
-## 💻 CLI Command Reference
+## CLI Command Reference
 
 | Command | Usage | Description |
 | --- | --- | --- |
@@ -80,7 +80,7 @@ timetrace daemon
 
 ---
 
-## 📝 Markdown Log Format
+## Markdown Log Format
 
 TimeTrace exports and imports daily markdown logs structured as follows:
 
@@ -98,12 +98,11 @@ total_sessions: 2
 - [10:00 - 11:15] | #tui | Configured Vim Navigation Bindings
   - Highlights: Smooth h/j/k/l grid navigation
 
-
 ```
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the [MIT License](https://www.google.com/search?q=LICENSE).
 

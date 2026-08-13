@@ -5,12 +5,13 @@
 
 class ApiClient {
     async request(url, options = {}) {
+        const { headers, ...restOptions } = options;
         const config = {
+            ...restOptions,
             headers: {
                 'Content-Type': 'application/json',
-                ...options.headers
-            },
-            ...options
+                ...(headers || {})
+            }
         };
 
         try {

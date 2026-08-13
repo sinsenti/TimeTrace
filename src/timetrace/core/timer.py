@@ -2,6 +2,7 @@ import json
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any
 from timetrace.config import settings
+from timetrace.interfaces.api.utils import ensure_utc
 
 
 class ActiveTimerState:
@@ -61,7 +62,7 @@ class ActiveTimerState:
                 self.is_running = True
                 self.task_id = raw.get("task_id")
                 self.task_title = raw.get("task_title")
-                self.start_time = datetime.fromisoformat(raw["start_time"])
+                self.start_time = ensure_utc(datetime.fromisoformat(raw["start_time"]))
                 self.tags = raw.get("tags", "")
                 self.notes = raw.get("notes", "")
                 self.mode = raw.get("mode", "flowtime")
@@ -84,19 +85,18 @@ class ActiveTimerState:
             return {}
 
         now = datetime.now(timezone.utc)
+        start_utc = ensure_utc(self.start_time)
         idle_start_time = now - timedelta(seconds=idle_seconds)
 
-        # Cap idle start time to start_time if idle was detected right as session started
-        if idle_start_time < self.start_time:
-            idle_start_time = self.start_time
+        if idle_start_time < start_utc:
+            idle_start_time = start_utc
 
-        duration_before_idle = int((idle_start_time - self.start_time).total_seconds())
+        duration_before_idle = int((idle_start_time - start_utc).total_seconds())
 
-        # Create session summary for work completed prior to idleness
         saved_session = {
             "task_id": self.task_id,
             "task_title": self.task_title,
-            "start_time": self.start_time.isoformat(),
+            "start_time": start_utc.isoformat(),
             "end_time": idle_start_time.isoformat(),
             "duration_seconds": duration_before_idle,
             "tags": self.tags,
@@ -187,12 +187,13 @@ class ActiveTimerState:
             raise ValueError("No timer is currently active.")
 
         end_time = datetime.now(timezone.utc)
-        duration = int((end_time - self.start_time).total_seconds())
+        start_utc = ensure_utc(self.start_time)
+        duration = int((end_time - start_utc).total_seconds())
 
         session_summary = {
             "task_id": self.task_id,
             "task_title": self.task_title,
-            "start_time": self.start_time,
+            "start_time": start_utc,
             "end_time": end_time,
             "duration_seconds": duration,
             "tags": self.tags,
@@ -232,7 +233,8 @@ class ActiveTimerState:
         if not self.is_running or not self.start_time:
             return status_data
 
-        elapsed = int((datetime.now(timezone.utc) - self.start_time).total_seconds())
+        start_utc = ensure_utc(self.start_time)
+        elapsed = int((datetime.now(timezone.utc) - start_utc).total_seconds())
         remaining = None
         if self.mode == "pomodoro" and self.target_minutes:
             target_secs = self.target_minutes * 60
@@ -241,7 +243,7 @@ class ActiveTimerState:
         status_data.update({
             "elapsed_seconds": elapsed,
             "remaining_seconds": remaining,
-            "start_time": self.start_time.isoformat(),
+            "start_time": start_utc.isoformat(),
             "target_minutes": self.target_minutes,
         })
         return status_data

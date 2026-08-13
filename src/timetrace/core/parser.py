@@ -35,6 +35,7 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
 
     sessions: List[Dict[str, Any]] = []
     session_pattern = re.compile(r"^-\s*\[(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}|NOW)\]\s*\|\s*([^|]+)\s*\|\s*(.+)")
+    sub_bullet_pattern = re.compile(r"^\s+-\s*(.+)")
 
     for line in post.content.splitlines():
         line_str = line.rstrip()
@@ -59,5 +60,8 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
                 "tags": tags.strip(),
                 "notes": notes.strip()
             })
+        elif sessions and sub_bullet_pattern.match(line_str):
+            sub_text = sub_bullet_pattern.match(line_str).group(1).strip()
+            sessions[-1]["notes"] += f"\n  - {sub_text}"
 
     return sessions
