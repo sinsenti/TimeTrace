@@ -5,6 +5,7 @@ __pycache__/
 
 copy.py
 log.md
+todo.md
 
 # C extensions
 *.so

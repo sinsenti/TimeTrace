@@ -1,12 +1,13 @@
+/**
+ * Dashboard Entry Orchestrator
+ */
+
 let calendar;
 let activeTasks = [];
 let allSessions = [];
 let currentFilter = 'all';
 let lastTimerData = null;
 
-// ==========================================
-// Main Entry Orchestrator
-// ==========================================
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
 
@@ -83,9 +84,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
 
             select: function(selectionInfo) {
-                if (suppressModalOnSelect) {
-                    return;
-                }
+                if (suppressModalOnSelect) return;
                 cursorStart = selectionInfo.start;
                 cursorEnd = selectionInfo.end;
                 openCreateSessionModal(selectionInfo.start, selectionInfo.end);
@@ -160,79 +159,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     setInterval(updateDocumentTitle, 1000);
 });
 
-function scrollToCurrentTime() {
-    if (!calendar) return;
-    calendar.today();
-    if (calendar.view.type !== 'dayGridMonth') {
-        setTimeout(() => calendar.scrollToTime(getInitialScrollTime()), 50);
-    }
-}
-
-async function handleCalendarEventUpdate(event) {
-    const payload = {
-        start_time: event.start.toISOString(),
-        end_time: event.end ? event.end.toISOString() : event.start.toISOString()
-    };
-    await fetch(`/api/v1/sessions/${event.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    });
-    if (calendar) calendar.refetchEvents();
-}
-
-function switchView(viewName) {
-    if (!calendar) return;
-    calendar.changeView(viewName);
-    if (viewName !== 'dayGridMonth') {
-        setTimeout(() => calendar.scrollToTime(getInitialScrollTime()), 50);
-    }
-    const settings = typeof getUserSettings === 'function' ? getUserSettings() : null;
-    if (settings) {
-        settings.lastSelectedView = viewName;
-        if (typeof saveUserSettings === 'function') saveUserSettings(settings);
-    }
-}
-
-function updateViewButtons(activeViewType) {
-    const btnDay = document.getElementById('btn_view_day');
-    const btnThreeDay = document.getElementById('btn_view_three_day');
-    const btnWeek = document.getElementById('btn_view_week');
-    const btnMonth = document.getElementById('btn_view_month');
-
-    const activeClass = "h-6 px-2 rounded text-white font-bold bg-purple-600 text-[11px]";
-    const inactiveClass = "h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]";
-
-    if (btnDay) btnDay.className = (activeViewType === 'timeGridDay') ? activeClass : inactiveClass;
-    if (btnThreeDay) btnThreeDay.className = (activeViewType === 'timeGridThreeDay') ? activeClass : inactiveClass;
-    if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
-    if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
-}
-
-function toggleSidebar(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.toggle('hidden');
-    const isHidden = el.classList.contains('hidden');
-
-    const settings = getUserSettings();
-    if (id === 'left_sidebar') {
-        settings.lastHideLeftSidebar = isHidden;
-        if (settings.hideLeftSidebar !== 'auto') {
-            settings.hideLeftSidebar = isHidden;
-        }
-    }
-    if (id === 'right_sidebar') {
-        settings.lastHideRightSidebar = isHidden;
-        if (settings.hideRightSidebar !== 'auto') {
-            settings.hideRightSidebar = isHidden;
-        }
-    }
-    saveUserSettings(settings);
-
-    setSidebarVisibility(id, !isHidden);
-}
-
 function updateDocumentTitle() {
     const now = new Date();
 
@@ -284,224 +210,4 @@ function updateDocumentTitle() {
     }
 
     document.title = 'TimeTrace Dashboard';
-}
-
-async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
-    try {
-        await fetchAllTasksRegistry();
-        const res = await fetch(`/api/v1/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
-        allSessions = await res.json();
-        
-        const events = allSessions.map((s, idx) => {
-            const matchedTask = allTasksMap[s.task_id];
-            const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
-
-            return {
-                id: s.id,
-                title: s.notes || s.tags || '#session',
-                start: s.start_time,
-                end: s.end_time || new Date().toISOString(),
-                backgroundColor: color,
-                borderColor: 'transparent',
-                extendedProps: {
-                    taskTitle: matchedTask ? matchedTask.title : '',
-                    notes: s.notes || '',
-                    tags: s.tags || ''
-                }
-            };
-        });
-        successCallback(events);
-        fetchRangeTotals();
-        updateDocumentTitle();
-    } catch (err) { failureCallback(err); }
-}
-
-async function fetchTimerStatus() {
-    try {
-        const res = await fetch('/api/v1/timer/status');
-        const data = await res.json();
-        lastTimerData = data;
-        isRunning = data.is_running;
-        idleDetectionEnabled = data.idle_detection_enabled;
-
-        if (data.is_frozen_idle && data.pending_idle_gap) {
-            const idleModal = document.getElementById('idle_resolution_modal');
-            const idleLabel = document.getElementById('idle_time_summary_label');
-            if (idleModal && idleLabel) {
-                const idleMins = Math.round((data.pending_idle_gap.idle_seconds || 600) / 60);
-                idleLabel.innerText = `You were away for ${idleMins} mins.`;
-                idleModal.classList.remove('hidden');
-            }
-        }
-
-        const label = document.getElementById('timer_status_label');
-        const btn = document.getElementById('toggle_btn');
-
-        if (isRunning) {
-            const mins = Math.floor(data.elapsed_seconds / 60);
-            const secs = data.elapsed_seconds % 60;
-            const timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
-            const taskName = data.task_title || (data.tags || 'Task');
-            
-            if (label) label.innerText = `${timeStr} | ${taskName}`;
-            if (btn) {
-                btn.innerText = 'Stop';
-                btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
-            }
-        } else {
-            if (label) label.innerText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
-            if (btn) {
-                btn.innerText = 'Start Timer';
-                btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
-            }
-        }
-
-        updateDocumentTitle();
-    } catch(e) {}
-}
-
-function setTaskFilter(filterName) {
-    currentFilter = filterName;
-    
-    const tabAll = document.getElementById('filter_tab_all');
-    const tabActive = document.getElementById('filter_tab_active');
-    const tabDone = document.getElementById('filter_tab_done');
-    
-    const activeClass = "flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold";
-    const inactiveClass = "flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white";
-
-    if (tabAll) tabAll.className = (filterName === 'all') ? activeClass : inactiveClass;
-    if (tabActive) tabActive.className = (filterName === 'hide_completed') ? activeClass : inactiveClass;
-    if (tabDone) tabDone.className = (filterName === 'completed') ? activeClass : inactiveClass;
-
-    fetchTasks();
-}
-
-async function fetchTasks() {
-    try {
-        const res = await fetch(`/api/v1/tasks?status=${currentFilter}`);
-        activeTasks = await res.json();
-
-        const cardList = document.getElementById('task_card_list');
-        const select = document.getElementById('timer_task_select');
-        
-        const countEl = document.getElementById('selected_tasks_count');
-        if (countEl) countEl.innerText = `${activeTasks.length} tasks`;
-        
-        if (select) {
-            select.innerHTML = '<option value="">-- Attach Task --</option>' + 
-                activeTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
-        }
-
-        if (cardList) {
-            if (activeTasks.length === 0) {
-                cardList.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tasks found.</div>';
-            } else {
-                cardList.innerHTML = activeTasks.map((t, idx) => {
-                    const color = getTaskColor(t, idx);
-                    const prioLabel = (t.priority || '-').toUpperCase();
-                    return `
-                        <div onclick="openEditTaskModal(${t.id})" data-task-id="${t.id}" data-task-title="${t.title}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
-                            <div>
-                                <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
-                                <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
-                            </div>
-                            <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
-                                <span class="bg-black/20 px-1.5 py-0.5 rounded">${t.status}</span>
-                                <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
-                            </div>
-                        </div>
-                    `;
-                }).join('');
-            }
-        }
-
-        fetchRangeTotals();
-    } catch (err) {
-        console.error("Error fetching tasks:", err);
-    }
-}
-
-async function clearCompletedTasks() {
-    const confirmed = await showCustomConfirm("Clear Completed Tasks", "Are you sure you want to remove all completed task slots?");
-    if (confirmed) {
-        await fetch('/api/v1/tasks/completed', { method: 'DELETE' });
-        await fetchAllTasksRegistry();
-        fetchTasks();
-    }
-}
-
-function fetchRangeTotals() {
-    if (!calendar) return;
-    const viewType = calendar.view.type;
-    let rangeLabel = "Week";
-    if (viewType === 'timeGridDay') rangeLabel = "Day";
-    if (viewType === 'timeGridThreeDay') rangeLabel = "3 Day";
-    if (viewType === 'dayGridMonth') rangeLabel = "Month";
-
-    const labelEl = document.getElementById('range_breakdown_label');
-    const headerEl = document.getElementById('range_total_header');
-    if (labelEl) labelEl.innerText = `${rangeLabel} Breakdown`;
-    if (headerEl) headerEl.innerText = `${rangeLabel} Total`;
-
-    const viewStart = calendar.view.activeStart;
-    const viewEnd = calendar.view.activeEnd;
-
-    let taskHours = {};
-    let tagHours = {};
-    let grandTotalSecs = 0;
-
-    const visibleSessions = allSessions.filter(s => {
-        const start = new Date(s.start_time);
-        return start >= viewStart && start < viewEnd;
-    });
-
-    visibleSessions.forEach(s => {
-        const dur = s.duration_seconds || 0;
-        grandTotalSecs += dur;
-
-        const tid = s.task_id || 0;
-        taskHours[tid] = (taskHours[tid] || 0) + dur;
-
-        const tagStr = s.tags || '#general';
-        const tags = tagStr.split(' ').filter(t => t.startsWith('#'));
-        if (tags.length === 0) tags.push('#general');
-        tags.forEach(tg => {
-            tagHours[tg] = (tagHours[tg] || 0) + dur;
-        });
-    });
-
-    const badgeEl = document.getElementById('weekly_total_badge');
-    const sideEl = document.getElementById('side_total_hours');
-    if (badgeEl) badgeEl.innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
-    if (sideEl) sideEl.innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
-
-    const activityList = document.getElementById('activity_totals_list');
-    const sortedTags = Object.entries(tagHours).sort((a,b) => b[1] - a[1]);
-    if (activityList) {
-        if (sortedTags.length === 0) {
-            activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
-        } else {
-            activityList.innerHTML = sortedTags.map(([tag, secs]) => `
-                <div class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center">
-                    <span class="text-xs font-bold text-emerald-400">${tag}</span>
-                    <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h</span>
-                </div>
-            `).join('');
-        }
-    }
-
-    const totalsList = document.getElementById('weekly_totals_list');
-    if (totalsList) {
-        totalsList.innerHTML = activeTasks.map((t, idx) => {
-            const color = getTaskColor(t, idx);
-            const hrs = ((taskHours[t.id] || 0) / 3600).toFixed(1);
-            return `
-                <div style="background-color: ${color};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center">
-                    <span class="font-bold text-xs truncate">${t.title}</span>
-                    <span class="text-sm font-black">${hrs}h</span>
-                </div>
-            `;
-        }).join('');
-    }
 }
