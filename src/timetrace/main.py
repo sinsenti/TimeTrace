@@ -1,17 +1,19 @@
-import sys
 import asyncio
 import logging
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse, JSONResponse
-from fastapi.exceptions import RequestValidationError
-from fastapi.encoders import jsonable_encoder
+import sys
 from contextlib import asynccontextmanager
 
+from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, RedirectResponse
+
 from timetrace.config import settings
-from timetrace.db.session import init_db
-from timetrace.core.timer import timer_manager
+from timetrace.core.exceptions import EntityNotFoundError, TimerError, ValidationError
 from timetrace.core.idle_detector import get_idle_seconds
+from timetrace.core.timer import timer_manager
+from timetrace.db.session import init_db
 from timetrace.interfaces.api.routers import api_router
 
 # Configure logging format
@@ -54,7 +56,20 @@ def create_daemon_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # 422 Validation Error Logger Middleware
+    # Domain Exception Handlers
+    @app.exception_handler(EntityNotFoundError)
+    async def entity_not_found_handler(request: Request, exc: EntityNotFoundError):
+        return JSONResponse(status_code=404, content={"detail": str(exc)})
+
+    @app.exception_handler(TimerError)
+    async def timer_error_handler(request: Request, exc: TimerError):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(ValidationError)
+    async def validation_error_handler(request: Request, exc: ValidationError):
+        return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    # 422 Validation Error Logger Handler
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         try:

@@ -13,7 +13,7 @@ engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
 def run_migrations() -> None:
     """Executes Alembic migrations programmatically up to the latest revision,
-    automatically handling pre-existing SQLite databases."""
+    automatically stamping pre-existing databases without wiping data."""
     project_root = Path(__file__).resolve().parents[3]
     ini_path = project_root / "alembic.ini"
 
@@ -21,14 +21,12 @@ def run_migrations() -> None:
         alembic_cfg = Config(str(ini_path))
         alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
 
-        # Self-healing check: if DB has existing tables but no alembic_version table, stamp it
         with Session(engine) as session:
             try:
-                tables = session.exec(
-                    text("SELECT name FROM sqlite_master WHERE type='table';")
-                ).all()
+                tables = session.exec(text("SELECT name FROM sqlite_master WHERE type='table';")).all()
                 table_names = [t[0] for t in tables]
 
+                # If tables exist but alembic_version does not, stamp revision 0001
                 if "task" in table_names and "alembic_version" not in table_names:
                     command.stamp(alembic_cfg, "head")
             except Exception:
@@ -37,10 +35,10 @@ def run_migrations() -> None:
         try:
             command.upgrade(alembic_cfg, "head")
         except Exception as exc:
-            print(
-                f"Warning: Migration error: {exc}. Falling back to metadata creation."
-            )
-            SQLModel.metadata.create_all(engine)
+            if "already exists" in str(exc):
+                command.stamp(alembic_cfg, "head")
+            else:
+                SQLModel.metadata.create_all(engine)
     else:
         SQLModel.metadata.create_all(engine)
 

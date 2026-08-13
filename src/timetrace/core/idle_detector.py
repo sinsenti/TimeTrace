@@ -1,6 +1,6 @@
-import sys
-import subprocess
 import ctypes
+import subprocess
+import sys
 
 
 def get_idle_seconds() -> float:

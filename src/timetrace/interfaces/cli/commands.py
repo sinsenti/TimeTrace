@@ -1,11 +1,11 @@
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
 import typer
 import uvicorn
-from pathlib import Path
-from typing import Optional
-from datetime import datetime, timedelta, timezone
 
 from timetrace.config import settings
-from timetrace.interfaces.cli.client import get_client, ensure_daemon_running
+from timetrace.interfaces.cli.client import ensure_daemon_running, get_client
 
 cli_app = typer.Typer(
     name="timetrace",
@@ -17,7 +17,7 @@ db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
 cli_app.add_typer(db_cli, name="db")
 
 
-def format_local_cli_time(iso_str: Optional[str]) -> str:
+def format_local_cli_time(iso_str: str | None) -> str:
     """Helper to convert UTC ISO strings to local system timezone string for CLI."""
     if not iso_str:
         return ""
@@ -27,7 +27,7 @@ def format_local_cli_time(iso_str: Optional[str]) -> str:
             clean += "Z"
         dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt.astimezone().strftime("%Y-%m-%d %H:%M")
     except Exception:
         return str(iso_str)[:16].replace("T", " ")
@@ -52,8 +52,8 @@ def db_migrate():
 @db_cli.command("revision")
 def db_revision(message: str = typer.Option(..., "--message", "-m", help="Revision description message")):
     """Generate a new auto-detected migration revision."""
-    from alembic.config import Config
     from alembic import command
+    from alembic.config import Config
     project_root = Path(__file__).resolve().parents[4]
     ini_path = project_root / "alembic.ini"
     
@@ -83,8 +83,8 @@ def toggle_idle_cli():
 def start_timer(
     tags: str = typer.Option("", "--tags", "-t", help="Tags for session (e.g. '#programming')"),
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
-    task_id: Optional[int] = typer.Option(None, "--task", "-k", help="Task ID to attach"),
-    pomo: Optional[int] = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes")
+    task_id: int | None = typer.Option(None, "--task", "-k", help="Task ID to attach"),
+    pomo: int | None = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes")
 ):
     """Start active session timer."""
     ensure_daemon_running()
@@ -141,7 +141,7 @@ def retro_session(
 ):
     """Retroactively log a past untracked session."""
     ensure_daemon_running()
-    end_dt = datetime.now(timezone.utc) - timedelta(minutes=(start_mins_ago - duration_mins))
+    end_dt = datetime.now(UTC) - timedelta(minutes=(start_mins_ago - duration_mins))
     start_dt = end_dt - timedelta(minutes=duration_mins)
 
     with get_client() as client:
@@ -231,7 +231,7 @@ def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
     priority: str = typer.Option("-", "--priority", "-p", help="Priority (-, low, medium, high)"),
     tags: str = typer.Option("", "--tags", "-t", help="Default tags for task (e.g. '#backend')"),
-    est: Optional[int] = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
+    est: int | None = typer.Option(None, "--est", "-e", help="Estimated time in minutes")
 ):
     """Create a new task slot."""
     ensure_daemon_running()
@@ -271,7 +271,7 @@ def clean_completed_tasks_cli():
 
 @cli_app.command("export-md")
 def export_markdown(
-    out_file: Optional[Path] = typer.Option(None, "--out", "-o", help="File path to save markdown log")
+    out_file: Path | None = typer.Option(None, "--out", "-o", help="File path to save markdown log")
 ):
     """Export tracked sessions to structured Markdown format."""
     ensure_daemon_running()

@@ -1,13 +1,15 @@
 from fastapi import APIRouter
 
-from timetrace.interfaces.api.routers.web import router as web_router
-from timetrace.interfaces.api.routers.tasks import router as tasks_router, task_reviews_router
-from timetrace.interfaces.api.routers.sessions import router as sessions_router
-from timetrace.interfaces.api.routers.timer import router as timer_router, idle_router
-from timetrace.interfaces.api.routers.revision import router as revision_router
-from timetrace.interfaces.api.routers.ratings import router as ratings_router
-from timetrace.interfaces.api.routers.habits import router as habits_router
 from timetrace.interfaces.api.routers.analytics import router as analytics_router
+from timetrace.interfaces.api.routers.habits import router as habits_router
+from timetrace.interfaces.api.routers.ratings import router as ratings_router
+from timetrace.interfaces.api.routers.revision import router as revision_router
+from timetrace.interfaces.api.routers.sessions import router as sessions_router
+from timetrace.interfaces.api.routers.tasks import router as tasks_router
+from timetrace.interfaces.api.routers.tasks import task_reviews_router
+from timetrace.interfaces.api.routers.timer import idle_router
+from timetrace.interfaces.api.routers.timer import router as timer_router
+from timetrace.interfaces.api.routers.web import router as web_router
 
 api_router = APIRouter()
 

@@ -1,6 +1,6 @@
 import re
-from datetime import datetime, date, timezone
-from typing import Dict, Any, Optional
+from datetime import UTC, date, datetime
+from typing import Any
 
 
 def strip_comments(text: str) -> str:
@@ -16,7 +16,7 @@ def strip_comments(text: str) -> str:
     return "\n".join(lines).strip()
 
 
-def parse_inline_task(text: str) -> Dict[str, Any]:
+def parse_inline_task(text: str) -> dict[str, Any]:
     """Parses 1-2 line task creation markdown."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
@@ -63,7 +63,7 @@ def parse_inline_task(text: str) -> Dict[str, Any]:
     }
 
 
-def parse_inline_timer(text: str) -> Dict[str, Any]:
+def parse_inline_timer(text: str) -> dict[str, Any]:
     """Parses 1-line timer start / split markdown."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
@@ -104,10 +104,10 @@ def _local_time_to_utc(date_str: str, time_str: str) -> datetime:
     local_tz = datetime.now().astimezone().tzinfo
     naive_dt = datetime.fromisoformat(f"{date_str}T{time_str}")
     local_dt = naive_dt.replace(tzinfo=local_tz)
-    return local_dt.astimezone(timezone.utc)
+    return local_dt.astimezone(UTC)
 
 
-def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+def parse_inline_session_edit(text: str, base_session: dict[str, Any] | None = None) -> dict[str, Any]:
     """Parses edited session text from Neovim buffer."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
@@ -117,7 +117,7 @@ def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] 
     first_line = lines[0]
     extra_notes = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
 
-    result: Dict[str, Any] = {}
+    result: dict[str, Any] = {}
 
     time_range_match = re.search(r"\[(.*?)\]", first_line)
     if time_range_match:
@@ -137,16 +137,16 @@ def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] 
                     s_dt = _local_time_to_utc(base_date, f"{s_str}:00")
                 else:
                     naive = datetime.fromisoformat(s_str.replace(" ", "T"))
-                    s_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(timezone.utc)
+                    s_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(UTC)
 
                 if e_str.upper() != "NOW":
                     if len(e_str) <= 5:
                         e_dt = _local_time_to_utc(base_date, f"{e_str}:00")
                     else:
                         naive = datetime.fromisoformat(e_str.replace(" ", "T"))
-                        e_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(timezone.utc)
+                        e_dt = naive.replace(tzinfo=datetime.now().astimezone().tzinfo).astimezone(UTC)
                 else:
-                    e_dt = datetime.now(timezone.utc)
+                    e_dt = datetime.now(UTC)
 
                 result["start_time"] = s_dt
                 result["end_time"] = e_dt
@@ -177,7 +177,7 @@ def parse_inline_session_edit(text: str, base_session: Optional[Dict[str, Any]] 
     return result
 
 
-def parse_inline_retro(text: str) -> Dict[str, Any]:
+def parse_inline_retro(text: str) -> dict[str, Any]:
     """Parses 1-2 line retroactive session markdown."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
@@ -223,7 +223,7 @@ def parse_inline_retro(text: str) -> Dict[str, Any]:
     }
 
 
-def parse_inline_reflection(text: str) -> Dict[str, Any]:
+def parse_inline_reflection(text: str) -> dict[str, Any]:
     """Parses 1-2 line post-session reflection markdown."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]

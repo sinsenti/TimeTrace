@@ -1,7 +1,6 @@
 import os
-import tempfile
 import subprocess
-from typing import Optional
+import tempfile
 
 PALETTE = [
     "#7c3aed",
@@ -25,7 +24,7 @@ def get_auto_color(text: str) -> str:
     return PALETTE[hash_val % len(PALETTE)]
 
 
-def open_in_nvim(initial_text: str = "") -> Optional[str]:
+def open_in_nvim(initial_text: str = "") -> str | None:
     """
     Spawns Neovim with a temporary clean .md file.
     Returns the raw saved string from Neovim.
@@ -44,7 +43,7 @@ def open_in_nvim(initial_text: str = "") -> Optional[str]:
         if result != 0:
             return None
 
-        with open(temp_path, "r", encoding="utf-8") as f:
+        with open(temp_path, encoding="utf-8") as f:
             return f.read().strip()
     except Exception:
         return None

@@ -19,10 +19,19 @@ dependencies = [
     "pydantic-settings>=2.2.0",
     "httpx>=0.27.0",
     "jinja2>=3.1.0",
+    "ruff>=0.3.0",
 ]
 
 [project.scripts]
 timetrace = "timetrace.main:app"
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []
 
 [build-system]
 requires = ["hatchling"]

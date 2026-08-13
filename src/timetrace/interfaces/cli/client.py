@@ -1,5 +1,7 @@
-import httpx
 import sys
+
+import httpx
+
 from timetrace.config import settings
 
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"

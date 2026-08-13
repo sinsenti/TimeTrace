@@ -1,10 +1,10 @@
-from typing import List, Dict, Any
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 
-def calculate_tag_summaries(sessions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Calculates cumulative time spent per tag."""
-    tag_totals: Dict[str, Dict[str, Any]] = {}
+    tag_totals: dict[str, dict[str, Any]] = {}
 
     for s in sessions:
         dur_seconds = s.get("duration_seconds") or 0
@@ -31,16 +31,16 @@ def calculate_tag_summaries(sessions: List[Dict[str, Any]]) -> List[Dict[str, An
     return summary
 
 
-def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
+def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dict[str, Any]]) -> dict[str, Any]:
     """Generates comprehensive statistics for the custom analytics dashboard."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     
     total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)
     total_hours = round(total_seconds / 3600.0, 2)
     total_sessions = len(sessions)
 
     # Daily Focus Trend (Last 14 days)
-    daily_trend: Dict[str, float] = {}
+    daily_trend: dict[str, float] = {}
     for i in range(13, -1, -1):
         d_str = (now - timedelta(days=i)).strftime("%Y-%m-%d")
         daily_trend[d_str] = 0.0
@@ -66,7 +66,7 @@ def calculate_detailed_analytics(sessions: List[Dict[str, Any]], tasks: List[Dic
             else:
                 st_dt = st_raw
             
-            local_dt = st_dt.astimezone() if st_dt.tzinfo else st_dt.replace(tzinfo=timezone.utc).astimezone()
+            local_dt = st_dt.astimezone() if st_dt.tzinfo else st_dt.replace(tzinfo=UTC).astimezone()
             hour_key = f"{local_dt.hour:02d}:00"
             dur = (s.get("duration_seconds") or 0) / 3600.0
             if hour_key in hourly_distribution:

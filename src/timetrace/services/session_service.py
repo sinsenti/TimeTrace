@@ -1,0 +1,148 @@
+from datetime import datetime
+from typing import Any
+
+from sqlmodel import Session, select
+
+from timetrace.core.exceptions import EntityNotFoundError, ValidationError
+from timetrace.db.models import Session as SessionModel
+from timetrace.interfaces.api.schemas import ReflectionCreate, RetroSessionCreate, SessionCreate, SessionUpdate
+from timetrace.interfaces.api.utils import ensure_utc
+
+
+class SessionService:
+    def __init__(self, db: Session):
+        self.db = db
+
+    def create_session(self, req: SessionCreate) -> SessionModel:
+        start_utc = ensure_utc(req.start_time)
+        end_utc = ensure_utc(req.end_time)
+
+        if end_utc <= start_utc:
+            raise ValidationError("end_time must be strictly after start_time")
+
+        duration = int((end_utc - start_utc).total_seconds())
+        db_session = SessionModel(
+            task_id=req.task_id,
+            start_time=start_utc,
+            end_time=end_utc,
+            duration_seconds=duration,
+            tags=req.tags,
+            notes=req.notes,
+            review_skipped=req.review_skipped,
+        )
+        self.db.add(db_session)
+        self.db.commit()
+        self.db.refresh(db_session)
+        db_session.start_time = ensure_utc(db_session.start_time)
+        db_session.end_time = ensure_utc(db_session.end_time)
+        return db_session
+
+    def list_sessions(self, start: datetime | None = None, end: datetime | None = None) -> list[dict[str, Any]]:
+        query = select(SessionModel)
+        if start:
+            naive_start = ensure_utc(start).replace(tzinfo=None)
+            query = query.where(SessionModel.start_time >= naive_start)
+        if end:
+            naive_end = ensure_utc(end).replace(tzinfo=None)
+            query = query.where(SessionModel.start_time <= naive_end)
+
+        sessions = self.db.exec(query).all()
+        result = []
+        for s in sessions:
+            s_dict = s.model_dump()
+            if s.start_time:
+                s_dict["start_time"] = ensure_utc(s.start_time).isoformat()
+            if s.end_time:
+                s_dict["end_time"] = ensure_utc(s.end_time).isoformat()
+            result.append(s_dict)
+        return result
+
+    def get_session_by_id(self, session_id: int) -> dict[str, Any]:
+        s = self.db.get(SessionModel, session_id)
+        if not s:
+            raise EntityNotFoundError("Session", session_id)
+
+        s_dict = s.model_dump()
+        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+        if s.task:
+            s_dict["task"] = s.task.model_dump()
+
+        return s_dict
+
+    def update_session(self, session_id: int, req: SessionUpdate) -> SessionModel:
+        db_session = self.db.get(SessionModel, session_id)
+        if not db_session:
+            raise EntityNotFoundError("Session", session_id)
+
+        update_dict = req.model_dump(exclude_unset=True)
+        for key, val in update_dict.items():
+            if key in ("start_time", "end_time") and val is not None:
+                setattr(db_session, key, ensure_utc(val))
+            else:
+                setattr(db_session, key, val)
+
+        if db_session.start_time and db_session.end_time:
+            st = ensure_utc(db_session.start_time)
+            et = ensure_utc(db_session.end_time)
+            db_session.duration_seconds = max(0, int((et - st).total_seconds()))
+
+        self.db.add(db_session)
+        self.db.commit()
+        self.db.refresh(db_session)
+        db_session.start_time = ensure_utc(db_session.start_time)
+        db_session.end_time = ensure_utc(db_session.end_time)
+        return db_session
+
+    def delete_session(self, session_id: int) -> None:
+        db_session = self.db.get(SessionModel, session_id)
+        if not db_session:
+            raise EntityNotFoundError("Session", session_id)
+
+        self.db.delete(db_session)
+        self.db.commit()
+
+    def create_retro_session(self, req: RetroSessionCreate) -> SessionModel:
+        start_utc = ensure_utc(req.start_time)
+        end_utc = ensure_utc(req.end_time)
+
+        if end_utc <= start_utc:
+            raise ValidationError("end_time must be strictly after start_time")
+
+        duration = int((end_utc - start_utc).total_seconds())
+        db_session = SessionModel(
+            task_id=req.task_id,
+            start_time=start_utc,
+            end_time=end_utc,
+            duration_seconds=duration,
+            tags=req.tags,
+            notes=req.notes,
+        )
+        self.db.add(db_session)
+        self.db.commit()
+        self.db.refresh(db_session)
+        db_session.start_time = ensure_utc(db_session.start_time)
+        db_session.end_time = ensure_utc(db_session.end_time)
+        return db_session
+
+    def record_reflection(self, req: ReflectionCreate) -> dict[str, Any]:
+        db_session = self.db.get(SessionModel, req.session_id)
+        if not db_session:
+            raise EntityNotFoundError("Session", req.session_id)
+
+        reflection_notes = [f"Energy: {req.energy_level}/5"]
+        if req.habits_completed:
+            reflection_notes.append(f"Habits: {', '.join(req.habits_completed)}")
+        if req.obstacles:
+            reflection_notes.append(f"Obstacles: {req.obstacles}")
+
+        additional_note = " | ".join(reflection_notes)
+        if db_session.notes:
+            db_session.notes = f"{db_session.notes}\n{additional_note}"
+        else:
+            db_session.notes = additional_note
+
+        self.db.add(db_session)
+        self.db.commit()
+        self.db.refresh(db_session)
+        return {"status": "success", "session_id": db_session.id, "reflection": additional_note}

@@ -1,45 +1,46 @@
-import time
 import re
+import time
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 import httpx
-from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Dict, Any
 from textual.app import App, ComposeResult
-from textual.containers import Container, Vertical, ScrollableContainer
-from textual.widgets import Header, Footer, Static, DataTable, Input
-from textual.screen import ModalScreen
-from textual.reactive import reactive
 from textual.binding import Binding
+from textual.containers import Container, ScrollableContainer, Vertical
+from textual.reactive import reactive
+from textual.screen import ModalScreen
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from timetrace.config import settings
 from timetrace.core.editor import open_in_nvim
 from timetrace.core.examples import FULL_EXAMPLES_MARKDOWN
 from timetrace.core.inline_parser import (
-    parse_inline_task,
-    parse_inline_timer,
-    parse_inline_session_edit,
     parse_inline_reflection,
     parse_inline_retro,
+    parse_inline_session_edit,
+    parse_inline_task,
+    parse_inline_timer,
 )
 
 BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
 
 
-def parse_utc_dt(iso_str: Optional[str]) -> datetime:
+def parse_utc_dt(iso_str: str | None) -> datetime:
     if not iso_str:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
     try:
         clean = str(iso_str)
         if not clean.endswith("Z") and "+" not in clean and "-" not in clean[10:]:
             clean += "Z"
         dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
         if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.replace(tzinfo=UTC)
         return dt
     except Exception:
-        return datetime.min.replace(tzinfo=timezone.utc)
+        return datetime.min.replace(tzinfo=UTC)
 
 
-def format_local_time(iso_str: Optional[str], fmt: str = "%Y-%m-%d %H:%M") -> str:
+def format_local_time(iso_str: str | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
     if not iso_str:
         return ""
     try:
@@ -164,7 +165,7 @@ class ExamplesModal(ModalScreen):
 class StatsModal(ModalScreen):
     BINDINGS = [("escape", "cancel", "Cancel")]
 
-    def __init__(self, summary: List[Dict[str, Any]]):
+    def __init__(self, summary: list[dict[str, Any]]):
         super().__init__()
         self.summary = summary
 
@@ -274,10 +275,10 @@ class TimeTraceTUI(App):
 
     def __init__(self):
         super().__init__()
-        self.loaded_tasks: List[Dict[str, Any]] = []
-        self.loaded_sessions: List[Dict[str, Any]] = []
-        self.loaded_habits: List[Dict[str, Any]] = []
-        self.active_task_id: Optional[int] = None
+        self.loaded_tasks: list[dict[str, Any]] = []
+        self.loaded_sessions: list[dict[str, Any]] = []
+        self.loaded_habits: list[dict[str, Any]] = []
+        self.active_task_id: int | None = None
         self.filter_modes = ["all", "hide_completed", "in_progress", "ongoing", "completed"]
         self.filter_index = 0
         self.sort_modes = ["priority", "created_at", "title", "status"]
@@ -285,7 +286,7 @@ class TimeTraceTUI(App):
         self.search_query: str = ""
         self.last_d_time: float = 0.0
         self.last_g_time: float = 0.0
-        self.client: Optional[httpx.AsyncClient] = None
+        self.client: httpx.AsyncClient | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -379,7 +380,7 @@ class TimeTraceTUI(App):
     def action_cursor_up(self) -> None:
         self.query_one("#main_table", DataTable).action_cursor_up()
 
-    def get_selected_item_id(self) -> Optional[int]:
+    def get_selected_item_id(self) -> int | None:
         table = self.query_one("#main_table", DataTable)
         if table.row_count == 0 or table.cursor_row is None:
             return None
@@ -392,7 +393,7 @@ class TimeTraceTUI(App):
         except Exception:
             return None
 
-    def restore_cursor_position(self, saved_id: Optional[int], saved_row: Optional[int]) -> None:
+    def restore_cursor_position(self, saved_id: int | None, saved_row: int | None) -> None:
         table = self.query_one("#main_table", DataTable)
         if table.row_count == 0:
             return
@@ -630,7 +631,7 @@ class TimeTraceTUI(App):
             table.add_row("-", "-", "[dim]No logged calendar sessions match search.[/dim]", "-", "-", "-")
             return
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         current_sessions = []
         upcoming_sessions = []
         past_sessions = []
@@ -1050,7 +1051,7 @@ class TimeTraceTUI(App):
                 start_ago = parsed["start_mins_ago"]
                 dur_mins = parsed["duration_mins"]
 
-                end_dt = datetime.now(timezone.utc) - timedelta(minutes=(start_ago - dur_mins))
+                end_dt = datetime.now(UTC) - timedelta(minutes=(start_ago - dur_mins))
                 start_dt = end_dt - timedelta(minutes=dur_mins)
 
                 payload = {

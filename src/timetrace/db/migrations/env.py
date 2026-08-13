@@ -1,10 +1,9 @@
 import os
 import sys
-import logging
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
 from alembic import context
+from sqlalchemy import engine_from_config, pool
 from sqlmodel import SQLModel
 
 # Ensure src is on pythonpath
@@ -13,7 +12,6 @@ sys.path.insert(
 )
 
 from timetrace.config import settings
-import timetrace.db.models  # Register all SQLModel models
 
 config = context.config
 

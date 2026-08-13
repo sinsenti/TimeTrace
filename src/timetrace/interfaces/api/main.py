@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+
 from timetrace.interfaces.api.routers import api_router
 
 app = FastAPI(

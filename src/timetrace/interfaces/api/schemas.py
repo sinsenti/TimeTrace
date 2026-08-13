@@ -1,34 +1,34 @@
-from pydantic import BaseModel
-from typing import Optional, List
 from datetime import datetime
+
+from pydantic import BaseModel
 
 
 class TaskCreate(BaseModel):
     title: str
-    description: Optional[str] = None
+    description: str | None = None
     priority: str = "-"
     status: str = "in_progress"
     color: str = "auto"
     tags: str = ""
-    estimated_minutes: Optional[int] = None
+    estimated_minutes: int | None = None
     requires_session_review: bool = True
-    created_at: Optional[datetime] = None
+    created_at: datetime | None = None
 
 
 class TaskUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
-    priority: Optional[str] = None
-    status: Optional[str] = None
-    color: Optional[str] = None
-    tags: Optional[str] = None
-    estimated_minutes: Optional[int] = None
-    requires_session_review: Optional[bool] = None
-    created_at: Optional[datetime] = None
+    title: str | None = None
+    description: str | None = None
+    priority: str | None = None
+    status: str | None = None
+    color: str | None = None
+    tags: str | None = None
+    estimated_minutes: int | None = None
+    requires_session_review: bool | None = None
+    created_at: datetime | None = None
 
 
 class SessionCreate(BaseModel):
-    task_id: Optional[int] = None
+    task_id: int | None = None
     start_time: datetime
     end_time: datetime
     tags: str = "#general"
@@ -37,20 +37,20 @@ class SessionCreate(BaseModel):
 
 
 class SessionUpdate(BaseModel):
-    start_time: Optional[datetime] = None
-    end_time: Optional[datetime] = None
-    tags: Optional[str] = None
-    notes: Optional[str] = None
-    task_id: Optional[int] = None
-    review_skipped: Optional[bool] = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    tags: str | None = None
+    notes: str | None = None
+    task_id: int | None = None
+    review_skipped: bool | None = None
 
 
 class TimerStartRequest(BaseModel):
-    task_id: Optional[int] = None
+    task_id: int | None = None
     tags: str = ""
     notes: str = ""
     mode: str = "flowtime"
-    target_minutes: Optional[int] = None
+    target_minutes: int | None = None
 
 
 class TimerSplitRequest(BaseModel):
@@ -60,19 +60,19 @@ class TimerSplitRequest(BaseModel):
 
 class DayReviewCreate(BaseModel):
     date_str: str
-    rating: Optional[int] = 3
-    highlights: Optional[str] = ""
-    friction: Optional[str] = ""
-    notes: Optional[str] = ""
-    review_skipped: Optional[bool] = False
+    rating: int | None = 3
+    highlights: str | None = ""
+    friction: str | None = ""
+    notes: str | None = ""
+    review_skipped: bool | None = False
 
 
 class TaskReviewCreate(BaseModel):
     task_id: int
-    difficulty: Optional[int] = 3
-    what_went_well: Optional[str] = ""
-    blockers: Optional[str] = ""
-    key_takeaways: Optional[str] = ""
+    difficulty: int | None = 3
+    what_went_well: str | None = ""
+    blockers: str | None = ""
+    key_takeaways: str | None = ""
 
 
 class RatingDefinitionCreate(BaseModel):
@@ -81,29 +81,29 @@ class RatingDefinitionCreate(BaseModel):
     min_score: int = 1
     max_score: int = 10
     is_required: bool = False
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class RatingDefinitionUpdate(BaseModel):
-    name: Optional[str] = None
-    target_type: Optional[str] = None
-    min_score: Optional[int] = None
-    max_score: Optional[int] = None
-    is_required: Optional[bool] = None
-    description: Optional[str] = None
+    name: str | None = None
+    target_type: str | None = None
+    min_score: int | None = None
+    max_score: int | None = None
+    is_required: bool | None = None
+    description: str | None = None
 
 
 class RatingEntryCreate(BaseModel):
     rating_definition_id: int
     target_type: str
     target_id: str
-    score: Optional[int] = 0
-    dismissed: Optional[bool] = False
-    notes: Optional[str] = None
+    score: int | None = 0
+    dismissed: bool | None = False
+    notes: str | None = None
 
 
 class RetroSessionCreate(BaseModel):
-    task_id: Optional[int] = None
+    task_id: int | None = None
     start_time: datetime
     end_time: datetime
     tags: str = ""
@@ -112,19 +112,19 @@ class RetroSessionCreate(BaseModel):
 
 class ReflectionCreate(BaseModel):
     session_id: int
-    energy_level: Optional[int] = 3
-    obstacles: Optional[str] = ""
-    habits_completed: List[str] = []
+    energy_level: int | None = 3
+    obstacles: str | None = ""
+    habits_completed: list[str] = []
 
 
 class IdleToggleRequest(BaseModel):
-    enabled: Optional[bool] = None
+    enabled: bool | None = None
 
 
 class IdleResolveRequest(BaseModel):
     option: str
-    new_tags: Optional[str] = "#general"
-    new_notes: Optional[str] = ""
+    new_tags: str | None = "#general"
+    new_notes: str | None = ""
 
 
 class HabitCreate(BaseModel):
@@ -133,22 +133,22 @@ class HabitCreate(BaseModel):
     target_value: float = 1.0
     unit: str = ""
     frequency: str = "Every day"
-    reminder_time: Optional[str] = None
+    reminder_time: str | None = None
     color: str = "#10b981"
 
 
 class HabitUpdate(BaseModel):
-    name: Optional[str] = None
-    habit_type: Optional[str] = None
-    target_value: Optional[float] = None
-    unit: Optional[str] = None
-    frequency: Optional[str] = None
-    reminder_time: Optional[str] = None
-    color: Optional[str] = None
+    name: str | None = None
+    habit_type: str | None = None
+    target_value: float | None = None
+    unit: str | None = None
+    frequency: str | None = None
+    reminder_time: str | None = None
+    color: str | None = None
 
 
 class HabitLogRequest(BaseModel):
     date_str: str
-    status: Optional[str] = None
-    delta_value: Optional[float] = None
-    set_value: Optional[float] = None
+    status: str | None = None
+    delta_value: float | None = None
+    set_value: float | None = None

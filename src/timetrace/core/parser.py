@@ -1,10 +1,11 @@
 import re
-from datetime import datetime, date, timezone, timedelta
-from typing import List, Dict, Any, Optional
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
+
 import frontmatter
 
 
-def export_sessions_to_markdown(sessions: List[Dict[str, Any]], log_date: date) -> str:
+def export_sessions_to_markdown(sessions: list[dict[str, Any]], log_date: date) -> str:
     post = frontmatter.Post("")
     post.metadata = {
         "date": log_date.isoformat(),
@@ -28,12 +29,12 @@ def export_sessions_to_markdown(sessions: List[Dict[str, Any]], log_date: date) 
     return frontmatter.dumps(post)
 
 
-def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
+def parse_markdown_to_sessions(md_content: str) -> list[dict[str, Any]]:
     post = frontmatter.loads(md_content)
     raw_date = post.metadata.get("date", date.today())
     base_date_str = raw_date.isoformat() if isinstance(raw_date, (date, datetime)) else str(raw_date)
 
-    sessions: List[Dict[str, Any]] = []
+    sessions: list[dict[str, Any]] = []
     session_pattern = re.compile(r"^-\s*\[(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}|NOW)\]\s*\|\s*([^|]+)\s*\|\s*(.+)")
     sub_bullet_pattern = re.compile(r"^\s+-\s*(.+)")
 
@@ -42,12 +43,12 @@ def parse_markdown_to_sessions(md_content: str) -> List[Dict[str, Any]]:
         match = session_pattern.match(line_str)
         if match:
             start_hhmm, end_hhmm, tags, notes = match.groups()
-            start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00").replace(tzinfo=timezone.utc)
+            start_dt = datetime.fromisoformat(f"{base_date_str}T{start_hhmm}:00").replace(tzinfo=UTC)
             
             if end_hhmm.upper() == "NOW":
-                end_dt = datetime.now(timezone.utc)
+                end_dt = datetime.now(UTC)
             else:
-                end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00").replace(tzinfo=timezone.utc)
+                end_dt = datetime.fromisoformat(f"{base_date_str}T{end_hhmm}:00").replace(tzinfo=UTC)
                 if end_dt < start_dt:
                     end_dt += timedelta(days=1)
 

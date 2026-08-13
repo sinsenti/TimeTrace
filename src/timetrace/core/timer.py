@@ -1,6 +1,7 @@
 import json
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Dict, Any
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from timetrace.config import settings
 from timetrace.interfaces.api.utils import ensure_utc
 
@@ -9,19 +10,19 @@ class ActiveTimerState:
     def __init__(self):
         self.state_file = settings.db_file.parent / "active_timer.json"
         self.is_running: bool = False
-        self.task_id: Optional[int] = None
-        self.task_title: Optional[str] = None
-        self.start_time: Optional[datetime] = None
+        self.task_id: int | None = None
+        self.task_title: str | None = None
+        self.start_time: datetime | None = None
         self.tags: str = ""
         self.notes: str = ""
         self.mode: str = "flowtime"
-        self.target_minutes: Optional[int] = None
+        self.target_minutes: int | None = None
 
         # Killer switch and idle state
         self.idle_detection_enabled: bool = settings.idle_detection_enabled
         self.idle_threshold_seconds: int = settings.idle_threshold_seconds
         self.is_frozen_idle: bool = False
-        self.pending_idle_gap: Optional[Dict[str, Any]] = None
+        self.pending_idle_gap: dict[str, Any] | None = None
 
         self._load_state()
 
@@ -70,7 +71,7 @@ class ActiveTimerState:
         except Exception:
             pass
 
-    def toggle_idle_detection(self, enabled: Optional[bool] = None) -> bool:
+    def toggle_idle_detection(self, enabled: bool | None = None) -> bool:
         """Killer Switch: Toggles the idle detection feature on/off."""
         if enabled is None:
             self.idle_detection_enabled = not self.idle_detection_enabled
@@ -79,12 +80,12 @@ class ActiveTimerState:
         self._save_state()
         return self.idle_detection_enabled
 
-    def freeze_for_idle(self, idle_seconds: float) -> Dict[str, Any]:
+    def freeze_for_idle(self, idle_seconds: float) -> dict[str, Any]:
         """Retroactively freezes the active timer at the exact start of idleness."""
         if not self.is_running or not self.start_time:
             return {}
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         start_utc = ensure_utc(self.start_time)
         idle_start_time = now - timedelta(seconds=idle_seconds)
 
@@ -119,7 +120,7 @@ class ActiveTimerState:
         self._save_state()
         return self.pending_idle_gap
 
-    def resolve_idle_gap(self) -> Optional[Dict[str, Any]]:
+    def resolve_idle_gap(self) -> dict[str, Any] | None:
         """Clears frozen idle status after user resolves AFK prompt."""
         gap = self.pending_idle_gap
         self.is_frozen_idle = False
@@ -136,13 +137,13 @@ class ActiveTimerState:
 
     def start(
         self,
-        task_id: Optional[int] = None,
-        task_title: Optional[str] = None,
+        task_id: int | None = None,
+        task_title: str | None = None,
         tags: str = "",
         notes: str = "",
         mode: str = "flowtime",
-        target_minutes: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        target_minutes: int | None = None,
+    ) -> dict[str, Any]:
         if self.is_running:
             raise ValueError(
                 "Timer is already running. Stop or split current timer first."
@@ -152,7 +153,7 @@ class ActiveTimerState:
         self.pending_idle_gap = None
         self.task_id = task_id
         self.task_title = task_title
-        self.start_time = datetime.now(timezone.utc)
+        self.start_time = datetime.now(UTC)
         self.tags = tags
         self.notes = notes
         self.mode = mode
@@ -161,7 +162,7 @@ class ActiveTimerState:
         self._save_state()
         return self.get_status()
 
-    def split(self, new_tags: str, new_notes: str) -> Dict[str, Any]:
+    def split(self, new_tags: str, new_notes: str) -> dict[str, Any]:
         if not self.is_running or not self.start_time:
             raise ValueError("No active timer to split.")
 
@@ -182,11 +183,11 @@ class ActiveTimerState:
         )
         return stopped_summary
 
-    def stop(self) -> Dict[str, Any]:
+    def stop(self) -> dict[str, Any]:
         if not self.is_running or not self.start_time:
             raise ValueError("No timer is currently active.")
 
-        end_time = datetime.now(timezone.utc)
+        end_time = datetime.now(UTC)
         start_utc = ensure_utc(self.start_time)
         duration = int((end_time - start_utc).total_seconds())
 
@@ -214,7 +215,7 @@ class ActiveTimerState:
         self._save_state()
         return session_summary
 
-    def get_status(self) -> Dict[str, Any]:
+    def get_status(self) -> dict[str, Any]:
         status_data = {
             "is_running": self.is_running,
             "idle_detection_enabled": self.idle_detection_enabled,
@@ -234,7 +235,7 @@ class ActiveTimerState:
             return status_data
 
         start_utc = ensure_utc(self.start_time)
-        elapsed = int((datetime.now(timezone.utc) - start_utc).total_seconds())
+        elapsed = int((datetime.now(UTC) - start_utc).total_seconds())
         remaining = None
         if self.mode == "pomodoro" and self.target_minutes:
             target_secs = self.target_minutes * 60
