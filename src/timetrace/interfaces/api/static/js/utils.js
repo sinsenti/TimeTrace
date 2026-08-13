@@ -1,10 +1,24 @@
-let defaultPalette = ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
+/**
+ * TimeTrace Utility Helpers & Hash Color Dispersion Engine
+ */
+
+let defaultPalette = [
+    '#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#ec4899', '#0284c7', '#0d9488',
+    '#4f46e5', '#9333ea', '#16a34a', '#ea580c', '#e11d48', '#c026d3', '#0891b2', '#b45309'
+];
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 
 /**
- * State Management Layer: Evaluates color priority
- * Priority: Custom Hex > Auto Theme Palette > Default Fallback
+ * Polynomial Rolling Hash Dispersion Engine with Seed Offset Support
  */
+function hashString(str) {
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+        hash = (hash * 31 + str.charCodeAt(i)) & 0x7FFFFFFF;
+    }
+    return hash;
+}
+
 function getTaskColor(task, index = 0) {
     if (!task) return defaultPalette[0];
     
@@ -14,18 +28,31 @@ function getTaskColor(task, index = 0) {
     
     const activePalette = (typeof defaultPalette !== 'undefined' && defaultPalette.length > 0)
         ? defaultPalette
-        : ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'];
+        : ['#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#ec4899', '#0284c7', '#0d9488'];
+
+    const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
+    const seed = settings.colorSeed || 0;
 
     const title = task.title || '';
     if (title.length > 0) {
-        let hash = 0;
-        for (let i = 0; i < title.length; i++) {
-            hash += title.charCodeAt(i);
-        }
+        const seedStr = seed ? `_${seed}` : '';
+        const hash = hashString(title + seedStr);
         return activePalette[hash % activePalette.length];
     }
     
-    return activePalette[index % activePalette.length];
+    return activePalette[(index + seed) % activePalette.length];
+}
+
+function getTagColor(tagStr) {
+    let clean = tagStr.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
+    if (!clean) return defaultPalette[0];
+
+    const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
+    const seed = settings.colorSeed || 0;
+    const seedStr = seed ? `_${seed}` : '';
+
+    const hash = hashString(clean + seedStr);
+    return defaultPalette[hash % defaultPalette.length];
 }
 
 function parseApiDateTime(dtStr) {
@@ -74,14 +101,6 @@ function injectTimezoneLabel() {
             cornerCell.innerHTML = `<div class="tz-header-label">${getLocalTimezoneLabel()}</div>`;
         }
     }, 50);
-}
-
-function getTagColor(tagStr) {
-    let clean = tagStr.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-    if (!clean) return defaultPalette[0];
-    let hash = 0;
-    for (let i = 0; i < clean.length; i++) hash += clean.charCodeAt(i);
-    return defaultPalette[hash % defaultPalette.length];
 }
 
 function setSlotDuration(val, updateSettings = true) {

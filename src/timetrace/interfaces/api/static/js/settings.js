@@ -1,20 +1,35 @@
 /**
  * TimeTrace User Settings & Theme Manager
- * Fully integrated with centralized ApiClient (api.post).
  */
 
 const SETTINGS_KEY = 'timetrace_user_settings';
 
 const THEME_PALETTES = {
-    midnight: ['#7c3aed', '#2563eb', '#d97706', '#dc2626', '#059669', '#ec4899', '#0284c7', '#0d9488'],
-    nord: ['#88c0d0', '#81a1c1', '#5e81ac', '#bf616a', '#d08770', '#ebcb8b', '#a3be8c', '#b48ead'],
-    dracula: ['#bd93f9', '#ff79c6', '#8be9fd', '#50fa7b', '#ffb86c', '#ff5555', '#f1fa8c', '#6272a4'],
-    cyberpunk: ['#00f0ff', '#ff0055', '#ffe600', '#00ff66', '#9d00ff', '#ff9900', '#ff00aa', '#00a8ff'],
-    monokai: ['#ff6188', '#fc9867', '#ffd866', '#a9dc76', '#78dce8', '#ab9df2', '#78dce8', '#a9dc76']
+    midnight: [
+        '#7c3aed', '#2563eb', '#059669', '#d97706', '#dc2626', '#ec4899', '#0284c7', '#0d9488',
+        '#4f46e5', '#9333ea', '#16a34a', '#ea580c', '#e11d48', '#c026d3', '#0891b2', '#b45309'
+    ],
+    nord: [
+        '#88c0d0', '#81a1c1', '#5e81ac', '#bf616a', '#d08770', '#ebcb8b', '#a3be8c', '#b48ead',
+        '#8fbcbb', '#d88195', '#a9a1e1', '#689d6a', '#d79921', '#7dc1c5', '#988bc7', '#cc241d'
+    ],
+    dracula: [
+        '#bd93f9', '#ff79c6', '#8be9fd', '#50fa7b', '#ffb86c', '#ff5555', '#f1fa8c', '#6272a4',
+        '#d6acff', '#ff6eaf', '#69ff94', '#ff9e3b', '#ff757f', '#70a5ff', '#79dae8', '#c586c0'
+    ],
+    cyberpunk: [
+        '#00f0ff', '#ff0055', '#ffe600', '#00ff66', '#9d00ff', '#ff9900', '#ff00aa', '#00a8ff',
+        '#39ff14', '#7b00ff', '#ff3366', '#ffaa00', '#00ffd5', '#5200ff', '#ff007f', '#f0ff00'
+    ],
+    monokai: [
+        '#ff6188', '#fc9867', '#ffd866', '#a9dc76', '#78dce8', '#ab9df2', '#ff8579', '#b7eb46',
+        '#5ec4ff', '#f16dae', '#e6b450', '#f25287', '#c397d8', '#52e0a2', '#ff9e42', '#36d1c4'
+    ]
 };
 
 const DEFAULT_SETTINGS = {
     theme: 'midnight',
+    colorSeed: 0,
     defaultView: 'auto',
     lastSelectedView: 'timeGridWeek',
     firstDayOfWeek: 1,
@@ -43,6 +58,20 @@ function getUserSettings() {
 
 function saveUserSettings(settings) {
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+}
+
+function reshuffleAutoColors() {
+    const s = getUserSettings();
+    s.colorSeed = (s.colorSeed || 0) + 1;
+    saveUserSettings(s);
+
+    applyUserSettings(s, false);
+
+    const msg = document.getElementById('reshuffle_status_msg');
+    if (msg) {
+        msg.innerText = 'Reshuffled!';
+        setTimeout(() => { msg.innerText = ''; }, 1800);
+    }
 }
 
 function setupSettingsKeyboardShortcuts() {
