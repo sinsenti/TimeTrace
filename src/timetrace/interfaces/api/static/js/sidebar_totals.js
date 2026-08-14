@@ -1,6 +1,93 @@
 /**
- * Tasks Sidebar & Range Totals Breakdown Calculator
+ * Tasks Sidebar, Range Totals Breakdown & Drag-to-Resize Mechanics
  */
+
+function initSidebarResizers() {
+    const leftSidebar = document.getElementById('left_sidebar');
+    const leftResizer = document.getElementById('left_resizer');
+    const rightSidebar = document.getElementById('right_sidebar');
+    const rightResizer = document.getElementById('right_resizer');
+
+    let isResizingLeft = false;
+    let isResizingRight = false;
+
+    // Restore saved widths from localStorage
+    const savedLeftWidth = localStorage.getItem('timetrace_left_sidebar_width');
+    const savedRightWidth = localStorage.getItem('timetrace_right_sidebar_width');
+    
+    if (savedLeftWidth && leftSidebar) {
+        leftSidebar.style.width = `${savedLeftWidth}px`;
+    }
+    if (savedRightWidth && rightSidebar) {
+        rightSidebar.style.width = `${savedRightWidth}px`;
+    }
+
+    if (leftResizer && leftSidebar) {
+        leftResizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizingLeft = true;
+            leftResizer.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+    }
+
+    if (rightResizer && rightSidebar) {
+        rightResizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            isResizingRight = true;
+            rightResizer.classList.add('resizing');
+            document.body.style.cursor = 'col-resize';
+            document.body.style.userSelect = 'none';
+        });
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (!isResizingLeft && !isResizingRight) return;
+
+        if (isResizingLeft && leftSidebar) {
+            const containerLeft = leftSidebar.getBoundingClientRect().left;
+            let newWidth = e.clientX - containerLeft;
+            
+            // Min 160px, Max dynamically calculated to almost full screen (leaves 80px)
+            const maxLeftWidth = Math.max(160, window.innerWidth - 80);
+            newWidth = Math.max(160, Math.min(newWidth, maxLeftWidth));
+            
+            leftSidebar.style.width = `${newWidth}px`;
+            localStorage.setItem('timetrace_left_sidebar_width', newWidth);
+        }
+
+        if (isResizingRight && rightSidebar) {
+            const containerRight = rightSidebar.getBoundingClientRect().right;
+            let newWidth = containerRight - e.clientX;
+            newWidth = Math.max(200, Math.min(newWidth, 600)); // Min 200px, Max 600px
+            rightSidebar.style.width = `${newWidth}px`;
+            localStorage.setItem('timetrace_right_sidebar_width', newWidth);
+        }
+
+        if (typeof calendar !== 'undefined' && calendar) {
+            calendar.updateSize();
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (isResizingLeft || isResizingRight) {
+            isResizingLeft = false;
+            isResizingRight = false;
+            if (leftResizer) leftResizer.classList.remove('resizing');
+            if (rightResizer) rightResizer.classList.remove('resizing');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+            if (typeof calendar !== 'undefined' && calendar) {
+                calendar.updateSize();
+            }
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initSidebarResizers();
+});
 
 function setTaskFilter(filterName) {
     currentFilter = filterName;
