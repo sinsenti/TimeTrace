@@ -7,15 +7,14 @@ let defaultPalette = [
     '#4f46e5', '#9333ea', '#16a34a', '#ea580c', '#e11d48', '#c026d3', '#0891b2', '#b45309'
 ];
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
+let pendingDeleteSessionId = null;
 
-/**
- * Capture-Phase Window Esc Listener
- */
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
         let closedAny = false;
 
         const modalOrder = [
+            { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
             { id: 'subtask_modal', closeFn: typeof closeSubtaskModal === 'function' ? closeSubtaskModal : null },
             { id: 'custom_filter_modal', closeFn: typeof closeCustomFilterModal === 'function' ? closeCustomFilterModal : null },
@@ -52,6 +51,51 @@ window.addEventListener('keydown', function(e) {
         }
     }
 }, true);
+
+function promptDeleteSession(sessionId) {
+    if (!sessionId) return;
+    pendingDeleteSessionId = sessionId;
+
+    let isRecurring = false;
+    if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+        const s = allSessions.find(item => String(item.id) === String(sessionId));
+        if (s && s.task_id && typeof allTasksMap !== 'undefined' && allTasksMap[s.task_id]) {
+            isRecurring = Boolean(allTasksMap[s.task_id].is_recurring);
+        }
+    }
+
+    if (isRecurring) {
+        const modal = document.getElementById('recurring_delete_modal');
+        if (modal) {
+            modal.classList.remove('hidden');
+            return;
+        }
+    }
+
+    confirmRecurringDelete('only_this');
+}
+
+function closeRecurringDeleteModal() {
+    const modal = document.getElementById('recurring_delete_modal');
+    if (modal) modal.classList.add('hidden');
+    pendingDeleteSessionId = null;
+}
+
+async function confirmRecurringDelete(scope) {
+    const sid = pendingDeleteSessionId;
+    closeRecurringDeleteModal();
+    if (!sid) return;
+
+    try {
+        await api.delete(`/sessions/${sid}?scope=${scope}`);
+        if (typeof closeSessionModal === 'function') closeSessionModal();
+        if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
+        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+        if (typeof loadCurrentRevisionView === 'function') loadCurrentRevisionView();
+    } catch (err) {
+        console.error("Failed to delete session:", err);
+    }
+}
 
 async function discardFutureSessionsForTask(taskId) {
     if (!taskId) return;
@@ -95,7 +139,6 @@ function getTaskColor(task, index = 0) {
     const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
     const seed = settings.colorSeed || 0;
 
-    // Fixed: Always prioritize stable task.id over array index so colors never change randomly on reload
     const identifier = task.id ? String(task.id) : (task.title || String(index));
     const seedStr = seed ? `_${seed}` : '';
     const hash = hashString(identifier + seedStr);

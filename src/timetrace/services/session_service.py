@@ -20,7 +20,6 @@ class SessionService:
         if end_utc <= start_utc:
             raise ValidationError("end_time must be strictly after start_time")
 
-        # Safely validate task_id to avoid SQLite Foreign Key Constraint Failures
         valid_task_id = req.task_id
         if valid_task_id:
             task_obj = self.db.get(Task, valid_task_id)
@@ -106,12 +105,29 @@ class SessionService:
         db_session.end_time = ensure_utc(db_session.end_time)
         return db_session
 
-    def delete_session(self, session_id: int) -> None:
+    def delete_session(self, session_id: int, scope: str = "only_this") -> None:
         db_session = self.db.get(SessionModel, session_id)
         if not db_session:
             raise EntityNotFoundError("Session", session_id)
 
-        self.db.delete(db_session)
+        if scope == "all" and db_session.task_id:
+            sessions_to_del = self.db.exec(
+                select(SessionModel).where(SessionModel.task_id == db_session.task_id)
+            ).all()
+            for s in sessions_to_del:
+                self.db.delete(s)
+        elif scope == "following" and db_session.task_id and db_session.start_time:
+            sessions_to_del = self.db.exec(
+                select(SessionModel).where(
+                    SessionModel.task_id == db_session.task_id,
+                    SessionModel.start_time >= db_session.start_time
+                )
+            ).all()
+            for s in sessions_to_del:
+                self.db.delete(s)
+        else:
+            self.db.delete(db_session)
+
         self.db.commit()
 
     def create_retro_session(self, req: RetroSessionCreate) -> SessionModel:

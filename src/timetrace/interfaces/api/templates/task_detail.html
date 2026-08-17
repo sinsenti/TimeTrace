@@ -46,10 +46,9 @@
 
         <div id="task_breadcrumbs" class="text-xs text-purple-400 font-semibold mb-1 flex items-center space-x-2"></div>
 
-        <!-- Always Visible Parent Task Banner (for Subtasks) -->
         <div id="parent_task_banner" class="hidden"></div>
 
-        <!-- Task Stats Summary Header -->
+        <!-- Task Stats Summary Header (Omitted #id prefix) -->
         <div class="detail-card space-y-4">
             <div class="flex justify-between items-start border-b border-[var(--border-muted)] pb-3">
                 <div class="space-y-1">
@@ -81,13 +80,12 @@
                 </div>
             </div>
 
-            <!-- Subtask Progress Bar Wrapper -->
             <div id="subtasks_completion_bar_wrapper" class="w-full bg-[#0f1016] h-2.5 rounded-full overflow-hidden border border-[var(--border-muted)] mt-1 hidden">
                 <div id="subtasks_completion_bar" class="bg-blue-600 h-full transition-all duration-300" style="width: 0%"></div>
             </div>
         </div>
 
-        <!-- Integrated Full Task Editor -->
+        <!-- Integrated Full Task Editor With Tags -->
         <div class="detail-card space-y-4">
             <h2 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Edit Task Properties</h2>
             
@@ -97,9 +95,14 @@
                     <input id="inspector_edit_title" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
-                    <textarea id="inspector_edit_desc" rows="3" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"></textarea>
+                    <label class="text-xs text-slate-400 block mb-1">Tags</label>
+                    <input id="inspector_edit_tags" type="text" placeholder="#programming #backend" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-500">
                 </div>
+            </div>
+
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
+                <textarea id="inspector_edit_desc" rows="3" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"></textarea>
             </div>
 
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
@@ -144,13 +147,12 @@
                 </div>
             </div>
 
-            <!-- Recurrence Inspector Config -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs p-3 bg-[#0f1016] rounded-lg border border-[var(--border-muted)]">
                 <label class="flex items-center space-x-2 cursor-pointer">
                     <input id="inspector_edit_is_recurring" type="checkbox" onchange="toggleInspectorRecurrenceRule(this.checked)" class="w-4 h-4 accent-purple-600 rounded cursor-pointer">
                     <div>
                         <span class="font-bold text-white block">Is Recurrent Task</span>
-                        <span class="text-[10px] text-slate-400">Re-queues task on completion</span>
+                        <span class="text-[10px] text-slate-400">Re-queues & schedules 3 months out</span>
                     </div>
                 </label>
 
@@ -186,7 +188,6 @@
             </div>
         </div>
 
-        <!-- Subtasks Hierarchy Tree Section -->
         <div class="detail-card space-y-4">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                 <div>
@@ -200,7 +201,6 @@
         </div>
     </main>
 
-    <!-- Zoom-Safe Subtask Modal -->
     <div id="subtask_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[400px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">

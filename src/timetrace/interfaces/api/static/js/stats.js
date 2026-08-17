@@ -3,8 +3,7 @@ let widgetConfig = JSON.parse(localStorage.getItem('timetrace_widget_config') ||
     daily_trend: true,
     hourly_heatmap: true,
     tags_pie: true,
-    habits: true,
-    obstacles: true
+    estimation_accuracy: true
 }));
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -23,11 +22,10 @@ function toggleWidgetModal() {
 function renderWidgetToggleControls() {
     const container = document.getElementById('widget_toggle_list');
     const widgets = [
+        { id: 'estimation_accuracy', label: 'Estimation Accuracy Breakdown' },
         { id: 'daily_trend', label: 'Daily Focus Trend (Bar Chart)' },
         { id: 'hourly_heatmap', label: 'Peak Focus Hours (24h Distribution)' },
-        { id: 'tags_pie', label: 'Activity Breakdown (#tags Doughnut)' },
-        { id: 'habits', label: 'Habit Frequency & Streaks' },
-        { id: 'obstacles', label: 'Recent Obstacles & Distractions Log' }
+        { id: 'tags_pie', label: 'Activity Breakdown (#tags Doughnut)' }
     ];
 
     container.innerHTML = widgets.map(w => `
@@ -66,13 +64,11 @@ async function loadAnalyticsData() {
         document.getElementById('kpi_total_sessions').innerText = data.summary.total_sessions;
         document.getElementById('kpi_total_tasks').innerText = data.summary.tasks_count;
 
-        try {
-            const habits = await api.get('/habits');
-            const kpiHabitsEl = document.getElementById('kpi_total_habits');
-            if (kpiHabitsEl && habits) {
-                kpiHabitsEl.innerText = habits.length;
-            }
-        } catch (e) {}
+        if (data.estimation) {
+            document.getElementById('kpi_estimation_accuracy').innerText = `${data.estimation.accuracy_score_pct}%`;
+            document.getElementById('estimation_accuracy_ratio').innerText = `Tracked: ${data.estimation.total_actual_hours}h / Est: ${data.estimation.total_estimated_hours}h`;
+            renderEstimationAccuracyChart(data.estimation);
+        }
 
         renderDailyChart(data.daily_trend);
         renderHourlyChart(data.hourly_distribution);
@@ -81,6 +77,30 @@ async function loadAnalyticsData() {
     } catch (err) {
         console.error("Failed to load detailed analytics:", err);
     }
+}
+
+function renderEstimationAccuracyChart(est) {
+    const ctx = document.getElementById('chart_estimation_accuracy').getContext('2d');
+    if (charts.estimation) charts.estimation.destroy();
+
+    charts.estimation = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Accurate (±15%)', 'Underestimated (>115%)', 'Overestimated (<85%)'],
+            datasets: [{
+                data: [est.accurate_count, est.underestimated_count, est.overestimated_count],
+                backgroundColor: ['#10b981', '#ef4444', '#f59e0b'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } }
+            }
+        }
+    });
 }
 
 function renderDailyChart(dailyData) {

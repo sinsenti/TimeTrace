@@ -103,10 +103,11 @@
                 <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Month</button>
             </div>
 
+            <!-- Header Date Navigation Controls (< > August 2026) -->
             <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[var(--border-muted)] px-1 whitespace-nowrap text-[11px]">
-                <button onclick="calendar.prev()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&lt;</button>
-                <span id="calendar_range_title" class="px-2 font-semibold text-slate-200">Date Range</span>
-                <button onclick="calendar.next()" class="px-1.5 py-0.5 text-slate-300 hover:text-white font-bold">&gt;</button>
+                <button onclick="calendar.prev()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs">&lt;</button>
+                <button onclick="calendar.next()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs">&gt;</button>
+                <span id="calendar_range_title" class="px-2 font-bold text-slate-200">August 2026</span>
             </div>
             
             <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 rounded-lg border border-[var(--border-muted)] text-[11px] font-semibold">Today</button>
@@ -129,7 +130,6 @@
                 </div>
             </div>
 
-            <!-- Dynamic Configurable Status Filter Tabs -->
             <div id="sidebar_status_tabs" class="flex space-x-1 mb-2 overflow-x-auto pb-1"></div>
 
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
@@ -176,7 +176,6 @@
     {% include "components/session_modal.html" %}
     {% include "components/custom_filter_modal.html" %}
 
-    <!-- Sidebar Status Tabs Visibility Configurator Modal -->
     <div id="sidebar_tab_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-sm max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
@@ -195,7 +194,6 @@
         </div>
     </div>
 
-    <!-- JavaScript Modules -->
     <script src="/static/js/api_client.js"></script>
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/custom_filter.js"></script>

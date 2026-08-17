@@ -1,4 +1,4 @@
-<!-- Custom Confirmation Modal -->
+<!-- Custom Confirmation Modal & Recurring Deletion Prompt -->
 <div id="custom_confirm_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-[100]">
     <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
         <h3 id="confirm_modal_title" class="font-bold text-base text-red-400">Confirm Action</h3>
@@ -6,6 +6,36 @@
         <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
             <button id="confirm_modal_cancel_btn" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
             <button id="confirm_modal_proceed_btn" class="bg-red-600 hover:bg-red-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Confirm</button>
+        </div>
+    </div>
+</div>
+
+<!-- Recurring Session Scope Deletion Modal -->
+<div id="recurring_delete_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-[100]">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[400px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+            <h3 class="font-bold text-base text-amber-400">Delete Recurrent Session</h3>
+            <button type="button" onclick="closeRecurringDeleteModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">Which events do you want to delete?</p>
+        
+        <div class="space-y-2">
+            <button type="button" onclick="confirmRecurringDelete('only_this')" class="w-full bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] p-2.5 rounded-lg text-xs font-bold text-left hover:border-purple-500 transition">
+                <span class="block text-white">Only this event</span>
+                <span class="text-[10px] text-slate-400 font-normal">Delete only the selected single session log</span>
+            </button>
+            <button type="button" onclick="confirmRecurringDelete('following')" class="w-full bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] p-2.5 rounded-lg text-xs font-bold text-left hover:border-purple-500 transition">
+                <span class="block text-white">This and following events</span>
+                <span class="text-[10px] text-slate-400 font-normal">Delete this event and all future scheduled recurring sessions</span>
+            </button>
+            <button type="button" onclick="confirmRecurringDelete('all')" class="w-full bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 p-2.5 rounded-lg text-xs font-bold text-left transition">
+                <span class="block text-red-400">All events</span>
+                <span class="text-[10px] text-red-300/70 font-normal">Delete all past and future sessions linked to this task</span>
+            </button>
+        </div>
+
+        <div class="flex justify-end pt-2 border-t border-[var(--border-muted)]">
+            <button type="button" onclick="closeRecurringDeleteModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel</button>
         </div>
     </div>
 </div>

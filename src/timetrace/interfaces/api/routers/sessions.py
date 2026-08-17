@@ -36,8 +36,12 @@ def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_session(session_id: int, db: DBSession = Depends(get_session)):
-    SessionService(db).delete_session(session_id)
+def delete_session(
+    session_id: int,
+    scope: str = Query("only_this", description="Deletion scope: 'only_this', 'following', 'all'"),
+    db: DBSession = Depends(get_session)
+):
+    SessionService(db).delete_session(session_id, scope=scope)
     return None
 
 

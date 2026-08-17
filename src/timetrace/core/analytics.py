@@ -32,7 +32,7 @@ def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dict[str, Any]]) -> dict[str, Any]:
-    """Generates comprehensive statistics for the custom analytics dashboard."""
+    """Generates comprehensive statistics and estimation accuracy metrics."""
     now = datetime.now(UTC)
     
     total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)
@@ -54,7 +54,7 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
             dur = (s.get("duration_seconds") or 0) / 3600.0
             daily_trend[st_date] = round(daily_trend[st_date] + dur, 2)
 
-    # Hourly Focus Distribution (00:00 to 23:00 Heatmap)
+    # Hourly Focus Distribution
     hourly_distribution = {f"{h:02d}:00": 0.0 for h in range(24)}
     for s in sessions:
         st_raw = s.get("start_time")
@@ -74,7 +74,7 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         except Exception:
             pass
 
-    # Task Status & Priority Breakdown (Mapped to canonical status values)
+    # Task Status & Priority Breakdown
     task_status_counts = {"To Do": 0, "Ongoing": 0, "Scheduled": 0, "Done": 0, "Backlog": 0}
     task_priority_counts = {"high": 0, "medium": 0, "low": 0, "-": 0}
 
@@ -92,11 +92,53 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         if pr in task_priority_counts:
             task_priority_counts[pr] += 1
 
+    # Estimation Accuracy Analysis
+    task_actual_secs: dict[int, int] = {}
+    for s in sessions:
+        tid = s.get("task_id")
+        if tid:
+            task_actual_secs[tid] = task_actual_secs.get(tid, 0) + (s.get("duration_seconds") or 0)
+
+    total_est_minutes = sum(t.get("estimated_minutes") or 15 for t in tasks)
+    total_est_hours = round(total_est_minutes / 60.0, 2)
+
+    accurate_count = 0
+    underestimated_count = 0
+    overestimated_count = 0
+
+    for t in tasks:
+        tid = t.get("id")
+        est_secs = (t.get("estimated_minutes") or 15) * 60
+        actual_secs = task_actual_secs.get(tid, 0)
+
+        if actual_secs == 0:
+            continue
+
+        ratio = actual_secs / est_secs if est_secs > 0 else 1.0
+        if 0.85 <= ratio <= 1.15:
+            accurate_count += 1
+        elif ratio > 1.15:
+            underestimated_count += 1
+        else:
+            overestimated_count += 1
+
+    evaluated_tasks_count = accurate_count + underestimated_count + overestimated_count
+    accuracy_score_pct = round((accurate_count / evaluated_tasks_count) * 100, 1) if evaluated_tasks_count > 0 else 100.0
+
     return {
         "summary": {
             "total_hours": total_hours,
             "total_sessions": total_sessions,
             "tasks_count": len(tasks)
+        },
+        "estimation": {
+            "total_estimated_hours": total_est_hours,
+            "total_actual_hours": total_hours,
+            "accuracy_score_pct": accuracy_score_pct,
+            "accurate_count": accurate_count,
+            "underestimated_count": underestimated_count,
+            "overestimated_count": overestimated_count,
+            "evaluated_tasks_count": evaluated_tasks_count
         },
         "tags_summary": calculate_tag_summaries(sessions),
         "daily_trend": daily_trend,

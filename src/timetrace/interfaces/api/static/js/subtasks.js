@@ -41,9 +41,9 @@ async function loadTaskDetailTree() {
         currentTreeData = await api.get(`/tasks/${taskId}/tree`);
         const tree = currentTreeData;
         
-        // 1. Populate Header Title
+        // 1. Populate Header Title without #id prefix
         const titleHeader = document.getElementById('detail_task_title_header');
-        if (titleHeader) titleHeader.innerText = tree.title || `Task #${tree.id}`;
+        if (titleHeader) titleHeader.innerText = tree.title || 'Untitled Task';
 
         const statusBadge = document.getElementById('detail_task_status_badge');
         if (statusBadge) statusBadge.innerText = tree.status;
@@ -51,7 +51,7 @@ async function loadTaskDetailTree() {
         const priorityBadge = document.getElementById('detail_task_priority_badge');
         if (priorityBadge) priorityBadge.innerText = (tree.priority || '-').toUpperCase();
 
-        // 2. Display Parent Task Banner if this is a Subtask
+        // 2. Display Parent Task Banner if this is a Subtask (Omitted #id from breadcrumbs)
         const breadcrumbsEl = document.getElementById('task_breadcrumbs');
         const parentBannerEl = document.getElementById('parent_task_banner');
 
@@ -64,7 +64,7 @@ async function loadTaskDetailTree() {
                         <div class="bg-purple-950/40 border border-purple-800/80 rounded-xl p-3 flex justify-between items-center text-xs shadow-md">
                             <div class="flex items-center space-x-2">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-purple-900/80 text-purple-300 border border-purple-700">Subtask Of</span>
-                                <a href="/task-inspector/${parentTask.id}" class="font-black text-sm text-white hover:underline hover:text-purple-300">#${parentTask.id} ${parentTask.title}</a>
+                                <a href="/task-inspector/${parentTask.id}" class="font-black text-sm text-white hover:underline hover:text-purple-300">${parentTask.title}</a>
                                 <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/40 text-slate-300 uppercase">${parentTask.status}</span>
                             </div>
                             <a href="/task-inspector/${parentTask.id}" class="text-purple-300 hover:text-white font-bold underline text-[11px] flex items-center space-x-1">
@@ -78,9 +78,9 @@ async function loadTaskDetailTree() {
                     breadcrumbsEl.innerHTML = `
                         <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
                         <span>&gt;</span>
-                        <a href="/task-inspector/${parentTask.id}" class="hover:underline">#${parentTask.id} ${parentTask.title}</a>
+                        <a href="/task-inspector/${parentTask.id}" class="hover:underline">${parentTask.title}</a>
                         <span>&gt;</span>
-                        <span class="text-white font-bold">#${tree.id} ${tree.title}</span>
+                        <span class="text-white font-bold">${tree.title}</span>
                     `;
                 }
             } catch(e) {
@@ -92,7 +92,7 @@ async function loadTaskDetailTree() {
                 breadcrumbsEl.innerHTML = `
                     <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
                     <span>&gt;</span>
-                    <span class="text-white font-bold">#${tree.id} ${tree.title}</span>
+                    <span class="text-white font-bold">${tree.title}</span>
                 `;
             }
         }
@@ -112,9 +112,12 @@ async function loadTaskDetailTree() {
             if (estBadge) estBadge.innerText = `${tree.estimated_minutes || 15}m`;
         }
 
-        // Populate Edit Form Inputs
+        // Populate Edit Form Inputs including Tags
         const titleInput = document.getElementById('inspector_edit_title');
         if (titleInput) titleInput.value = tree.title || '';
+
+        const tagsInput = document.getElementById('inspector_edit_tags');
+        if (tagsInput) tagsInput.value = tree.tags || '';
 
         const descInput = document.getElementById('inspector_edit_desc');
         if (descInput) descInput.value = tree.description || '';
@@ -156,7 +159,6 @@ async function loadTaskDetailTree() {
         const progressEl = document.getElementById('detail_task_progress');
         if (progressEl && !isOngoing) progressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
 
-        // 4. Handle Subtask Completion Display
         const counts = calculateTreeCompletionStats(tree.subtasks || []);
         const completionContainer = document.getElementById('detail_subtask_completion_container');
         const pBarWrapper = document.getElementById('subtasks_completion_bar_wrapper');
@@ -179,18 +181,6 @@ async function loadTaskDetailTree() {
         renderSubtasksTreeNodes(tree.subtasks, document.getElementById('subtasks_tree_container'));
     } catch (e) {
         console.error("Failed to load task tree:", e);
-        const container = document.getElementById('subtasks_tree_container');
-        if (container) {
-            container.innerHTML = `
-                <div class="bg-red-950/40 border border-red-800/80 rounded-lg p-4 text-xs space-y-2 text-red-200">
-                    <div class="font-bold">Task #${taskId} Not Found</div>
-                    <div>The requested task does not exist or was deleted.</div>
-                    <div class="pt-2 flex space-x-2">
-                        <button type="button" onclick="navigateBack()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1 rounded">Return Back</button>
-                    </div>
-                </div>
-            `;
-        }
     }
 }
 
@@ -214,6 +204,7 @@ async function saveInspectorTaskProperties(event) {
 
     const payload = {
         title: titleVal,
+        tags: document.getElementById('inspector_edit_tags') ? document.getElementById('inspector_edit_tags').value : '',
         description: document.getElementById('inspector_edit_desc').value,
         status: document.getElementById('inspector_edit_status').value,
         category: document.getElementById('inspector_edit_category').value,
@@ -323,7 +314,7 @@ function openSubtaskCreationModal(parentId = null) {
 
     const heading = document.getElementById('subtask_modal_heading');
     if (heading) {
-        heading.innerText = parentId ? `Create Subtask under #${parentId}` : "Create Root Subtask";
+        heading.innerText = parentId ? `Create Subtask under parent task` : "Create Root Subtask";
     }
 
     document.getElementById('subtask_modal').classList.remove('hidden');

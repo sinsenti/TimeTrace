@@ -308,16 +308,10 @@ async function saveSessionFromModal() {
     }
 }
 
-async function deleteSessionFromModal() {
+function deleteSessionFromModal() {
     const sessionId = document.getElementById('edit_session_id').value;
     if (!sessionId) return;
-
-    const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log? This action cannot be undone.");
-    if (confirmed) {
-        await api.delete(`/sessions/${sessionId}`);
-        closeSessionModal();
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
-    }
+    promptDeleteSession(sessionId);
 }
 
 async function startTimerFromModal() {

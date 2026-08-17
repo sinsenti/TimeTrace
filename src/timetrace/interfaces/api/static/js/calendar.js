@@ -72,8 +72,8 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
             const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
 
             return {
-                id: s.id,
-                title: s.notes || s.tags || '#session',
+                id: String(s.id),
+                title: s.notes || s.tags || 'Session',
                 start: s.start_time,
                 end: s.end_time || new Date().toISOString(),
                 backgroundColor: color,

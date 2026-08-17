@@ -91,7 +91,67 @@ class TaskService:
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
+
+        if db_task.is_recurring:
+            self.schedule_recurrent_sessions_three_months(db_task)
+
         return db_task
+
+    def schedule_recurrent_sessions_three_months(self, task: Task) -> list[SessionModel]:
+        """Schedules recurring sessions 3 months (90 days) ahead."""
+        if not task.id or not task.is_recurring:
+            return []
+
+        start_base = datetime.now(UTC)
+        if task.assigned_date:
+            try:
+                start_base = datetime.fromisoformat(f"{task.assigned_date}T09:00:00").replace(tzinfo=UTC)
+            except Exception:
+                pass
+
+        rule = (task.recurrence_rule or "daily").lower()
+        duration_mins = task.estimated_minutes or 15
+
+        created_sessions = []
+        curr_date = start_base
+        end_boundary = start_base + timedelta(days=90)
+
+        while curr_date <= end_boundary:
+            curr_naive = curr_date.replace(tzinfo=None)
+            existing = self.db.exec(
+                select(SessionModel).where(
+                    SessionModel.task_id == task.id,
+                    SessionModel.start_time == curr_naive
+                )
+            ).first()
+
+            if not existing:
+                sess = SessionModel(
+                    task_id=task.id,
+                    start_time=ensure_utc(curr_date),
+                    end_time=ensure_utc(curr_date + timedelta(minutes=duration_mins)),
+                    duration_seconds=duration_mins * 60,
+                    tags=task.tags or "#general",
+                    notes=f"Recurring: {task.title}",
+                )
+                self.db.add(sess)
+                created_sessions.append(sess)
+
+            if rule == "daily":
+                curr_date += timedelta(days=1)
+            elif rule == "weekdays":
+                curr_date += timedelta(days=1)
+                while curr_date.weekday() >= 5:
+                    curr_date += timedelta(days=1)
+            elif rule == "weekly":
+                curr_date += timedelta(weeks=1)
+            elif rule == "monthly":
+                curr_date += timedelta(days=30)
+            else:
+                curr_date += timedelta(days=1)
+
+        self.db.commit()
+        return created_sessions
 
     def list_tasks(
         self,
@@ -217,6 +277,9 @@ class TaskService:
         if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
             self.handle_task_recurrence(db_task)
 
+        if db_task.is_recurring:
+            self.schedule_recurrent_sessions_three_months(db_task)
+
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
 
@@ -249,7 +312,6 @@ class TaskService:
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
 
-        # Unlink foreign key references on sessions to avoid foreign key failures
         linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
         for s in linked_sessions:
             s.task_id = None
