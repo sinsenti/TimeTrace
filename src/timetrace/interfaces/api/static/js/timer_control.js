@@ -1,6 +1,5 @@
 /**
  * Universal TimeTrace Timer Controller & Dynamic Browser Tab Title Manager
- * Runs on all routes/pages to manage title updates and active timer state.
  */
 
 let isRunning = false;
@@ -18,9 +17,9 @@ async function fetchGlobalSessionsIfNeeded() {
     const now = Date.now();
     if (now - lastSessionsFetchTime > 30000 || globalSessionsCache.length === 0) {
         try {
-            const res = await fetch('/sessions');
-            if (res.ok) {
-                globalSessionsCache = await res.json();
+            const data = await api.get('/sessions');
+            if (data) {
+                globalSessionsCache = data;
                 lastSessionsFetchTime = now;
             }
         } catch (e) {}
@@ -29,10 +28,9 @@ async function fetchGlobalSessionsIfNeeded() {
 
 async function fetchTimerStatus() {
     try {
-        const res = await fetch('/timer/status');
-        if (!res.ok) return;
+        const data = await api.get('/timer/status');
+        if (!data) return;
         
-        const data = await res.json();
         lastTimerData = data;
         isRunning = data.is_running;
         idleDetectionEnabled = data.idle_detection_enabled;
@@ -96,7 +94,6 @@ async function fetchTimerStatus() {
 function updateDocumentTitle() {
     const now = new Date();
 
-    // 1. Active Timer Running
     if (lastTimerData && lastTimerData.is_running) {
         const taskName = lastTimerData.task_title || lastTimerData.notes || lastTimerData.tags || 'Active Session';
         if (lastTimerData.mode === 'pomodoro' && lastTimerData.remaining_seconds !== null && lastTimerData.remaining_seconds !== undefined) {
@@ -109,13 +106,11 @@ function updateDocumentTitle() {
         return;
     }
 
-    // 2. Active Timer Frozen / AFK
     if (lastTimerData && lastTimerData.is_frozen_idle) {
         document.title = 'AFK Frozen | TimeTrace';
         return;
     }
 
-    // 3. Current Ongoing Scheduled Session
     const sessions = (typeof allSessions !== 'undefined' && Array.isArray(allSessions) && allSessions.length > 0)
         ? allSessions
         : globalSessionsCache;
@@ -135,7 +130,6 @@ function updateDocumentTitle() {
         return;
     }
 
-    // 4. Next Task Starting within <= 5 Hours (300 mins)
     const upcomingSessions = sessions
         .filter(s => new Date(s.start_time) > now)
         .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
@@ -155,30 +149,27 @@ function updateDocumentTitle() {
         }
     }
 
-    // 5. Default / Fallback Title
     document.title = 'TimeTrace';
 }
 
 async function toggleTimer() {
     if (isRunning) {
-        await fetch('/timer/stop', { method: 'POST' });
+        await api.post('/timer/stop');
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     } else {
         const select = document.getElementById('timer_task_select');
         const taskId = select ? select.value : null;
         const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
-        await fetch('/timer/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ task_id: taskId ? parseInt(taskId) : null, tags: settings.defaultTag || "#general" })
+        await api.post('/timer/start', {
+            task_id: taskId ? parseInt(taskId) : null,
+            tags: settings.defaultTag || "#general"
         });
     }
     fetchTimerStatus();
 }
 
 async function toggleIdleSwitch() {
-    const res = await fetch('/idle/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
-    const data = await res.json();
+    const data = await api.post('/idle/toggle', {});
     idleDetectionEnabled = data.idle_detection_enabled;
     updateIdleSwitchUI();
 }
@@ -201,11 +192,7 @@ async function resolveIdleGap(option) {
     const retagInput = document.getElementById('idle_retag_input');
     const newTags = retagInput ? retagInput.value.trim() || '#general' : '#general';
 
-    await fetch('/idle/resolve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ option: option, new_tags: newTags })
-    });
+    await api.post('/idle/resolve', { option: option, new_tags: newTags });
 
     const modal = document.getElementById('idle_resolution_modal');
     if (modal) modal.classList.add('hidden');

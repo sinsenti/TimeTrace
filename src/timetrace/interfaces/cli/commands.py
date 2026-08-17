@@ -10,11 +10,18 @@ from timetrace.interfaces.cli.client import ensure_daemon_running, get_client
 cli_app = typer.Typer(
     name="timetrace",
     help="TimeTrace: Developer-centric time tracking & productivity engine.",
-    no_args_is_help=True,
+    no_args_is_help=False,
 )
 
 db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
 cli_app.add_typer(db_cli, name="db")
+
+
+@cli_app.callback(invoke_without_command=True)
+def main_callback(ctx: typer.Context):
+    """Default invocation when running 'timetrace' with no subcommands."""
+    if ctx.invoked_subcommand is None:
+        timer_status(tmux=False)
 
 
 def format_local_cli_time(iso_str: str | None) -> str:
@@ -71,7 +78,7 @@ def db_revision(message: str = typer.Option(..., "--message", "-m", help="Revisi
 
 @cli_app.command("idle-toggle")
 def toggle_idle_cli():
-    """Killer Switch: Toggle the automatic idle detector on or off."""
+    """Toggle the automatic idle detector on or off."""
     ensure_daemon_running()
     with get_client() as client:
         res = client.post("/idle/toggle", json={})
@@ -178,7 +185,11 @@ def timer_status(tmux: bool = typer.Option(False, "--tmux", help="Output minimal
                     if data.get("is_frozen_idle"):
                         msg = "AFK Frozen" if tmux else "Timer frozen due to AFK inactivity."
                     else:
-                        msg = "Idle" if tmux else "No timer currently running."
+                        next_sess = data.get("next_session")
+                        if next_sess:
+                            msg = f"Next: {next_sess['title']} in {next_sess['starts_in_minutes']}m" if tmux else f"Idle | Next scheduled task: '{next_sess['title']}' in {next_sess['starts_in_minutes']}m."
+                        else:
+                            msg = "Idle" if tmux else "No timer currently running."
                     print(msg)
                     return
 
@@ -206,7 +217,7 @@ def summary_stats():
             print("\nTimeTrace Activity Breakdown:")
             print("-" * 40)
             for item in data:
-                print(f"• {item['tag']:<20} : {item['total_hours']:>5.1f} hrs ({item['session_count']} sessions)")
+                print(f"- {item['tag']:<20} : {item['total_hours']:>5.1f} hrs ({item['session_count']} sessions)")
             print("-" * 40 + "\n")
 
 
@@ -227,7 +238,6 @@ def list_tasks_cli(
             if not tasks:
                 print("No tasks found.")
             for t in tasks:
-                created_str = format_local_cli_time(t.get("created_at"))
                 t_tags = f"[{t.get('tags', '')}]" if t.get("tags") else ""
                 parent_str = f"(Subtask of #{t['parent_id']})" if t.get("parent_id") else ""
                 title_str = f"{t['title']} {t_tags} {parent_str}".strip()

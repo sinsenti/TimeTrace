@@ -74,15 +74,21 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         except Exception:
             pass
 
-    # Task Status & Priority Breakdown
-    task_status_counts = {"in_progress": 0, "ongoing": 0, "completed": 0}
+    # Task Status & Priority Breakdown (Mapped to canonical status values)
+    task_status_counts = {"To Do": 0, "Ongoing": 0, "Scheduled": 0, "Done": 0, "Backlog": 0}
     task_priority_counts = {"high": 0, "medium": 0, "low": 0, "-": 0}
 
     for t in tasks:
-        st = str(t.get("status", "in_progress")).lower()
+        st = str(t.get("status", "To Do"))
         pr = str(t.get("priority", "-")).lower()
+
         if st in task_status_counts:
             task_status_counts[st] += 1
+        elif st.lower() in ("completed", "done"):
+            task_status_counts["Done"] += 1
+        elif st.lower() in ("in_progress", "in progress", "ip"):
+            task_status_counts["To Do"] += 1
+
         if pr in task_priority_counts:
             task_priority_counts[pr] += 1
 

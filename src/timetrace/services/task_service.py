@@ -27,9 +27,6 @@ class TaskService:
     def __init__(self, db: Session):
         self.db = db
 
-    # ----------------------------------------------------
-    # Task Status Management
-    # ----------------------------------------------------
     def list_statuses(self) -> list[TaskStatus]:
         statuses = self.db.exec(select(TaskStatus).order_by(TaskStatus.position)).all()
         if not statuses:
@@ -71,13 +68,8 @@ class TaskService:
         self.db.delete(st)
         self.db.commit()
 
-    # ----------------------------------------------------
-    # Task Operations & Title Estimate Parser
-    # ----------------------------------------------------
     def create_task(self, req: TaskCreate) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
-        
-        # Parse title estimation syntax [30min]
         clean_title, parsed_est = parse_title_estimation(task_dict["title"])
         task_dict["title"] = clean_title
         if parsed_est is not None:
@@ -109,7 +101,6 @@ class TaskService:
         assigned_date: str | None = None,
         due_before: str | None = None,
     ) -> list[Task]:
-        # Auto-heal legacy status strings in DB
         all_db_tasks = self.db.exec(select(Task)).all()
         status_map = {
             "in_progress": "To Do",
@@ -223,7 +214,6 @@ class TaskService:
             if st:
                 db_task.status_id = st.id
 
-        # Recurrence Processing when Task is marked Done
         if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
             self.handle_task_recurrence(db_task)
 
@@ -237,7 +227,6 @@ class TaskService:
         return db_task
 
     def handle_task_recurrence(self, task: Task) -> None:
-        """Schedules the next occurrence for a recurring task."""
         today = date.today()
         rule = (task.recurrence_rule or "daily").lower()
 
@@ -245,7 +234,7 @@ class TaskService:
             next_date = today + timedelta(days=1)
         elif rule == "weekdays":
             next_date = today + timedelta(days=1)
-            while next_date.weekday() >= 5:  # Saturday/Sunday
+            while next_date.weekday() >= 5:
                 next_date += timedelta(days=1)
         elif rule == "weekly":
             next_date = today + timedelta(weeks=1)
@@ -253,12 +242,18 @@ class TaskService:
             next_date = today + timedelta(days=1)
 
         task.assigned_date = next_date.strftime("%Y-%m-%d")
-        task.status = "To Do"  # Re-queue for next date
+        task.status = "To Do"
 
     def delete_task(self, task_id: int) -> None:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
+
+        # Unlink foreign key references on sessions to avoid foreign key failures
+        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
+        for s in linked_sessions:
+            s.task_id = None
+            self.db.add(s)
 
         self.db.delete(db_task)
         self.db.commit()
@@ -267,6 +262,10 @@ class TaskService:
         completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         count = len(completed_tasks)
         for task in completed_tasks:
+            linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task.id)).all()
+            for s in linked_sessions:
+                s.task_id = None
+                self.db.add(s)
             self.db.delete(task)
         self.db.commit()
         return count

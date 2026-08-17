@@ -59,12 +59,20 @@ function applyWidgetVisibility() {
 
 async function loadAnalyticsData() {
     try {
-        const res = await fetch('/analytics/detailed');
-        const data = await res.json();
+        const data = await api.get('/analytics/detailed');
+        if (!data) return;
 
         document.getElementById('kpi_total_hours').innerText = `${data.summary.total_hours}h`;
         document.getElementById('kpi_total_sessions').innerText = data.summary.total_sessions;
         document.getElementById('kpi_total_tasks').innerText = data.summary.tasks_count;
+
+        try {
+            const habits = await api.get('/habits');
+            const kpiHabitsEl = document.getElementById('kpi_total_habits');
+            if (kpiHabitsEl && habits) {
+                kpiHabitsEl.innerText = habits.length;
+            }
+        } catch (e) {}
 
         renderDailyChart(data.daily_trend);
         renderHourlyChart(data.hourly_distribution);

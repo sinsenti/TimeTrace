@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from timetrace.core.exceptions import TimerError, ValidationError
 from timetrace.core.timer import timer_manager
@@ -21,6 +21,32 @@ class TimerService:
             task_obj = self.db.get(Task, status_data["task_id"])
             if task_obj:
                 status_data["task_title"] = task_obj.title
+
+        if not status_data.get("is_running"):
+            now = datetime.now(UTC)
+            now_naive = now.replace(tzinfo=None)
+            upcoming = self.db.exec(
+                select(SessionModel)
+                .where(SessionModel.start_time > now_naive)
+                .order_by(SessionModel.start_time)
+            ).first()
+
+            if upcoming and upcoming.start_time:
+                up_start = ensure_utc(upcoming.start_time)
+                starts_in = max(1, int((up_start - now).total_seconds() / 60))
+                title = upcoming.notes or upcoming.tags or "Scheduled Session"
+                if upcoming.task_id:
+                    t_obj = self.db.get(Task, upcoming.task_id)
+                    if t_obj:
+                        title = t_obj.title
+                status_data["next_session"] = {
+                    "title": title,
+                    "start_time": up_start.isoformat(),
+                    "starts_in_minutes": starts_in,
+                }
+            else:
+                status_data["next_session"] = None
+
         return status_data
 
     def start_timer(self, req: TimerStartRequest) -> dict[str, Any]:

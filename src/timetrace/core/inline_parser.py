@@ -4,10 +4,7 @@ from typing import Any
 
 
 def strip_comments(text: str) -> str:
-    """
-    Strips HTML comments (<!-- ... -->), markdown blockquote help lines (> ...),
-    and // comment lines from Neovim buffer text before parsing.
-    """
+    """Strips HTML comments, blockquotes, and comments from text before parsing."""
     clean = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
     lines = [
         line for line in clean.splitlines()
@@ -39,19 +36,19 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         elif p_val in ("low", "l"):
             priority = "low"
 
-    status_match = re.search(r"@(in_progress|ongoing|completed|ip|og|done|c)", first_line, re.IGNORECASE)
-    status = "in_progress"
+    status_match = re.search(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", first_line, re.IGNORECASE)
+    status = "To Do"
     if status_match:
         s_val = status_match.group(1).lower()
         if s_val in ("completed", "done", "c"):
-            status = "completed"
+            status = "Done"
         elif s_val in ("ongoing", "og"):
-            status = "ongoing"
+            status = "Ongoing"
 
     clean_title = first_line
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c)", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE)
     clean_title = " ".join(clean_title.split()).strip()
 
     return {
