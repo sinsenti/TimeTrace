@@ -9,6 +9,16 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSubtaskModalKeyboard();
 });
 
+function toggleInspectorRecurrenceRule(isRecurring) {
+    const container = document.getElementById('inspector_recurrence_rule_container');
+    if (!container) return;
+    if (isRecurring) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
 function navigateBack() {
     if (document.referrer) {
         try {
@@ -121,6 +131,15 @@ async function loadTaskDetailTree() {
         const estSelect = document.getElementById('inspector_edit_est');
         if (estSelect) estSelect.value = String(tree.estimated_minutes || 15);
 
+        const isRecur = tree.is_recurring === true;
+        const recurCheck = document.getElementById('inspector_edit_is_recurring');
+        if (recurCheck) recurCheck.checked = isRecur;
+
+        const ruleSelect = document.getElementById('inspector_edit_recurrence_rule');
+        if (ruleSelect) ruleSelect.value = tree.recurrence_rule || 'daily';
+
+        toggleInspectorRecurrenceRule(isRecur);
+
         const assignedInput = document.getElementById('inspector_edit_assigned_date');
         if (assignedInput) assignedInput.value = tree.assigned_date || '';
 
@@ -200,6 +219,8 @@ async function saveInspectorTaskProperties(event) {
         category: document.getElementById('inspector_edit_category').value,
         priority: document.getElementById('inspector_edit_priority').value,
         estimated_minutes: parseInt(document.getElementById('inspector_edit_est').value) || 15,
+        is_recurring: document.getElementById('inspector_edit_is_recurring') ? document.getElementById('inspector_edit_is_recurring').checked : false,
+        recurrence_rule: document.getElementById('inspector_edit_recurrence_rule') ? document.getElementById('inspector_edit_recurrence_rule').value : 'daily',
         assigned_date: document.getElementById('inspector_edit_assigned_date').value || null,
         attachments: document.getElementById('inspector_edit_attachments').value || ''
     };

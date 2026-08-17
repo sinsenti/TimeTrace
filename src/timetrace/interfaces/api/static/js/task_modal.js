@@ -4,6 +4,16 @@
 
 let sessionModalStateBackup = null;
 
+function toggleRecurrenceRuleSelect(isRecurring) {
+    const container = document.getElementById('recurrence_rule_container');
+    if (!container) return;
+    if (isRecurring) {
+        container.classList.remove('hidden');
+    } else {
+        container.classList.add('hidden');
+    }
+}
+
 function renderColorSwatches(activeHex = '') {
     const list = document.getElementById('swatch_list');
     if (!list) return;
@@ -77,6 +87,11 @@ function openNewTaskModal() {
     const recurCheck = document.getElementById('modal_input_is_recurring');
     if (recurCheck) recurCheck.checked = false;
 
+    const ruleSelect = document.getElementById('modal_input_recurrence_rule');
+    if (ruleSelect) ruleSelect.value = 'daily';
+
+    toggleRecurrenceRuleSelect(false);
+
     const reqReviewCheck = document.getElementById('modal_input_requires_review');
     if (reqReviewCheck) reqReviewCheck.checked = true;
 
@@ -149,11 +164,14 @@ async function openEditTaskModal(id) {
     const attachInput = document.getElementById('modal_input_attachments');
     if (attachInput) attachInput.value = t.attachments || '';
 
+    const isRecur = t.is_recurring === true;
     const recurCheck = document.getElementById('modal_input_is_recurring');
-    if (recurCheck) recurCheck.checked = t.is_recurring === true;
+    if (recurCheck) recurCheck.checked = isRecur;
 
     const ruleSelect = document.getElementById('modal_input_recurrence_rule');
     if (ruleSelect) ruleSelect.value = t.recurrence_rule || 'daily';
+
+    toggleRecurrenceRuleSelect(isRecur);
 
     const reqReviewCheck = document.getElementById('modal_input_requires_review');
     if (reqReviewCheck) reqReviewCheck.checked = t.requires_session_review !== false;
