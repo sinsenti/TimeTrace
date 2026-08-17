@@ -121,22 +121,9 @@
 
     {% include "components/settings_modal.html" %}
 
-    <!-- Widgets Config Modal -->
-    <div id="widget_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 class="font-bold text-base text-white">Customize Dashboard Widgets</h3>
-                <button onclick="toggleWidgetModal()" class="text-slate-400 hover:text-white font-bold">&times;</button>
-            </div>
-            <div id="widget_toggle_list" class="space-y-2.5 text-xs text-slate-300"></div>
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button onclick="toggleWidgetModal()" class="bg-purple-600 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Done</button>
-            </div>
-        </div>
-    </div>
-
     <script src="/static/js/api_client.js"></script>
     <script src="/static/js/utils.js"></script>
+    <script src="/static/js/timer_control.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/stats.js"></script>
 </body>

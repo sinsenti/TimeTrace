@@ -75,14 +75,14 @@
                     <span class="text-slate-400 block font-semibold">Time Estimation Ratio:</span>
                     <span id="detail_task_progress" class="font-bold text-emerald-400">0%</span>
                 </div>
-                <div>
+                <div id="detail_subtask_completion_container" class="hidden">
                     <span class="text-slate-400 block font-semibold">Subtasks Completion:</span>
                     <span id="detail_tree_completion_pct" class="font-bold text-blue-400">0% (0/0)</span>
                 </div>
             </div>
 
-            <!-- Subtask Progress Bar -->
-            <div class="w-full bg-[#0f1016] h-2.5 rounded-full overflow-hidden border border-[var(--border-muted)] mt-1">
+            <!-- Subtask Progress Bar Wrapper -->
+            <div id="subtasks_completion_bar_wrapper" class="w-full bg-[#0f1016] h-2.5 rounded-full overflow-hidden border border-[var(--border-muted)] mt-1 hidden">
                 <div id="subtasks_completion_bar" class="bg-blue-600 h-full transition-all duration-300" style="width: 0%"></div>
             </div>
         </div>
@@ -160,8 +160,8 @@
             </div>
 
             <div class="flex justify-between items-center pt-2">
-                <button onclick="deleteMainInspectorTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete Task</button>
-                <button onclick="saveInspectorTaskProperties()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition">Save Task Changes</button>
+                <button type="button" onclick="deleteMainInspectorTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete Task</button>
+                <button id="inspector_save_btn" type="button" onclick="saveInspectorTaskProperties(event)" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition">Save Task Changes</button>
             </div>
         </div>
 
@@ -172,7 +172,7 @@
                     <h2 class="font-bold text-base text-white">Subtasks Hierarchy Tree</h2>
                     <p class="text-xs text-slate-400">Create and track infinite nested subtasks under this parent task.</p>
                 </div>
-                <button onclick="openSubtaskCreationModal(null)" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs">+ Add Subtask</button>
+                <button type="button" onclick="openSubtaskCreationModal(null)" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs">+ Add Subtask</button>
             </div>
 
             <div id="subtasks_tree_container" class="space-y-2"></div>
@@ -184,7 +184,7 @@
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[400px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                 <h3 id="subtask_modal_heading" class="font-bold text-base text-white">Create Subtask</h3>
-                <button onclick="closeSubtaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+                <button type="button" onclick="closeSubtaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
             <input type="hidden" id="subtask_parent_id">
             
@@ -214,8 +214,8 @@
             </div>
 
             <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
-                <button onclick="closeSubtaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel</button>
-                <button onclick="saveSubtaskFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">Save Subtask</button>
+                <button type="button" onclick="closeSubtaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel</button>
+                <button type="button" onclick="saveSubtaskFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">Save Subtask</button>
             </div>
         </div>
     </div>
@@ -225,6 +225,7 @@
 
     <script src="/static/js/api_client.js"></script>
     <script src="/static/js/utils.js"></script>
+    <script src="/static/js/timer_control.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/subtasks.js"></script>
 </body>

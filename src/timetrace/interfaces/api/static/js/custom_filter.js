@@ -1,27 +1,49 @@
 /**
  * Shared Custom Filter Engine for Dashboard and Kanban pages
- * Supports persistence via localStorage and capture-phase keyboard shortcuts (Esc, Ctrl+Enter)
+ * Supports persistent local storage and keyboard shortcuts.
  */
 
 const CUSTOM_FILTER_STORAGE_KEY = 'timetrace_custom_filter';
+const STATUS_FILTER_STORAGE_KEY = 'timetrace_status_filter';
 
 let activeCustomFilter = loadSavedCustomFilter();
 
 function loadSavedCustomFilter() {
     try {
-        const saved = localStorage.getItem(CUSTOM_FILTER_STORAGE_KEY);
-        if (saved) {
-            const parsed = JSON.parse(saved);
-            return {
-                status: parsed.status || 'all',
-                category: parsed.category || 'all',
-                estOp: parsed.estOp || '',
-                estMins: parsed.estMins || 30,
-                query: parsed.query || '',
-                priority: parsed.priority || 'all',
-                isActive: Boolean(parsed.isActive)
-            };
+        const savedCustom = localStorage.getItem(CUSTOM_FILTER_STORAGE_KEY);
+        const savedStatus = localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
+        
+        let filterState = {
+            status: savedStatus || 'all',
+            category: 'all',
+            estOp: '',
+            estMins: 30,
+            query: '',
+            priority: 'all',
+            isActive: false
+        };
+
+        if (savedCustom) {
+            const parsed = JSON.parse(savedCustom);
+            filterState.status = parsed.status || savedStatus || 'all';
+            filterState.category = parsed.category || 'all';
+            filterState.estOp = parsed.estOp || '';
+            filterState.estMins = parsed.estMins || 30;
+            filterState.query = parsed.query || '';
+            filterState.priority = parsed.priority || 'all';
+            filterState.isActive = Boolean(
+                filterState.query || 
+                filterState.status !== 'all' || 
+                filterState.category !== 'all' || 
+                filterState.estOp || 
+                filterState.priority !== 'all'
+            );
+        } else if (savedStatus) {
+            filterState.status = savedStatus;
+            filterState.isActive = savedStatus !== 'all';
         }
+
+        return filterState;
     } catch (e) {
         console.error("Error loading saved custom filter:", e);
     }
@@ -39,6 +61,7 @@ function loadSavedCustomFilter() {
 function saveCustomFilterState() {
     try {
         localStorage.setItem(CUSTOM_FILTER_STORAGE_KEY, JSON.stringify(activeCustomFilter));
+        localStorage.setItem(STATUS_FILTER_STORAGE_KEY, activeCustomFilter.status || 'all');
     } catch (e) {
         console.error("Error saving custom filter state:", e);
     }
@@ -70,8 +93,7 @@ function openCustomFilterModal() {
 
     const statusSelect = document.getElementById('filter_input_status');
     if (statusSelect) {
-        const currentSt = (typeof currentFilter !== 'undefined' && currentFilter) ? currentFilter : activeCustomFilter.status;
-        statusSelect.value = currentSt;
+        statusSelect.value = activeCustomFilter.status || 'all';
     }
 
     const catSelect = document.getElementById('filter_input_category');
@@ -124,9 +146,11 @@ function applyCustomFilterFromModal() {
     };
 
     saveCustomFilterState();
+
     updateFilterButtonIndicators();
     closeCustomFilterModal();
 
+    if (typeof renderDynamicStatusTabs === 'function') renderDynamicStatusTabs();
     if (typeof fetchTasks === 'function') fetchTasks();
     if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
 }
@@ -143,11 +167,11 @@ function clearCustomFilter() {
     };
 
     saveCustomFilterState();
+
     updateFilterButtonIndicators();
     closeCustomFilterModal();
 
-    if (typeof currentFilter !== 'undefined') currentFilter = 'all';
-
+    if (typeof renderDynamicStatusTabs === 'function') renderDynamicStatusTabs();
     if (typeof fetchTasks === 'function') fetchTasks();
     if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
 }

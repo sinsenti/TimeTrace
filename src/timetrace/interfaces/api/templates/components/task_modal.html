@@ -1,6 +1,6 @@
 <!-- Unified Task Modal Partial -->
 <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[420px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[440px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
         <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
             <button onclick="closeTaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
@@ -11,8 +11,8 @@
             <input id="modal_input_title" type="text" placeholder="e.g. Refactor API [45min]" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
         </div>
         <div>
-            <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
-            <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+            <label class="text-xs text-slate-400 block mb-1">Description (Markdown Supported)</label>
+            <textarea id="modal_input_desc" rows="4" placeholder="Task description, bullet points, links..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-sans leading-relaxed"></textarea>
         </div>
         <div>
             <label class="text-xs text-slate-400 block mb-1">Default Tags</label>

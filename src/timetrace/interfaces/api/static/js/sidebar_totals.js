@@ -1,14 +1,15 @@
 /**
  * TimeTrace Dashboard Sidebar Manager
- * Configurable status tabs, task cards, and range totals with persistent local storage.
+ * Dynamic status tabs and sidebar rendering with case-insensitive tab highlight matching.
  */
 
 const STORAGE_STATUS_FILTER_KEY = 'timetrace_status_filter';
 const STORAGE_VISIBLE_TABS_KEY = 'timetrace_visible_sidebar_tabs';
 
-currentFilter = localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || 'all';
+function getCurrentStatusFilter() {
+    return localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || (typeof activeCustomFilter !== 'undefined' ? activeCustomFilter.status : 'all') || 'all';
+}
 
-// Default visible sidebar tabs
 let visibleSidebarTabs = JSON.parse(localStorage.getItem(STORAGE_VISIBLE_TABS_KEY) || 'null');
 if (!visibleSidebarTabs) {
     visibleSidebarTabs = ['all', 'hide_completed', 'To Do', 'Ongoing', 'Scheduled', 'Done', 'Backlog'];
@@ -19,12 +20,22 @@ document.addEventListener('DOMContentLoaded', () => {
     renderDynamicStatusTabs();
 });
 
-// ----------------------------------------------------
-// 1. Configurable Dynamic Status Tabs
-// ----------------------------------------------------
 function setTaskFilter(filterName) {
-    currentFilter = filterName;
     localStorage.setItem(STORAGE_STATUS_FILTER_KEY, filterName);
+    
+    if (typeof activeCustomFilter !== 'undefined') {
+        activeCustomFilter.status = filterName;
+        activeCustomFilter.isActive = Boolean(
+            activeCustomFilter.query || 
+            activeCustomFilter.status !== 'all' || 
+            activeCustomFilter.category !== 'all' || 
+            activeCustomFilter.estOp || 
+            activeCustomFilter.priority !== 'all'
+        );
+        if (typeof saveCustomFilterState === 'function') saveCustomFilterState();
+        if (typeof updateFilterButtonIndicators === 'function') updateFilterButtonIndicators();
+    }
+
     renderDynamicStatusTabs();
     fetchTasks();
 }
@@ -41,11 +52,11 @@ async function renderDynamicStatusTabs() {
             ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
         ];
 
-        // Filter tabs based on user's tab visibility configuration
         const activeVisibleTabs = allAvailableTabs.filter(t => visibleSidebarTabs.includes(t.id));
+        const activeFilterLower = getCurrentStatusFilter().toLowerCase();
 
         container.innerHTML = activeVisibleTabs.map(t => {
-            const isSelected = currentFilter === t.id;
+            const isSelected = activeFilterLower === t.id.toLowerCase();
             const activeClass = "px-2 py-0.5 text-[10px] rounded bg-purple-600 text-white font-bold whitespace-nowrap";
             const inactiveClass = "px-2 py-0.5 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white whitespace-nowrap";
             return `<button onclick="setTaskFilter('${t.id}')" class="${isSelected ? activeClass : inactiveClass}">${t.label}</button>`;
@@ -96,9 +107,6 @@ function toggleSidebarTabVisibility(tabId, isVisible) {
     localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
 }
 
-// ----------------------------------------------------
-// 2. Sidebar Resizers
-// ----------------------------------------------------
 function initSidebarResizers() {
     const leftSidebar = document.getElementById('left_sidebar');
     const leftResizer = document.getElementById('left_resizer');
@@ -179,14 +187,11 @@ function initSidebarResizers() {
     });
 }
 
-// ----------------------------------------------------
-// 3. Task Fetching & Sidebar Card List Rendering
-// ----------------------------------------------------
 async function fetchTasks() {
     try {
-        let fetched = await api.get(`/tasks?status=${currentFilter}&sort=smart_gap_filler`) || [];
+        const currentFilterVal = getCurrentStatusFilter();
+        let fetched = await api.get(`/tasks?status=${encodeURIComponent(currentFilterVal)}&sort=smart_gap_filler`) || [];
 
-        // Apply custom filter rules if active
         if (typeof matchesCustomFilter === 'function') {
             activeTasks = fetched.filter(t => matchesCustomFilter(t));
         } else {
@@ -258,9 +263,6 @@ async function clearCompletedTasks() {
     }
 }
 
-// ----------------------------------------------------
-// 4. Range Totals Calculations
-// ----------------------------------------------------
 function fetchRangeTotals() {
     if (!calendar) return;
     const viewType = calendar.view.type;

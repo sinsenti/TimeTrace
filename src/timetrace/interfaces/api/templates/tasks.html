@@ -6,6 +6,7 @@
     <title>TimeTrace Tasks Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
@@ -29,6 +30,15 @@
         .kanban-card:active { cursor: grabbing; }
         .kanban-card:hover { border-color: #a855f7; transform: translateY(-2px); }
         .sortable-ghost { opacity: 0.4; border: 2px dashed #a855f7 !important; }
+        
+        /* Markdown formatting styles inside Kanban card description */
+        .kanban-markdown p { margin-bottom: 0.25rem; }
+        .kanban-markdown p:last-child { margin-bottom: 0; }
+        .kanban-markdown ul { list-style-type: disc; padding-left: 1rem; margin: 0.25rem 0; }
+        .kanban-markdown ol { list-style-type: decimal; padding-left: 1rem; margin: 0.25rem 0; }
+        .kanban-markdown a { color: #a855f7; text-decoration: underline; }
+        .kanban-markdown code { background-color: #1a1c26; padding: 0.1rem 0.3rem; border-radius: 0.25rem; font-family: monospace; font-size: 0.7rem; }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }

@@ -238,9 +238,10 @@ async function saveTask() {
 
         closeTaskModal();
 
+        // Dynamically update UI without reloading the page
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+        if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 
         if (sessionModalStateBackup && createdTask && createdTask.id) {
@@ -273,7 +274,7 @@ async function deleteTask() {
         closeTaskModal();
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+        if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     }
 }

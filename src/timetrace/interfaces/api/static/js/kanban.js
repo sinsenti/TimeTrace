@@ -1,5 +1,5 @@
 /**
- * TimeTrace Kanban Board Engine
+ * TimeTrace Kanban Board Engine with Dynamic Real-Time Card & Column Updates and Markdown Descriptions
  */
 
 let allStatuses = [];
@@ -47,7 +47,7 @@ function renderKanbanColumns() {
                     <div class="flex items-center space-x-2">
                         <span class="w-3 h-3 rounded-full" style="background-color: ${st.color};"></span>
                         <span class="font-bold text-sm text-white">${st.name}</span>
-                        <span class="text-xs text-slate-500 font-bold">(${colTasks.length})</span>
+                        <span class="kanban-col-count text-xs text-slate-500 font-bold">(${colTasks.length})</span>
                     </div>
                     ${st.is_completed ? '<span class="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-bold">DONE</span>' : ''}
                 </div>
@@ -68,13 +68,20 @@ function renderKanbanCard(task) {
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 
+    // Markdown description parsing
+    let descContentHTML = '';
+    if (task.description && task.description.trim()) {
+        const rawParsed = typeof marked !== 'undefined' ? marked.parse(task.description.trim()) : task.description;
+        descContentHTML = `<div class="kanban-markdown text-[11px] text-slate-300 line-clamp-3 font-normal leading-snug overflow-hidden">${rawParsed}</div>`;
+    }
+
     return `
         <div data-task-id="${task.id}" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
                 <span class="font-bold text-xs text-white leading-snug hover:underline hover:text-purple-300">${task.title}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
             </div>
-            ${task.description ? `<p class="text-[11px] text-slate-400 line-clamp-2">${task.description}</p>` : ''}
+            ${descContentHTML}
             <div class="flex justify-between items-center pt-1 border-t border-[#1a1c26] text-[10px]">
                 <div class="flex items-center space-x-1.5">
                     <span class="text-purple-400 font-semibold uppercase">${task.category || 'work'}</span>
@@ -87,6 +94,18 @@ function renderKanbanCard(task) {
             </div>
         </div>
     `;
+}
+
+function updateColumnHeaderCounts() {
+    const columns = document.querySelectorAll('.kanban-col');
+    columns.forEach(col => {
+        const cardList = col.querySelector('.kanban-card-list');
+        const countBadge = col.querySelector('.kanban-col-count');
+        if (cardList && countBadge) {
+            const cardCount = cardList.querySelectorAll('.kanban-card').length;
+            countBadge.innerText = `(${cardCount})`;
+        }
+    });
 }
 
 function initKanbanDragAndDrop() {
@@ -121,9 +140,12 @@ function initKanbanDragAndDrop() {
                 const itemEl = evt.item;
                 const taskId = itemEl.getAttribute('data-task-id');
                 const targetList = evt.to;
+                const sourceList = evt.from;
                 const newStatusName = targetList.getAttribute('data-status-name');
 
-                if (taskId && newStatusName) {
+                updateColumnHeaderCounts();
+
+                if (taskId && newStatusName && sourceList !== targetList) {
                     try {
                         await api.put(`/tasks/${taskId}`, { status: newStatusName });
                         const updatedTask = kanbanTasks.find(t => String(t.id) === String(taskId));

@@ -1,5 +1,31 @@
+/**
+ * Universal TimeTrace Timer Controller & Dynamic Browser Tab Title Manager
+ * Runs on all routes/pages to manage title updates and active timer state.
+ */
+
 let isRunning = false;
 let idleDetectionEnabled = true;
+let lastTimerData = null;
+let globalSessionsCache = [];
+let lastSessionsFetchTime = 0;
+
+async function fetchGlobalSessionsIfNeeded() {
+    if (typeof allSessions !== 'undefined' && Array.isArray(allSessions) && allSessions.length > 0) {
+        globalSessionsCache = allSessions;
+        return;
+    }
+    
+    const now = Date.now();
+    if (now - lastSessionsFetchTime > 30000 || globalSessionsCache.length === 0) {
+        try {
+            const res = await fetch('/sessions');
+            if (res.ok) {
+                globalSessionsCache = await res.json();
+                lastSessionsFetchTime = now;
+            }
+        } catch (e) {}
+    }
+}
 
 async function fetchTimerStatus() {
     try {
@@ -7,9 +33,13 @@ async function fetchTimerStatus() {
         if (!res.ok) return;
         
         const data = await res.json();
+        lastTimerData = data;
         isRunning = data.is_running;
         idleDetectionEnabled = data.idle_detection_enabled;
-        updateIdleSwitchUI();
+        
+        if (typeof updateIdleSwitchUI === 'function') {
+            updateIdleSwitchUI();
+        }
 
         if (data.is_frozen_idle && data.pending_idle_gap) {
             const idleModal = document.getElementById('idle_resolution_modal');
@@ -30,11 +60,9 @@ async function fetchTimerStatus() {
             const timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
             const taskName = data.task_title || (data.tags || 'Task');
 
-            let remTitleStr = '';
             let remPillStr = '';
             if (data.remaining_seconds !== null && data.remaining_seconds !== undefined) {
                 const rMins = Math.ceil(data.remaining_seconds / 60);
-                remTitleStr = `${rMins}m left - `;
                 remPillStr = ` (${rMins}m left)`;
             }
 
@@ -43,17 +71,14 @@ async function fetchTimerStatus() {
                 btn.innerText = 'Stop';
                 btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
-            document.title = `${remTitleStr}${timeStr} - [${taskName}]`;
         } else {
             const nextSess = data.next_session;
             let idleText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
-            let tabTitle = data.is_frozen_idle ? 'AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
 
             if (!data.is_frozen_idle && nextSess) {
                 const startDt = new Date(nextSess.start_time);
                 const timeLabel = `${String(startDt.getHours()).padStart(2,'0')}:${String(startDt.getMinutes()).padStart(2,'0')}`;
                 idleText = `Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m (at ${timeLabel})`;
-                tabTitle = `Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m`;
             }
 
             if (label) label.innerText = idleText;
@@ -61,9 +86,77 @@ async function fetchTimerStatus() {
                 btn.innerText = 'Start Timer';
                 btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 rounded transition text-[10px] whitespace-nowrap';
             }
-            document.title = tabTitle;
         }
     } catch(e) {}
+
+    await fetchGlobalSessionsIfNeeded();
+    updateDocumentTitle();
+}
+
+function updateDocumentTitle() {
+    const now = new Date();
+
+    // 1. Active Timer Running
+    if (lastTimerData && lastTimerData.is_running) {
+        const taskName = lastTimerData.task_title || lastTimerData.notes || lastTimerData.tags || 'Active Session';
+        if (lastTimerData.mode === 'pomodoro' && lastTimerData.remaining_seconds !== null && lastTimerData.remaining_seconds !== undefined) {
+            const minsLeft = Math.max(0, Math.ceil(lastTimerData.remaining_seconds / 60));
+            document.title = `${minsLeft}m left | ${taskName}`;
+        } else {
+            const minsElapsed = Math.floor(lastTimerData.elapsed_seconds / 60);
+            document.title = `${minsElapsed}m | ${taskName}`;
+        }
+        return;
+    }
+
+    // 2. Active Timer Frozen / AFK
+    if (lastTimerData && lastTimerData.is_frozen_idle) {
+        document.title = 'AFK Frozen | TimeTrace';
+        return;
+    }
+
+    // 3. Current Ongoing Scheduled Session
+    const sessions = (typeof allSessions !== 'undefined' && Array.isArray(allSessions) && allSessions.length > 0)
+        ? allSessions
+        : globalSessionsCache;
+
+    const currentSession = sessions.find(s => {
+        const start = new Date(s.start_time);
+        const end = s.end_time ? new Date(s.end_time) : new Date(start.getTime() + 15 * 60000);
+        return start <= now && now <= end;
+    });
+
+    if (currentSession) {
+        const end = currentSession.end_time ? new Date(currentSession.end_time) : new Date(now.getTime() + 15 * 60000);
+        const minsLeft = Math.max(1, Math.ceil((end - now) / 60000));
+        const matchedTask = (typeof allTasksMap !== 'undefined' && allTasksMap) ? allTasksMap[currentSession.task_id] : null;
+        const titleName = (matchedTask ? matchedTask.title : null) || currentSession.notes || currentSession.tags || 'Current Task';
+        document.title = `${minsLeft}m left | ${titleName}`;
+        return;
+    }
+
+    // 4. Next Task Starting within <= 5 Hours (300 mins)
+    const upcomingSessions = sessions
+        .filter(s => new Date(s.start_time) > now)
+        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+    if (upcomingSessions.length > 0) {
+        const nextSession = upcomingSessions[0];
+        const nextStart = new Date(nextSession.start_time);
+        const diffMs = nextStart - now;
+        const minsUntilNext = Math.max(1, Math.ceil(diffMs / 60000));
+        const hoursUntilNext = diffMs / (1000 * 60 * 60);
+
+        if (hoursUntilNext <= 5) {
+            const matchedTask = (typeof allTasksMap !== 'undefined' && allTasksMap) ? allTasksMap[nextSession.task_id] : null;
+            const titleName = (matchedTask ? matchedTask.title : null) || nextSession.notes || nextSession.tags || 'Next Task';
+            document.title = `in ${minsUntilNext}m | ${titleName}`;
+            return;
+        }
+    }
+
+    // 5. Default / Fallback Title
+    document.title = 'TimeTrace';
 }
 
 async function toggleTimer() {
@@ -71,7 +164,8 @@ async function toggleTimer() {
         await fetch('/timer/stop', { method: 'POST' });
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     } else {
-        const taskId = document.getElementById('timer_task_select').value;
+        const select = document.getElementById('timer_task_select');
+        const taskId = select ? select.value : null;
         const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
         await fetch('/timer/start', {
             method: 'POST',
@@ -119,3 +213,8 @@ async function resolveIdleGap(option) {
     fetchTimerStatus();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    fetchTimerStatus();
+    setInterval(fetchTimerStatus, 3000);
+});

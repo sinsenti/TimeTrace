@@ -1,5 +1,5 @@
 /**
- * Task Inspector Engine: Real Title Population, Parent Task Banner & Suppressed Estimates for Ongoing Tasks
+ * Task Inspector Engine with Board Redirect on Save
  */
 
 let currentTreeData = null;
@@ -28,7 +28,7 @@ async function loadTaskDetailTree() {
         const priorityBadge = document.getElementById('detail_task_priority_badge');
         if (priorityBadge) priorityBadge.innerText = (tree.priority || '-').toUpperCase();
 
-        // 2. Display Parent Task Banner permanently if this is a Subtask
+        // 2. Display Parent Task Banner if this is a Subtask
         const breadcrumbsEl = document.getElementById('task_breadcrumbs');
         const parentBannerEl = document.getElementById('parent_task_banner');
 
@@ -124,14 +124,25 @@ async function loadTaskDetailTree() {
         const progressEl = document.getElementById('detail_task_progress');
         if (progressEl && !isOngoing) progressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
 
+        // 4. Handle Subtask Completion Display
         const counts = calculateTreeCompletionStats(tree.subtasks || []);
-        const pct = counts.total > 0 ? Math.round((counts.completed / counts.total) * 100) : 0;
-        
-        const completionPctEl = document.getElementById('detail_tree_completion_pct');
-        if (completionPctEl) completionPctEl.innerText = `${pct}% (${counts.completed}/${counts.total})`;
+        const completionContainer = document.getElementById('detail_subtask_completion_container');
+        const pBarWrapper = document.getElementById('subtasks_completion_bar_wrapper');
 
-        const pBar = document.getElementById('subtasks_completion_bar');
-        if (pBar) pBar.style.width = `${pct}%`;
+        if (counts.total === 0) {
+            if (completionContainer) completionContainer.classList.add('hidden');
+            if (pBarWrapper) pBarWrapper.classList.add('hidden');
+        } else {
+            if (completionContainer) completionContainer.classList.remove('hidden');
+            if (pBarWrapper) pBarWrapper.classList.remove('hidden');
+
+            const pct = Math.round((counts.completed / counts.total) * 100);
+            const completionPctEl = document.getElementById('detail_tree_completion_pct');
+            if (completionPctEl) completionPctEl.innerText = `${pct}% (${counts.completed}/${counts.total})`;
+
+            const pBar = document.getElementById('subtasks_completion_bar');
+            if (pBar) pBar.style.width = `${pct}%`;
+        }
 
         renderSubtasksTreeNodes(tree.subtasks, document.getElementById('subtasks_tree_container'));
     } catch (e) {
@@ -152,14 +163,25 @@ async function loadTaskDetailTree() {
     }
 }
 
-async function saveInspectorTaskProperties() {
+async function saveInspectorTaskProperties(event) {
+    if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+    }
+
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
 
-    const dueInput = document.getElementById('inspector_edit_due_date').value;
+    const dueInputVal = document.getElementById('inspector_edit_due_date').value;
+    const titleVal = document.getElementById('inspector_edit_title').value.trim();
+
+    if (!titleVal) {
+        alert("Task title is required.");
+        return;
+    }
 
     const payload = {
-        title: document.getElementById('inspector_edit_title').value.trim(),
+        title: titleVal,
         description: document.getElementById('inspector_edit_desc').value,
         status: document.getElementById('inspector_edit_status').value,
         category: document.getElementById('inspector_edit_category').value,
@@ -169,15 +191,21 @@ async function saveInspectorTaskProperties() {
         attachments: document.getElementById('inspector_edit_attachments').value || ''
     };
 
-    if (dueInput) payload.due_date = new Date(dueInput).toISOString();
-
-    if (!payload.title) {
-        alert("Task title is required.");
-        return;
+    if (dueInputVal && dueInputVal.trim()) {
+        const dt = new Date(dueInputVal);
+        if (!isNaN(dt.getTime())) {
+            payload.due_date = dt.toISOString();
+        }
     }
 
-    await api.put(`/tasks/${taskId}`, payload);
-    loadTaskDetailTree();
+    try {
+        await api.put(`/tasks/${taskId}`, payload);
+        // Redirect back to board upon successful save
+        window.location.href = '/kanban';
+    } catch (err) {
+        console.error("Failed to save inspector task properties:", err);
+        alert("Failed to save changes: " + (err.message || err));
+    }
 }
 
 async function deleteMainInspectorTask() {
@@ -238,8 +266,8 @@ function renderSubtaskCardHTML(node) {
                     <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button onclick="openSubtaskCreationModal(${node.id})" class="text-purple-400 hover:text-purple-300 font-bold">+ Subtask</button>
-                    <button onclick="deleteSubtaskNode(${node.id})" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
+                    <button type="button" onclick="openSubtaskCreationModal(${node.id})" class="text-purple-400 hover:text-purple-300 font-bold">+ Subtask</button>
+                    <button type="button" onclick="deleteSubtaskNode(${node.id})" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
                 </div>
             </div>
 
