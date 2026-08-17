@@ -3,7 +3,9 @@ let idleDetectionEnabled = true;
 
 async function fetchTimerStatus() {
     try {
-        const res = await fetch('/api/v1/timer/status');
+        const res = await fetch('/timer/status');
+        if (!res.ok) return;
+        
         const data = await res.json();
         isRunning = data.is_running;
         idleDetectionEnabled = data.idle_detection_enabled;
@@ -27,7 +29,7 @@ async function fetchTimerStatus() {
             const secs = data.elapsed_seconds % 60;
             const timeStr = `${String(mins).padStart(2,'0')}:${String(secs).padStart(2,'0')}`;
             const taskName = data.task_title || (data.tags || 'Task');
-            
+
             let remTitleStr = '';
             let remPillStr = '';
             if (data.remaining_seconds !== null && data.remaining_seconds !== undefined) {
@@ -46,7 +48,7 @@ async function fetchTimerStatus() {
             const nextSess = data.next_session;
             let idleText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
             let tabTitle = data.is_frozen_idle ? 'AFK Detected - TimeTrace' : 'TimeTrace Dashboard';
-            
+
             if (!data.is_frozen_idle && nextSess) {
                 const startDt = new Date(nextSess.start_time);
                 const timeLabel = `${String(startDt.getHours()).padStart(2,'0')}:${String(startDt.getMinutes()).padStart(2,'0')}`;
@@ -57,7 +59,7 @@ async function fetchTimerStatus() {
             if (label) label.innerText = idleText;
             if (btn) {
                 btn.innerText = 'Start Timer';
-                btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
+                btn.className = 'h-6 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 rounded transition text-[10px] whitespace-nowrap';
             }
             document.title = tabTitle;
         }
@@ -66,12 +68,12 @@ async function fetchTimerStatus() {
 
 async function toggleTimer() {
     if (isRunning) {
-        await fetch('/api/v1/timer/stop', { method: 'POST' });
+        await fetch('/timer/stop', { method: 'POST' });
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     } else {
         const taskId = document.getElementById('timer_task_select').value;
         const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
-        await fetch('/api/v1/timer/start', {
+        await fetch('/timer/start', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ task_id: taskId ? parseInt(taskId) : null, tags: settings.defaultTag || "#general" })
@@ -81,7 +83,7 @@ async function toggleTimer() {
 }
 
 async function toggleIdleSwitch() {
-    const res = await fetch('/api/v1/idle/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    const res = await fetch('/idle/toggle', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
     const data = await res.json();
     idleDetectionEnabled = data.idle_detection_enabled;
     updateIdleSwitchUI();
@@ -105,7 +107,7 @@ async function resolveIdleGap(option) {
     const retagInput = document.getElementById('idle_retag_input');
     const newTags = retagInput ? retagInput.value.trim() || '#general' : '#general';
 
-    await fetch('/api/v1/idle/resolve', {
+    await fetch('/idle/resolve', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ option: option, new_tags: newTags })

@@ -23,7 +23,7 @@ function generateMatrixDateHeaders() {
 
 async function loadHabitsData() {
     try {
-        const res = await fetch('/api/v1/habits');
+        const res = await fetch('/habits');
         allHabits = await res.json();
         renderMatrixTable();
         renderRemindersList();
@@ -47,9 +47,6 @@ function switchHabitTab(tabName) {
     }
 }
 
-// ----------------------------------------------------
-// 1. Matrix View Engine (Images 2 & 4)
-// ----------------------------------------------------
 function renderMatrixTable() {
     const headerRow = document.getElementById('matrix_table_header');
     const tbody = document.getElementById('matrix_table_body');
@@ -106,7 +103,6 @@ function renderMatrixCell(habit, dateStr, log) {
             </td>
         `;
     } else {
-        // Numeric habit cell (e.g. pull-ups count)
         const isTargetReached = log.value >= habit.target_value;
         const bgClass = isTargetReached ? 'cell-completed' : (log.value > 0 ? 'cell-in-progress' : 'bg-[#181a28] text-slate-400');
 
@@ -133,7 +129,7 @@ async function toggleBooleanHabitLog(habitId, dateStr, currentStatus) {
     else if (currentStatus === 'failed') nextStatus = 'skipped';
     else if (currentStatus === 'skipped') nextStatus = 'erase';
 
-    await fetch(`/api/v1/habits/${habitId}/log`, {
+    await fetch(`/habits/${habitId}/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date_str: dateStr, status: nextStatus })
@@ -142,7 +138,7 @@ async function toggleBooleanHabitLog(habitId, dateStr, currentStatus) {
 }
 
 async function incrementHabitVal(habitId, dateStr, delta) {
-    await fetch(`/api/v1/habits/${habitId}/log`, {
+    await fetch(`/habits/${habitId}/log`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ date_str: dateStr, delta_value: delta })
@@ -150,9 +146,6 @@ async function incrementHabitVal(habitId, dateStr, delta) {
     loadHabitsData();
 }
 
-// ----------------------------------------------------
-// 2. Reminders View Engine (Image 1)
-// ----------------------------------------------------
 function renderRemindersList() {
     const container = document.getElementById('reminders_card_list');
     if (!container) return;
@@ -181,9 +174,6 @@ function renderRemindersList() {
     `).join('');
 }
 
-// ----------------------------------------------------
-// 3. Charts & Trends Engine (Image 3)
-// ----------------------------------------------------
 function populateChartHabitSelect() {
     const select = document.getElementById('chart_habit_select');
     if (!select) return;
@@ -199,10 +189,9 @@ async function renderSelectedHabitCharts() {
     if (!select || !select.value) return;
 
     const habitId = select.value;
-    const res = await fetch(`/api/v1/habits/${habitId}/stats`);
+    const res = await fetch(`/habits/${habitId}/stats`);
     const data = await res.json();
 
-    // Render KPI Summary Badges
     const kpiContainer = document.getElementById('chart_habit_kpis');
     if (kpiContainer) {
         kpiContainer.innerHTML = `
@@ -217,7 +206,6 @@ async function renderSelectedHabitCharts() {
         `;
     }
 
-    // Render Doughnut Chart
     const ctxDoughnut = document.getElementById('chart_habit_doughnut').getContext('2d');
     if (habitCharts.doughnut) habitCharts.doughnut.destroy();
 
@@ -238,7 +226,6 @@ async function renderSelectedHabitCharts() {
         }
     });
 
-    // Render History Bar Chart
     const ctxBar = document.getElementById('chart_habit_bar').getContext('2d');
     if (habitCharts.bar) habitCharts.bar.destroy();
 
@@ -265,9 +252,6 @@ async function renderSelectedHabitCharts() {
     });
 }
 
-// ----------------------------------------------------
-// Modal Handlers
-// ----------------------------------------------------
 function toggleHabitTypeFields() {
     const type = document.getElementById('modal_habit_type').value;
     const group = document.getElementById('numeric_fields_group');
@@ -326,13 +310,13 @@ async function saveHabit() {
     if (!payload.name) return;
 
     if (id) {
-        await fetch(`/api/v1/habits/${id}`, {
+        await fetch(`/habits/${id}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
     } else {
-        await fetch('/api/v1/habits', {
+        await fetch('/habits', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -349,7 +333,7 @@ async function deleteHabit() {
 
     const confirmed = await showCustomConfirm("Delete Habit", "Are you sure you want to delete this habit and all its history?");
     if (confirmed) {
-        await fetch(`/api/v1/habits/${id}`, { method: 'DELETE' });
+        await fetch(`/habits/${id}`, { method: 'DELETE' });
         closeHabitModal();
         loadHabitsData();
     }

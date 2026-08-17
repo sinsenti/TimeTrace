@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
-from typing import Any, Dict, List
+from typing import Any
+
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
@@ -18,14 +19,14 @@ class HabitService:
         self.db.refresh(db_habit)
         return db_habit
 
-    def list_habits(self) -> List[Dict[str, Any]]:
+    def list_habits(self) -> list[dict[str, Any]]:
         habits = self.db.exec(select(Habit)).all()
         today_dt = datetime.now().date()
 
         start_date_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
         logs = self.db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
 
-        log_map: Dict[int, Dict[str, Any]] = {}
+        log_map: dict[int, dict[str, Any]] = {}
         for log_entry in logs:
             if log_entry.habit_id not in log_map:
                 log_map[log_entry.habit_id] = {}
@@ -61,7 +62,7 @@ class HabitService:
         self.db.delete(db_habit)
         self.db.commit()
 
-    def log_progress(self, habit_id: int, req: HabitLogRequest) -> Dict[str, Any] | HabitLog:
+    def log_progress(self, habit_id: int, req: HabitLogRequest) -> dict[str, Any] | HabitLog:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -98,7 +99,7 @@ class HabitService:
         self.db.refresh(log)
         return log
 
-    def get_stats(self, habit_id: int) -> Dict[str, Any]:
+    def get_stats(self, habit_id: int) -> dict[str, Any]:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)

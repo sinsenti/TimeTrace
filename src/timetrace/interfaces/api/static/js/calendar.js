@@ -39,22 +39,36 @@ function scrollToCurrentTime() {
 }
 
 async function handleCalendarEventUpdate(event) {
+    const startIso = event.start.toISOString();
+    const endIso = event.end ? event.end.toISOString() : event.start.toISOString();
+
     const payload = {
-        start_time: event.start.toISOString(),
-        end_time: event.end ? event.end.toISOString() : event.start.toISOString()
+        start_time: startIso,
+        end_time: endIso
     };
-    await api.put(`/api/v1/sessions/${event.id}`, payload);
+
+    await api.put(`/sessions/${event.id}`, payload);
+
+    if (event.extendedProps && event.extendedProps.taskId && event.end) {
+        const newMins = Math.max(15, Math.round((event.end - event.start) / 60000));
+        try {
+            await api.put(`/tasks/${event.extendedProps.taskId}`, { estimated_minutes: newMins });
+            if (typeof fetchTasks === 'function') fetchTasks();
+            if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+        } catch (e) {}
+    }
+
     if (calendar) calendar.refetchEvents();
 }
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     try {
-        await fetchAllTasksRegistry();
-        const res = await api.get(`/api/v1/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
+        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
+        const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
         allSessions = res || [];
-        
+
         const events = allSessions.map((s, idx) => {
-            const matchedTask = allTasksMap[s.task_id];
+            const matchedTask = typeof allTasksMap !== 'undefined' ? allTasksMap[s.task_id] : null;
             const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
 
             return {
@@ -65,6 +79,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
                 backgroundColor: color,
                 borderColor: 'transparent',
                 extendedProps: {
+                    taskId: s.task_id,
                     taskTitle: matchedTask ? matchedTask.title : '',
                     notes: s.notes || '',
                     tags: s.tags || ''
@@ -72,7 +87,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
             };
         });
         successCallback(events);
-        fetchRangeTotals();
-        updateDocumentTitle();
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
     } catch (err) { failureCallback(err); }
 }

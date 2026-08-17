@@ -1,23 +1,95 @@
-from datetime import UTC, datetime
+import re
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
-from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview
+from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
-from timetrace.interfaces.api.schemas import TaskCreate, TaskReviewCreate, TaskUpdate
+from timetrace.interfaces.api.schemas import TaskCreate, TaskReviewCreate, TaskStatusCreate, TaskStatusUpdate, TaskUpdate
 from timetrace.interfaces.api.utils import ensure_utc
+
+
+def parse_title_estimation(title: str) -> tuple[str, int | None]:
+    """Extracts estimation tags like [30min], [45m], [1h] from title string."""
+    match = re.search(r"\[(\d+(?:\.\d+)?)\s*(min|mins|m|h|hours|hour)?\]", title, re.IGNORECASE)
+    if match:
+        val = float(match.group(1))
+        unit = (match.group(2) or "m").lower()
+        est_minutes = int(val * 60) if unit in ("h", "hour", "hours") else int(val)
+        clean_title = re.sub(r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour)?\]", "", title, flags=re.IGNORECASE).strip()
+        return clean_title, est_minutes
+    return title, None
 
 
 class TaskService:
     def __init__(self, db: Session):
         self.db = db
 
+    # ----------------------------------------------------
+    # Task Status Management
+    # ----------------------------------------------------
+    def list_statuses(self) -> list[TaskStatus]:
+        statuses = self.db.exec(select(TaskStatus).order_by(TaskStatus.position)).all()
+        if not statuses:
+            defaults = [
+                TaskStatus(name="To Do", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#2563eb", position=0),
+                TaskStatus(name="Ongoing", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#d97706", position=1),
+                TaskStatus(name="Scheduled", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=True, color="#7c3aed", position=2),
+                TaskStatus(name="Done", is_completed=True, is_hide_by_default=True, is_scheduled_trigger=False, color="#059669", position=3),
+                TaskStatus(name="Backlog", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#64748b", position=4),
+            ]
+            for st in defaults:
+                self.db.add(st)
+            self.db.commit()
+            statuses = self.db.exec(select(TaskStatus).order_by(TaskStatus.position)).all()
+        return statuses
+
+    def create_status(self, req: TaskStatusCreate) -> TaskStatus:
+        st = TaskStatus.model_validate(req.model_dump())
+        self.db.add(st)
+        self.db.commit()
+        self.db.refresh(st)
+        return st
+
+    def update_status(self, status_id: int, req: TaskStatusUpdate) -> TaskStatus:
+        st = self.db.get(TaskStatus, status_id)
+        if not st:
+            raise EntityNotFoundError("TaskStatus", status_id)
+        for k, v in req.model_dump(exclude_unset=True).items():
+            setattr(st, k, v)
+        self.db.add(st)
+        self.db.commit()
+        self.db.refresh(st)
+        return st
+
+    def delete_status(self, status_id: int) -> None:
+        st = self.db.get(TaskStatus, status_id)
+        if not st:
+            raise EntityNotFoundError("TaskStatus", status_id)
+        self.db.delete(st)
+        self.db.commit()
+
+    # ----------------------------------------------------
+    # Task Operations & Title Estimate Parser
+    # ----------------------------------------------------
     def create_task(self, req: TaskCreate) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
+        
+        # Parse title estimation syntax [30min]
+        clean_title, parsed_est = parse_title_estimation(task_dict["title"])
+        task_dict["title"] = clean_title
+        if parsed_est is not None:
+            task_dict["estimated_minutes"] = parsed_est
+
         if not task_dict.get("color"):
             task_dict["color"] = "auto"
+
+        if task_dict.get("status"):
+            st = self.db.exec(select(TaskStatus).where(TaskStatus.name == task_dict["status"])).first()
+            if st:
+                task_dict["status_id"] = st.id
 
         db_task = Task.model_validate(task_dict)
         if db_task.created_at:
@@ -29,24 +101,96 @@ class TaskService:
         db_task.created_at = ensure_utc(db_task.created_at)
         return db_task
 
-    def list_tasks(self, status_filter: str | None = None, sort_by: str = "priority") -> list[Task]:
+    def list_tasks(
+        self,
+        status_filter: str | None = None,
+        sort_by: str = "smart_gap_filler",
+        category_filter: str | None = None,
+        assigned_date: str | None = None,
+        due_before: str | None = None,
+    ) -> list[Task]:
+        # Auto-heal legacy status strings in DB
+        all_db_tasks = self.db.exec(select(Task)).all()
+        status_map = {
+            "in_progress": "To Do",
+            "in progress": "To Do",
+            "ip": "To Do",
+            "completed": "Done",
+            "done": "Done",
+            "c": "Done",
+            "ongoing": "Ongoing",
+            "og": "Ongoing"
+        }
+        needs_commit = False
+        for t in all_db_tasks:
+            if t.status in status_map:
+                t.status = status_map[t.status]
+                needs_commit = True
+            elif not t.status:
+                t.status = "To Do"
+                needs_commit = True
+
+        if needs_commit:
+            self.db.commit()
+
         query = select(Task)
+
         if status_filter and status_filter != "all":
             if status_filter == "hide_completed":
-                query = query.where(Task.status != "completed")
+                query = query.where(Task.status.notin_(["Done", "completed", "done"]))
             else:
                 query = query.where(Task.status == status_filter)
+
+        if category_filter and category_filter != "all":
+            query = query.where(Task.category == category_filter)
+
+        if assigned_date:
+            query = query.where(Task.assigned_date == assigned_date)
+
+        if due_before:
+            try:
+                due_dt = datetime.fromisoformat(due_before)
+                query = query.where(Task.due_date <= due_dt)
+            except Exception:
+                pass
 
         tasks = self.db.exec(query).all()
         for t in tasks:
             t.created_at = ensure_utc(t.created_at)
 
-        priority_map = {"high": 4, "medium": 3, "low": 2, "-": 1}
+        priority_map = {"high": 3, "medium": 2, "low": 1, "-": 0}
 
-        if sort_by == "priority":
+        if sort_by == "smart_gap_filler":
+            def smart_score(t: Task) -> tuple:
+                status_lower = (t.status or "").lower()
+                is_scheduled = status_lower == "scheduled"
+                is_ongoing = status_lower == "ongoing"
+                is_done = status_lower in ("completed", "done")
+                prio_val = priority_map.get(str(t.priority).lower(), 0)
+                created_ts = t.created_at.timestamp() if t.created_at else 0
+
+                group = 5
+                if not is_scheduled and not is_done:
+                    if prio_val == 3:
+                        group = 1
+                    elif prio_val == 2:
+                        group = 2
+                    elif is_ongoing:
+                        group = 3
+                    else:
+                        group = 4
+                elif is_scheduled:
+                    group = 6
+                elif is_done:
+                    group = 7
+
+                return (group, -prio_val, created_ts)
+
+            tasks.sort(key=smart_score)
+        elif sort_by == "priority":
             tasks.sort(
                 key=lambda t: (
-                    priority_map.get(str(t.priority).lower(), 1),
+                    priority_map.get(str(t.priority).lower(), 0),
                     -t.created_at.timestamp() if t.created_at else 0
                 ),
                 reverse=True
@@ -55,8 +199,6 @@ class TaskService:
             tasks.sort(key=lambda t: t.created_at or datetime.min.replace(tzinfo=UTC))
         elif sort_by == "title":
             tasks.sort(key=lambda t: (t.title or "").lower())
-        elif sort_by == "status":
-            tasks.sort(key=lambda t: (t.status or "").lower())
 
         return tasks
 
@@ -66,8 +208,24 @@ class TaskService:
             raise EntityNotFoundError("Task", task_id)
 
         update_dict = req.model_dump(exclude_unset=True)
+
+        if "title" in update_dict and update_dict["title"]:
+            clean_title, parsed_est = parse_title_estimation(update_dict["title"])
+            update_dict["title"] = clean_title
+            if parsed_est is not None:
+                update_dict["estimated_minutes"] = parsed_est
+
         for key, value in update_dict.items():
             setattr(db_task, key, value)
+
+        if "status" in update_dict:
+            st = self.db.exec(select(TaskStatus).where(TaskStatus.name == update_dict["status"])).first()
+            if st:
+                db_task.status_id = st.id
+
+        # Recurrence Processing when Task is marked Done
+        if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
+            self.handle_task_recurrence(db_task)
 
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
@@ -78,6 +236,25 @@ class TaskService:
         db_task.created_at = ensure_utc(db_task.created_at)
         return db_task
 
+    def handle_task_recurrence(self, task: Task) -> None:
+        """Schedules the next occurrence for a recurring task."""
+        today = date.today()
+        rule = (task.recurrence_rule or "daily").lower()
+
+        if rule == "daily":
+            next_date = today + timedelta(days=1)
+        elif rule == "weekdays":
+            next_date = today + timedelta(days=1)
+            while next_date.weekday() >= 5:  # Saturday/Sunday
+                next_date += timedelta(days=1)
+        elif rule == "weekly":
+            next_date = today + timedelta(weeks=1)
+        else:
+            next_date = today + timedelta(days=1)
+
+        task.assigned_date = next_date.strftime("%Y-%m-%d")
+        task.status = "To Do"  # Re-queue for next date
+
     def delete_task(self, task_id: int) -> None:
         db_task = self.db.get(Task, task_id)
         if not db_task:
@@ -87,12 +264,41 @@ class TaskService:
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
-        completed_tasks = self.db.exec(select(Task).where(Task.status == "completed")).all()
+        completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         count = len(completed_tasks)
         for task in completed_tasks:
             self.db.delete(task)
         self.db.commit()
         return count
+
+    def get_task_tree(self, task_id: int) -> dict[str, Any]:
+        task = self.db.get(Task, task_id)
+        if not task:
+            raise EntityNotFoundError("Task", task_id)
+
+        def build_node(t: Task) -> dict[str, Any]:
+            subtasks = self.db.exec(select(Task).where(Task.parent_id == t.id)).all()
+            return {
+                "id": t.id,
+                "title": t.title,
+                "description": t.description,
+                "priority": t.priority,
+                "status": t.status,
+                "category": t.category,
+                "estimated_minutes": t.estimated_minutes,
+                "due_date": ensure_utc(t.due_date).isoformat() if t.due_date else None,
+                "assigned_date": t.assigned_date,
+                "attachments": t.attachments,
+                "is_recurring": t.is_recurring,
+                "recurrence_rule": t.recurrence_rule,
+                "color": t.color,
+                "tags": t.tags,
+                "parent_id": t.parent_id,
+                "created_at": ensure_utc(t.created_at).isoformat() if t.created_at else "",
+                "subtasks": [build_node(child) for child in subtasks]
+            }
+
+        return build_node(task)
 
     def get_task_statistics(self, task_id: int) -> dict[str, Any]:
         task = self.db.get(Task, task_id)

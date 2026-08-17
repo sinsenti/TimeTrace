@@ -1,7 +1,104 @@
 /**
- * Tasks Sidebar, Range Totals Breakdown & Drag-to-Resize Mechanics
+ * TimeTrace Dashboard Sidebar Manager
+ * Configurable status tabs, task cards, and range totals with persistent local storage.
  */
 
+const STORAGE_STATUS_FILTER_KEY = 'timetrace_status_filter';
+const STORAGE_VISIBLE_TABS_KEY = 'timetrace_visible_sidebar_tabs';
+
+currentFilter = localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || 'all';
+
+// Default visible sidebar tabs
+let visibleSidebarTabs = JSON.parse(localStorage.getItem(STORAGE_VISIBLE_TABS_KEY) || 'null');
+if (!visibleSidebarTabs) {
+    visibleSidebarTabs = ['all', 'hide_completed', 'To Do', 'Ongoing', 'Scheduled', 'Done', 'Backlog'];
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    initSidebarResizers();
+    renderDynamicStatusTabs();
+});
+
+// ----------------------------------------------------
+// 1. Configurable Dynamic Status Tabs
+// ----------------------------------------------------
+function setTaskFilter(filterName) {
+    currentFilter = filterName;
+    localStorage.setItem(STORAGE_STATUS_FILTER_KEY, filterName);
+    renderDynamicStatusTabs();
+    fetchTasks();
+}
+
+async function renderDynamicStatusTabs() {
+    const container = document.getElementById('sidebar_status_tabs');
+    if (!container) return;
+
+    try {
+        const dbStatuses = await api.get('/tasks/statuses') || [];
+        const allAvailableTabs = [
+            { id: 'all', label: 'All' },
+            { id: 'hide_completed', label: 'Active' },
+            ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
+        ];
+
+        // Filter tabs based on user's tab visibility configuration
+        const activeVisibleTabs = allAvailableTabs.filter(t => visibleSidebarTabs.includes(t.id));
+
+        container.innerHTML = activeVisibleTabs.map(t => {
+            const isSelected = currentFilter === t.id;
+            const activeClass = "px-2 py-0.5 text-[10px] rounded bg-purple-600 text-white font-bold whitespace-nowrap";
+            const inactiveClass = "px-2 py-0.5 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white whitespace-nowrap";
+            return `<button onclick="setTaskFilter('${t.id}')" class="${isSelected ? activeClass : inactiveClass}">${t.label}</button>`;
+        }).join('');
+    } catch(e) {
+        console.error("Failed to render dynamic status tabs:", e);
+    }
+}
+
+function openSidebarTabsConfigModal() {
+    api.get('/tasks/statuses').then(dbStatuses => {
+        const allAvailableTabs = [
+            { id: 'all', label: 'All' },
+            { id: 'hide_completed', label: 'Active (Hide Completed)' },
+            ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
+        ];
+
+        const listContainer = document.getElementById('sidebar_tab_config_list');
+        if (!listContainer) return;
+
+        listContainer.innerHTML = allAvailableTabs.map(t => {
+            const isChecked = visibleSidebarTabs.includes(t.id);
+            return `
+                <label class="flex items-center justify-between p-2 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
+                    <span class="font-bold text-xs text-white">${t.label}</span>
+                    <input type="checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} onchange="toggleSidebarTabVisibility('${t.id}', this.checked)" class="w-4 h-4 accent-purple-600 rounded">
+                </label>
+            `;
+        }).join('');
+
+        document.getElementById('sidebar_tab_config_modal').classList.remove('hidden');
+    });
+}
+
+function closeSidebarTabsConfigModal() {
+    const modal = document.getElementById('sidebar_tab_config_modal');
+    if (modal) modal.classList.add('hidden');
+    renderDynamicStatusTabs();
+    fetchTasks();
+}
+
+function toggleSidebarTabVisibility(tabId, isVisible) {
+    if (isVisible) {
+        if (!visibleSidebarTabs.includes(tabId)) visibleSidebarTabs.push(tabId);
+    } else {
+        visibleSidebarTabs = visibleSidebarTabs.filter(id => id !== tabId);
+    }
+    localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
+}
+
+// ----------------------------------------------------
+// 2. Sidebar Resizers
+// ----------------------------------------------------
 function initSidebarResizers() {
     const leftSidebar = document.getElementById('left_sidebar');
     const leftResizer = document.getElementById('left_resizer');
@@ -11,7 +108,6 @@ function initSidebarResizers() {
     let isResizingLeft = false;
     let isResizingRight = false;
 
-    // Restore saved widths from localStorage
     const savedLeftWidth = localStorage.getItem('timetrace_left_sidebar_width');
     const savedRightWidth = localStorage.getItem('timetrace_right_sidebar_width');
     
@@ -48,8 +144,6 @@ function initSidebarResizers() {
         if (isResizingLeft && leftSidebar) {
             const containerLeft = leftSidebar.getBoundingClientRect().left;
             let newWidth = e.clientX - containerLeft;
-            
-            // Min 160px, Max dynamically calculated to almost full screen (leaves 80px)
             const maxLeftWidth = Math.max(160, window.innerWidth - 80);
             newWidth = Math.max(160, Math.min(newWidth, maxLeftWidth));
             
@@ -60,7 +154,7 @@ function initSidebarResizers() {
         if (isResizingRight && rightSidebar) {
             const containerRight = rightSidebar.getBoundingClientRect().right;
             let newWidth = containerRight - e.clientX;
-            newWidth = Math.max(200, Math.min(newWidth, 600)); // Min 200px, Max 600px
+            newWidth = Math.max(200, Math.min(newWidth, 600));
             rightSidebar.style.width = `${newWidth}px`;
             localStorage.setItem('timetrace_right_sidebar_width', newWidth);
         }
@@ -85,30 +179,19 @@ function initSidebarResizers() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    initSidebarResizers();
-});
-
-function setTaskFilter(filterName) {
-    currentFilter = filterName;
-    
-    const tabAll = document.getElementById('filter_tab_all');
-    const tabActive = document.getElementById('filter_tab_active');
-    const tabDone = document.getElementById('filter_tab_done');
-    
-    const activeClass = "flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold";
-    const inactiveClass = "flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white";
-
-    if (tabAll) tabAll.className = (filterName === 'all') ? activeClass : inactiveClass;
-    if (tabActive) tabActive.className = (filterName === 'hide_completed') ? activeClass : inactiveClass;
-    if (tabDone) tabDone.className = (filterName === 'completed') ? activeClass : inactiveClass;
-
-    fetchTasks();
-}
-
+// ----------------------------------------------------
+// 3. Task Fetching & Sidebar Card List Rendering
+// ----------------------------------------------------
 async function fetchTasks() {
     try {
-        activeTasks = await api.get(`/api/v1/tasks?status=${currentFilter}`) || [];
+        let fetched = await api.get(`/tasks?status=${currentFilter}&sort=smart_gap_filler`) || [];
+
+        // Apply custom filter rules if active
+        if (typeof matchesCustomFilter === 'function') {
+            activeTasks = fetched.filter(t => matchesCustomFilter(t));
+        } else {
+            activeTasks = fetched;
+        }
 
         const cardList = document.getElementById('task_card_list');
         const select = document.getElementById('timer_task_select');
@@ -123,20 +206,36 @@ async function fetchTasks() {
 
         if (cardList) {
             if (activeTasks.length === 0) {
-                cardList.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tasks found.</div>';
+                cardList.innerHTML = '<div class="text-xs text-slate-500 text-center py-4">No tasks match filter.</div>';
             } else {
                 cardList.innerHTML = activeTasks.map((t, idx) => {
                     const color = getTaskColor(t, idx);
+                    const isOngoing = (t.status || '').toLowerCase() === 'ongoing';
                     const prioLabel = (t.priority || '-').toUpperCase();
+                    const estBadge = t.estimated_minutes ? `${t.estimated_minutes}m` : '15m';
+                    const hasAttachments = Boolean(t.attachments && t.attachments.trim());
+                    const isRecurring = t.is_recurring === true;
+                    const dueStr = t.due_date ? `Due ${new Date(t.due_date).toLocaleDateString([], {month:'short', day:'numeric'})}` : '';
+
                     return `
-                        <div onclick="openEditTaskModal(${t.id})" data-task-id="${t.id}" data-task-title="${t.title}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white">
+                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white cursor-pointer">
                             <div>
-                                <div class="font-black text-sm tracking-wide leading-snug">${t.title}</div>
-                                <div class="text-[11px] opacity-80 truncate">${t.description || ''}</div>
+                                <div class="flex justify-between items-start">
+                                    <span class="font-black text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
+                                    ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/40 px-1.5 py-0.5 rounded ml-1 shrink-0">${estBadge}</span>` : ''}
+                                </div>
+                                <div class="text-[11px] opacity-80 truncate">${t.description || dueStr || ''}</div>
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
-                                <span class="bg-black/20 px-1.5 py-0.5 rounded">${t.status}</span>
-                                <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
+                                <div class="flex items-center space-x-1">
+                                    <span class="bg-black/20 px-1.5 py-0.5 rounded uppercase text-[9px]">${t.category || 'work'}</span>
+                                    ${isRecurring ? '<span class="text-[9px] font-bold text-emerald-300">↻</span>' : ''}
+                                    ${hasAttachments ? '<span class="text-[9px] font-bold text-blue-300">📎</span>' : ''}
+                                </div>
+                                <div class="flex items-center space-x-1">
+                                    <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
+                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal(${t.id});" class="bg-black/40 hover:bg-black/70 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -153,12 +252,15 @@ async function fetchTasks() {
 async function clearCompletedTasks() {
     const confirmed = await showCustomConfirm("Clear Completed Tasks", "Are you sure you want to remove all completed task slots?");
     if (confirmed) {
-        await api.delete('/api/v1/tasks/completed');
-        await fetchAllTasksRegistry();
+        await api.delete('/tasks/completed');
+        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         fetchTasks();
     }
 }
 
+// ----------------------------------------------------
+// 4. Range Totals Calculations
+// ----------------------------------------------------
 function fetchRangeTotals() {
     if (!calendar) return;
     const viewType = calendar.view.type;
@@ -232,28 +334,4 @@ function fetchRangeTotals() {
             `;
         }).join('');
     }
-}
-
-function toggleSidebar(id) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.classList.toggle('hidden');
-    const isHidden = el.classList.contains('hidden');
-
-    const settings = getUserSettings();
-    if (id === 'left_sidebar') {
-        settings.lastHideLeftSidebar = isHidden;
-        if (settings.hideLeftSidebar !== 'auto') {
-            settings.hideLeftSidebar = isHidden;
-        }
-    }
-    if (id === 'right_sidebar') {
-        settings.lastHideRightSidebar = isHidden;
-        if (settings.hideRightSidebar !== 'auto') {
-            settings.hideRightSidebar = isHidden;
-        }
-    }
-    saveUserSettings(settings);
-
-    setSidebarVisibility(id, !isHidden);
 }

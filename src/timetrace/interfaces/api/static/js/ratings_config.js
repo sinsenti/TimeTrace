@@ -6,7 +6,7 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
     const container = document.getElementById(containerId);
     if (!container) return;
 
-    const defs = await api.get(`/api/v1/rating-definitions?target_type=${targetType}`) || [];
+    const defs = await api.get(`/rating-definitions?target_type=${targetType}`) || [];
 
     if (!defs || defs.length === 0) {
         container.innerHTML = '';
@@ -92,7 +92,7 @@ async function submitCustomRatings(targetType, targetId) {
         if (input) {
             const isDismissed = input.disabled;
             const parsedScore = parseInt(input.value);
-            await api.post('/api/v1/rating-entries', {
+            await api.post('/rating-entries', {
                 rating_definition_id: defId,
                 target_type: targetType,
                 target_id: String(targetId),
@@ -108,7 +108,7 @@ async function loadRatingDefinitionsList() {
     if (!container) return;
 
     try {
-        allRatingDefinitions = await api.get('/api/v1/rating-definitions') || [];
+        allRatingDefinitions = await api.get('/rating-definitions') || [];
 
         if (allRatingDefinitions.length === 0) {
             container.innerHTML = '<div class="text-xs text-slate-500 text-center py-8">No custom rating definitions created yet. Click "+ New Rating Scale" to create your first evaluation metric!</div>';
@@ -192,9 +192,9 @@ async function saveRatingDefinition() {
     if (!payload.name) return;
 
     if (id) {
-        await api.put(`/api/v1/rating-definitions/${id}`, payload);
+        await api.put(`/rating-definitions/${id}`, payload);
     } else {
-        await api.post('/api/v1/rating-definitions', payload);
+        await api.post('/rating-definitions', payload);
     }
 
     closeRatingDefModal();
@@ -207,7 +207,7 @@ async function deleteRatingDefinition() {
 
     const confirmed = await showCustomConfirm("Delete Rating Definition", "Are you sure you want to delete this custom rating scale? Attached rating entries will also be removed.");
     if (confirmed) {
-        await api.delete(`/api/v1/rating-definitions/${id}`);
+        await api.delete(`/rating-definitions/${id}`);
         closeRatingDefModal();
         loadRatingDefinitionsList();
     }

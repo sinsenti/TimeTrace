@@ -1,0 +1,90 @@
+<!-- Unified Custom Filter Modal Partial -->
+<div id="custom_filter_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+            <div class="flex items-center space-x-2">
+                <span class="text-purple-400 font-black text-base">🔍</span>
+                <h3 class="font-bold text-base text-white">Advanced Task Filter & Search</h3>
+            </div>
+            <button onclick="closeCustomFilterModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+        </div>
+
+        <div class="space-y-3 text-xs">
+            <!-- Search Query -->
+            <div>
+                <label class="text-slate-400 block mb-1 font-semibold">Title or Description Search</label>
+                <input id="filter_input_query" type="text" placeholder="Search keywords..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+                <!-- Status Filter -->
+                <div>
+                    <label class="text-slate-400 block mb-1 font-semibold">Status Column</label>
+                    <select id="filter_input_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="all">All Statuses</option>
+                        <option value="hide_completed">Active (Hide Completed)</option>
+                        <option value="To Do">To Do</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Done">Done</option>
+                        <option value="Backlog">Backlog</option>
+                    </select>
+                </div>
+
+                <!-- Category Filter -->
+                <div>
+                    <label class="text-slate-400 block mb-1 font-semibold">Category</label>
+                    <select id="filter_input_category" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="all">All Categories</option>
+                        <option value="work">work</option>
+                        <option value="family">family</option>
+                        <option value="personal">personal</option>
+                        <option value="study">study</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Time Estimation Condition -->
+            <div>
+                <label class="text-slate-400 block mb-1 font-semibold">Time Estimation Condition</label>
+                <div class="grid grid-cols-2 gap-2">
+                    <select id="filter_input_est_op" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="">Any Duration</option>
+                        <option value="lt">Less than (&lt;)</option>
+                        <option value="lte">Less or equal (&le;)</option>
+                        <option value="eq">Equal (=)</option>
+                        <option value="gte">Greater or equal (&ge;)</option>
+                    </select>
+                    <select id="filter_input_est_mins" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                        <option value="15">15 mins</option>
+                        <option value="30" selected>30 mins</option>
+                        <option value="45">45 mins</option>
+                        <option value="60">60 mins</option>
+                        <option value="90">90 mins</option>
+                        <option value="120">120 mins</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Priority -->
+            <div>
+                <label class="text-slate-400 block mb-1 font-semibold">Priority</label>
+                <select id="filter_input_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                    <option value="all">Any Priority</option>
+                    <option value="high">High</option>
+                    <option value="medium">Medium</option>
+                    <option value="low">Low</option>
+                    <option value="-">None (-)</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="flex justify-between items-center pt-3 border-t border-[var(--border-muted)]">
+            <button onclick="clearCustomFilter()" class="bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Clear Filter</button>
+            <div class="flex items-center space-x-2 ml-auto">
+                <button onclick="closeCustomFilterModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+                <button onclick="applyCustomFilterFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Apply Filter <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+            </div>
+        </div>
+    </div>
+</div>

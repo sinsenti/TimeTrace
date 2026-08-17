@@ -1,0 +1,70 @@
+<!-- Unified Session Modal Partial -->
+<div id="session_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
+        <input type="hidden" id="edit_session_id">
+        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+            <h3 id="session_modal_title" class="font-bold text-lg text-white">Calendar Session</h3>
+            <button onclick="closeSessionModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+        </div>
+
+        <div class="relative">
+            <div class="flex justify-between items-center mb-1">
+                <label class="text-xs text-slate-400 block">Attach Task</label>
+                <button type="button" onclick="openTaskModalFromSessionModal()" class="text-[10px] bg-purple-900/60 hover:bg-purple-800 text-purple-300 font-bold px-2 py-0.5 rounded border border-purple-700/50">+ Task</button>
+            </div>
+            <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
+                <input id="session_modal_task_search" type="text" placeholder="Search/Type task... (Press Enter to attach top match, + for new task)" class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[180px] px-1 py-0.5">
+            </div>
+            <div id="task_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-40 overflow-y-auto hidden z-20"></div>
+            <input type="hidden" id="session_modal_task_id">
+        </div>
+
+        <div class="relative">
+            <label class="text-xs text-slate-400 block mb-1">Tags</label>
+            <div id="tag_chips_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
+                <input id="session_modal_tags_input" type="text" placeholder="Type tag or press Enter to apply #progr..." class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[160px] px-1 py-0.5">
+            </div>
+            <div id="tag_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-36 overflow-y-auto hidden z-20"></div>
+        </div>
+
+        <div>
+            <label class="text-xs text-slate-400 block mb-1">Notes / Description</label>
+            <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+        </div>
+
+        <div>
+            <div class="flex justify-between items-center mb-1">
+                <label class="text-xs text-slate-400 block">Start Time</label>
+                <div class="flex space-x-1 text-[10px]">
+                    <button type="button" onclick="adjustStartTime(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-15m</button>
+                    <button type="button" onclick="setStartTimeNow()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)] font-bold">Now</button>
+                    <button type="button" onclick="adjustStartTime(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">+15m</button>
+                </div>
+            </div>
+            <input id="session_modal_start" type="datetime-local" onchange="updateSessionModalDurationBadge()" oninput="updateSessionModalDurationBadge()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+        </div>
+
+        <div>
+            <div class="flex justify-between items-center mb-1">
+                <label class="text-xs text-slate-400 block">End Time / Duration Presets</label>
+                <div class="flex items-center space-x-1 text-[10px]">
+                    <button type="button" onclick="adjustDurationMinutes(-30)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-30m</button>
+                    <button type="button" onclick="adjustDurationMinutes(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-15m</button>
+                    <span id="session_modal_duration_badge" class="bg-purple-950/80 text-purple-300 font-extrabold px-2 py-0.5 rounded border border-purple-700/60 text-[10px]">15m</span>
+                    <button type="button" onclick="adjustDurationMinutes(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">+15m</button>
+                    <button type="button" onclick="adjustDurationMinutes(30)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">+30m</button>
+                </div>
+            </div>
+            <input id="session_modal_end" type="datetime-local" onchange="updateSessionModalDurationBadge()" oninput="updateSessionModalDurationBadge()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+        </div>
+
+        <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
+            <button id="session_modal_delete_btn" onclick="deleteSessionFromModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
+            <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Start Timer Now</button>
+            <div class="flex items-center space-x-2 ml-auto">
+                <button onclick="closeSessionModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+                <button onclick="saveSessionFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+            </div>
+        </div>
+    </div>
+</div>

@@ -4,17 +4,17 @@
 
 async function loadAllSessionsReview() {
     try {
-        allRevisionSessions = await api.get('/api/v1/sessions') || [];
+        allRevisionSessions = await api.get('/sessions') || [];
         
         let tasksMap = {};
         try {
-            const tasks = await api.get('/api/v1/tasks?status=all');
+            const tasks = await api.get('/tasks?status=all');
             if (tasks) tasks.forEach(t => { tasksMap[t.id] = t; });
         } catch (e) {}
 
         let reviewedSessionIds = new Set();
         try {
-            const entries = await api.get('/api/v1/rating-entries?target_type=session&target_id=all');
+            const entries = await api.get('/rating-entries?target_type=session&target_id=all');
             if (entries) {
                 entries.forEach(e => {
                     if (!e.dismissed) reviewedSessionIds.add(String(e.target_id));
@@ -124,7 +124,7 @@ function filterSessionsReviewList() {
 
 async function openSessionReviewModal(sessionId) {
     try {
-        const session = await api.get(`/api/v1/sessions/${sessionId}`);
+        const session = await api.get(`/sessions/${sessionId}`);
 
         document.getElementById('session_rev_modal_id').value = session.id;
 
@@ -139,7 +139,7 @@ async function openSessionReviewModal(sessionId) {
         const skipCheck = document.getElementById('session_rev_modal_skip_check');
         if (skipCheck) skipCheck.checked = session.review_skipped === true;
 
-        const entries = await api.get(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
+        const entries = await api.get(`/rating-entries?target_type=session&target_id=${sessionId}`);
         await renderCustomRatingsInputs('session', sessionId, 'session_custom_ratings_container', entries || []);
 
         document.getElementById('session_review_modal').classList.remove('hidden');
@@ -171,7 +171,7 @@ async function saveSessionReviewModal() {
     const notesVal = document.getElementById('session_rev_modal_notes').value.trim();
     const skipVal = document.getElementById('session_rev_modal_skip_check') ? document.getElementById('session_rev_modal_skip_check').checked : false;
 
-    await api.put(`/api/v1/sessions/${sessionId}`, { tags: tagsVal, notes: notesVal, review_skipped: skipVal });
+    await api.put(`/sessions/${sessionId}`, { tags: tagsVal, notes: notesVal, review_skipped: skipVal });
     await submitCustomRatings('session', sessionId);
 
     closeSessionReviewModal();
@@ -188,8 +188,8 @@ async function resetSessionReview() {
     );
 
     if (confirmed) {
-        await api.delete(`/api/v1/rating-entries?target_type=session&target_id=${sessionId}`);
-        await api.put(`/api/v1/sessions/${sessionId}`, { review_skipped: false });
+        await api.delete(`/rating-entries?target_type=session&target_id=${sessionId}`);
+        await api.put(`/sessions/${sessionId}`, { review_skipped: false });
 
         closeSessionReviewModal();
         loadCurrentRevisionView();
@@ -198,7 +198,7 @@ async function resetSessionReview() {
 
 async function quickDismissSessionReview(sessionId, event) {
     if (event) event.stopPropagation();
-    await api.put(`/api/v1/sessions/${sessionId}`, { review_skipped: true });
+    await api.put(`/sessions/${sessionId}`, { review_skipped: true });
     loadCurrentRevisionView();
 }
 
@@ -208,7 +208,7 @@ async function deleteSessionFromReviewModal() {
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log? This action cannot be undone.");
     if (confirmed) {
-        await api.delete(`/api/v1/sessions/${sessionId}`);
+        await api.delete(`/sessions/${sessionId}`);
         closeSessionReviewModal();
         loadCurrentRevisionView();
     }

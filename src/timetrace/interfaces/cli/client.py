@@ -4,7 +4,7 @@ import httpx
 
 from timetrace.config import settings
 
-BASE_URL = f"http://{settings.host}:{settings.port}/api/v1"
+BASE_URL = f"http://{settings.host}:{settings.port}"
 
 
 def get_client() -> httpx.Client:

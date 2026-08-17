@@ -1,16 +1,43 @@
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel
+
+
+class TaskStatusCreate(BaseModel):
+    name: str
+    is_completed: bool = False
+    is_hide_by_default: bool = False
+    is_scheduled_trigger: bool = False
+    color: str = "#7c3aed"
+    position: int = 0
+
+
+class TaskStatusUpdate(BaseModel):
+    name: str | None = None
+    is_completed: bool | None = None
+    is_hide_by_default: bool | None = None
+    is_scheduled_trigger: bool | None = None
+    color: str | None = None
+    position: int | None = None
 
 
 class TaskCreate(BaseModel):
     title: str
     description: str | None = None
     priority: str = "-"
-    status: str = "in_progress"
+    status: str = "To Do"
+    status_id: int | None = None
+    parent_id: int | None = None
+    category: str = "work"
     color: str = "auto"
     tags: str = ""
-    estimated_minutes: int | None = None
+    estimated_minutes: int | None = 15
+    due_date: datetime | None = None
+    assigned_date: str | None = None
+    attachments: str | None = ""
+    is_recurring: bool = False
+    recurrence_rule: str | None = "daily"
     requires_session_review: bool = True
     created_at: datetime | None = None
 
@@ -20,11 +47,39 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     priority: str | None = None
     status: str | None = None
+    status_id: int | None = None
+    parent_id: int | None = None
+    category: str | None = None
     color: str | None = None
     tags: str | None = None
     estimated_minutes: int | None = None
+    due_date: datetime | None = None
+    assigned_date: str | None = None
+    attachments: str | None = ""
+    is_recurring: bool | None = None
+    recurrence_rule: str | None = None
     requires_session_review: bool | None = None
     created_at: datetime | None = None
+
+
+class TaskTreeResponse(BaseModel):
+    id: int
+    title: str
+    description: str | None = None
+    priority: str
+    status: str
+    category: str
+    estimated_minutes: int | None
+    color: str
+    tags: str
+    due_date: str | None
+    assigned_date: str | None
+    attachments: str | None
+    is_recurring: bool
+    recurrence_rule: str | None
+    parent_id: int | None
+    created_at: str
+    subtasks: list[Any] = []
 
 
 class SessionCreate(BaseModel):

@@ -3,18 +3,6 @@
  */
 
 function setupModalKeyboardListeners() {
-    const taskModal = document.getElementById('task_modal');
-    if (taskModal) {
-        taskModal.addEventListener('keydown', function(e) {
-            if (e.ctrlKey && e.key === 'Enter') {
-                e.preventDefault();
-                saveTask();
-            } else if (e.key === 'Escape') {
-                closeTaskModal();
-            }
-        });
-    }
-
     const sessionModal = document.getElementById('session_modal');
     if (sessionModal) {
         sessionModal.addEventListener('keydown', function(e) {
@@ -24,7 +12,8 @@ function setupModalKeyboardListeners() {
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 saveSessionFromModal();
-            } else if (e.key === 'Escape') {
+            } else if (e.key === 'Escape' || e.key === 'Esc') {
+                e.preventDefault();
                 closeSessionModal();
             } else if ((e.key === '+' || e.key === '=') && !isTypingText) {
                 e.preventDefault();
@@ -194,97 +183,129 @@ function openEditSessionModal(sessionId) {
 }
 
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
-    document.getElementById('edit_session_id').value = "";
-    const titleEl = document.getElementById('session_modal_title');
-    if (titleEl) titleEl.innerText = "Calendar Session";
+    try {
+        const editIdEl = document.getElementById('edit_session_id');
+        if (editIdEl) editIdEl.value = "";
 
-    const deleteBtn = document.getElementById('session_modal_delete_btn');
-    if (deleteBtn) deleteBtn.classList.add('hidden');
+        const titleEl = document.getElementById('session_modal_title');
+        if (titleEl) titleEl.innerText = "Calendar Session";
 
-    const taskDropdown = document.getElementById('task_suggestions_dropdown');
-    if (taskDropdown) taskDropdown.classList.add('hidden');
-    const tagDropdown = document.getElementById('tag_suggestions_dropdown');
-    if (tagDropdown) tagDropdown.classList.add('hidden');
+        const deleteBtn = document.getElementById('session_modal_delete_btn');
+        if (deleteBtn) deleteBtn.classList.add('hidden');
 
-    const now = new Date();
-    const startNowBtn = document.getElementById('session_modal_start_now_btn');
+        const taskDropdown = document.getElementById('task_suggestions_dropdown');
+        if (taskDropdown) taskDropdown.classList.add('hidden');
+        const tagDropdown = document.getElementById('tag_suggestions_dropdown');
+        if (tagDropdown) tagDropdown.classList.add('hidden');
 
-    if (!endDate || endDate <= startDate) {
-        endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
-    }
+        const now = new Date();
+        const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
-    document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
-    document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
-
-    if (startDate <= now && endDate > now) {
-        if (startNowBtn) startNowBtn.classList.remove('hidden');
-    } else {
-        if (startNowBtn) startNowBtn.classList.add('hidden');
-    }
-
-    const settings = getUserSettings();
-
-    if (taskId && allTasksMap[taskId]) {
-        attachTaskById(taskId, true);
-        const attachedTaskObj = allTasksMap[taskId];
-        if (!attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
-            setTagChips(settings.defaultTag || "#general");
+        if (!endDate || endDate <= startDate) {
+            endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
         }
-    } else {
-        detachTask();
-        setTagChips(settings.defaultTag || "#general");
-    }
 
-    document.getElementById('session_modal_notes').value = taskTitle ? `Working on ${taskTitle}` : "";
+        const startInput = document.getElementById('session_modal_start');
+        if (startInput) startInput.value = formatIsoLocal(startDate);
 
-    updateSessionModalDurationBadge();
-    document.getElementById('session_modal').classList.remove('hidden');
+        const endInput = document.getElementById('session_modal_end');
+        if (endInput) endInput.value = formatIsoLocal(endDate);
 
-    setTimeout(() => {
-        const taskSearchInput = document.getElementById('session_modal_task_search');
-        if (taskSearchInput) {
-            taskSearchInput.focus();
-            taskSearchInput.select();
+        if (startDate <= now && endDate > now) {
+            if (startNowBtn) startNowBtn.classList.remove('hidden');
+        } else {
+            if (startNowBtn) startNowBtn.classList.add('hidden');
         }
-    }, 50);
+
+        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
+
+        if (taskId) {
+            if (typeof attachTaskById === 'function') {
+                attachTaskById(taskId, true);
+            }
+            const attachedTaskObj = typeof allTasksMap !== 'undefined' ? (allTasksMap[taskId] || allTasksMap[parseInt(taskId)]) : null;
+            if (!attachedTaskObj || !attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
+                if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
+            }
+        } else {
+            if (typeof detachTask === 'function') detachTask();
+            if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
+        }
+
+        const notesInput = document.getElementById('session_modal_notes');
+        if (notesInput) notesInput.value = taskTitle ? `Working on ${taskTitle}` : "";
+
+        if (typeof updateSessionModalDurationBadge === 'function') updateSessionModalDurationBadge();
+
+        const modal = document.getElementById('session_modal');
+        if (modal) modal.classList.remove('hidden');
+
+        setTimeout(() => {
+            const taskSearchInput = document.getElementById('session_modal_task_search');
+            if (taskSearchInput) {
+                taskSearchInput.focus();
+                taskSearchInput.select();
+            }
+        }, 50);
+    } catch (err) {
+        console.error("Error opening session modal:", err);
+    }
 }
 
 function closeSessionModal() {
     const modal = document.getElementById('session_modal');
     if (modal) modal.classList.add('hidden');
+    if (typeof calendar !== 'undefined' && calendar) {
+        calendar.unselect();
+    }
 }
 
 async function saveSessionFromModal() {
-    const sessionId = document.getElementById('edit_session_id').value;
-    const taskIdVal = document.getElementById('session_modal_task_id').value;
-    const startVal = document.getElementById('session_modal_start').value;
-    const endVal = document.getElementById('session_modal_end').value;
-    const notesVal = document.getElementById('session_modal_notes').value;
+    try {
+        const sessionId = document.getElementById('edit_session_id') ? document.getElementById('edit_session_id').value : '';
+        const taskIdVal = document.getElementById('session_modal_task_id') ? document.getElementById('session_modal_task_id').value : '';
+        const startVal = document.getElementById('session_modal_start') ? document.getElementById('session_modal_start').value : '';
+        const endVal = document.getElementById('session_modal_end') ? document.getElementById('session_modal_end').value : '';
+        const notesVal = document.getElementById('session_modal_notes') ? document.getElementById('session_modal_notes').value : '';
 
-    const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
-    if (extraTypedTag) addTagChip(extraTypedTag);
+        const extraTypedTag = document.getElementById('session_modal_tags_input') ? document.getElementById('session_modal_tags_input').value.trim() : '';
+        if (extraTypedTag && typeof addTagChip === 'function') addTagChip(extraTypedTag);
 
-    const settings = getUserSettings();
-    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
+        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
+        const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
 
-    if (!startVal || !endVal) return;
+        if (!startVal || !endVal) {
+            alert("Start and End times are required.");
+            return;
+        }
 
-    const payload = {
-        task_id: taskIdVal ? parseInt(taskIdVal) : null,
-        start_time: new Date(startVal).toISOString(),
-        end_time: new Date(endVal).toISOString(),
-        tags: tagsVal,
-        notes: notesVal || ""
-    };
+        const startDt = new Date(startVal);
+        const endDt = new Date(endVal);
+        if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
+            alert("Invalid Start or End time.");
+            return;
+        }
 
-    if (sessionId) {
-        await api.put(`/api/v1/sessions/${sessionId}`, payload);
-    } else {
-        await api.post('/api/v1/sessions', payload);
+        const payload = {
+            task_id: taskIdVal ? parseInt(taskIdVal) : null,
+            start_time: startDt.toISOString(),
+            end_time: endDt.toISOString(),
+            tags: tagsVal,
+            notes: notesVal || ""
+        };
+
+        if (sessionId) {
+            await api.put(`/sessions/${sessionId}`, payload);
+        } else {
+            await api.post('/sessions', payload);
+        }
+
+        closeSessionModal();
+        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+    } catch (err) {
+        console.error("Failed to save session:", err);
+        alert("Failed to save session: " + (err.message || err));
     }
-
-    closeSessionModal();
-    if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
 
 async function deleteSessionFromModal() {
@@ -293,7 +314,7 @@ async function deleteSessionFromModal() {
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log? This action cannot be undone.");
     if (confirmed) {
-        await api.delete(`/api/v1/sessions/${sessionId}`);
+        await api.delete(`/sessions/${sessionId}`);
         closeSessionModal();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
     }
@@ -304,11 +325,11 @@ async function startTimerFromModal() {
     const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
     if (extraTypedTag) addTagChip(extraTypedTag);
 
-    const settings = getUserSettings();
+    const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
     const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
     const notesVal = document.getElementById('session_modal_notes').value;
 
-    await api.post('/api/v1/timer/start', {
+    await api.post('/timer/start', {
         task_id: taskIdVal ? parseInt(taskIdVal) : null,
         tags: tagsVal,
         notes: notesVal || ""

@@ -4,7 +4,7 @@ let activeTaskSuggestionIndex = -1;
 
 async function fetchAllTasksRegistry() {
     try {
-        const res = await fetch('/api/v1/tasks?status=all');
+        const res = await fetch('/tasks?status=all');
         const tasks = await res.json();
         allTasksMap = {};
         tasks.forEach(t => {
@@ -52,15 +52,16 @@ function highlightTaskSuggestionItem(items) {
 }
 
 function attachTaskById(taskId, preventFocus = false) {
-    const t = allTasksMap[taskId];
+    const t = typeof allTasksMap !== 'undefined' ? (allTasksMap[taskId] || allTasksMap[parseInt(taskId)]) : null;
     if (!t) return;
     attachedTask = t;
 
-    document.getElementById('session_modal_task_id').value = t.id;
+    const taskIdEl = document.getElementById('session_modal_task_id');
+    if (taskIdEl) taskIdEl.value = t.id;
+
     renderTaskChip();
 
-    // Auto-populate task's default tags if defined
-    if (t.tags) {
+    if (t.tags && typeof setTagChips === 'function') {
         setTagChips(t.tags);
     }
 
@@ -78,7 +79,8 @@ function attachTaskById(taskId, preventFocus = false) {
 
 function detachTask() {
     attachedTask = null;
-    document.getElementById('session_modal_task_id').value = '';
+    const taskIdEl = document.getElementById('session_modal_task_id');
+    if (taskIdEl) taskIdEl.value = '';
     renderTaskChip();
 }
 

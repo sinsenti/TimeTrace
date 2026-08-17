@@ -1,5 +1,5 @@
 /**
- * Dashboard Entry Orchestrator
+ * Dashboard Entry Orchestrator & FullCalendar Drag-and-Drop Handler
  */
 
 let calendar;
@@ -91,20 +91,50 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
 
             eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
-            eventResize: async function(info) { await handleCalendarEventUpdate(info.event); },
+            
+            eventResize: async function(info) {
+                await handleCalendarEventUpdate(info.event);
+            },
             
             eventClick: function(info) {
                 openEditSessionModal(info.event.id);
             },
 
-            eventReceive: function(info) {
-                const taskTitle = info.event.title;
-                const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
-                const startTime = info.event.start;
-                const endTime = new Date(startTime.getTime() + 15 * 60 * 1000);
+            eventReceive: async function(info) {
+                try {
+                    const taskTitle = info.event.title;
+                    const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
+                    const estMins = info.event.extendedProps && info.event.extendedProps.estimatedMinutes ? parseInt(info.event.extendedProps.estimatedMinutes) : 15;
+                    
+                    const startTime = info.event.start;
+                    const endTime = new Date(startTime.getTime() + estMins * 60 * 1000);
 
-                info.event.remove();
-                openCreateSessionModal(startTime, endTime, taskId, taskTitle);
+                    info.event.remove();
+
+                    const targetTask = (taskId && typeof allTasksMap !== 'undefined') ? allTasksMap[taskId] : null;
+                    const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "#general";
+
+                    const payload = {
+                        task_id: taskId ? parseInt(taskId) : null,
+                        start_time: startTime.toISOString(),
+                        end_time: endTime.toISOString(),
+                        tags: defaultTags,
+                        notes: taskTitle ? `Working on ${taskTitle}` : ""
+                    };
+
+                    await api.post('/sessions', payload);
+
+                    if (taskId) {
+                        try { await api.put(`/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
+                    }
+
+                    if (calendar) calendar.refetchEvents();
+                    if (typeof fetchTasks === 'function') fetchTasks();
+                    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+                } catch (err) {
+                    console.error("Failed to create session from dropped task:", err);
+                    alert("Failed to create session from task: " + (err.message || err));
+                }
             },
 
             datesSet: function(info) {
@@ -125,17 +155,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     const taskCardList = document.getElementById('task_card_list');
-    if (taskCardList) {
+    if (taskCardList && typeof FullCalendar !== 'undefined' && FullCalendar.Draggable) {
         new FullCalendar.Draggable(taskCardList, {
             itemSelector: '.task-card',
             eventData: function(eventEl) {
                 const card = eventEl.closest('.task-card') || eventEl;
                 const rawId = card.getAttribute('data-task-id');
+                const rawEst = card.getAttribute('data-task-est');
+                const estMins = rawEst ? parseInt(rawEst) : 15;
+
                 return {
                     title: card.getAttribute('data-task-title') || '',
                     backgroundColor: card.getAttribute('data-task-color') || '#7c3aed',
+                    duration: { minutes: estMins },
                     extendedProps: {
-                        taskId: rawId ? parseInt(rawId) : null
+                        taskId: rawId ? parseInt(rawId) : null,
+                        estimatedMinutes: estMins
                     }
                 };
             }
@@ -156,7 +191,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     fetchTimerStatus();
 
     setInterval(fetchTimerStatus, 1000);
-    setInterval(updateDocumentTitle, 1000);
+    // Fixed: Update tab title at 10-second intervals without ticking seconds
+    setInterval(updateDocumentTitle, 10000);
 });
 
 function updateDocumentTitle() {
@@ -169,8 +205,7 @@ function updateDocumentTitle() {
             document.title = `${minsLeft}m left | ${taskName}`;
         } else {
             const minsElapsed = Math.floor(lastTimerData.elapsed_seconds / 60);
-            const secs = lastTimerData.elapsed_seconds % 60;
-            document.title = `${minsElapsed}m ${String(secs).padStart(2,'0')}s | ${taskName}`;
+            document.title = `${minsElapsed}m | ${taskName}`;
         }
         return;
     }
@@ -192,20 +227,6 @@ function updateDocumentTitle() {
         const matchedTask = allTasksMap[currentSession.task_id];
         const titleName = (matchedTask ? matchedTask.title : null) || currentSession.notes || currentSession.tags || 'Current Task';
         document.title = `${minsLeft}m left | ${titleName}`;
-        return;
-    }
-
-    const upcomingSessions = allSessions
-        .filter(s => new Date(s.start_time) > now)
-        .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
-
-    if (upcomingSessions.length > 0) {
-        const nextSession = upcomingSessions[0];
-        const nextStart = new Date(nextSession.start_time);
-        const minsUntilNext = Math.max(1, Math.ceil((nextStart - now) / 60000));
-        const matchedTask = allTasksMap[nextSession.task_id];
-        const titleName = (matchedTask ? matchedTask.title : null) || nextSession.notes || nextSession.tags || 'Next Task';
-        document.title = `in ${minsUntilNext}m | ${titleName}`;
         return;
     }
 

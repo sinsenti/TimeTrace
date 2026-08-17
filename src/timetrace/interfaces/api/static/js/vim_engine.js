@@ -1,10 +1,8 @@
 /**
  * TimeTrace Vim Engine for FullCalendar Web UI
- * Enforces 15-minute fixed navigation steps (j/k) and day shifts (h/l).
- * Session creation triggers only upon pressing 'i'.
  */
 
-let vimMode = 'NORMAL'; // 'NORMAL' | 'VISUAL'
+let vimMode = 'NORMAL';
 let suppressModalOnSelect = false;
 
 let cursorStart = null;
@@ -14,8 +12,8 @@ let visualAnchorStart = null;
 let pendingGKey = false;
 let pendingGTimer = null;
 
-const VIM_STEP_MS = 15 * 60 * 1000; // Fixed 15-minute step
-const VIM_DAY_MS = 24 * 60 * 60 * 1000; // Fixed 24-hour step for h/l
+const VIM_STEP_MS = 15 * 60 * 1000;
+const VIM_DAY_MS = 24 * 60 * 60 * 1000;
 
 function initVimCursor() {
     const now = new Date();
@@ -37,7 +35,7 @@ function getSessionUnderCursor() {
 }
 
 function navigateToNextTab(direction) {
-    const pages = ['/api/v1/dashboard', '/api/v1/habits-view', '/api/v1/stats'];
+    const pages = ['/dashboard', '/habits-view', '/stats'];
     const currentPath = window.location.pathname;
     let idx = pages.findIndex(p => currentPath.endsWith(p) || currentPath === p);
     if (idx === -1) idx = 0;
@@ -85,7 +83,7 @@ async function handleDeleteUnderCursor() {
             `Delete session "${label}"? Press Enter to confirm.`
         );
         if (confirmed) {
-            fetch(`/api/v1/sessions/${s.id}`, { method: 'DELETE' })
+            fetch(`/sessions/${s.id}`, { method: 'DELETE' })
                 .then(res => {
                     if (res.ok && typeof calendar !== 'undefined' && calendar) {
                         calendar.refetchEvents();
@@ -104,12 +102,13 @@ function setupVimKeyboardListeners() {
         }
 
         const activeEl = document.activeElement;
-        const isEditingText = activeEl.tagName === 'INPUT' || 
-                              activeEl.tagName === 'TEXTAREA' || 
-                              activeEl.tagName === 'SELECT';
+        const isEditingText = activeEl && (
+            activeEl.tagName === 'INPUT' || 
+            activeEl.tagName === 'TEXTAREA' || 
+            activeEl.tagName === 'SELECT'
+        );
 
         if (isEditingText) {
-            if (e.key === 'Escape') activeEl.blur();
             return;
         }
 
@@ -205,7 +204,6 @@ function setupVimKeyboardListeners() {
                 handleDeleteUnderCursor();
                 break;
 
-            // Edit Session under cursor (both 'e' and 'c')
             case 'e':
             case 'c':
                 e.preventDefault();
@@ -260,6 +258,7 @@ function setupVimKeyboardListeners() {
                     if (typeof closeTaskModal === 'function') closeTaskModal();
                     if (typeof closeSessionModal === 'function') closeSessionModal();
                     if (typeof closeSettingsModal === 'function') closeSettingsModal();
+                    if (typeof closeStatusManagerModal === 'function') closeStatusManagerModal();
                     if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
                 }
                 break;

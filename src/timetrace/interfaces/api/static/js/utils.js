@@ -1,5 +1,5 @@
 /**
- * TimeTrace Utility Helpers & Hash Color Dispersion Engine
+ * TimeTrace Utility Helpers, Color Dispersion & Global Capture Modal Esc Handler
  */
 
 let defaultPalette = [
@@ -9,8 +9,53 @@ let defaultPalette = [
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 
 /**
- * Polynomial Rolling Hash Dispersion Engine with Seed Offset Support
+ * Capture-Phase Window Esc Listener:
+ * Intercepts Escape key at top-level before inputs consume it, closing open modals and discarding selection.
  */
+window.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.key === 'Esc') {
+        let closedAny = false;
+
+        const modalOrder = [
+            { id: 'custom_filter_modal', closeFn: typeof closeCustomFilterModal === 'function' ? closeCustomFilterModal : null },
+            { id: 'task_modal', closeFn: typeof closeTaskModal === 'function' ? closeTaskModal : null },
+            { id: 'session_modal', closeFn: typeof closeSessionModal === 'function' ? closeSessionModal : null },
+            { id: 'settings_modal', closeFn: typeof closeSettingsModal === 'function' ? closeSettingsModal : null },
+            { id: 'status_manager_modal', closeFn: typeof closeStatusManagerModal === 'function' ? closeStatusManagerModal : null },
+            { id: 'sidebar_tab_config_modal', closeFn: typeof closeSidebarTabsConfigModal === 'function' ? closeSidebarTabsConfigModal : null },
+            { id: 'session_review_modal', closeFn: typeof closeSessionReviewModal === 'function' ? closeSessionReviewModal : null },
+            { id: 'rating_def_modal', closeFn: typeof closeRatingDefModal === 'function' ? closeRatingDefModal : null },
+            { id: 'widget_config_modal', closeFn: typeof toggleWidgetModal === 'function' ? toggleWidgetModal : null },
+            { id: 'idle_resolution_modal', closeFn: null },
+            { id: 'custom_confirm_modal', closeFn: null }
+        ];
+
+        for (const item of modalOrder) {
+            const el = document.getElementById(item.id);
+            if (el && !el.classList.contains('hidden')) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (item.closeFn) {
+                    item.closeFn();
+                } else {
+                    el.classList.add('hidden');
+                }
+                closedAny = true;
+                break;
+            }
+        }
+
+        if (closedAny) {
+            if (typeof calendar !== 'undefined' && calendar) {
+                calendar.unselect();
+            }
+            if (document.activeElement && typeof document.activeElement.blur === 'function') {
+                document.activeElement.blur();
+            }
+        }
+    }
+}, true);
+
 function hashString(str) {
     let hash = 0;
     for (let i = 0; i < str.length; i++) {
@@ -123,7 +168,6 @@ function setSlotDuration(val, updateSettings = true) {
     }
 }
 
-// Fast Time Steppers & Duration Controls
 function adjustStartTime(minutes) {
     const startInput = document.getElementById('session_modal_start');
     if (!startInput || !startInput.value) return;
@@ -221,7 +265,7 @@ function showCustomConfirm(title, message) {
                 e.preventDefault();
                 e.stopPropagation();
                 onProceed();
-            } else if (e.key === 'Escape') {
+            } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
                 e.stopPropagation();
                 onCancel();

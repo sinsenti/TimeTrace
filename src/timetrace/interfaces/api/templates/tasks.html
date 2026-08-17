@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTrace Tasks Engine</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <style>
+        :root[data-theme="midnight"] {
+            --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
+        }
+        :root[data-theme="nord"] {
+            --bg-main: #2e3440; --bg-header: #242933; --bg-card: #242933; --border-color: #434c5e; --border-muted: #4c566a; --text-main: #eceff4;
+        }
+        :root[data-theme="dracula"] {
+            --bg-main: #282a36; --bg-header: #21222c; --bg-card: #21222c; --border-color: #44475a; --border-muted: #6272a4; --text-main: #f8f8f2;
+        }
+        :root[data-theme="cyberpunk"] {
+            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
+        }
+        :root[data-theme="monokai"] {
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #221f22; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
+        .kanban-col { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; min-width: 290px; width: 290px; }
+        .kanban-card { background-color: #0f1016; border: 1px solid var(--border-muted); border-radius: 0.5rem; transition: transform 0.15s, border-color 0.15s; cursor: grab; }
+        .kanban-card:active { cursor: grabbing; }
+        .kanban-card:hover { border-color: #a855f7; transform: translateY(-2px); }
+        .sortable-ghost { opacity: 0.4; border: 2px dashed #a855f7 !important; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
+        {% include "components/navbar.html" %}
+
+        <div class="flex items-center space-x-2">
+            <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">🔍 Filter</button>
+            <button onclick="openStatusManagerModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs">Statuses Config</button>
+            <button onclick="clearCompletedTasks()" class="h-8 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 px-3 rounded-lg font-bold transition text-xs">Clear Completed</button>
+            <button onclick="openNewTaskModal()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition text-xs">+ Create Task</button>
+        </div>
+    </header>
+
+    <!-- Main Kanban Board Grid -->
+    <main class="flex-1 p-4 overflow-x-auto flex space-x-4">
+        <div id="kanban_columns_container" class="flex space-x-4 h-full w-full"></div>
+    </main>
+
+    {% include "components/settings_modal.html" %}
+    {% include "components/confirm_modal.html" %}
+    {% include "components/task_modal.html" %}
+    {% include "components/custom_filter_modal.html" %}
+
+    <!-- Statuses Manager Modal -->
+    <div id="status_manager_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[500px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <h3 class="font-bold text-base text-white">Configure Kanban Statuses & Behaviors</h3>
+                <button onclick="closeStatusManagerModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+            
+            <div id="status_manager_list" class="space-y-2.5 max-h-72 overflow-y-auto pr-1"></div>
+
+            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-between items-center">
+                <button onclick="createNewStatusRow()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Column</button>
+                <button onclick="closeStatusManagerModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Modules -->
+    <script src="/static/js/api_client.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/custom_filter.js"></script>
+    <script src="/static/js/tags_engine.js"></script>
+    <script src="/static/js/task_attach.js"></script>
+    <script src="/static/js/task_modal.js"></script>
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/kanban.js"></script>
+</body>
+</html>

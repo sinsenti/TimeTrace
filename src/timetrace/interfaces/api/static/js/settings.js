@@ -180,7 +180,7 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
 
     if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
         try {
-            await api.post('/api/v1/idle/toggle', { enabled: s.idleDetectorEnabled });
+            await api.post('/idle/toggle', { enabled: s.idleDetectorEnabled });
             idleDetectionEnabled = s.idleDetectorEnabled;
             if (typeof updateIdleSwitchUI === 'function') updateIdleSwitchUI();
         } catch(e) {}

@@ -15,6 +15,7 @@ from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.core.timer import timer_manager
 from timetrace.db.session import init_db
 from timetrace.interfaces.api.routers import api_router
+from timetrace.interfaces.api.routers.web import router as web_router
 
 # Configure logging format
 logging.basicConfig(level=logging.INFO)
@@ -89,11 +90,18 @@ def create_daemon_app() -> FastAPI:
             content={"detail": jsonable_encoder(exc.errors())},
         )
 
+    # 1. Register Web HTML Page Routes
+    app.include_router(web_router)
+
+    # 2. Register Clean Root REST API Routes (/timer/status, /tasks, etc.)
+    app.include_router(api_router)
+
+    # 3. Fallback Route Mount for Cached Clients (/api/v1/timer/status, etc.)
     app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/")
     def root_redirect():
-        return RedirectResponse(url="/api/v1/dashboard")
+        return RedirectResponse(url="/dashboard")
 
     @app.get("/health")
     def health_check():
@@ -111,19 +119,9 @@ daemon_app = create_daemon_app()
 
 
 def app():
-    if len(sys.argv) == 1:
-        from timetrace.interfaces.cli.client import ensure_daemon_running
+    from timetrace.interfaces.cli.commands import cli_app
 
-        ensure_daemon_running()
-
-        from timetrace.interfaces.tui.app import TimeTraceTUI
-
-        tui = TimeTraceTUI()
-        tui.run()
-    else:
-        from timetrace.interfaces.cli.commands import cli_app
-
-        cli_app()
+    cli_app()
 
 
 if __name__ == "__main__":

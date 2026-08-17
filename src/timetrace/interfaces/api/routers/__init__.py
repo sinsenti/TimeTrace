@@ -9,11 +9,10 @@ from timetrace.interfaces.api.routers.tasks import router as tasks_router
 from timetrace.interfaces.api.routers.tasks import task_reviews_router
 from timetrace.interfaces.api.routers.timer import idle_router
 from timetrace.interfaces.api.routers.timer import router as timer_router
-from timetrace.interfaces.api.routers.web import router as web_router
 
 api_router = APIRouter()
 
-api_router.include_router(web_router)
+# Register JSON REST API endpoints
 api_router.include_router(tasks_router)
 api_router.include_router(task_reviews_router)
 api_router.include_router(sessions_router)

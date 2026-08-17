@@ -59,7 +59,7 @@ function applyWidgetVisibility() {
 
 async function loadAnalyticsData() {
     try {
-        const res = await fetch('/api/v1/analytics/detailed');
+        const res = await fetch('/analytics/detailed');
         const data = await res.json();
 
         document.getElementById('kpi_total_hours').innerText = `${data.summary.total_hours}h`;

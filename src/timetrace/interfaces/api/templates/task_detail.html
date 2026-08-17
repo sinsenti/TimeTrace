@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeTrace Task Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root[data-theme="midnight"] {
+            --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
+        }
+        :root[data-theme="nord"] {
+            --bg-main: #2e3440; --bg-header: #242933; --bg-card: #242933; --border-color: #434c5e; --border-muted: #4c566a; --text-main: #eceff4;
+        }
+        :root[data-theme="dracula"] {
+            --bg-main: #282a36; --bg-header: #21222c; --bg-card: #21222c; --border-color: #44475a; --border-muted: #6272a4; --text-main: #f8f8f2;
+        }
+        :root[data-theme="cyberpunk"] {
+            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
+        }
+        :root[data-theme="monokai"] {
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #3a373d; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
+        .detail-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; padding: 1.25rem; }
+        .subtask-node { border-left: 2px solid #262938; padding-left: 1rem; margin-top: 0.5rem; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-main); }
+        ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col pb-12">
+
+    <!-- Top Navigation Bar -->
+    <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
+        {% include "components/navbar.html" %}
+
+        <div class="flex items-center space-x-2">
+            <a href="/kanban" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold flex items-center text-xs">&lt; Back to Board</a>
+        </div>
+    </header>
+
+    <main class="flex-1 p-6 max-w-6xl mx-auto w-full space-y-6">
+        <input type="hidden" id="inspector_task_id" value="{{ task_id }}">
+
+        <div id="task_breadcrumbs" class="text-xs text-purple-400 font-semibold mb-1 flex items-center space-x-2"></div>
+
+        <!-- Always Visible Parent Task Banner (for Subtasks) -->
+        <div id="parent_task_banner" class="hidden"></div>
+
+        <!-- Task Stats Summary Header -->
+        <div class="detail-card space-y-4">
+            <div class="flex justify-between items-start border-b border-[var(--border-muted)] pb-3">
+                <div class="space-y-1">
+                    <span class="text-xs uppercase font-extrabold tracking-wider text-purple-400 block">Task Inspector</span>
+                    <h1 id="detail_task_title_header" class="text-2xl font-black text-white">Loading Task...</h1>
+                </div>
+                <div class="flex items-center space-x-2">
+                    <span id="detail_task_status_badge" class="px-3 py-1 rounded-lg text-xs font-bold bg-blue-900/60 text-blue-300 border border-blue-700">To Do</span>
+                    <span id="detail_task_priority_badge" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300">MEDIUM</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-4 text-xs">
+                <div id="detail_task_est_container">
+                    <span class="text-slate-400 block font-semibold">Estimated Duration:</span>
+                    <span id="detail_task_est" class="font-bold text-slate-200">15m</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold">Tracked Time:</span>
+                    <span id="detail_task_tracked" class="font-bold text-purple-400">0.0h</span>
+                </div>
+                <div id="detail_task_progress_container">
+                    <span class="text-slate-400 block font-semibold">Time Estimation Ratio:</span>
+                    <span id="detail_task_progress" class="font-bold text-emerald-400">0%</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold">Subtasks Completion:</span>
+                    <span id="detail_tree_completion_pct" class="font-bold text-blue-400">0% (0/0)</span>
+                </div>
+            </div>
+
+            <!-- Subtask Progress Bar -->
+            <div class="w-full bg-[#0f1016] h-2.5 rounded-full overflow-hidden border border-[var(--border-muted)] mt-1">
+                <div id="subtasks_completion_bar" class="bg-blue-600 h-full transition-all duration-300" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <!-- Integrated Full Task Editor -->
+        <div class="detail-card space-y-4">
+            <h2 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Edit Task Properties</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Task Title / Code (Use [30min] for estimate)</label>
+                    <input id="inspector_edit_title" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
+                    <input id="inspector_edit_desc" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                <div>
+                    <label class="text-slate-400 block mb-1">Status</label>
+                    <select id="inspector_edit_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
+                        <option value="To Do">To Do</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Done">Done</option>
+                        <option value="Backlog">Backlog</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Category</label>
+                    <select id="inspector_edit_category" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
+                        <option value="work">work</option>
+                        <option value="family">family</option>
+                        <option value="personal">personal</option>
+                        <option value="study">study</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Priority</label>
+                    <select id="inspector_edit_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
+                        <option value="-">- (None)</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Estimated Minutes</label>
+                    <select id="inspector_edit_est" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
+                        <option value="15">15 mins</option>
+                        <option value="30">30 mins</option>
+                        <option value="45">45 mins</option>
+                        <option value="60">60 mins</option>
+                        <option value="90">90 mins</option>
+                        <option value="120">120 mins</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+                <div>
+                    <label class="text-slate-400 block mb-1">Assigned Target Day</label>
+                    <input id="inspector_edit_assigned_date" type="date" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-white">
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Optional Due Date</label>
+                    <input id="inspector_edit_due_date" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-white">
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Attachments / Links</label>
+                    <input id="inspector_edit_attachments" type="text" placeholder="https://github.com/PR/123 or file paths..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-blue-300">
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2">
+                <button onclick="deleteMainInspectorTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete Task</button>
+                <button onclick="saveInspectorTaskProperties()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition">Save Task Changes</button>
+            </div>
+        </div>
+
+        <!-- Subtasks Hierarchy Tree Section -->
+        <div class="detail-card space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <div>
+                    <h2 class="font-bold text-base text-white">Subtasks Hierarchy Tree</h2>
+                    <p class="text-xs text-slate-400">Create and track infinite nested subtasks under this parent task.</p>
+                </div>
+                <button onclick="openSubtaskCreationModal(null)" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1.5 rounded-lg text-xs">+ Add Subtask</button>
+            </div>
+
+            <div id="subtasks_tree_container" class="space-y-2"></div>
+        </div>
+    </main>
+
+    <!-- Styled App Subtask Modal -->
+    <div id="subtask_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[400px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <h3 id="subtask_modal_heading" class="font-bold text-base text-white">Create Subtask</h3>
+                <button onclick="closeSubtaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+            <input type="hidden" id="subtask_parent_id">
+            
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Subtask Title (Use [30min] for estimate)</label>
+                <input id="modal_subtask_title" type="text" placeholder="e.g. Implement OAuth Flow [30min]" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
+            </div>
+
+            <div class="grid grid-cols-2 gap-2">
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Estimated Duration</label>
+                    <select id="modal_subtask_est" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+                        <option value="15">15 mins</option>
+                        <option value="30">30 mins</option>
+                        <option value="45">45 mins</option>
+                        <option value="60">60 mins</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs text-slate-400 block mb-1">Initial Status</label>
+                    <select id="modal_subtask_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+                        <option value="To Do">To Do</option>
+                        <option value="Ongoing">Ongoing</option>
+                        <option value="Done">Done</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="flex justify-end space-x-2 pt-2 border-t border-[var(--border-muted)]">
+                <button onclick="closeSubtaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel</button>
+                <button onclick="saveSubtaskFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">Save Subtask</button>
+            </div>
+        </div>
+    </div>
+
+    {% include "components/settings_modal.html" %}
+    {% include "components/confirm_modal.html" %}
+
+    <script src="/static/js/api_client.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/subtasks.js"></script>
+</body>
+</html>

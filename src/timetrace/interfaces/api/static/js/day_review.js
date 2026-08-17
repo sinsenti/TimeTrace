@@ -28,7 +28,7 @@ async function loadDayReviewData() {
 
     const dateStr = dateInput.value;
     try {
-        const data = await api.get(`/api/v1/revision/day-summary?date_str=${dateStr}`);
+        const data = await api.get(`/revision/day-summary?date_str=${dateStr}`);
 
         const badge = document.getElementById('day_review_status_badge');
         const saveBtn = document.getElementById('day_form_save_btn');
@@ -147,7 +147,7 @@ async function saveDayReviewForm() {
         review_skipped: false
     };
 
-    await api.post('/api/v1/revision/day-review', payload);
+    await api.post('/revision/day-review', payload);
     await submitCustomRatings('day', dateStr);
     loadDayReviewData();
 }
@@ -176,7 +176,7 @@ async function dismissDayReview() {
             review_skipped: true
         };
 
-        await api.post('/api/v1/revision/day-review', payload);
+        await api.post('/revision/day-review', payload);
         loadDayReviewData();
     }
 }

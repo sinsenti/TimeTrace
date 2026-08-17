@@ -4,7 +4,7 @@
 
 async function loadDayHistoryOverview() {
     try {
-        allDayHistoryList = await api.get('/api/v1/revision/day-history') || [];
+        allDayHistoryList = await api.get('/revision/day-history') || [];
         renderDayHistoryGrid();
     } catch (e) {
         console.error("Failed to load day history overview:", e);

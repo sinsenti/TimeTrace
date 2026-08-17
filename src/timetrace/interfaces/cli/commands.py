@@ -10,7 +10,7 @@ from timetrace.interfaces.cli.client import ensure_daemon_running, get_client
 cli_app = typer.Typer(
     name="timetrace",
     help="TimeTrace: Developer-centric time tracking & productivity engine.",
-    no_args_is_help=False,
+    no_args_is_help=True,
 )
 
 db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
@@ -212,40 +212,41 @@ def summary_stats():
 
 @cli_app.command("tasks")
 def list_tasks_cli(
-    status_filter: str = typer.Option(
-        "all",
-        "--status",
-        "-s",
-        help="Filter status: all, in_progress, ongoing, completed, hide_completed",
-    ),
-    sort_by: str = typer.Option("priority", "--sort", "-o", help="Sort by: priority, created_at, title, status"),
+    status_filter: str = typer.Option("all", "--status", "-s", help="Filter status: all, To Do, Ongoing, Scheduled, Done, Backlog"),
+    category_filter: str = typer.Option("all", "--category", "-c", help="Filter category: all, work, family, personal, study"),
+    sort_by: str = typer.Option("smart_gap_filler", "--sort", "-o", help="Sort by: smart_gap_filler, priority, created_at, title"),
 ):
     """List tasks with filtering and sorting."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.get(f"/tasks?status={status_filter}&sort={sort_by}")
+        res = client.get(f"/tasks?status={status_filter}&category={category_filter}&sort={sort_by}")
         if res.status_code == 200:
             tasks = res.json()
-            print(f"\nTasks [{status_filter.upper()}] sorted by [{sort_by.upper()}]:")
-            print("-" * 75)
+            print(f"\nTasks [{status_filter.upper()} / {category_filter.upper()}] sorted by [{sort_by.upper()}]:")
+            print("-" * 85)
             if not tasks:
                 print("No tasks found.")
             for t in tasks:
                 created_str = format_local_cli_time(t.get("created_at"))
                 t_tags = f"[{t.get('tags', '')}]" if t.get("tags") else ""
-                title_str = f"{t['title']} {t_tags}".strip()
-                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<11}] | {created_str} | {title_str}")
-            print("-" * 75 + "\n")
+                parent_str = f"(Subtask of #{t['parent_id']})" if t.get("parent_id") else ""
+                title_str = f"{t['title']} {t_tags} {parent_str}".strip()
+                est_str = f"{t.get('estimated_minutes', 15)}m"
+                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<10}] | [{t.get('category', 'work'):<8}] | {est_str:<4} | {title_str}")
+            print("-" * 85 + "\n")
 
 
 @cli_app.command("task")
 def add_task(
     title: str = typer.Argument(..., help="Title of the task"),
     priority: str = typer.Option("-", "--priority", "-p", help="Priority (-, low, medium, high)"),
-    tags: str = typer.Option("", "--tags", "-t", help="Default tags for task (e.g. '#backend')"),
-    est: int | None = typer.Option(None, "--est", "-e", help="Estimated time in minutes"),
+    category: str = typer.Option("work", "--category", "-c", help="Category (work, family, personal, study)"),
+    tags: str = typer.Option("", "--tags", "-t", help="Default tags for task"),
+    est: int = typer.Option(15, "--est", "-e", help="Estimated duration in minutes"),
+    parent_id: int | None = typer.Option(None, "--parent", "-parent", help="Parent task ID for subtasks"),
+    status_name: str = typer.Option("To Do", "--status", "-s", help="Initial status name"),
 ):
-    """Create a new task slot."""
+    """Create a new task slot or subtask."""
     ensure_daemon_running()
     with get_client() as client:
         res = client.post(
@@ -253,18 +254,45 @@ def add_task(
             json={
                 "title": title,
                 "priority": priority.lower(),
+                "category": category.lower(),
                 "tags": tags,
                 "estimated_minutes": est,
+                "parent_id": parent_id,
+                "status": status_name,
             },
         )
         if res.status_code == 201:
             task = res.json()
-            print(
-                f"Created Task #{task['id']}: '{task['title']}' "
-                f"(Priority: {task['priority']}, Tags: {task.get('tags', 'none')})"
-            )
+            parent_msg = f" (Subtask of #{parent_id})" if parent_id else ""
+            print(f"Created Task #{task['id']}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]")
         else:
             print("Failed to create task.")
+
+
+@cli_app.command("task-tree")
+def view_task_tree_cli(task_id: int = typer.Argument(..., help="ID of the root task to inspect")):
+    """View nested subtasks hierarchy tree for a parent task."""
+    ensure_daemon_running()
+    with get_client() as client:
+        res = client.get(f"/tasks/{task_id}/tree")
+        if res.status_code == 200:
+            tree = res.json()
+
+            def print_node(node, depth=0):
+                indent = "  " * depth
+                st = node.get("status", "To Do")
+                prio = node.get("priority", "-")
+                est = node.get("estimated_minutes", 15)
+                print(f"{indent}- #{node['id']} [{st}] [{prio}] ({est}m) : {node['title']}")
+                for child in node.get("subtasks", []):
+                    print_node(child, depth + 1)
+
+            print(f"\nSubtask Hierarchy Tree for #{task_id}:")
+            print("-" * 60)
+            print_node(tree)
+            print("-" * 60 + "\n")
+        else:
+            print(f"Task #{task_id} not found.")
 
 
 @cli_app.command("task-delete")
@@ -281,7 +309,7 @@ def delete_task_cli(task_id: int = typer.Argument(..., help="ID of the task to d
 
 @cli_app.command("task-clean")
 def clean_completed_tasks_cli():
-    """Remove all completed / passed tasks."""
+    """Remove all completed tasks."""
     ensure_daemon_running()
     with get_client() as client:
         res = client.delete("/tasks/completed")

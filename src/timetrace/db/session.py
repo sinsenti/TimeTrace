@@ -13,8 +13,7 @@ engine = create_engine(sqlite_url, connect_args={"check_same_thread": False})
 
 
 def run_migrations() -> None:
-    """Executes Alembic migrations programmatically up to the latest revision,
-    automatically stamping pre-existing databases without wiping data."""
+    """Executes Alembic migrations programmatically up to the latest revision."""
     project_root = Path(__file__).resolve().parents[3]
     ini_path = project_root / "alembic.ini"
 
@@ -27,7 +26,6 @@ def run_migrations() -> None:
                 tables = session.exec(text("SELECT name FROM sqlite_master WHERE type='table';")).all()
                 table_names = [t[0] for t in tables]
 
-                # If tables exist but alembic_version does not, stamp revision 0001
                 if "task" in table_names and "alembic_version" not in table_names:
                     command.stamp(alembic_cfg, "head")
             except Exception:

@@ -61,7 +61,6 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
 
-        /* Drag-to-Resize Handle Styling */
         .resizer-handle {
             width: 6px;
             background-color: var(--border-color);
@@ -93,6 +92,8 @@
         </div>
 
         <div class="flex items-center space-x-2 shrink-0">
+            <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">🔍 Filter</button>
+
             <div class="flex items-center bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
                 <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
                 <button id="btn_view_three_day" onclick="switchView('timeGridThreeDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">3 Day</button>
@@ -116,18 +117,18 @@
     </header>
 
     <div class="flex-1 flex overflow-hidden">
-        <!-- Left Sidebar (Tasks) -->
+        <!-- Left Sidebar (Tasks) with Dynamic Status Tabs -->
         <aside id="left_sidebar" class="bg-[var(--bg-sidebar)] p-3 flex flex-col shrink-0" style="width: 256px;">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
-                <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
+                <div class="flex items-center space-x-2">
+                    <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
+                    <button onclick="openSidebarTabsConfigModal()" class="text-slate-400 hover:text-purple-300 text-xs font-bold" title="Configure visible status tabs">⚙ Tabs</button>
+                </div>
             </div>
 
-            <div class="flex space-x-1 mb-2">
-                <button onclick="setTaskFilter('all')" id="filter_tab_all" class="flex-1 py-1 text-[10px] rounded bg-purple-600 text-white font-bold">All</button>
-                <button onclick="setTaskFilter('hide_completed')" id="filter_tab_active" class="flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white">Active</button>
-                <button onclick="setTaskFilter('completed')" id="filter_tab_done" class="flex-1 py-1 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white">Done</button>
-            </div>
+            <!-- Dynamic Configurable Status Filter Tabs -->
+            <div id="sidebar_status_tabs" class="flex space-x-1 mb-2 overflow-x-auto pb-1"></div>
 
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
 
@@ -169,216 +170,39 @@
 
     {% include "components/settings_modal.html" %}
     {% include "components/confirm_modal.html" %}
+    {% include "components/task_modal.html" %}
+    {% include "components/session_modal.html" %}
+    {% include "components/custom_filter_modal.html" %}
 
-    <!-- Task Modal -->
-    <div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-3 text-white">
+    <!-- Sidebar Status Tabs Visibility Configurator Modal -->
+    <div id="sidebar_tab_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-80 rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
+                <h3 class="font-bold text-sm text-white">Configure Visible Status Tabs</h3>
+                <button onclick="closeSidebarTabsConfigModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
-            <input type="hidden" id="edit_task_id">
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Task Title / Code</label>
-                <input id="modal_input_title" type="text" placeholder="e.g. ALP-101 Portal Refresh" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Description / Subtitle</label>
-                <input id="modal_input_desc" type="text" placeholder="Optional notes..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Default Tags</label>
-                <input id="modal_input_tags" type="text" placeholder="e.g. #programming #backend" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 focus:outline-none focus:border-purple-500">
-            </div>
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Start / Scheduled Date & Time</label>
-                <input id="modal_input_created" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-            </div>
-            <div class="grid grid-cols-2 gap-2">
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Priority</label>
-                    <select id="modal_input_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
-                        <option value="-">- (None)</option>
-                        <option value="low">low</option>
-                        <option value="medium">medium</option>
-                        <option value="high">high</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Status</label>
-                    <select id="modal_input_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
-                        <option value="in_progress">in_progress</option>
-                        <option value="ongoing">ongoing</option>
-                        <option value="completed">completed</option>
-                    </select>
-                </div>
-            </div>
+            
+            <div id="sidebar_tab_config_list" class="space-y-2.5 max-h-60 overflow-y-auto pr-1"></div>
 
-            <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer">
-                <div>
-                    <span class="font-bold text-slate-200 block text-xs">Require Session Review</span>
-                    <span class="text-[10px] text-slate-400">Sessions attached to this task will need review</span>
-                </div>
-                <input id="modal_input_requires_review" type="checkbox" checked class="w-4 h-4 accent-purple-600 rounded">
-            </label>
-
-            <div class="pt-1">
-                <label class="text-xs text-slate-400 block mb-1">Task Color Mode</label>
-                <div class="flex items-center space-x-2">
-                    <select id="modal_input_color_mode" onchange="toggleCustomColorPicker(this.value)" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white focus:outline-none flex-1">
-                        <option value="auto">Auto (Adapts to Theme)</option>
-                        <option value="custom">Custom Color</option>
-                    </select>
-                    <div id="custom_color_container" class="flex items-center space-x-2 hidden">
-                        <input id="modal_input_color" type="color" value="#7c3aed" class="w-8 h-8 bg-transparent border border-[var(--border-muted)] rounded cursor-pointer p-0.5">
-                        <span id="custom_color_hex" class="text-xs font-mono text-slate-300">#7C3AED</span>
-                    </div>
-                </div>
-                <div id="color_swatches_container" class="flex items-center space-x-2 mt-2 hidden">
-                    <span class="text-[10px] text-slate-400">Presets:</span>
-                    <div id="swatch_list" class="flex space-x-1.5"></div>
-                </div>
-            </div>
-
-            <div class="flex justify-between items-center pt-2">
-                <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeTaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveTask()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Session Modal -->
-    <div id="session_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
-            <input type="hidden" id="edit_session_id">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="session_modal_title" class="font-bold text-lg text-white">Calendar Session</h3>
-            </div>
-
-            <div class="relative">
-                <div class="flex justify-between items-center mb-1">
-                    <label class="text-xs text-slate-400 block">Attach Task</label>
-                    <button type="button" onclick="openTaskModalFromSessionModal()" class="text-[10px] bg-purple-900/60 hover:bg-purple-800 text-purple-300 font-bold px-2 py-0.5 rounded border border-purple-700/50">+ Task</button>
-                </div>
-                <div id="task_chip_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
-                    <input id="session_modal_task_search" type="text" placeholder="Search/Type task... (Press Enter to attach top match, + for new task)" class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[180px] px-1 py-0.5">
-                </div>
-                <div id="task_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-40 overflow-y-auto hidden z-20"></div>
-                <input type="hidden" id="session_modal_task_id">
-            </div>
-
-            <div class="relative">
-                <label class="text-xs text-slate-400 block mb-1">Tags</label>
-                <div id="tag_chips_container" class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-1.5 rounded-lg flex flex-wrap items-center gap-1.5 min-h-[38px] focus-within:border-purple-500">
-                    <input id="session_modal_tags_input" type="text" placeholder="Type tag or press Enter to apply #progr..." class="bg-transparent text-xs text-white focus:outline-none flex-1 min-w-[160px] px-1 py-0.5">
-                </div>
-                <div id="tag_suggestions_dropdown" class="absolute left-0 right-0 top-full mt-1 bg-[#12131d] border border-[var(--border-muted)] rounded-lg shadow-xl max-h-36 overflow-y-auto hidden z-20"></div>
-            </div>
-
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Notes / Description</label>
-                <input id="session_modal_notes" type="text" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-            </div>
-
-            <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label class="text-xs text-slate-400 block">Start Time</label>
-                    <div class="flex space-x-1 text-[10px]">
-                        <button type="button" onclick="adjustStartTime(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-15m</button>
-                        <button type="button" onclick="setStartTimeNow()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)] font-bold">Now</button>
-                        <button type="button" onclick="adjustStartTime(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">+15m</button>
-                    </div>
-                </div>
-                <input id="session_modal_start" type="datetime-local" onchange="updateSessionModalDurationBadge()" oninput="updateSessionModalDurationBadge()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
-            </div>
-
-            <div>
-                <div class="flex justify-between items-center mb-1">
-                    <label class="text-xs text-slate-400 block">End Time / Duration Presets</label>
-                    <div class="flex items-center space-x-1 text-[10px]">
-                        <button type="button" onclick="adjustDurationMinutes(-30)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-30m</button>
-                        <button type="button" onclick="adjustDurationMinutes(-15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[var(--border-muted)]">-15m</button>
-                        <span id="session_modal_duration_badge" class="bg-purple-950/80 text-purple-300 font-extrabold px-2 py-0.5 rounded border border-purple-700/60 text-[10px]">15m</span>
-                        <button type="button" onclick="adjustDurationMinutes(15)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">+15m</button>
-                        <button type="button" onclick="adjustDurationMinutes(30)" class="bg-[#181a28] hover:bg-[#222536] text-slate-300 px-1.5 py-0.5 rounded border border-[#262938]">+30m</button>
-                    </div>
-                </div>
-                <input id="session_modal_end" type="datetime-local" onchange="updateSessionModalDurationBadge()" oninput="updateSessionModalDurationBadge()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
-            </div>
-
-            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
-                <button id="session_modal_delete_btn" onclick="deleteSessionFromModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
-                <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Start Timer Now</button>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeSessionModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveSessionFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- AFK Resolution Modal -->
-    <div id="idle_resolution_modal" class="fixed inset-0 bg-black/80 backdrop-blur-md flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border-2 border-amber-500/80 w-[450px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex items-center space-x-3 border-b border-[var(--border-muted)] pb-3">
-                <span class="text-2xl font-bold text-amber-400">[AFK]</span>
-                <div>
-                    <h3 class="font-extrabold text-base text-amber-400">Inactivity Detected</h3>
-                    <p id="idle_time_summary_label" class="text-xs text-slate-400">You were away for 0 mins.</p>
-                </div>
-            </div>
-
-            <p class="text-xs text-slate-300 leading-relaxed">
-                Your work prior to stepping away was automatically saved. How would you like to log the AFK gap?
-            </p>
-
-            <div class="space-y-2">
-                <button onclick="resolveIdleGap('discard')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
-                    <div>
-                        <span class="font-bold text-slate-200 block">1. Discard Idle Time</span>
-                        <span class="text-[10px] text-slate-400">Keep work session up to AFK start; drop the idle gap.</span>
-                    </div>
-                </button>
-
-                <button onclick="resolveIdleGap('break')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
-                    <div>
-                        <span class="font-bold text-emerald-400 block">2. Log as #break</span>
-                        <span class="text-[10px] text-slate-400">Save the AFK gap as an explicit break slot.</span>
-                    </div>
-                </button>
-
-                <button onclick="resolveIdleGap('claim_work')" class="w-full bg-[#1e2030] hover:bg-[#282b42] border border-[var(--border-muted)] p-2.5 rounded-lg text-left flex items-center justify-between text-xs transition">
-                    <div>
-                        <span class="font-bold text-purple-400 block">3. Claim as Work</span>
-                        <span class="text-[10px] text-slate-400">Include the AFK gap in your work session (offline work).</span>
-                    </div>
-                </button>
-
-                <div class="bg-[#1e2030] border border-[var(--border-muted)] p-2.5 rounded-lg space-y-2">
-                    <span class="font-bold text-blue-400 block text-xs">4. Re-tag Activity</span>
-                    <div class="flex space-x-2">
-                        <input id="idle_retag_input" type="text" value="#meeting" placeholder="#tag" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white flex-1 focus:outline-none focus:border-purple-500">
-                        <button onclick="resolveIdleGap('re_tag')" class="bg-blue-600 hover:bg-blue-500 text-white font-bold px-3 py-1 rounded text-xs">Log Tag</button>
-                    </div>
-                </div>
+            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end">
+                <button onclick="closeSidebarTabsConfigModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Done</button>
             </div>
         </div>
     </div>
 
     <!-- JavaScript Modules -->
-    <script src="/api/v1/static/js/api_client.js"></script>
-    <script src="/api/v1/static/js/utils.js"></script>
-    <script src="/api/v1/static/js/tags_engine.js"></script>
-    <script src="/api/v1/static/js/task_attach.js"></script>
-    <script src="/api/v1/static/js/timer_control.js"></script>
-    <script src="/api/v1/static/js/task_modal.js"></script>
-    <script src="/api/v1/static/js/session_modal.js"></script>
-    <script src="/api/v1/static/js/vim_engine.js"></script>
-    <script src="/api/v1/static/js/settings.js"></script>
-    <script src="/api/v1/static/js/calendar.js"></script>
-    <script src="/api/v1/static/js/sidebar_totals.js"></script>
-    <script src="/api/v1/static/js/dashboard.js"></script>
+    <script src="/static/js/api_client.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/custom_filter.js"></script>
+    <script src="/static/js/tags_engine.js"></script>
+    <script src="/static/js/task_attach.js"></script>
+    <script src="/static/js/timer_control.js"></script>
+    <script src="/static/js/task_modal.js"></script>
+    <script src="/static/js/session_modal.js"></script>
+    <script src="/static/js/vim_engine.js"></script>
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/calendar.js"></script>
+    <script src="/static/js/sidebar_totals.js"></script>
+    <script src="/static/js/dashboard.js"></script>
 </body>
 </html>

@@ -4,7 +4,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.db.models import Session as SessionModel
+from timetrace.db.models import Session as SessionModel, Task
 from timetrace.interfaces.api.schemas import ReflectionCreate, RetroSessionCreate, SessionCreate, SessionUpdate
 from timetrace.interfaces.api.utils import ensure_utc
 
@@ -20,14 +20,21 @@ class SessionService:
         if end_utc <= start_utc:
             raise ValidationError("end_time must be strictly after start_time")
 
+        # Safely validate task_id to avoid SQLite Foreign Key Constraint Failures
+        valid_task_id = req.task_id
+        if valid_task_id:
+            task_obj = self.db.get(Task, valid_task_id)
+            if not task_obj:
+                valid_task_id = None
+
         duration = int((end_utc - start_utc).total_seconds())
         db_session = SessionModel(
-            task_id=req.task_id,
+            task_id=valid_task_id,
             start_time=start_utc,
             end_time=end_utc,
             duration_seconds=duration,
-            tags=req.tags,
-            notes=req.notes,
+            tags=req.tags or "#general",
+            notes=req.notes or "",
             review_skipped=req.review_skipped,
         )
         self.db.add(db_session)
@@ -79,6 +86,11 @@ class SessionService:
         for key, val in update_dict.items():
             if key in ("start_time", "end_time") and val is not None:
                 setattr(db_session, key, ensure_utc(val))
+            elif key == "task_id" and val is not None:
+                if self.db.get(Task, val):
+                    db_session.task_id = val
+                else:
+                    db_session.task_id = None
             else:
                 setattr(db_session, key, val)
 
@@ -109,14 +121,18 @@ class SessionService:
         if end_utc <= start_utc:
             raise ValidationError("end_time must be strictly after start_time")
 
+        valid_task_id = req.task_id
+        if valid_task_id and not self.db.get(Task, valid_task_id):
+            valid_task_id = None
+
         duration = int((end_utc - start_utc).total_seconds())
         db_session = SessionModel(
-            task_id=req.task_id,
+            task_id=valid_task_id,
             start_time=start_utc,
             end_time=end_utc,
             duration_seconds=duration,
-            tags=req.tags,
-            notes=req.notes,
+            tags=req.tags or "#general",
+            notes=req.notes or "",
         )
         self.db.add(db_session)
         self.db.commit()
