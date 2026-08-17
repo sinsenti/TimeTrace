@@ -6,6 +6,7 @@
     <title>TimeTrace Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #161824; --bg-sidebar: #12131d;
@@ -57,6 +58,7 @@
         .fc .fc-timegrid-now-indicator-line { border-color: #f87171 !important; border-width: 2px !important; z-index: 20 !important; }
         .fc .fc-timegrid-now-indicator-arrow { border: none !important; width: 10px !important; height: 10px !important; background-color: #f87171 !important; border-radius: 50% !important; margin-top: -4px !important; margin-left: -5px !important; z-index: 21 !important; }
         .tz-header-label { font-size: 0.65rem; font-weight: 700; color: #64748b; padding: 4px; text-align: center; }
+        .sortable-ghost { opacity: 0.4; border: 2px dashed #a855f7 !important; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
@@ -117,7 +119,7 @@
     </header>
 
     <div class="flex-1 flex overflow-hidden">
-        <!-- Left Sidebar (Tasks) with Dynamic Status Tabs -->
+        <!-- Left Sidebar (Tasks) -->
         <aside id="left_sidebar" class="bg-[var(--bg-sidebar)] p-3 flex flex-col shrink-0" style="width: 256px;">
             <div class="flex justify-between items-center mb-2">
                 <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
@@ -178,11 +180,14 @@
     <div id="sidebar_tab_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-80 rounded-xl p-5 shadow-2xl space-y-4 text-white">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 class="font-bold text-sm text-white">Configure Visible Status Tabs</h3>
+                <div>
+                    <h3 class="font-bold text-sm text-white">Configure Visible Status Tabs</h3>
+                    <p class="text-[10px] text-slate-400">Drag rows to reorder. Toggle to show/hide.</p>
+                </div>
                 <button onclick="closeSidebarTabsConfigModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
             
-            <div id="sidebar_tab_config_list" class="space-y-2.5 max-h-60 overflow-y-auto pr-1"></div>
+            <div id="sidebar_tab_config_list" class="space-y-2 max-h-60 overflow-y-auto pr-1"></div>
 
             <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end">
                 <button onclick="closeSidebarTabsConfigModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Done</button>

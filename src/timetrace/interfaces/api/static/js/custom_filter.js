@@ -1,17 +1,29 @@
 /**
- * Shared Custom Filter Engine for Dashboard and Kanban pages
- * Supports persistent local storage and keyboard shortcuts.
+ * Shared Custom Filter Engine with Route-Specific Storage Isolation
  */
 
-const CUSTOM_FILTER_STORAGE_KEY = 'timetrace_custom_filter';
-const STATUS_FILTER_STORAGE_KEY = 'timetrace_status_filter';
+function getStoragePrefix() {
+    const path = window.location.pathname;
+    if (path.includes('/kanban') || path.includes('/tasks')) {
+        return 'timetrace_tasks';
+    }
+    return 'timetrace_dashboard';
+}
+
+function getCustomFilterStorageKey() {
+    return `${getStoragePrefix()}_custom_filter`;
+}
+
+function getStatusFilterStorageKey() {
+    return `${getStoragePrefix()}_status_filter`;
+}
 
 let activeCustomFilter = loadSavedCustomFilter();
 
 function loadSavedCustomFilter() {
     try {
-        const savedCustom = localStorage.getItem(CUSTOM_FILTER_STORAGE_KEY);
-        const savedStatus = localStorage.getItem(STATUS_FILTER_STORAGE_KEY);
+        const savedCustom = localStorage.getItem(getCustomFilterStorageKey());
+        const savedStatus = localStorage.getItem(getStatusFilterStorageKey());
         
         let filterState = {
             status: savedStatus || 'all',
@@ -20,7 +32,7 @@ function loadSavedCustomFilter() {
             estMins: 30,
             query: '',
             priority: 'all',
-            isActive: false
+            isActive: Boolean(savedStatus && savedStatus !== 'all')
         };
 
         if (savedCustom) {
@@ -60,8 +72,8 @@ function loadSavedCustomFilter() {
 
 function saveCustomFilterState() {
     try {
-        localStorage.setItem(CUSTOM_FILTER_STORAGE_KEY, JSON.stringify(activeCustomFilter));
-        localStorage.setItem(STATUS_FILTER_STORAGE_KEY, activeCustomFilter.status || 'all');
+        localStorage.setItem(getCustomFilterStorageKey(), JSON.stringify(activeCustomFilter));
+        localStorage.setItem(getStatusFilterStorageKey(), activeCustomFilter.status || 'all');
     } catch (e) {
         console.error("Error saving custom filter state:", e);
     }

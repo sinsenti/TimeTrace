@@ -5,9 +5,15 @@
 let calendar;
 let activeTasks = [];
 let allSessions = [];
+let currentFilter = 'all';
 
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
+
+    // Ensure allTasksMap is fully loaded before drawing calendar to prevent "#session" titles
+    if (typeof fetchAllTasksRegistry === 'function') {
+        await fetchAllTasksRegistry();
+    }
 
     const durationSelect = document.getElementById('config_slot_duration');
     if (durationSelect) durationSelect.value = userSettings.slotDuration;
@@ -184,12 +190,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         scrollToCurrentTime();
     }
 
-    fetchAllTasksRegistry();
     fetchTasks();
 });
 
 async function fetchCalendarEvents(info, successCallback, failureCallback) {
     try {
+        if (typeof fetchAllTasksRegistry === 'function' && (typeof allTasksMap === 'undefined' || Object.keys(allTasksMap).length === 0)) {
+            await fetchAllTasksRegistry();
+        }
+
         const startIso = info.start.toISOString();
         const endIso = info.end.toISOString();
         const sessions = await api.get(`/sessions?start=${startIso}&end=${endIso}`) || [];

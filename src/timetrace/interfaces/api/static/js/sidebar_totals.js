@@ -1,10 +1,9 @@
 /**
  * TimeTrace Dashboard Sidebar Manager
- * Dynamic status tabs and sidebar rendering with case-insensitive tab highlight matching.
  */
 
-const STORAGE_STATUS_FILTER_KEY = 'timetrace_status_filter';
-const STORAGE_VISIBLE_TABS_KEY = 'timetrace_visible_sidebar_tabs';
+const STORAGE_STATUS_FILTER_KEY = 'timetrace_dashboard_status_filter';
+const STORAGE_VISIBLE_TABS_KEY = 'timetrace_dashboard_visible_sidebar_tabs';
 
 function getCurrentStatusFilter() {
     return localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || (typeof activeCustomFilter !== 'undefined' ? activeCustomFilter.status : 'all') || 'all';
@@ -52,7 +51,12 @@ async function renderDynamicStatusTabs() {
             ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
         ];
 
-        const activeVisibleTabs = allAvailableTabs.filter(t => visibleSidebarTabs.includes(t.id));
+        const activeVisibleTabs = [];
+        visibleSidebarTabs.forEach(vid => {
+            const found = allAvailableTabs.find(t => t.id === vid);
+            if (found) activeVisibleTabs.push(found);
+        });
+
         const activeFilterLower = getCurrentStatusFilter().toLowerCase();
 
         container.innerHTML = activeVisibleTabs.map(t => {
@@ -74,21 +78,56 @@ function openSidebarTabsConfigModal() {
             ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
         ];
 
+        const orderedTabs = [];
+        visibleSidebarTabs.forEach(vid => {
+            const found = allAvailableTabs.find(t => t.id === vid);
+            if (found) orderedTabs.push({...found, checked: true});
+        });
+        
+        allAvailableTabs.forEach(t => {
+            if (!visibleSidebarTabs.includes(t.id)) {
+                orderedTabs.push({...t, checked: false});
+            }
+        });
+
         const listContainer = document.getElementById('sidebar_tab_config_list');
         if (!listContainer) return;
 
-        listContainer.innerHTML = allAvailableTabs.map(t => {
-            const isChecked = visibleSidebarTabs.includes(t.id);
-            return `
-                <label class="flex items-center justify-between p-2 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer hover:border-purple-500">
-                    <span class="font-bold text-xs text-white">${t.label}</span>
-                    <input type="checkbox" value="${t.id}" ${isChecked ? 'checked' : ''} onchange="toggleSidebarTabVisibility('${t.id}', this.checked)" class="w-4 h-4 accent-purple-600 rounded">
-                </label>
-            `;
-        }).join('');
+        listContainer.innerHTML = orderedTabs.map(t => `
+            <div data-tab-id="${t.id}" class="sidebar-tab-row flex items-center justify-between p-2 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-grab hover:border-purple-500">
+                <span class="font-bold text-xs text-white">${t.label}</span>
+                <input type="checkbox" ${t.checked ? 'checked' : ''} onchange="updateVisibleTabsFromDOM()" class="w-4 h-4 accent-purple-600 rounded cursor-pointer">
+            </div>
+        `).join('');
+
+        if (typeof Sortable !== 'undefined') {
+            Sortable.create(listContainer, {
+                animation: 150,
+                ghostClass: 'sortable-ghost',
+                onEnd: function() {
+                    updateVisibleTabsFromDOM();
+                }
+            });
+        }
 
         document.getElementById('sidebar_tab_config_modal').classList.remove('hidden');
     });
+}
+
+function updateVisibleTabsFromDOM() {
+    const listContainer = document.getElementById('sidebar_tab_config_list');
+    if (!listContainer) return;
+    const rows = listContainer.querySelectorAll('.sidebar-tab-row');
+    const newOrder = [];
+    rows.forEach(row => {
+        const checkbox = row.querySelector('input[type="checkbox"]');
+        if (checkbox && checkbox.checked) {
+            newOrder.push(row.getAttribute('data-tab-id'));
+        }
+    });
+    visibleSidebarTabs = newOrder;
+    localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
+    renderDynamicStatusTabs();
 }
 
 function closeSidebarTabsConfigModal() {
@@ -96,15 +135,6 @@ function closeSidebarTabsConfigModal() {
     if (modal) modal.classList.add('hidden');
     renderDynamicStatusTabs();
     fetchTasks();
-}
-
-function toggleSidebarTabVisibility(tabId, isVisible) {
-    if (isVisible) {
-        if (!visibleSidebarTabs.includes(tabId)) visibleSidebarTabs.push(tabId);
-    } else {
-        visibleSidebarTabs = visibleSidebarTabs.filter(id => id !== tabId);
-    }
-    localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
 }
 
 function initSidebarResizers() {

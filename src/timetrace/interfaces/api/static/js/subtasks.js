@@ -1,5 +1,5 @@
 /**
- * Task Inspector Engine with Board Redirect on Save
+ * Task Inspector Engine
  */
 
 let currentTreeData = null;
@@ -8,6 +8,19 @@ document.addEventListener('DOMContentLoaded', () => {
     loadTaskDetailTree();
     setupSubtaskModalKeyboard();
 });
+
+function navigateBack() {
+    if (document.referrer) {
+        try {
+            const refUrl = new URL(document.referrer);
+            if (refUrl.host === window.location.host && refUrl.pathname !== window.location.pathname) {
+                window.location.href = document.referrer;
+                return;
+            }
+        } catch (e) {}
+    }
+    window.location.href = '/kanban';
+}
 
 async function loadTaskDetailTree() {
     const taskIdEl = document.getElementById('inspector_task_id');
@@ -53,7 +66,7 @@ async function loadTaskDetailTree() {
                 }
                 if (breadcrumbsEl) {
                     breadcrumbsEl.innerHTML = `
-                        <a href="/kanban" class="hover:underline">Tasks</a>
+                        <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
                         <span>&gt;</span>
                         <a href="/task-inspector/${parentTask.id}" class="hover:underline">#${parentTask.id} ${parentTask.title}</a>
                         <span>&gt;</span>
@@ -67,7 +80,7 @@ async function loadTaskDetailTree() {
             if (parentBannerEl) parentBannerEl.classList.add('hidden');
             if (breadcrumbsEl) {
                 breadcrumbsEl.innerHTML = `
-                    <a href="/kanban" class="hover:underline">Tasks</a>
+                    <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
                     <span>&gt;</span>
                     <span class="text-white font-bold">#${tree.id} ${tree.title}</span>
                 `;
@@ -154,8 +167,7 @@ async function loadTaskDetailTree() {
                     <div class="font-bold">Task #${taskId} Not Found</div>
                     <div>The requested task does not exist or was deleted.</div>
                     <div class="pt-2 flex space-x-2">
-                        <a href="/kanban" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1 rounded">Return to Board</a>
-                        <a href="/dashboard" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 font-bold px-3 py-1 rounded">Return to Dashboard</a>
+                        <button type="button" onclick="navigateBack()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 py-1 rounded">Return Back</button>
                     </div>
                 </div>
             `;
@@ -172,6 +184,7 @@ async function saveInspectorTaskProperties(event) {
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
 
+    const oldStatus = currentTreeData ? currentTreeData.status : null;
     const dueInputVal = document.getElementById('inspector_edit_due_date').value;
     const titleVal = document.getElementById('inspector_edit_title').value.trim();
 
@@ -200,8 +213,10 @@ async function saveInspectorTaskProperties(event) {
 
     try {
         await api.put(`/tasks/${taskId}`, payload);
-        // Redirect back to board upon successful save
-        window.location.href = '/kanban';
+        if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
+            await discardFutureSessionsForTask(taskId);
+        }
+        navigateBack();
     } catch (err) {
         console.error("Failed to save inspector task properties:", err);
         alert("Failed to save changes: " + (err.message || err));
@@ -215,7 +230,7 @@ async function deleteMainInspectorTask() {
     const confirmed = await showCustomConfirm("Delete Task", "Are you sure you want to delete this task slot and all its subtasks?");
     if (confirmed) {
         await api.delete(`/tasks/${taskId}`);
-        window.location.href = '/kanban';
+        navigateBack();
     }
 }
 

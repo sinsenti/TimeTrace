@@ -1,14 +1,16 @@
 /**
- * TimeTrace Kanban Board Engine with Dynamic Real-Time Card & Column Updates and Markdown Descriptions
+ * TimeTrace Kanban Board Engine
  */
 
 let allStatuses = [];
 let kanbanTasks = [];
 let sortableCardInstances = [];
 let sortableColumnInstance = null;
+let sortableStatusListInstance = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadKanbanBoard();
+    setupAddStatusModalKeyboard();
 });
 
 async function loadKanbanBoard() {
@@ -29,12 +31,14 @@ function renderKanbanColumns() {
     sortableCardInstances = [];
     if (sortableColumnInstance) sortableColumnInstance.destroy();
 
-    if (allStatuses.length === 0) {
-        container.innerHTML = '<div class="text-xs text-slate-500 py-8">No columns configured.</div>';
+    const visibleStatuses = allStatuses.filter(st => !st.is_hide_by_default);
+
+    if (visibleStatuses.length === 0) {
+        container.innerHTML = '<div class="text-xs text-slate-500 py-8">No active columns configured. Open "Statuses Config" to unhide or create columns.</div>';
         return;
     }
 
-    container.innerHTML = allStatuses.map(st => {
+    container.innerHTML = visibleStatuses.map(st => {
         let colTasks = kanbanTasks.filter(t => t.status === st.name || t.status_id === st.id);
 
         if (typeof matchesCustomFilter === 'function') {
@@ -68,7 +72,6 @@ function renderKanbanCard(task) {
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 
-    // Markdown description parsing
     let descContentHTML = '';
     if (task.description && task.description.trim()) {
         const rawParsed = typeof marked !== 'undefined' ? marked.parse(task.description.trim()) : task.description;
@@ -147,9 +150,15 @@ function initKanbanDragAndDrop() {
 
                 if (taskId && newStatusName && sourceList !== targetList) {
                     try {
+                        const oldTask = kanbanTasks.find(t => String(t.id) === String(taskId));
+                        const oldStatus = oldTask ? oldTask.status : null;
+
                         await api.put(`/tasks/${taskId}`, { status: newStatusName });
-                        const updatedTask = kanbanTasks.find(t => String(t.id) === String(taskId));
-                        if (updatedTask) updatedTask.status = newStatusName;
+                        if (oldTask) oldTask.status = newStatusName;
+
+                        if ((oldStatus || '').toLowerCase() === 'scheduled' && newStatusName.toLowerCase() !== 'scheduled') {
+                            await discardFutureSessionsForTask(taskId);
+                        }
                     } catch (err) {
                         console.error("Failed to update task status on drag:", err);
                         loadKanbanBoard();
@@ -168,6 +177,10 @@ function openStatusManagerModal() {
 
 function closeStatusManagerModal() {
     document.getElementById('status_manager_modal').classList.add('hidden');
+    if (sortableStatusListInstance) {
+        sortableStatusListInstance.destroy();
+        sortableStatusListInstance = null;
+    }
     loadKanbanBoard();
 }
 
@@ -175,46 +188,61 @@ function renderStatusManagerRows() {
     const list = document.getElementById('status_manager_list');
     if (!list) return;
 
-    list.innerHTML = allStatuses.map((st, idx) => `
-        <div class="bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg flex items-center justify-between text-xs space-x-2">
-            <div class="flex items-center space-x-1">
-                <button onclick="shiftStatusPosition(${st.id}, -1)" ${idx === 0 ? 'disabled class="opacity-30"' : ''} class="px-1 py-0.5 bg-[#181a28] text-slate-300 rounded hover:text-white">&larr;</button>
-                <button onclick="shiftStatusPosition(${st.id}, 1)" ${idx === allStatuses.length - 1 ? 'disabled class="opacity-30"' : ''} class="px-1 py-0.5 bg-[#181a28] text-slate-300 rounded hover:text-white">&rarr;</button>
+    if (sortableStatusListInstance) {
+        sortableStatusListInstance.destroy();
+        sortableStatusListInstance = null;
+    }
+
+    list.innerHTML = allStatuses.map((st) => `
+        <div data-status-id="${st.id}" class="status-manager-row bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg flex items-center justify-between text-xs space-x-2 cursor-grab hover:border-purple-500 transition">
+            <div class="flex items-center space-x-2 shrink-0">
+                <input type="text" value="${st.name}" onchange="updateStatusField(${st.id}, 'name', this.value)" class="bg-[#181a28] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white font-bold w-32">
             </div>
 
-            <input type="text" value="${st.name}" onchange="updateStatusField(${st.id}, 'name', this.value)" class="bg-[#181a28] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white font-bold w-28">
-            <input type="color" value="${st.color}" onchange="updateStatusField(${st.id}, 'color', this.value)" class="w-7 h-7 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
-            
-            <label class="flex items-center space-x-1 cursor-pointer">
-                <input type="checkbox" ${st.is_completed ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_completed', this.checked)" class="accent-emerald-600 rounded">
-                <span class="text-[10px] text-slate-400">Done</span>
-            </label>
+            <div class="flex items-center space-x-2">
+                <input type="color" value="${st.color}" onchange="updateStatusField(${st.id}, 'color', this.value)" class="w-7 h-7 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
+                
+                <label class="flex items-center space-x-1 cursor-pointer">
+                    <input type="checkbox" ${st.is_hide_by_default ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_hide_by_default', this.checked)" class="accent-amber-500 rounded">
+                    <span class="text-[10px] text-amber-400 font-bold">Hide</span>
+                </label>
 
-            <label class="flex items-center space-x-1 cursor-pointer">
-                <input type="checkbox" ${st.is_scheduled_trigger ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_scheduled_trigger', this.checked)" class="accent-purple-600 rounded">
-                <span class="text-[10px] text-slate-400">Calendar</span>
-            </label>
+                <label class="flex items-center space-x-1 cursor-pointer">
+                    <input type="checkbox" ${st.is_completed ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_completed', this.checked)" class="accent-emerald-600 rounded">
+                    <span class="text-[10px] text-slate-400">Done</span>
+                </label>
 
-            <button onclick="deleteStatusRow(${st.id})" class="text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5">&times;</button>
+                <label class="flex items-center space-x-1 cursor-pointer">
+                    <input type="checkbox" ${st.is_scheduled_trigger ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_scheduled_trigger', this.checked)" class="accent-purple-600 rounded">
+                    <span class="text-[10px] text-slate-400">Calendar</span>
+                </label>
+
+                <button type="button" onclick="deleteStatusRow(${st.id})" class="text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5 text-sm">&times;</button>
+            </div>
         </div>
     `).join('');
+
+    initStatusManagerDragAndDrop();
 }
 
-async function shiftStatusPosition(id, direction) {
-    const idx = allStatuses.findIndex(st => st.id === id);
-    if (idx < 0) return;
+function initStatusManagerDragAndDrop() {
+    const list = document.getElementById('status_manager_list');
+    if (!list || typeof Sortable === 'undefined') return;
 
-    const targetIdx = idx + direction;
-    if (targetIdx < 0 || targetIdx >= allStatuses.length) return;
-
-    const currentSt = allStatuses[idx];
-    const targetSt = allStatuses[targetIdx];
-
-    await api.put(`/tasks/statuses/${currentSt.id}`, { position: targetSt.position });
-    await api.put(`/tasks/statuses/${targetSt.id}`, { position: currentSt.position });
-
-    allStatuses = await api.get('/tasks/statuses') || [];
-    renderStatusManagerRows();
+    sortableStatusListInstance = Sortable.create(list, {
+        animation: 150,
+        ghostClass: 'sortable-ghost',
+        onEnd: async function() {
+            const rows = list.querySelectorAll('.status-manager-row');
+            for (let idx = 0; idx < rows.length; idx++) {
+                const statusId = rows[idx].getAttribute('data-status-id');
+                if (statusId) {
+                    await api.put(`/tasks/statuses/${statusId}`, { position: idx });
+                }
+            }
+            allStatuses = await api.get('/tasks/statuses') || [];
+        }
+    });
 }
 
 async function updateStatusField(id, field, value) {
@@ -222,18 +250,81 @@ async function updateStatusField(id, field, value) {
     allStatuses = await api.get('/tasks/statuses') || [];
 }
 
-async function createNewStatusRow() {
-    const name = prompt("Enter new status name:");
-    if (!name) return;
-    await api.post('/tasks/statuses', { name: name, position: allStatuses.length });
+async function deleteStatusRow(id) {
+    const confirmed = await showCustomConfirm("Delete Status Column", "Are you sure you want to delete this status column?");
+    if (confirmed) {
+        await api.delete(`/tasks/statuses/${id}`);
+        allStatuses = await api.get('/tasks/statuses') || [];
+        renderStatusManagerRows();
+    }
+}
+
+function openAddStatusModal() {
+    const nameInput = document.getElementById('modal_new_status_name');
+    if (nameInput) nameInput.value = '';
+
+    const colorInput = document.getElementById('modal_new_status_color');
+    if (colorInput) colorInput.value = '#7c3aed';
+
+    const hexLabel = document.getElementById('new_status_color_hex');
+    if (hexLabel) hexLabel.innerText = '#7C3AED';
+
+    const modal = document.getElementById('add_status_modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        setTimeout(() => {
+            if (nameInput) {
+                nameInput.focus();
+                nameInput.select();
+            }
+        }, 50);
+    }
+}
+
+function closeAddStatusModal() {
+    const modal = document.getElementById('add_status_modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+async function saveNewStatusFromModal() {
+    const nameInput = document.getElementById('modal_new_status_name');
+    const name = nameInput ? nameInput.value.trim() : '';
+    if (!name) {
+        alert("Status name is required.");
+        return;
+    }
+
+    const colorInput = document.getElementById('modal_new_status_color');
+    const color = colorInput ? colorInput.value : '#7c3aed';
+
+    await api.post('/tasks/statuses', {
+        name: name,
+        color: color,
+        position: allStatuses.length
+    });
+
+    closeAddStatusModal();
     allStatuses = await api.get('/tasks/statuses') || [];
     renderStatusManagerRows();
 }
 
-async function deleteStatusRow(id) {
-    if (confirm("Delete this status column?")) {
-        await api.delete(`/tasks/statuses/${id}`);
-        allStatuses = await api.get('/tasks/statuses') || [];
-        renderStatusManagerRows();
+function setupAddStatusModalKeyboard() {
+    const modal = document.getElementById('add_status_modal');
+    if (modal) {
+        modal.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'Enter') {
+                e.preventDefault();
+                saveNewStatusFromModal();
+            } else if (e.key === 'Enter') {
+                const active = document.activeElement;
+                if (active && active.id === 'modal_new_status_name') {
+                    e.preventDefault();
+                    saveNewStatusFromModal();
+                }
+            } else if (e.key === 'Escape' || e.key === 'Esc') {
+                e.preventDefault();
+                closeAddStatusModal();
+            }
+        });
     }
 }

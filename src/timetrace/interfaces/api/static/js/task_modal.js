@@ -1,5 +1,5 @@
 /**
- * TimeTrace Global Task Modal Engine & Swatch Controls
+ * TimeTrace Global Task Modal Engine
  */
 
 let sessionModalStateBackup = null;
@@ -198,6 +198,14 @@ async function saveTask() {
         const idEl = document.getElementById('edit_task_id');
         const id = idEl ? idEl.value : '';
 
+        let oldStatus = null;
+        if (id) {
+            const existingTask = (typeof activeTasks !== 'undefined' && Array.isArray(activeTasks) ? activeTasks.find(item => item && String(item.id) === String(id)) : null)
+                || (typeof kanbanTasks !== 'undefined' && Array.isArray(kanbanTasks) ? kanbanTasks.find(item => item && String(item.id) === String(id)) : null)
+                || (typeof allTasksMap !== 'undefined' && allTasksMap ? (allTasksMap[id] || allTasksMap[String(id)]) : null);
+            if (existingTask) oldStatus = existingTask.status;
+        }
+
         const titleVal = document.getElementById('modal_input_title') ? document.getElementById('modal_input_title').value.trim() : '';
         if (!titleVal) {
             alert("Task title is required.");
@@ -232,13 +240,15 @@ async function saveTask() {
         let createdTask = null;
         if (id) {
             createdTask = await api.put(`/tasks/${id}`, payload);
+            if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
+                await discardFutureSessionsForTask(id);
+            }
         } else {
             createdTask = await api.post('/tasks', payload);
         }
 
         closeTaskModal();
 
-        // Dynamically update UI without reloading the page
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         if (typeof fetchTasks === 'function') fetchTasks();
         if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();

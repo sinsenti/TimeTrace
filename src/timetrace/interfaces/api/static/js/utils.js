@@ -1,5 +1,5 @@
 /**
- * TimeTrace Utility Helpers, Color Dispersion & Global Capture Modal Esc Handler
+ * TimeTrace Utility Helpers, Color Dispersion & Persistence
  */
 
 let defaultPalette = [
@@ -9,14 +9,15 @@ let defaultPalette = [
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 
 /**
- * Capture-Phase Window Esc Listener:
- * Intercepts Escape key at top-level before inputs consume it, closing open modals and discarding selection.
+ * Capture-Phase Window Esc Listener
  */
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
         let closedAny = false;
 
         const modalOrder = [
+            { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
+            { id: 'subtask_modal', closeFn: typeof closeSubtaskModal === 'function' ? closeSubtaskModal : null },
             { id: 'custom_filter_modal', closeFn: typeof closeCustomFilterModal === 'function' ? closeCustomFilterModal : null },
             { id: 'task_modal', closeFn: typeof closeTaskModal === 'function' ? closeTaskModal : null },
             { id: 'session_modal', closeFn: typeof closeSessionModal === 'function' ? closeSessionModal : null },
@@ -46,15 +47,31 @@ window.addEventListener('keydown', function(e) {
         }
 
         if (closedAny) {
-            if (typeof calendar !== 'undefined' && calendar) {
-                calendar.unselect();
-            }
-            if (document.activeElement && typeof document.activeElement.blur === 'function') {
-                document.activeElement.blur();
-            }
+            if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
+            if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
         }
     }
 }, true);
+
+async function discardFutureSessionsForTask(taskId) {
+    if (!taskId) return;
+    try {
+        const sessions = await api.get('/sessions') || [];
+        const now = new Date();
+        const futureSessions = sessions.filter(s => 
+            String(s.task_id) === String(taskId) && new Date(s.start_time) > now
+        );
+        for (const s of futureSessions) {
+            await api.delete(`/sessions/${s.id}`);
+        }
+        if (futureSessions.length > 0) {
+            if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+            if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        }
+    } catch (err) {
+        console.error("Failed to discard future sessions for task:", err);
+    }
+}
 
 function hashString(str) {
     let hash = 0;
@@ -78,24 +95,31 @@ function getTaskColor(task, index = 0) {
     const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
     const seed = settings.colorSeed || 0;
 
-    const title = task.title || '';
-    if (title.length > 0) {
-        const seedStr = seed ? `_${seed}` : '';
-        const hash = hashString(title + seedStr);
-        return activePalette[hash % activePalette.length];
-    }
+    // Fixed: Always prioritize stable task.id over array index so colors never change randomly on reload
+    const identifier = task.id ? String(task.id) : (task.title || String(index));
+    const seedStr = seed ? `_${seed}` : '';
+    const hash = hashString(identifier + seedStr);
     
-    return activePalette[(index + seed) % activePalette.length];
+    return activePalette[hash % activePalette.length];
+}
+
+function reshuffleColors() {
+    const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
+    settings.colorSeed = (settings.colorSeed || 0) + 1;
+    if (typeof saveUserSettings === 'function') saveUserSettings(settings);
+    
+    if (typeof fetchTasks === 'function') fetchTasks();
+    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+    if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
 }
 
 function getTagColor(tagStr) {
     let clean = tagStr.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (!clean) return defaultPalette[0];
-
     const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
     const seed = settings.colorSeed || 0;
     const seedStr = seed ? `_${seed}` : '';
-
     const hash = hashString(clean + seedStr);
     return defaultPalette[hash % defaultPalette.length];
 }
@@ -158,7 +182,6 @@ function setSlotDuration(val, updateSettings = true) {
         s.lastSelectedSlot = mins;
         if (typeof saveUserSettings === 'function') saveUserSettings(s);
     }
-
     defaultDurationMinutes = mins;
     localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
     if (typeof calendar !== 'undefined' && calendar) {
