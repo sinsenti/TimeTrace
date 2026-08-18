@@ -7,6 +7,7 @@ let currentTreeData = null;
 document.addEventListener('DOMContentLoaded', () => {
     loadTaskDetailTree();
     setupSubtaskModalKeyboard();
+    setupInspectorKeyboardShortcuts();
 });
 
 function toggleInspectorRecurrenceRule(isRecurring) {
@@ -30,6 +31,28 @@ function navigateBack() {
         } catch (e) {}
     }
     window.location.href = '/tasks';
+}
+
+function setupInspectorKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        const subtaskModal = document.getElementById('subtask_modal');
+        const settingsModal = document.getElementById('settings_modal');
+        const confirmModal = document.getElementById('custom_confirm_modal');
+
+        const isAnyModalOpen = (subtaskModal && !subtaskModal.classList.contains('hidden')) ||
+                               (settingsModal && !settingsModal.classList.contains('hidden')) ||
+                               (confirmModal && !confirmModal.classList.contains('hidden'));
+
+        if (isAnyModalOpen) return;
+
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            saveInspectorTaskProperties(e);
+        } else if (e.key === 'Escape' || e.key === 'Esc') {
+            e.preventDefault();
+            navigateBack();
+        }
+    });
 }
 
 async function loadTaskDetailTree() {
@@ -74,7 +97,7 @@ async function loadTaskDetailTree() {
                 }
                 if (breadcrumbsEl) {
                     breadcrumbsEl.innerHTML = `
-                        <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back</button>
+                        <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
                         <span class="text-slate-600">|</span>
                         <span class="text-slate-400">Subtask of:</span>
                         <a href="/task-inspector/${parentTask.id}" class="hover:underline font-bold text-purple-400">${parentTask.title}</a>
@@ -87,7 +110,7 @@ async function loadTaskDetailTree() {
             if (parentBannerEl) parentBannerEl.classList.add('hidden');
             if (breadcrumbsEl) {
                 breadcrumbsEl.innerHTML = `
-                    <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back</button>
+                    <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
                 `;
             }
         }

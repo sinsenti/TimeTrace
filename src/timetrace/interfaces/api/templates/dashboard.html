@@ -111,6 +111,11 @@
             </div>
             
             <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 rounded-lg border border-[var(--border-muted)] text-[11px] font-semibold">Today</button>
+            
+            <div class="flex items-center space-x-1.5 border-l border-[var(--border-color)] pl-2">
+                <span id="range_total_header" class="text-slate-400 font-semibold text-[11px]">Total</span>
+                <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
+            </div>
         </div>
     </header>
 
@@ -129,9 +134,8 @@
 
             <div id="task_card_list" class="flex-1 overflow-y-auto space-y-2.5 pr-1"></div>
 
-            <div class="mt-3 space-y-1.5">
+            <div class="mt-3">
                 <button onclick="openNewTaskModal()" class="w-full border border-dashed border-[#2d3042] hover:border-purple-500 text-slate-400 hover:text-purple-400 py-2 rounded-lg text-xs font-medium transition">+ Add task slot</button>
-                <button onclick="clearCompletedTasks()" class="w-full bg-red-950/30 hover:bg-red-900/50 text-red-400 border border-red-800/40 py-1.5 rounded-lg text-[11px] font-semibold transition">Clear Completed Tasks</button>
             </div>
         </aside>
 

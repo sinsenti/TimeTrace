@@ -11,6 +11,9 @@ function setupModalKeyboardListeners() {
 
             if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
+                const dropdown = document.getElementById('tag_suggestions_dropdown');
+                if (dropdown) dropdown.classList.add('hidden');
+                if (typeof activeTagSuggestionIndex !== 'undefined') activeTagSuggestionIndex = -1;
                 saveSessionFromModal();
             } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
@@ -31,6 +34,12 @@ function setupModalKeyboardListeners() {
             const dropdown = document.getElementById('task_suggestions_dropdown');
             const items = dropdown ? dropdown.querySelectorAll('.task-suggestion-item') : [];
 
+            if (e.ctrlKey && e.key === 'Enter') {
+                if (dropdown) dropdown.classList.add('hidden');
+                if (typeof activeTaskSuggestionIndex !== 'undefined') activeTaskSuggestionIndex = -1;
+                return;
+            }
+
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (items.length > 0) {
@@ -43,7 +52,7 @@ function setupModalKeyboardListeners() {
                     activeTaskSuggestionIndex = (activeTaskSuggestionIndex - 1 + items.length) % items.length;
                     highlightTaskSuggestionItem(items);
                 }
-            } else if (e.key === 'Enter') {
+            } else if ((e.key === 'Enter') && !e.ctrlKey) {
                 e.preventDefault();
                 if (activeTaskSuggestionIndex >= 0 && items[activeTaskSuggestionIndex]) {
                     items[activeTaskSuggestionIndex].click();
@@ -77,6 +86,12 @@ function setupModalKeyboardListeners() {
             const dropdown = document.getElementById('tag_suggestions_dropdown');
             const items = dropdown ? dropdown.querySelectorAll('.tag-suggestion-item') : [];
 
+            if (e.ctrlKey && e.key === 'Enter') {
+                if (dropdown) dropdown.classList.add('hidden');
+                if (typeof activeTagSuggestionIndex !== 'undefined') activeTagSuggestionIndex = -1;
+                return;
+            }
+
             if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 if (items.length > 0) {
@@ -89,7 +104,7 @@ function setupModalKeyboardListeners() {
                     activeTagSuggestionIndex = (activeTagSuggestionIndex - 1 + items.length) % items.length;
                     highlightTagSuggestionItem(items);
                 }
-            } else if (e.key === 'Enter' || e.key === ' ') {
+            } else if ((e.key === 'Enter' || e.key === ' ') && !e.ctrlKey) {
                 e.preventDefault();
                 if (activeTagSuggestionIndex >= 0 && items[activeTagSuggestionIndex]) {
                     items[activeTagSuggestionIndex].click();
@@ -233,7 +248,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         }
 
         const notesInput = document.getElementById('session_modal_notes');
-        if (notesInput) notesInput.value = taskTitle ? `Working on ${taskTitle}` : "";
+        if (notesInput) notesInput.value = "";
 
         if (typeof updateSessionModalDurationBadge === 'function') updateSessionModalDurationBadge();
 

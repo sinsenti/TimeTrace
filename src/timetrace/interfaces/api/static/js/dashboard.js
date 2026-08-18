@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         start_time: startTime.toISOString(),
                         end_time: endTime.toISOString(),
                         tags: defaultTags,
-                        notes: taskTitle ? `Working on ${taskTitle}` : ""
+                        notes: ""
                     };
 
                     await api.post('/sessions', payload);
