@@ -20,7 +20,7 @@
             --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
         }
         :root[data-theme="monokai"] {
-            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #221f22; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #3a373d; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
         }
 
         body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
@@ -31,19 +31,16 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col pb-12">
 
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
 
         <div class="font-bold text-sm text-slate-200">
-            Analytics & Custom Dashboard
+            Analytics & Performance
         </div>
 
         <div class="flex items-center space-x-2 text-xs">
-            <button onclick="toggleWidgetModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-purple-800/40 px-3 rounded-lg font-bold transition">
-                Widgets
-            </button>
             <button onclick="loadAnalyticsData()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
                 Refresh
             </button>
@@ -51,6 +48,7 @@
     </header>
 
     <main class="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
+        <!-- Core KPI Cards -->
         <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div class="widget-card flex items-center space-x-4">
                 <div class="p-3 bg-purple-900/40 border border-purple-700/50 rounded-xl text-purple-400 text-sm font-bold">LOGGED</div>
@@ -85,10 +83,11 @@
             </div>
         </div>
 
+        <!-- Interactive Core Analytics Charts Grid -->
         <div id="widget_grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div id="widget_estimation_accuracy" class="widget-card flex flex-col space-y-3">
+            <div id="widget_estimation_accuracy" class="widget-card flex flex-col space-y-3 cursor-pointer">
                 <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Estimation Accuracy Breakdown</h3>
+                    <h3 class="font-bold text-sm text-slate-200">Estimation Accuracy Breakdown (Click slice to inspect)</h3>
                     <span id="estimation_accuracy_ratio" class="text-xs text-blue-400 font-semibold">0.0h / 0.0h</span>
                 </div>
                 <div class="h-64 relative flex items-center justify-center">
@@ -96,9 +95,9 @@
                 </div>
             </div>
 
-            <div id="widget_daily_trend" class="widget-card flex flex-col space-y-3">
+            <div id="widget_daily_trend" class="widget-card flex flex-col space-y-3 cursor-pointer">
                 <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Daily Focus Trend (14 Days)</h3>
+                    <h3 class="font-bold text-sm text-slate-200">Daily Focus Trend (Click bar to inspect day)</h3>
                     <span class="text-xs text-purple-400 font-semibold">Hours / Day</span>
                 </div>
                 <div class="h-64 relative">
@@ -116,15 +115,27 @@
                 </div>
             </div>
 
-            <div id="widget_tags_pie" class="widget-card flex flex-col space-y-3">
+            <div id="widget_tags_pie" class="widget-card flex flex-col space-y-3 cursor-pointer">
                 <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Activity Breakdown (#tags)</h3>
+                    <h3 class="font-bold text-sm text-slate-200">Activity Breakdown (#tags) (Click slice to inspect)</h3>
                     <span class="text-xs text-purple-400 font-semibold">Share %</span>
                 </div>
                 <div class="h-64 relative flex items-center justify-center">
                     <canvas id="chart_tags_pie"></canvas>
                 </div>
             </div>
+        </div>
+
+        <!-- Interactive Statistics Item Inspector List -->
+        <div id="stats_drilldown_inspector" class="widget-card space-y-4 hidden">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <div>
+                    <h3 id="drilldown_title" class="font-bold text-base text-purple-300">Drill-Down Inspection</h3>
+                    <p id="drilldown_subtitle" class="text-xs text-slate-400">Represented sessions and tasks</p>
+                </div>
+                <button onclick="closeDrilldownInspector()" class="text-slate-400 hover:text-white font-bold text-base">&times; Close Inspector</button>
+            </div>
+            <div id="drilldown_item_list" class="space-y-2.5 max-h-96 overflow-y-auto pr-1"></div>
         </div>
     </main>
 

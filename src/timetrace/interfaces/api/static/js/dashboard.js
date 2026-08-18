@@ -10,7 +10,6 @@ let currentFilter = 'all';
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
 
-    // Ensure allTasksMap is fully loaded before drawing calendar to prevent "#session" titles
     if (typeof fetchAllTasksRegistry === 'function') {
         await fetchAllTasksRegistry();
     }
@@ -156,6 +155,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         });
         calendar.render();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const targetDate = urlParams.get('date');
+        if (targetDate) {
+            calendar.gotoDate(targetDate);
+        }
     }
 
     const taskCardList = document.getElementById('task_card_list');
@@ -186,98 +191,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     await applyUserSettings(userSettings, true);
 
-    if (userSettings.autoScrollNow) {
+    if (userSettings.autoScrollNow && !window.location.search.includes('date=')) {
         scrollToCurrentTime();
     }
 
     fetchTasks();
 });
-
-async function fetchCalendarEvents(info, successCallback, failureCallback) {
-    try {
-        if (typeof fetchAllTasksRegistry === 'function' && (typeof allTasksMap === 'undefined' || Object.keys(allTasksMap).length === 0)) {
-            await fetchAllTasksRegistry();
-        }
-
-        const startIso = info.start.toISOString();
-        const endIso = info.end.toISOString();
-        const sessions = await api.get(`/sessions?start=${startIso}&end=${endIso}`) || [];
-        allSessions = sessions;
-
-        const events = sessions.map(s => {
-            const matchedTask = (typeof allTasksMap !== 'undefined' && allTasksMap) ? allTasksMap[s.task_id] : null;
-            const taskTitle = matchedTask ? matchedTask.title : '';
-            const taskColor = matchedTask ? getTaskColor(matchedTask) : getTagColor(s.tags || '#general');
-
-            return {
-                id: String(s.id),
-                title: taskTitle || s.notes || s.tags || 'Session',
-                start: s.start_time,
-                end: s.end_time,
-                backgroundColor: taskColor,
-                borderColor: taskColor,
-                extendedProps: {
-                    taskId: s.task_id,
-                    taskTitle: taskTitle,
-                    notes: s.notes || '',
-                    tags: s.tags || '',
-                    reviewSkipped: s.review_skipped
-                }
-            };
-        });
-
-        successCallback(events);
-        fetchRangeTotals();
-    } catch (err) {
-        console.error("Error fetching calendar events:", err);
-        failureCallback(err);
-    }
-}
-
-async function handleCalendarEventUpdate(event) {
-    try {
-        const payload = {
-            start_time: event.start.toISOString(),
-            end_time: event.end ? event.end.toISOString() : new Date(event.start.getTime() + 15 * 60000).toISOString()
-        };
-        await api.put(`/sessions/${event.id}`, payload);
-        if (calendar) calendar.refetchEvents();
-    } catch (err) {
-        console.error("Failed to update event times:", err);
-        if (calendar) calendar.refetchEvents();
-    }
-}
-
-function switchView(viewName) {
-    if (!calendar) return;
-    calendar.changeView(viewName);
-    updateViewButtons(viewName);
-}
-
-function updateViewButtons(activeView) {
-    const viewButtons = {
-        'timeGridDay': 'btn_view_day',
-        'timeGridThreeDay': 'btn_view_three_day',
-        'timeGridWeek': 'btn_view_week',
-        'dayGridMonth': 'btn_view_month'
-    };
-
-    Object.entries(viewButtons).forEach(([view, btnId]) => {
-        const btn = document.getElementById(btnId);
-        if (!btn) return;
-        if (view === activeView) {
-            btn.className = "h-6 px-2 rounded font-bold bg-purple-600 text-white text-[11px]";
-        } else {
-            btn.className = "h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]";
-        }
-    });
-}
-
-function scrollToCurrentTime() {
-    if (!calendar) return;
-    calendar.today();
-    const now = new Date();
-    let targetHour = Math.max(0, now.getHours() - 1);
-    const timeStr = `${String(targetHour).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:00`;
-    calendar.scrollToTime(timeStr);
-}

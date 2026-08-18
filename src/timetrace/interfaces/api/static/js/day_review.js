@@ -10,6 +10,13 @@ function setDayReviewToday() {
     }
 }
 
+function jumpToCalendarForDay() {
+    const dateInput = document.getElementById('day_review_date_input');
+    if (dateInput && dateInput.value) {
+        window.location.href = `/dashboard?date=${dateInput.value}`;
+    }
+}
+
 function markDayFormDirty() {
     const btn = document.getElementById('day_form_save_btn');
     if (btn) {

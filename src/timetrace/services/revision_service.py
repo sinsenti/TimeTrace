@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Any
 
 from sqlmodel import Session, select
@@ -27,10 +28,14 @@ class RevisionService:
                 day_stats[d_str]["total_seconds"] += s.duration_seconds or 0
                 day_stats[d_str]["session_count"] += 1
 
+        today_str = datetime.now().astimezone().strftime("%Y-%m-%d")
         all_dates = set(day_stats.keys()).union(set(reviews_map.keys()))
+        
+        # Exclude future days that have not yet passed
+        past_or_current_dates = [d for d in all_dates if d <= today_str]
 
         history = []
-        for d_str in sorted(all_dates, reverse=True):
+        for d_str in sorted(past_or_current_dates, reverse=True):
             stats = day_stats.get(d_str, {"total_seconds": 0, "session_count": 0})
             rev = reviews_map.get(d_str)
             history.append({

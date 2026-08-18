@@ -79,7 +79,6 @@ function saveCustomFilterState() {
     }
 }
 
-// Global capture-phase listener to catch Esc and Ctrl+Enter inside the filter window
 window.addEventListener('keydown', function(e) {
     const modal = document.getElementById('custom_filter_modal');
     if (modal && !modal.classList.contains('hidden')) {
@@ -192,11 +191,11 @@ function updateFilterButtonIndicators() {
     const btns = document.querySelectorAll('.custom-filter-trigger-btn');
     btns.forEach(btn => {
         if (activeCustomFilter.isActive) {
-            btn.innerHTML = `🔍 Filter <span class="bg-purple-400 text-black px-1 rounded font-black text-[9px]">ON</span>`;
-            btn.className = "custom-filter-trigger-btn h-8 bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-600 px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1";
+            btn.innerHTML = `Filter <span class="bg-purple-400 text-black px-1 rounded font-black text-[9px] ml-1">ON</span>`;
+            btn.className = "custom-filter-trigger-btn h-8 bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-600 px-3 rounded-lg font-bold transition text-xs flex items-center shrink-0 whitespace-nowrap";
         } else {
-            btn.innerHTML = `🔍 Filter`;
-            btn.className = "custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1";
+            btn.innerHTML = `Filter`;
+            btn.className = "custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center shrink-0 whitespace-nowrap";
         }
     });
 }
@@ -204,7 +203,6 @@ function updateFilterButtonIndicators() {
 function matchesCustomFilter(task) {
     if (!activeCustomFilter.isActive) return true;
 
-    // 1. Status Match
     if (activeCustomFilter.status !== 'all') {
         if (activeCustomFilter.status === 'hide_completed') {
             if (['done', 'completed'].includes((task.status || '').toLowerCase())) return false;
@@ -213,17 +211,14 @@ function matchesCustomFilter(task) {
         }
     }
 
-    // 2. Category Match
     if (activeCustomFilter.category !== 'all') {
         if ((task.category || 'work').toLowerCase() !== activeCustomFilter.category.toLowerCase()) return false;
     }
 
-    // 3. Priority Match
     if (activeCustomFilter.priority !== 'all') {
         if ((task.priority || '-').toLowerCase() !== activeCustomFilter.priority.toLowerCase()) return false;
     }
 
-    // 4. Estimation Condition Match
     if (activeCustomFilter.estOp) {
         const est = task.estimated_minutes || 15;
         const target = activeCustomFilter.estMins;
@@ -233,7 +228,6 @@ function matchesCustomFilter(task) {
         if (activeCustomFilter.estOp === 'gte' && !(est >= target)) return false;
     }
 
-    // 5. Title / Description / Tags Keyword Search
     if (activeCustomFilter.query) {
         const titleMatch = (task.title || '').toLowerCase().includes(activeCustomFilter.query);
         const descMatch = (task.description || '').toLowerCase().includes(activeCustomFilter.query);
