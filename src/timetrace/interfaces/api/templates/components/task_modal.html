@@ -21,12 +21,24 @@
 
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
-                <label class="text-xs text-slate-400 block mb-1">Assigned Target Day</label>
-                <input id="modal_input_assigned_date" type="date" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+                <label class="text-xs text-slate-400 block mb-1">Target Day</label>
+                <div class="flex items-center space-x-1">
+                    <input id="modal_input_assigned_date" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:MM" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                    <button type="button" onclick="openNativePicker('modal_picker_assigned_date', 'modal_input_assigned_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
+                        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    </button>
+                    <input id="modal_picker_assigned_date" type="datetime-local" oninput="syncPickerToText('modal_picker_assigned_date', 'modal_input_assigned_date')" onchange="syncPickerToText('modal_picker_assigned_date', 'modal_input_assigned_date')" onblur="syncPickerToText('modal_picker_assigned_date', 'modal_input_assigned_date')" class="sr-only">
+                </div>
             </div>
             <div>
-                <label class="text-xs text-slate-400 block mb-1">Optional Due Date</label>
-                <input id="modal_input_due_date" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+                <label class="text-xs text-slate-400 block mb-1">Due Day</label>
+                <div class="flex items-center space-x-1">
+                    <input id="modal_input_due_date" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:MM" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                    <button type="button" onclick="openNativePicker('modal_picker_due_date', 'modal_input_due_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
+                        <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    </button>
+                    <input id="modal_picker_due_date" type="datetime-local" oninput="syncPickerToText('modal_picker_due_date', 'modal_input_due_date')" onchange="syncPickerToText('modal_picker_due_date', 'modal_input_due_date')" onblur="syncPickerToText('modal_picker_due_date', 'modal_input_due_date')" class="sr-only">
+                </div>
             </div>
         </div>
 

@@ -4,7 +4,7 @@
 
 async function loadTaskInspectorRegistry() {
     try {
-        allTasksList = await api.get('/tasks?status=all') || [];
+        allTasksList = await api.get('/api/tasks?status=all') || [];
         renderTaskQuickChipsBar();
     } catch (e) {}
 }
@@ -138,7 +138,7 @@ async function loadTaskInspectorStats(taskId) {
     selectedInspectedTaskId = taskId;
 
     try {
-        const data = await api.get(`/tasks/${taskId}/stats`);
+        const data = await api.get(`/api/tasks/${taskId}/stats`);
         const task = data.task;
 
         if (body) body.classList.remove('hidden');
@@ -226,7 +226,7 @@ async function saveTaskReviewForm() {
         key_takeaways: document.getElementById('task_rev_takeaways') ? document.getElementById('task_rev_takeaways').value || "" : ""
     };
 
-    await api.post('/task-reviews', payload);
+    await api.post('/api/task-reviews', payload);
     await submitCustomRatings('task', taskId);
     loadTaskInspectorStats(taskId);
 }

@@ -21,6 +21,7 @@ def get_web_dashboard(request: Request):
     )
 
 
+@router.get("/tasks")
 @router.get("/kanban")
 @router.get("/tasks-view")
 def get_tasks_kanban_page(request: Request):

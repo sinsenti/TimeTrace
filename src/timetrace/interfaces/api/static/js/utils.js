@@ -9,6 +9,169 @@ let defaultPalette = [
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 let pendingDeleteSessionId = null;
 
+function openNativePicker(pickerId, textInputId) {
+    const picker = document.getElementById(pickerId);
+    const textInput = document.getElementById(textInputId);
+    if (!picker) return;
+
+    if (textInput && textInput.value && textInput.value.trim()) {
+        const parsed = parseFlexibleDateInput(textInput.value);
+        if (parsed) {
+            if (parsed.isTimeSet) {
+                const dt = new Date(parsed.isoString);
+                if (!isNaN(dt.getTime())) {
+                    const pad = (n) => String(n).padStart(2, '0');
+                    picker.value = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                }
+            } else {
+                picker.value = `${parsed.dateStr}T23:59`;
+            }
+        }
+    } else {
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        picker.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T23:59`;
+    }
+
+    if (typeof picker.showPicker === 'function') {
+        try {
+            picker.showPicker();
+        } catch (e) {
+            picker.focus();
+            picker.click();
+        }
+    } else {
+        picker.focus();
+        picker.click();
+    }
+}
+
+function syncPickerToText(pickerId, textInputId) {
+    const picker = document.getElementById(pickerId);
+    const textInput = document.getElementById(textInputId);
+    if (!picker || !textInput || !picker.value) return;
+
+    const val = picker.value;
+    if (val.includes('T')) {
+        const [datePart, timePart] = val.split('T');
+        const cleanTime = timePart.substring(0, 5);
+        if (cleanTime === '23:59' || cleanTime === '00:00') {
+            textInput.value = datePart;
+        } else {
+            textInput.value = `${datePart} ${cleanTime}`;
+        }
+    } else {
+        textInput.value = val;
+    }
+}
+
+function parseFlexibleDateInput(val) {
+    if (!val || !val.trim()) return null;
+    const clean = val.trim();
+    
+    // 1. Date-only format: YYYY-MM-DD -> default to 23:59:00
+    const dateOnlyMatch = clean.match(/^(\d{4}-\d{2}-\d{2})$/);
+    if (dateOnlyMatch) {
+        return { isTimeSet: false, isoString: `${dateOnlyMatch[1]}T23:59:00`, dateStr: dateOnlyMatch[1] };
+    }
+    
+    // 2. Date and Time format: YYYY-MM-DD HH:MM or YYYY-MM-DDTHH:MM
+    const dateTimeMatch = clean.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/);
+    if (dateTimeMatch) {
+        const dt = new Date(`${dateTimeMatch[1]}T${dateTimeMatch[2]}:00`);
+        if (!isNaN(dt.getTime())) {
+            const isDefaultTime = dateTimeMatch[2] === '23:59' || dateTimeMatch[2] === '00:00';
+            return { isTimeSet: !isDefaultTime, isoString: `${dateTimeMatch[1]}T${dateTimeMatch[2]}:00`, dateStr: `${dateTimeMatch[1]} ${dateTimeMatch[2]}` };
+        }
+    }
+
+    const dt = new Date(clean);
+    if (!isNaN(dt.getTime())) {
+        const hasTime = clean.includes(":") || clean.includes("T");
+        return { isTimeSet: hasTime, isoString: dt.toISOString(), dateStr: clean };
+    }
+
+    return null;
+}
+
+function formatFlexibleDateForInput(dtStr) {
+    if (!dtStr) return '';
+    const clean = String(dtStr).trim();
+    
+    if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+        return clean;
+    }
+    
+    if (clean.includes('T23:59:00') || clean.includes(' 23:59:00') || clean.includes('T00:00:00') || clean.includes(' 00:00:00')) {
+        return clean.split(/[T\s]/)[0];
+    }
+    
+    const parts = clean.split(/[T\s]/);
+    if (parts.length >= 2) {
+        const timePart = parts[1].substring(0, 5);
+        if (timePart === '23:59' || timePart === '00:00') {
+            return parts[0];
+        }
+        const dt = parseApiDateTime(clean);
+        if (dt && !isNaN(dt.getTime())) {
+            const pad = (n) => String(n).padStart(2, '0');
+            const formattedTime = `${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+            if (formattedTime === '23:59' || formattedTime === '00:00') {
+                return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
+            }
+            return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${formattedTime}`;
+        }
+        return `${parts[0]} ${timePart}`;
+    }
+    
+    return clean;
+}
+
+function getDueAlertStatus(dueDateStr) {
+    if (!dueDateStr) return null;
+    const clean = String(dueDateStr).trim();
+    let dueYear, dueMonth, dueDayNum, dueHours = 0, dueMins = 0, hasTime = false;
+
+    if (clean.includes("T23:59:00") || clean.includes(" 23:59:00") || clean.includes("T00:00:00") || clean.includes(" 00:00:00")) {
+        const datePart = clean.split(/[T\s]/)[0];
+        const [y, m, d] = datePart.split("-").map(Number);
+        dueYear = y; dueMonth = m - 1; dueDayNum = d;
+        hasTime = false;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+        const [y, m, d] = clean.split("-").map(Number);
+        dueYear = y; dueMonth = m - 1; dueDayNum = d;
+        hasTime = false;
+    } else {
+        const dt = parseApiDateTime(clean) || new Date(clean);
+        if (!dt || isNaN(dt.getTime())) return null;
+        dueYear = dt.getFullYear(); dueMonth = dt.getMonth(); dueDayNum = dt.getDate();
+        dueHours = dt.getHours(); dueMins = dt.getMinutes();
+        hasTime = !(dueHours === 23 && dueMins === 59) && !(dueHours === 0 && dueMins === 0);
+    }
+
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    const dueDay = new Date(dueYear, dueMonth, dueDayNum);
+    
+    const pad = (n) => String(n).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const formattedDateLabel = `${monthNames[dueMonth]} ${dueDayNum}`;
+    const timeLabel = hasTime ? ` ${pad(dueHours)}:${pad(dueMins)}` : '';
+
+    if (dueDay < today) {
+        return { isUrgent: true, label: `OVERDUE (${formattedDateLabel}${timeLabel})` };
+    } else if (dueDay.getTime() === today.getTime()) {
+        return { isUrgent: true, label: `Due Today${timeLabel}` };
+    } else if (dueDay.getTime() === tomorrow.getTime()) {
+        return { isUrgent: true, label: `Due Tomorrow${timeLabel}` };
+    } else {
+        return { isUrgent: false, label: `Due ${formattedDateLabel}${timeLabel}` };
+    }
+}
+
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
         let closedAny = false;

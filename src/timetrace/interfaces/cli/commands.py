@@ -185,11 +185,7 @@ def timer_status(tmux: bool = typer.Option(False, "--tmux", help="Output minimal
                     if data.get("is_frozen_idle"):
                         msg = "AFK Frozen" if tmux else "Timer frozen due to AFK inactivity."
                     else:
-                        next_sess = data.get("next_session")
-                        if next_sess:
-                            msg = f"Next: {next_sess['title']} in {next_sess['starts_in_minutes']}m" if tmux else f"Idle | Next scheduled task: '{next_sess['title']}' in {next_sess['starts_in_minutes']}m."
-                        else:
-                            msg = "Idle" if tmux else "No timer currently running."
+                        msg = "Idle" if tmux else "No timer currently running."
                     print(msg)
                     return
 
@@ -230,20 +226,37 @@ def list_tasks_cli(
     """List tasks with filtering and sorting."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.get(f"/tasks?status={status_filter}&category={category_filter}&sort={sort_by}")
+        res = client.get(f"/api/tasks?status={status_filter}&category={category_filter}&sort={sort_by}")
         if res.status_code == 200:
             tasks = res.json()
             print(f"\nTasks [{status_filter.upper()} / {category_filter.upper()}] sorted by [{sort_by.upper()}]:")
-            print("-" * 85)
+            print("-" * 95)
             if not tasks:
                 print("No tasks found.")
+            today = datetime.now().date()
             for t in tasks:
                 t_tags = f"[{t.get('tags', '')}]" if t.get("tags") else ""
                 parent_str = f"(Subtask of #{t['parent_id']})" if t.get("parent_id") else ""
                 title_str = f"{t['title']} {t_tags} {parent_str}".strip()
                 est_str = f"{t.get('estimated_minutes', 15)}m"
-                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<10}] | [{t.get('category', 'work'):<8}] | {est_str:<4} | {title_str}")
-            print("-" * 85 + "\n")
+                
+                due_alert = ""
+                if t.get("due_date"):
+                    try:
+                        due_dt = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00")).date()
+                        if due_dt < today:
+                            due_alert = " | [OVERDUE]"
+                        elif due_dt == today:
+                            due_alert = " | [DUE TODAY]"
+                        elif due_dt == today + timedelta(days=1):
+                            due_alert = " | [DUE TOMORROW]"
+                        else:
+                            due_alert = f" | [Due: {due_dt.strftime('%b %d')}]"
+                    except Exception:
+                        pass
+
+                print(f"#{t['id']:<3} | [{t['priority']:<6}] | [{t['status']:<10}] | [{t.get('category', 'work'):<8}] | {est_str:<4} | {title_str}{due_alert}")
+            print("-" * 95 + "\n")
 
 
 @cli_app.command("task")
@@ -260,7 +273,7 @@ def add_task(
     ensure_daemon_running()
     with get_client() as client:
         res = client.post(
-            "/tasks",
+            "/api/tasks",
             json={
                 "title": title,
                 "priority": priority.lower(),
@@ -284,7 +297,7 @@ def view_task_tree_cli(task_id: int = typer.Argument(..., help="ID of the root t
     """View nested subtasks hierarchy tree for a parent task."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.get(f"/tasks/{task_id}/tree")
+        res = client.get(f"/api/tasks/{task_id}/tree")
         if res.status_code == 200:
             tree = res.json()
 
@@ -310,7 +323,7 @@ def delete_task_cli(task_id: int = typer.Argument(..., help="ID of the task to d
     """Delete a task slot by ID."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.delete(f"/tasks/{task_id}")
+        res = client.delete(f"/api/tasks/{task_id}")
         if res.status_code == 204:
             print(f"Task #{task_id} deleted successfully.")
         else:
@@ -322,7 +335,7 @@ def clean_completed_tasks_cli():
     """Remove all completed tasks."""
     ensure_daemon_running()
     with get_client() as client:
-        res = client.delete("/tasks/completed")
+        res = client.delete("/api/tasks/completed")
         if res.status_code == 200:
             data = res.json()
             print(f"Cleaned up {data['deleted_count']} completed tasks.")

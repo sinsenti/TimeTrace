@@ -15,8 +15,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadKanbanBoard() {
     try {
-        allStatuses = await api.get('/tasks/statuses') || [];
-        kanbanTasks = await api.get('/tasks?status=all&sort=smart_gap_filler') || [];
+        allStatuses = await api.get('/api/tasks/statuses') || [];
+        kanbanTasks = await api.get('/api/tasks?status=all&sort=smart_gap_filler') || [];
         renderKanbanColumns();
     } catch (e) {
         console.error("Failed to load Kanban board:", e);
@@ -72,6 +72,14 @@ function renderKanbanCard(task) {
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 
+    const dueAlert = getDueAlertStatus(task.due_date);
+    let dueBadgeHTML = '';
+    if (dueAlert) {
+        dueBadgeHTML = dueAlert.isUrgent
+            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dueAlert.label}</span>`
+            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dueAlert.label}</span>`;
+    }
+
     let descContentHTML = '';
     if (task.description && task.description.trim()) {
         const rawParsed = typeof marked !== 'undefined' ? marked.parse(task.description.trim()) : task.description;
@@ -84,6 +92,7 @@ function renderKanbanCard(task) {
                 <span class="font-bold text-xs text-white leading-snug hover:underline hover:text-purple-300">${task.title}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
             </div>
+            ${dueBadgeHTML ? `<div class="pt-0.5">${dueBadgeHTML}</div>` : ''}
             ${descContentHTML}
             <div class="flex justify-between items-center pt-1 border-t border-[#1a1c26] text-[10px]">
                 <div class="flex items-center space-x-1.5">
@@ -125,10 +134,10 @@ function initKanbanDragAndDrop() {
                 for (let idx = 0; idx < cols.length; idx++) {
                     const statusId = cols[idx].getAttribute('data-status-id');
                     if (statusId) {
-                        await api.put(`/tasks/statuses/${statusId}`, { position: idx });
+                        await api.put(`/api/tasks/statuses/${statusId}`, { position: idx });
                     }
                 }
-                allStatuses = await api.get('/tasks/statuses') || [];
+                allStatuses = await api.get('/api/tasks/statuses') || [];
             }
         });
     }
@@ -153,7 +162,7 @@ function initKanbanDragAndDrop() {
                         const oldTask = kanbanTasks.find(t => String(t.id) === String(taskId));
                         const oldStatus = oldTask ? oldTask.status : null;
 
-                        await api.put(`/tasks/${taskId}`, { status: newStatusName });
+                        await api.put(`/api/tasks/${taskId}`, { status: newStatusName });
                         if (oldTask) oldTask.status = newStatusName;
 
                         if ((oldStatus || '').toLowerCase() === 'scheduled' && newStatusName.toLowerCase() !== 'scheduled') {
@@ -237,24 +246,24 @@ function initStatusManagerDragAndDrop() {
             for (let idx = 0; idx < rows.length; idx++) {
                 const statusId = rows[idx].getAttribute('data-status-id');
                 if (statusId) {
-                    await api.put(`/tasks/statuses/${statusId}`, { position: idx });
+                    await api.put(`/api/tasks/statuses/${statusId}`, { position: idx });
                 }
             }
-            allStatuses = await api.get('/tasks/statuses') || [];
+            allStatuses = await api.get('/api/tasks/statuses') || [];
         }
     });
 }
 
 async function updateStatusField(id, field, value) {
-    await api.put(`/tasks/statuses/${id}`, { [field]: value });
-    allStatuses = await api.get('/tasks/statuses') || [];
+    await api.put(`/api/tasks/statuses/${id}`, { [field]: value });
+    allStatuses = await api.get('/api/tasks/statuses') || [];
 }
 
 async function deleteStatusRow(id) {
     const confirmed = await showCustomConfirm("Delete Status Column", "Are you sure you want to delete this status column?");
     if (confirmed) {
-        await api.delete(`/tasks/statuses/${id}`);
-        allStatuses = await api.get('/tasks/statuses') || [];
+        await api.delete(`/api/tasks/statuses/${id}`);
+        allStatuses = await api.get('/api/tasks/statuses') || [];
         renderStatusManagerRows();
     }
 }
@@ -297,14 +306,14 @@ async function saveNewStatusFromModal() {
     const colorInput = document.getElementById('modal_new_status_color');
     const color = colorInput ? colorInput.value : '#7c3aed';
 
-    await api.post('/tasks/statuses', {
+    await api.post('/api/tasks/statuses', {
         name: name,
         color: color,
         position: allStatuses.length
     });
 
     closeAddStatusModal();
-    allStatuses = await api.get('/tasks/statuses') || [];
+    allStatuses = await api.get('/api/tasks/statuses') || [];
     renderStatusManagerRows();
 }
 

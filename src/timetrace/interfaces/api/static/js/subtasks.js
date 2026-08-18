@@ -29,7 +29,7 @@ function navigateBack() {
             }
         } catch (e) {}
     }
-    window.location.href = '/kanban';
+    window.location.href = '/tasks';
 }
 
 async function loadTaskDetailTree() {
@@ -38,10 +38,9 @@ async function loadTaskDetailTree() {
 
     const taskId = taskIdEl.value;
     try {
-        currentTreeData = await api.get(`/tasks/${taskId}/tree`);
+        currentTreeData = await api.get(`/api/tasks/${taskId}/tree`);
         const tree = currentTreeData;
         
-        // 1. Populate Header Title without #id prefix
         const titleHeader = document.getElementById('detail_task_title_header');
         if (titleHeader) titleHeader.innerText = tree.title || 'Untitled Task';
 
@@ -51,13 +50,12 @@ async function loadTaskDetailTree() {
         const priorityBadge = document.getElementById('detail_task_priority_badge');
         if (priorityBadge) priorityBadge.innerText = (tree.priority || '-').toUpperCase();
 
-        // 2. Display Parent Task Banner if this is a Subtask (Omitted #id from breadcrumbs)
         const breadcrumbsEl = document.getElementById('task_breadcrumbs');
         const parentBannerEl = document.getElementById('parent_task_banner');
 
         if (tree.parent_id) {
             try {
-                const parentTask = await api.get(`/tasks/${tree.parent_id}`);
+                const parentTask = await api.get(`/api/tasks/${tree.parent_id}`);
                 if (parentBannerEl) {
                     parentBannerEl.classList.remove('hidden');
                     parentBannerEl.innerHTML = `
@@ -76,11 +74,10 @@ async function loadTaskDetailTree() {
                 }
                 if (breadcrumbsEl) {
                     breadcrumbsEl.innerHTML = `
-                        <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
-                        <span>&gt;</span>
-                        <a href="/task-inspector/${parentTask.id}" class="hover:underline">${parentTask.title}</a>
-                        <span>&gt;</span>
-                        <span class="text-white font-bold">${tree.title}</span>
+                        <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back</button>
+                        <span class="text-slate-600">|</span>
+                        <span class="text-slate-400">Subtask of:</span>
+                        <a href="/task-inspector/${parentTask.id}" class="hover:underline font-bold text-purple-400">${parentTask.title}</a>
                     `;
                 }
             } catch(e) {
@@ -90,14 +87,11 @@ async function loadTaskDetailTree() {
             if (parentBannerEl) parentBannerEl.classList.add('hidden');
             if (breadcrumbsEl) {
                 breadcrumbsEl.innerHTML = `
-                    <button type="button" onclick="navigateBack()" class="hover:underline text-purple-400">Back</button>
-                    <span>&gt;</span>
-                    <span class="text-white font-bold">${tree.title}</span>
+                    <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back</button>
                 `;
             }
         }
 
-        // 3. Suppress Time Estimation Display for 'Ongoing' Tasks
         const isOngoing = (tree.status || '').toLowerCase() === 'ongoing';
         const estContainer = document.getElementById('detail_task_est_container');
         const progressContainer = document.getElementById('detail_task_progress_container');
@@ -112,7 +106,6 @@ async function loadTaskDetailTree() {
             if (estBadge) estBadge.innerText = `${tree.estimated_minutes || 15}m`;
         }
 
-        // Populate Edit Form Inputs including Tags
         const titleInput = document.getElementById('inspector_edit_title');
         if (titleInput) titleInput.value = tree.title || '';
 
@@ -144,15 +137,15 @@ async function loadTaskDetailTree() {
         toggleInspectorRecurrenceRule(isRecur);
 
         const assignedInput = document.getElementById('inspector_edit_assigned_date');
-        if (assignedInput) assignedInput.value = tree.assigned_date || '';
+        if (assignedInput) assignedInput.value = tree.assigned_date ? formatFlexibleDateForInput(tree.assigned_date) : '';
 
         const dueInput = document.getElementById('inspector_edit_due_date');
-        if (dueInput) dueInput.value = tree.due_date ? formatIsoLocal(parseApiDateTime(tree.due_date)) : '';
+        if (dueInput) dueInput.value = tree.due_date ? formatFlexibleDateForInput(tree.due_date) : '';
 
         const attachInput = document.getElementById('inspector_edit_attachments');
         if (attachInput) attachInput.value = tree.attachments || '';
 
-        const stats = await api.get(`/tasks/${taskId}/stats`);
+        const stats = await api.get(`/api/tasks/${taskId}/stats`);
         const trackedEl = document.getElementById('detail_task_tracked');
         if (trackedEl) trackedEl.innerText = `${stats.total_hours}h`;
 
@@ -194,13 +187,17 @@ async function saveInspectorTaskProperties(event) {
     if (!taskId) return;
 
     const oldStatus = currentTreeData ? currentTreeData.status : null;
-    const dueInputVal = document.getElementById('inspector_edit_due_date').value;
+    const assignedInputVal = document.getElementById('inspector_edit_assigned_date') ? document.getElementById('inspector_edit_assigned_date').value.trim() : '';
+    const dueInputVal = document.getElementById('inspector_edit_due_date') ? document.getElementById('inspector_edit_due_date').value.trim() : '';
     const titleVal = document.getElementById('inspector_edit_title').value.trim();
 
     if (!titleVal) {
         alert("Task title is required.");
         return;
     }
+
+    const assignedParsed = parseFlexibleDateInput(assignedInputVal);
+    const dueParsed = parseFlexibleDateInput(dueInputVal);
 
     const payload = {
         title: titleVal,
@@ -212,19 +209,13 @@ async function saveInspectorTaskProperties(event) {
         estimated_minutes: parseInt(document.getElementById('inspector_edit_est').value) || 15,
         is_recurring: document.getElementById('inspector_edit_is_recurring') ? document.getElementById('inspector_edit_is_recurring').checked : false,
         recurrence_rule: document.getElementById('inspector_edit_recurrence_rule') ? document.getElementById('inspector_edit_recurrence_rule').value : 'daily',
-        assigned_date: document.getElementById('inspector_edit_assigned_date').value || null,
+        assigned_date: assignedParsed ? assignedParsed.dateStr : null,
+        due_date: dueParsed ? dueParsed.isoString : null,
         attachments: document.getElementById('inspector_edit_attachments').value || ''
     };
 
-    if (dueInputVal && dueInputVal.trim()) {
-        const dt = new Date(dueInputVal);
-        if (!isNaN(dt.getTime())) {
-            payload.due_date = dt.toISOString();
-        }
-    }
-
     try {
-        await api.put(`/tasks/${taskId}`, payload);
+        await api.put(`/api/tasks/${taskId}`, payload);
         if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
             await discardFutureSessionsForTask(taskId);
         }
@@ -241,7 +232,7 @@ async function deleteMainInspectorTask() {
 
     const confirmed = await showCustomConfirm("Delete Task", "Are you sure you want to delete this task slot and all its subtasks?");
     if (confirmed) {
-        await api.delete(`/tasks/${taskId}`);
+        await api.delete(`/api/tasks/${taskId}`);
         navigateBack();
     }
 }
@@ -349,7 +340,7 @@ async function saveSubtaskFromModal() {
         category: currentTreeData ? currentTreeData.category : "work"
     };
 
-    await api.post('/tasks', payload);
+    await api.post('/api/tasks', payload);
     closeSubtaskModal();
     loadTaskDetailTree();
 }
@@ -357,14 +348,14 @@ async function saveSubtaskFromModal() {
 async function toggleSubtaskCompletion(subtaskId, currentStatus) {
     const stLower = (currentStatus || '').toLowerCase();
     const newStatus = (stLower === 'done' || stLower === 'completed') ? 'To Do' : 'Done';
-    await api.put(`/tasks/${subtaskId}`, { status: newStatus });
+    await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
     loadTaskDetailTree();
 }
 
 async function deleteSubtaskNode(id) {
     const confirmed = await showCustomConfirm("Delete Subtask", "Are you sure you want to delete this subtask and all its nested children?");
     if (confirmed) {
-        await api.delete(`/tasks/${id}`);
+        await api.delete(`/api/tasks/${id}`);
         loadTaskDetailTree();
     }
 }

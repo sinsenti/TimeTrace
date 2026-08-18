@@ -4,8 +4,7 @@ let activeTaskSuggestionIndex = -1;
 
 async function fetchAllTasksRegistry() {
     try {
-        const res = await fetch('/tasks?status=all');
-        const tasks = await res.json();
+        const tasks = await api.get('/api/tasks?status=all') || [];
         allTasksMap = {};
         tasks.forEach(t => {
             allTasksMap[t.id] = t;

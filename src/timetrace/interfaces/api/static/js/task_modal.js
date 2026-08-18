@@ -120,7 +120,7 @@ async function openEditTaskModal(id) {
 
     if (!t) {
         try {
-            t = await api.get(`/tasks/${id}`);
+            t = await api.get(`/api/tasks/${id}`);
         } catch(e) {
             console.error("Task not found:", id);
             return;
@@ -156,10 +156,10 @@ async function openEditTaskModal(id) {
     if (estSelect) estSelect.value = String(t.estimated_minutes || 15);
 
     const assignedInput = document.getElementById('modal_input_assigned_date');
-    if (assignedInput) assignedInput.value = t.assigned_date || '';
+    if (assignedInput) assignedInput.value = t.assigned_date ? formatFlexibleDateForInput(t.assigned_date) : '';
 
     const dueInput = document.getElementById('modal_input_due_date');
-    if (dueInput) dueInput.value = t.due_date ? formatIsoLocal(parseApiDateTime(t.due_date)) : '';
+    if (dueInput) dueInput.value = t.due_date ? formatFlexibleDateForInput(t.due_date) : '';
 
     const attachInput = document.getElementById('modal_input_attachments');
     if (attachInput) attachInput.value = t.attachments || '';
@@ -230,7 +230,12 @@ async function saveTask() {
             return;
         }
 
-        const dueInput = document.getElementById('modal_input_due_date') ? document.getElementById('modal_input_due_date').value : '';
+        const assignedInput = document.getElementById('modal_input_assigned_date') ? document.getElementById('modal_input_assigned_date').value.trim() : '';
+        const dueInput = document.getElementById('modal_input_due_date') ? document.getElementById('modal_input_due_date').value.trim() : '';
+        
+        const assignedParsed = parseFlexibleDateInput(assignedInput);
+        const dueParsed = parseFlexibleDateInput(dueInput);
+
         const colorMode = document.getElementById('modal_input_color_mode') ? document.getElementById('modal_input_color_mode').value : 'auto';
         const chosenColor = colorMode === 'custom' ? (document.getElementById('modal_input_color') ? document.getElementById('modal_input_color').value : '#7c3aed') : 'auto';
 
@@ -242,7 +247,8 @@ async function saveTask() {
             status: document.getElementById('modal_input_status') ? document.getElementById('modal_input_status').value : 'To Do',
             category: document.getElementById('modal_input_category') ? document.getElementById('modal_input_category').value : 'work',
             estimated_minutes: document.getElementById('modal_input_est') ? parseInt(document.getElementById('modal_input_est').value) || 15 : 15,
-            assigned_date: document.getElementById('modal_input_assigned_date') ? document.getElementById('modal_input_assigned_date').value || null : null,
+            assigned_date: assignedParsed ? assignedParsed.dateStr : null,
+            due_date: dueParsed ? dueParsed.isoString : null,
             attachments: document.getElementById('modal_input_attachments') ? document.getElementById('modal_input_attachments').value : '',
             is_recurring: document.getElementById('modal_input_is_recurring') ? document.getElementById('modal_input_is_recurring').checked : false,
             recurrence_rule: document.getElementById('modal_input_recurrence_rule') ? document.getElementById('modal_input_recurrence_rule').value : 'daily',
@@ -250,19 +256,14 @@ async function saveTask() {
             requires_session_review: document.getElementById('modal_input_requires_review') ? document.getElementById('modal_input_requires_review').checked : true
         };
 
-        if (dueInput && dueInput.trim()) {
-            const dt = new Date(dueInput);
-            if (!isNaN(dt.getTime())) payload.due_date = dt.toISOString();
-        }
-
         let createdTask = null;
         if (id) {
-            createdTask = await api.put(`/tasks/${id}`, payload);
+            createdTask = await api.put(`/api/tasks/${id}`, payload);
             if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
                 await discardFutureSessionsForTask(id);
             }
         } else {
-            createdTask = await api.post('/tasks', payload);
+            createdTask = await api.post('/api/tasks', payload);
         }
 
         closeTaskModal();
@@ -298,7 +299,7 @@ async function deleteTask() {
 
     const confirmed = await showCustomConfirm("Delete Task Slot", "Are you sure you want to delete this task slot? Attached sessions will remain.");
     if (confirmed) {
-        await api.delete(`/tasks/${id}`);
+        await api.delete(`/api/tasks/${id}`);
         closeTaskModal();
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         if (typeof fetchTasks === 'function') fetchTasks();

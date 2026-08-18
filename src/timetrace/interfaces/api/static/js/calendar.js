@@ -52,7 +52,7 @@ async function handleCalendarEventUpdate(event) {
     if (event.extendedProps && event.extendedProps.taskId && event.end) {
         const newMins = Math.max(15, Math.round((event.end - event.start) / 60000));
         try {
-            await api.put(`/tasks/${event.extendedProps.taskId}`, { estimated_minutes: newMins });
+            await api.put(`/api/tasks/${event.extendedProps.taskId}`, { estimated_minutes: newMins });
             if (typeof fetchTasks === 'function') fetchTasks();
             if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
         } catch (e) {}

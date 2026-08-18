@@ -181,7 +181,7 @@ async function inspectDaySessions(dateStr) {
 async function inspectEstimationCategory(bucketIdx) {
     const labels = ['Accurate Tasks (±15%)', 'Underestimated Tasks (>115%)', 'Overestimated Tasks (<85%)'];
     try {
-        const tasks = await api.get('/tasks?status=all') || [];
+        const tasks = await api.get('/api/tasks?status=all') || [];
         const sessions = await api.get('/sessions') || [];
 
         const taskSecs = {};

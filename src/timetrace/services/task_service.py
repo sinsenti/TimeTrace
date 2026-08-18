@@ -86,11 +86,14 @@ class TaskService:
         db_task = Task.model_validate(task_dict)
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
+        if db_task.due_date:
+            db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
         self.db.add(db_task)
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
+        db_task.due_date = ensure_utc(db_task.due_date)
 
         if db_task.is_recurring:
             self.schedule_recurrent_sessions_three_months(db_task)
@@ -105,7 +108,10 @@ class TaskService:
         start_base = datetime.now(UTC)
         if task.assigned_date:
             try:
-                start_base = datetime.fromisoformat(f"{task.assigned_date}T09:00:00").replace(tzinfo=UTC)
+                dt_str = str(task.assigned_date).replace(' ', 'T')
+                if 'T' not in dt_str:
+                    dt_str = f"{dt_str}T09:00:00"
+                start_base = datetime.fromisoformat(dt_str).replace(tzinfo=UTC)
             except Exception:
                 pass
 
@@ -196,7 +202,7 @@ class TaskService:
             query = query.where(Task.category == category_filter)
 
         if assigned_date:
-            query = query.where(Task.assigned_date == assigned_date)
+            query = query.where(Task.assigned_date.like(f"{assigned_date}%"))
 
         if due_before:
             try:
@@ -208,6 +214,7 @@ class TaskService:
         tasks = self.db.exec(query).all()
         for t in tasks:
             t.created_at = ensure_utc(t.created_at)
+            t.due_date = ensure_utc(t.due_date)
 
         priority_map = {"high": 3, "medium": 2, "low": 1, "-": 0}
 
@@ -218,6 +225,8 @@ class TaskService:
                 is_ongoing = status_lower == "ongoing"
                 is_done = status_lower in ("completed", "done")
                 prio_val = priority_map.get(str(t.priority).lower(), 0)
+                
+                due_ts = ensure_utc(t.due_date).timestamp() if t.due_date else float('inf')
                 created_ts = t.created_at.timestamp() if t.created_at else 0
 
                 group = 5
@@ -235,13 +244,14 @@ class TaskService:
                 elif is_done:
                     group = 7
 
-                return (group, -prio_val, created_ts)
+                return (group, -prio_val, due_ts, created_ts)
 
             tasks.sort(key=smart_score)
         elif sort_by == "priority":
             tasks.sort(
                 key=lambda t: (
                     priority_map.get(str(t.priority).lower(), 0),
+                    -(ensure_utc(t.due_date).timestamp() if t.due_date else float('inf')),
                     -t.created_at.timestamp() if t.created_at else 0
                 ),
                 reverse=True
@@ -267,7 +277,10 @@ class TaskService:
                 update_dict["estimated_minutes"] = parsed_est
 
         for key, value in update_dict.items():
-            setattr(db_task, key, value)
+            if key == "due_date":
+                setattr(db_task, key, ensure_utc(value).replace(tzinfo=None) if value else None)
+            else:
+                setattr(db_task, key, value)
 
         if "status" in update_dict:
             st = self.db.exec(select(TaskStatus).where(TaskStatus.name == update_dict["status"])).first()
@@ -282,11 +295,14 @@ class TaskService:
 
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
+        if db_task.due_date:
+            db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
         self.db.add(db_task)
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
+        db_task.due_date = ensure_utc(db_task.due_date)
         return db_task
 
     def handle_task_recurrence(self, task: Task) -> None:
@@ -366,6 +382,9 @@ class TaskService:
         if not task:
             raise EntityNotFoundError("Task", task_id)
 
+        task.created_at = ensure_utc(task.created_at)
+        task.due_date = ensure_utc(task.due_date)
+
         sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
         sessions.sort(key=lambda s: ensure_utc(s.start_time) or datetime.min.replace(tzinfo=UTC))
 
@@ -396,8 +415,12 @@ class TaskService:
             r_dict["definition"] = r_def.model_dump() if r_def else None
             ratings_detailed.append(r_dict)
 
+        task_data = task.model_dump()
+        if task.due_date:
+            task_data["due_date"] = ensure_utc(task.due_date).isoformat()
+
         return {
-            "task": task.model_dump(),
+            "task": task_data,
             "total_hours": total_hours,
             "total_sessions": len(sessions),
             "estimated_hours": est_hours,

@@ -128,7 +128,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     await api.post('/sessions', payload);
 
                     if (taskId) {
-                        try { await api.put(`/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
+                        try { await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
                     }
 
                     if (calendar) calendar.refetchEvents();

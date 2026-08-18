@@ -70,14 +70,7 @@ async function fetchTimerStatus() {
                 btn.className = 'h-6 bg-red-600 hover:bg-red-500 text-white font-semibold px-2.5 rounded text-[11px] whitespace-nowrap';
             }
         } else {
-            const nextSess = data.next_session;
             let idleText = data.is_frozen_idle ? 'Timer Frozen (AFK)' : 'Timer Idle';
-
-            if (!data.is_frozen_idle && nextSess) {
-                const startDt = new Date(nextSess.start_time);
-                const timeLabel = `${String(startDt.getHours()).padStart(2,'0')}:${String(startDt.getMinutes()).padStart(2,'0')}`;
-                idleText = `Next: ${nextSess.title} in ${nextSess.starts_in_minutes}m (at ${timeLabel})`;
-            }
 
             if (label) label.innerText = idleText;
             if (btn) {

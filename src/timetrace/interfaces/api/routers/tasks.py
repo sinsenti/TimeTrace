@@ -12,7 +12,7 @@ from timetrace.interfaces.api.schemas import (
 )
 from timetrace.services import TaskService
 
-router = APIRouter(prefix="/tasks", tags=["Tasks"])
+router = APIRouter(prefix="/api/tasks", tags=["Tasks API"])
 
 
 # ============================================================
@@ -105,7 +105,7 @@ def delete_task(task_id: int, db: DBSession = Depends(get_session)):
 
 
 # Task Review Sub-Router
-task_reviews_router = APIRouter(prefix="/task-reviews", tags=["Task Reviews"])
+task_reviews_router = APIRouter(prefix="/api/task-reviews", tags=["Task Reviews API"])
 
 
 @task_reviews_router.post("", response_model=TaskReview, status_code=status.HTTP_201_CREATED)

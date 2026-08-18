@@ -8,7 +8,7 @@ async function loadAllSessionsReview() {
         
         let tasksMap = {};
         try {
-            const tasks = await api.get('/tasks?status=all');
+            const tasks = await api.get('/api/tasks?status=all');
             if (tasks) tasks.forEach(t => { tasksMap[t.id] = t; });
         } catch (e) {}
 

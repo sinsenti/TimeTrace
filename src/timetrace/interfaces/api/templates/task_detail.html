@@ -35,10 +35,6 @@
     <!-- Top Navigation Bar -->
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
-
-        <div class="flex items-center space-x-2">
-            <button type="button" onclick="navigateBack()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold flex items-center text-xs">&lt; Back</button>
-        </div>
     </header>
 
     <main class="flex-1 p-6 max-w-6xl mx-auto w-full space-y-6">
@@ -48,7 +44,7 @@
 
         <div id="parent_task_banner" class="hidden"></div>
 
-        <!-- Task Stats Summary Header (Omitted #id prefix) -->
+        <!-- Task Stats Summary Header -->
         <div class="detail-card space-y-4">
             <div class="flex justify-between items-start border-b border-[var(--border-muted)] pb-3">
                 <div class="space-y-1">
@@ -85,7 +81,7 @@
             </div>
         </div>
 
-        <!-- Integrated Full Task Editor With Tags -->
+        <!-- Integrated Full Task Editor -->
         <div class="detail-card space-y-4">
             <h2 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Edit Task Properties</h2>
             
@@ -169,12 +165,24 @@
 
             <div class="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                 <div>
-                    <label class="text-slate-400 block mb-1">Assigned Target Day</label>
-                    <input id="inspector_edit_assigned_date" type="date" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-white">
+                    <label class="text-slate-400 block mb-1">Target Day</label>
+                    <div class="flex items-center space-x-1">
+                        <input id="inspector_edit_assigned_date" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:MM" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-white focus:outline-none focus:border-purple-500">
+                        <button type="button" onclick="openNativePicker('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
+                            <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </button>
+                        <input id="inspector_picker_assigned_date" type="datetime-local" oninput="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" onchange="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" onblur="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" class="sr-only">
+                    </div>
                 </div>
                 <div>
-                    <label class="text-slate-400 block mb-1">Optional Due Date</label>
-                    <input id="inspector_edit_due_date" type="datetime-local" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-white">
+                    <label class="text-slate-400 block mb-1">Due Day</label>
+                    <div class="flex items-center space-x-1">
+                        <input id="inspector_edit_due_date" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:MM" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-white focus:outline-none focus:border-purple-500">
+                        <button type="button" onclick="openNativePicker('inspector_picker_due_date', 'inspector_edit_due_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
+                            <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        </button>
+                        <input id="inspector_picker_due_date" type="datetime-local" oninput="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" onchange="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" onblur="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" class="sr-only">
+                    </div>
                 </div>
                 <div>
                     <label class="text-slate-400 block mb-1">Attachments / Links</label>

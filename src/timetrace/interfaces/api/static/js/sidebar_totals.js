@@ -44,7 +44,7 @@ async function renderDynamicStatusTabs() {
     if (!container) return;
 
     try {
-        const dbStatuses = await api.get('/tasks/statuses') || [];
+        const dbStatuses = await api.get('/api/tasks/statuses') || [];
         const allAvailableTabs = [
             { id: 'all', label: 'All' },
             { id: 'hide_completed', label: 'Active' },
@@ -71,7 +71,7 @@ async function renderDynamicStatusTabs() {
 }
 
 function openSidebarTabsConfigModal() {
-    api.get('/tasks/statuses').then(dbStatuses => {
+    api.get('/api/tasks/statuses').then(dbStatuses => {
         const allAvailableTabs = [
             { id: 'all', label: 'All' },
             { id: 'hide_completed', label: 'Active (Hide Completed)' },
@@ -220,7 +220,7 @@ function initSidebarResizers() {
 async function fetchTasks() {
     try {
         const currentFilterVal = getCurrentStatusFilter();
-        let fetched = await api.get(`/tasks?status=${encodeURIComponent(currentFilterVal)}&sort=smart_gap_filler`) || [];
+        let fetched = await api.get(`/api/tasks?status=${encodeURIComponent(currentFilterVal)}&sort=smart_gap_filler`) || [];
 
         if (typeof matchesCustomFilter === 'function') {
             activeTasks = fetched.filter(t => matchesCustomFilter(t));
@@ -250,7 +250,14 @@ async function fetchTasks() {
                     const estBadge = t.estimated_minutes ? `${t.estimated_minutes}m` : '15m';
                     const hasAttachments = Boolean(t.attachments && t.attachments.trim());
                     const isRecurring = t.is_recurring === true;
-                    const dueStr = t.due_date ? `Due ${new Date(t.due_date).toLocaleDateString([], {month:'short', day:'numeric'})}` : '';
+
+                    const dueAlert = getDueAlertStatus(t.due_date);
+                    let dueBadgeHTML = '';
+                    if (dueAlert) {
+                        dueBadgeHTML = dueAlert.isUrgent
+                            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dueAlert.label}</span>`
+                            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dueAlert.label}</span>`;
+                    }
 
                     return `
                         <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white cursor-pointer">
@@ -259,7 +266,10 @@ async function fetchTasks() {
                                     <span class="font-black text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
                                     ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/40 px-1.5 py-0.5 rounded ml-1 shrink-0">${estBadge}</span>` : ''}
                                 </div>
-                                <div class="text-[11px] opacity-80 truncate">${t.description || dueStr || ''}</div>
+                                <div class="text-[11px] opacity-80 truncate flex items-center space-x-1 mt-0.5">
+                                    ${dueBadgeHTML}
+                                    <span class="truncate">${t.description || ''}</span>
+                                </div>
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
                                 <div class="flex items-center space-x-1">
@@ -287,7 +297,7 @@ async function fetchTasks() {
 async function clearCompletedTasks() {
     const confirmed = await showCustomConfirm("Clear Completed Tasks", "Are you sure you want to remove all completed task slots?");
     if (confirmed) {
-        await api.delete('/tasks/completed');
+        await api.delete('/api/tasks/completed');
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         fetchTasks();
     }
