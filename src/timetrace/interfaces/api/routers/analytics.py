@@ -1,11 +1,11 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 from sqlmodel import Session as DBSession
 
 from timetrace.db.session import get_session
 from timetrace.services import AnalyticsService
 
-router = APIRouter(tags=["Analytics & Markdown"])
+router = APIRouter(tags=["Analytics & Markdown Agenda"])
 
 
 @router.get("/analytics/summary")
@@ -29,3 +29,18 @@ async def import_markdown(request: Request, db: DBSession = Depends(get_session)
     content = body_bytes.decode("utf-8")
     added_count = AnalyticsService(db).import_markdown(content)
     return {"status": "success", "imported_sessions": added_count}
+
+
+@router.get("/api/agenda/export")
+def export_agenda_briefing(
+    mode: str = Query("sessions", description="Export mode: 'sessions', 'tasks_short', 'tasks_full'"),
+    db: DBSession = Depends(get_session)
+):
+    """Exports structured, scannable Markdown briefing logs without decorative emojis."""
+    content = AnalyticsService(db).export_agenda_briefing(mode=mode)
+    filename = f"timetrace_agenda_{mode}.md"
+    return Response(
+        content=content,
+        media_type="text/markdown",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

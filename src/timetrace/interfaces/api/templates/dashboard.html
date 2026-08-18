@@ -96,6 +96,16 @@
         <div class="flex items-center space-x-2 shrink-0">
             <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">Filter</button>
 
+            <!-- Agenda Download Briefing Selector -->
+            <div class="relative inline-block">
+                <select onchange="if(this.value){ window.location.href='/api/agenda/export?mode=' + this.value; this.value=''; }" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] px-2.5 rounded-lg font-bold text-[11px] focus:outline-none cursor-pointer">
+                    <option value="">Export Agenda Briefing...</option>
+                    <option value="sessions">Sessions Agenda (.md)</option>
+                    <option value="tasks_short">Tasks Concise Summary (.md)</option>
+                    <option value="tasks_full">Complete Task Dossier (.md)</option>
+                </select>
+            </div>
+
             <div class="flex items-center bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
                 <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
                 <button id="btn_view_three_day" onclick="switchView('timeGridThreeDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">3 Day</button>
