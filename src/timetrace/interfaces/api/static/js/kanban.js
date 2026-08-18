@@ -72,12 +72,12 @@ function renderKanbanCard(task) {
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 
-    const dueAlert = getDueAlertStatus(task.due_date);
+    const dateBadge = getTaskDateBadge(task.due_date, task.assigned_date);
     let dueBadgeHTML = '';
-    if (dueAlert) {
-        dueBadgeHTML = dueAlert.isUrgent
-            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dueAlert.label}</span>`
-            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dueAlert.label}</span>`;
+    if (dateBadge) {
+        dueBadgeHTML = dateBadge.isUrgent
+            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dateBadge.label}</span>`
+            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dateBadge.label}</span>`;
     }
 
     let descContentHTML = '';

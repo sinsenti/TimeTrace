@@ -171,7 +171,7 @@
                         <button type="button" onclick="openNativePicker('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
                             <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                         </button>
-                        <input id="inspector_picker_assigned_date" type="datetime-local" oninput="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" onchange="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" onblur="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" class="sr-only">
+                        <input id="inspector_picker_assigned_date" type="date" oninput="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" onchange="syncPickerToText('inspector_picker_assigned_date', 'inspector_edit_assigned_date')" class="sr-only">
                     </div>
                 </div>
                 <div>
@@ -181,7 +181,7 @@
                         <button type="button" onclick="openNativePicker('inspector_picker_due_date', 'inspector_edit_due_date')" class="bg-[#0b0c10] hover:bg-[#161824] border border-[var(--border-muted)] px-2.5 py-2 rounded-lg text-xs transition flex items-center justify-center text-slate-500 hover:text-slate-300 shrink-0" title="Pick from calendar">
                             <svg class="w-3.5 h-3.5 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                         </button>
-                        <input id="inspector_picker_due_date" type="datetime-local" oninput="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" onchange="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" onblur="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" class="sr-only">
+                        <input id="inspector_picker_due_date" type="date" oninput="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" onchange="syncPickerToText('inspector_picker_due_date', 'inspector_edit_due_date')" class="sr-only">
                     </div>
                 </div>
                 <div>

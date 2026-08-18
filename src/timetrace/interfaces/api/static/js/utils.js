@@ -11,27 +11,9 @@ let pendingDeleteSessionId = null;
 
 function openNativePicker(pickerId, textInputId) {
     const picker = document.getElementById(pickerId);
-    const textInput = document.getElementById(textInputId);
     if (!picker) return;
 
-    if (textInput && textInput.value && textInput.value.trim()) {
-        const parsed = parseFlexibleDateInput(textInput.value);
-        if (parsed) {
-            if (parsed.isTimeSet) {
-                const dt = new Date(parsed.isoString);
-                if (!isNaN(dt.getTime())) {
-                    const pad = (n) => String(n).padStart(2, '0');
-                    picker.value = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-                }
-            } else {
-                picker.value = `${parsed.dateStr}T23:59`;
-            }
-        }
-    } else {
-        const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        picker.value = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T23:59`;
-    }
+    picker.value = "";
 
     if (typeof picker.showPicker === 'function') {
         try {
@@ -51,17 +33,14 @@ function syncPickerToText(pickerId, textInputId) {
     const textInput = document.getElementById(textInputId);
     if (!picker || !textInput || !picker.value) return;
 
-    const val = picker.value;
-    if (val.includes('T')) {
-        const [datePart, timePart] = val.split('T');
-        const cleanTime = timePart.substring(0, 5);
-        if (cleanTime === '23:59' || cleanTime === '00:00') {
-            textInput.value = datePart;
-        } else {
-            textInput.value = `${datePart} ${cleanTime}`;
-        }
+    const selectedDate = picker.value.trim();
+    const existingText = textInput.value.trim();
+
+    const timeMatch = existingText.match(/\b(\d{2}:\d{2})\b/);
+    if (timeMatch && timeMatch[1] !== '00:00' && timeMatch[1] !== '23:59') {
+        textInput.value = `${selectedDate} ${timeMatch[1]}`;
     } else {
-        textInput.value = val;
+        textInput.value = selectedDate;
     }
 }
 
@@ -170,6 +149,44 @@ function getDueAlertStatus(dueDateStr) {
     } else {
         return { isUrgent: false, label: `Due ${formattedDateLabel}${timeLabel}` };
     }
+}
+
+function getTargetDayBadge(assignedDateStr) {
+    if (!assignedDateStr) return null;
+    const clean = String(assignedDateStr).trim();
+    if (!clean) return null;
+
+    let dueYear, dueMonth, dueDayNum, dueHours = 0, dueMins = 0, hasTime = false;
+
+    if (clean.includes("T23:59:00") || clean.includes(" 23:59:00") || clean.includes("T00:00:00") || clean.includes(" 00:00:00")) {
+        const datePart = clean.split(/[T\s]/)[0];
+        const [y, m, d] = datePart.split("-").map(Number);
+        dueYear = y; dueMonth = m - 1; dueDayNum = d;
+        hasTime = false;
+    } else if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) {
+        const [y, m, d] = clean.split("-").map(Number);
+        dueYear = y; dueMonth = m - 1; dueDayNum = d;
+        hasTime = false;
+    } else {
+        const dt = parseApiDateTime(clean) || new Date(clean);
+        if (!dt || isNaN(dt.getTime())) return { isUrgent: false, label: `Target: ${clean}` };
+        dueYear = dt.getFullYear(); dueMonth = dt.getMonth(); dueDayNum = dt.getDate();
+        dueHours = dt.getHours(); dueMins = dt.getMinutes();
+        hasTime = !(dueHours === 23 && dueMins === 59) && !(dueHours === 0 && dueMins === 0);
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const formattedDateLabel = `${monthNames[dueMonth]} ${dueDayNum}`;
+    const timeLabel = hasTime ? ` ${pad(dueHours)}:${pad(dueMins)}` : '';
+
+    return { isUrgent: false, label: `Target: ${formattedDateLabel}${timeLabel}` };
+}
+
+function getTaskDateBadge(dueDateStr, assignedDateStr) {
+    const dueAlert = getDueAlertStatus(dueDateStr);
+    if (dueAlert) return dueAlert;
+    return getTargetDayBadge(assignedDateStr);
 }
 
 window.addEventListener('keydown', function(e) {
