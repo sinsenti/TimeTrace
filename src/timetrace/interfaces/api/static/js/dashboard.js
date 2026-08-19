@@ -191,6 +191,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     setupModalKeyboardListeners();
     setupVimKeyboardListeners();
+    setupExportModalKeyboardShortcuts();
 
     await applyUserSettings(userSettings, true);
 
@@ -200,3 +201,65 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     fetchTasks();
 });
+
+/* ----------------------------------------------------
+ * Export Modal Functions & Keyboard Listeners
+ * ---------------------------------------------------- */
+
+function openExportModal() {
+    const modal = document.getElementById('export_modal');
+    if (modal) {
+        modal.classList.remove('hidden');
+        const sel = document.getElementById('export_mode_select');
+        if (sel) toggleExportDateInputs(sel.value);
+    }
+}
+
+function closeExportModal() {
+    const modal = document.getElementById('export_modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function toggleExportDateInputs(modeVal) {
+    const group = document.getElementById('export_date_range_group');
+    if (!group) return;
+    if (modeVal === 'all_date_range') {
+        group.classList.remove('hidden');
+    } else {
+        group.classList.add('hidden');
+    }
+}
+
+function triggerExportDownload() {
+    const sel = document.getElementById('export_mode_select');
+    const mode = sel ? sel.value : 'sessions';
+    let url = `/api/agenda/export?mode=${encodeURIComponent(mode)}`;
+
+    if (mode === 'all_date_range') {
+        const startVal = document.getElementById('export_start_date') ? document.getElementById('export_start_date').value.trim() : '';
+        const endVal = document.getElementById('export_end_date') ? document.getElementById('export_end_date').value.trim() : '';
+
+        if (startVal) url += `&start_date=${encodeURIComponent(startVal)}`;
+        if (endVal) url += `&end_date=${encodeURIComponent(endVal)}`;
+    }
+
+    window.location.href = url;
+    closeExportModal();
+}
+
+function setupExportModalKeyboardShortcuts() {
+    const modal = document.getElementById('export_modal');
+    if (!modal) return;
+
+    modal.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            triggerExportDownload();
+        } else if (e.key === 'Escape' || e.key === 'Esc') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeExportModal();
+        }
+    });
+}

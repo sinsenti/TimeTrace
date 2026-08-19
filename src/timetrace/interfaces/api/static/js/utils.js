@@ -250,6 +250,7 @@ window.addEventListener('keydown', function(e) {
             { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
             { id: 'subtask_modal', closeFn: typeof closeSubtaskModal === 'function' ? closeSubtaskModal : null },
+            { id: 'export_modal', closeFn: typeof closeExportModal === 'function' ? closeExportModal : null },
             { id: 'custom_filter_modal', closeFn: typeof closeCustomFilterModal === 'function' ? closeCustomFilterModal : null },
             { id: 'task_modal', closeFn: typeof closeTaskModal === 'function' ? closeTaskModal : null },
             { id: 'session_modal', closeFn: typeof closeSessionModal === 'function' ? closeSessionModal : null },

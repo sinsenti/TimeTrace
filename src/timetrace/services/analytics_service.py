@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from timetrace.core.analytics import calculate_detailed_analytics, calculate_tag_summaries
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
+from timetrace.db.models import Habit, HabitLog
 from timetrace.db.models import Session as SessionModel
 from timetrace.db.models import Task
 from timetrace.interfaces.api.utils import ensure_utc
@@ -61,8 +62,10 @@ class AnalyticsService:
             added_count += 1
         return added_count
 
-    def export_agenda_briefing(self, mode: str = "sessions") -> str:
-        """Generates clean, scannable Markdown briefings for sessions or tasks without decorative icons."""
+    def export_agenda_briefing(
+        self, mode: str = "sessions", start_date: str | None = None, end_date: str | None = None
+    ) -> str:
+        """Generates clean, scannable Markdown briefings for sessions, tasks, or habits without decorative icons."""
         now = datetime.now(UTC)
         tasks = self.db.exec(select(Task)).all()
         tasks_map = {t.id: t for t in tasks}
@@ -131,8 +134,108 @@ class AnalyticsService:
 
             return "\n".join(lines)
 
+        elif mode == "habits":
+            habits = self.db.exec(select(Habit)).all()
+            logs = self.db.exec(select(HabitLog)).all()
+            log_map: dict[int, list[HabitLog]] = {}
+            for l in logs:
+                log_map.setdefault(l.habit_id, []).append(l)
+
+            lines = [
+                "---",
+                "type: habits_briefing",
+                f"generated_at: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                f"total_habits: {len(habits)}",
+                "---",
+                "",
+                "# TimeTrace Habits Briefing",
+                "",
+                "| ID | Habit Name | Type | Target | Frequency | Total Logs | Completed | Compliance % |",
+                "|---|---|---|---|---|---|---|---|",
+            ]
+            for h in habits:
+                h_logs = log_map.get(h.id, [])
+                comp = sum(1 for l in h_logs if l.status == "completed")
+                tot = len(h_logs)
+                rate = f"{round((comp / tot) * 100)}%" if tot > 0 else "0%"
+                target_str = f"{h.target_value} {h.unit or ''}".strip() if h.habit_type == "numeric" else "Checkmark"
+                lines.append(
+                    f"| #{h.id} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {tot} | {comp} | {rate} |"
+                )
+            lines.append("")
+            return "\n".join(lines)
+
+        elif mode in ("all", "all_date_range"):
+            lines = [
+                "---",
+                "type: complete_system_export",
+                f"generated_at: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
+                f"date_filter_start: {start_date or 'None'}",
+                f"date_filter_end: {end_date or 'None'}",
+                "---",
+                "",
+                "# TimeTrace System-Wide Export",
+                "",
+            ]
+
+            # 1. Sessions Section
+            sess_query = select(SessionModel)
+            all_sessions = self.db.exec(sess_query).all()
+            filtered_sessions = []
+            for s in all_sessions:
+                if not s.start_time:
+                    continue
+                st_str = ensure_utc(s.start_time).strftime("%Y-%m-%d")
+                if start_date and st_str < start_date:
+                    continue
+                if end_date and st_str > end_date:
+                    continue
+                filtered_sessions.append(s)
+
+            lines.extend([
+                f"## 1. Sessions Log ({len(filtered_sessions)} entries)",
+                "",
+                "| ID | Start Time | End Time | Duration (mins) | Task ID | Tags | Notes |",
+                "|---|---|---|---|---|---|---|",
+            ])
+            for s in sorted(filtered_sessions, key=lambda x: x.start_time or datetime.min):
+                st = ensure_utc(s.start_time).strftime("%Y-%m-%d %H:%M") if s.start_time else "-"
+                et = ensure_utc(s.end_time).strftime("%Y-%m-%d %H:%M") if s.end_time else "-"
+                dur_m = round((s.duration_seconds or 0) / 60)
+                lines.append(f"| #{s.id} | {st} | {et} | {dur_m}m | {s.task_id or '-'} | {s.tags or '-'} | {s.notes or '-'} |")
+
+            lines.extend(["", "---", ""])
+
+            # 2. Tasks Section
+            lines.extend([
+                f"## 2. Tasks ({len(tasks)} entries)",
+                "",
+                "| ID | Title | Status | Priority | Category | Target Day | Due Day | Tags |",
+                "|---|---|---|---|---|---|---|---|",
+            ])
+            for t in tasks:
+                due_info = t.due_date.strftime("%Y-%m-%d %H:%M") if t.due_date else "-"
+                lines.append(f"| #{t.id} | {t.title} | {t.status} | {t.priority.upper()} | {t.category} | {t.assigned_date or '-'} | {due_info} | {t.tags or '-'} |")
+
+            lines.extend(["", "---", ""])
+
+            # 3. Habits Section
+            habits = self.db.exec(select(Habit)).all()
+            lines.extend([
+                f"## 3. Habits ({len(habits)} entries)",
+                "",
+                "| ID | Name | Type | Target | Frequency | Reminder Time |",
+                "|---|---|---|---|---|---|",
+            ])
+            for h in habits:
+                target_str = f"{h.target_value} {h.unit or ''}".strip() if h.habit_type == "numeric" else "Checkmark"
+                lines.append(f"| #{h.id} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {h.reminder_time or '-'} |")
+
+            lines.append("")
+            return "\n".join(lines)
+
         else:
-            # Mode: "sessions" (Chronological Agenda)
+            # Default Mode: "sessions" (Chronological Agenda)
             sessions = self.db.exec(select(SessionModel)).all()
             today_date = now.date()
             tomorrow_date = today_date + timedelta(days=1)
@@ -184,33 +287,30 @@ class AnalyticsService:
                 "",
                 "# TimeTrace Session Agenda",
                 "",
+                "## Now",
             ]
 
-            lines.append("## Now")
             if group_now:
                 for item in group_now:
                     lines.append(f"- [{item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']} (ACTIVE)")
             else:
                 lines.append("- No active session running.")
 
-            lines.append("")
-            lines.append("## Later Today")
+            lines.extend(["", "## Later Today"])
             if group_later:
                 for item in sorted(group_later, key=lambda x: x["start_str"]):
                     lines.append(f"- [{item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}")
             else:
                 lines.append("- No remaining sessions scheduled for today.")
 
-            lines.append("")
-            lines.append(f"## Tomorrow ({tomorrow_date.strftime('%Y-%m-%d')})")
+            lines.extend(["", f"## Tomorrow ({tomorrow_date.strftime('%Y-%m-%d')})"])
             if group_tomorrow:
                 for item in sorted(group_tomorrow, key=lambda x: x["start_str"]):
                     lines.append(f"- [{item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}")
             else:
                 lines.append("- No sessions scheduled for tomorrow.")
 
-            lines.append("")
-            lines.append("## Upcoming")
+            lines.extend(["", "## Upcoming"])
             if group_upcoming:
                 for item in sorted(group_upcoming, key=lambda x: (x["date_str"], x["start_str"]))[:15]:
                     lines.append(f"- [{item['date_str']} {item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}")

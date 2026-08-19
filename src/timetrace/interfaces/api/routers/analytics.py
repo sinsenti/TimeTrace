@@ -33,12 +33,16 @@ async def import_markdown(request: Request, db: DBSession = Depends(get_session)
 
 @router.get("/api/agenda/export")
 def export_agenda_briefing(
-    mode: str = Query("sessions", description="Export mode: 'sessions', 'tasks_short', 'tasks_full'"),
+    mode: str = Query("sessions", description="Export mode: 'sessions', 'tasks_short', 'tasks_full', 'habits', 'all', 'all_date_range'"),
+    start_date: str | None = Query(None, description="Optional YYYY-MM-DD start filter"),
+    end_date: str | None = Query(None, description="Optional YYYY-MM-DD end filter"),
     db: DBSession = Depends(get_session)
 ):
-    """Exports structured, scannable Markdown briefing logs without decorative emojis."""
-    content = AnalyticsService(db).export_agenda_briefing(mode=mode)
-    filename = f"timetrace_agenda_{mode}.md"
+    """Exports structured, scannable Markdown briefing logs without decorative icons."""
+    content = AnalyticsService(db).export_agenda_briefing(
+        mode=mode, start_date=start_date, end_date=end_date
+    )
+    filename = f"timetrace_export_{mode}.md"
     return Response(
         content=content,
         media_type="text/markdown",

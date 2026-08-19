@@ -96,15 +96,8 @@
         <div class="flex items-center space-x-2 shrink-0">
             <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">Filter</button>
 
-            <!-- Agenda Download Briefing Selector -->
-            <div class="relative inline-block">
-                <select onchange="if(this.value){ window.location.href='/api/agenda/export?mode=' + this.value; this.value=''; }" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] px-2.5 rounded-lg font-bold text-[11px] focus:outline-none cursor-pointer">
-                    <option value="">Export Agenda Briefing...</option>
-                    <option value="sessions">Sessions Agenda (.md)</option>
-                    <option value="tasks_short">Tasks Concise Summary (.md)</option>
-                    <option value="tasks_full">Complete Task Dossier (.md)</option>
-                </select>
-            </div>
+            <!-- Export Button to trigger Export Modal -->
+            <button onclick="openExportModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] px-3 rounded-lg font-bold text-[11px] transition">Export</button>
 
             <div class="flex items-center bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
                 <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
@@ -177,6 +170,54 @@
                 <div id="weekly_totals_list" class="space-y-2"></div>
             </div>
         </aside>
+    </div>
+
+    <!-- Export Modal -->
+    <div id="export_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-md rounded-xl p-5 shadow-2xl space-y-4 text-white">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <h3 class="font-bold text-sm text-white">Export Markdown Agenda & Data</h3>
+                <button onclick="closeExportModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="text-slate-400 block mb-1 font-semibold">Export Format / Scope</label>
+                    <select id="export_mode_select" onchange="toggleExportDateInputs(this.value)" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-white font-bold focus:outline-none focus:border-purple-500">
+                        <option value="sessions">Sessions Agenda (.md)</option>
+                        <option value="tasks_short">Tasks Concise Summary (.md)</option>
+                        <option value="tasks_full">Complete Task Dossier (.md)</option>
+                        <option value="habits">Habits Briefing (.md)</option>
+                        <option value="all">Export Everything (.md)</option>
+                        <option value="all_date_range">Export Everything with Date Limits (.md)</option>
+                    </select>
+                </div>
+
+                <div id="export_date_range_group" class="grid grid-cols-2 gap-2 p-3 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] hidden">
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-1">Start Date</label>
+                        <div class="flex items-center space-x-1">
+                            <input id="export_start_date" type="text" placeholder="YYYY-MM-DD" class="w-full bg-[#181a28] border border-[var(--border-muted)] px-2 py-1.5 rounded text-xs text-white">
+                            <button type="button" onclick="openNativePicker('export_picker_start', 'export_start_date')" class="bg-[#12141f] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-slate-400 shrink-0">📅</button>
+                            <input id="export_picker_start" type="date" onchange="syncPickerToText('export_picker_start', 'export_start_date')" class="sr-only">
+                        </div>
+                    </div>
+                    <div>
+                        <label class="text-[10px] text-slate-400 block mb-1">End Date</label>
+                        <div class="flex items-center space-x-1">
+                            <input id="export_end_date" type="text" placeholder="YYYY-MM-DD" class="w-full bg-[#181a28] border border-[var(--border-muted)] px-2 py-1.5 rounded text-xs text-white">
+                            <button type="button" onclick="openNativePicker('export_picker_end', 'export_end_date')" class="bg-[#12141f] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-slate-400 shrink-0">📅</button>
+                            <input id="export_picker_end" type="date" onchange="syncPickerToText('export_picker_end', 'export_end_date')" class="sr-only">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
+                <button onclick="closeExportModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+                <button onclick="triggerExportDownload()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs flex items-center">Download Export <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+            </div>
+        </div>
     </div>
 
     {% include "components/settings_modal.html" %}
