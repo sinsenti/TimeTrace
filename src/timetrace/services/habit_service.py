@@ -23,7 +23,8 @@ class HabitService:
         habits = self.db.exec(select(Habit)).all()
         today_dt = datetime.now().date()
 
-        start_date_str = (today_dt - timedelta(days=13)).strftime("%Y-%m-%d")
+        # Fetch 365 days of history to support historical week-by-week navigation and editing
+        start_date_str = (today_dt - timedelta(days=365)).strftime("%Y-%m-%d")
         logs = self.db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
 
         log_map: dict[int, dict[str, Any]] = {}
@@ -93,6 +94,8 @@ class HabitService:
                 log.status = "completed"
             elif log.value > 0:
                 log.status = "in_progress"
+            else:
+                log.status = "pending"
 
         self.db.add(log)
         self.db.commit()

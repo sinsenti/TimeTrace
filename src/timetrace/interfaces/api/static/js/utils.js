@@ -253,6 +253,7 @@ window.addEventListener('keydown', function(e) {
             { id: 'custom_filter_modal', closeFn: typeof closeCustomFilterModal === 'function' ? closeCustomFilterModal : null },
             { id: 'task_modal', closeFn: typeof closeTaskModal === 'function' ? closeTaskModal : null },
             { id: 'session_modal', closeFn: typeof closeSessionModal === 'function' ? closeSessionModal : null },
+            { id: 'habit_modal', closeFn: typeof closeHabitModal === 'function' ? closeHabitModal : null },
             { id: 'settings_modal', closeFn: typeof closeSettingsModal === 'function' ? closeSettingsModal : null },
             { id: 'status_manager_modal', closeFn: typeof closeStatusManagerModal === 'function' ? closeStatusManagerModal : null },
             { id: 'sidebar_tab_config_modal', closeFn: typeof closeSidebarTabsConfigModal === 'function' ? closeSidebarTabsConfigModal : null },

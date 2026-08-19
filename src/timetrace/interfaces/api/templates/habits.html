@@ -20,7 +20,7 @@
             --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
         }
         :root[data-theme="monokai"] {
-            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #221f22; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
+            --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #3a373d; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
         }
 
         body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
@@ -29,12 +29,23 @@
         .cell-failed { background-color: #dc2626 !important; color: white !important; font-weight: bold; }
         .cell-skipped { background-color: #334155 !important; color: #94a3b8 !important; }
         .cell-in-progress { background-color: #d97706 !important; color: white !important; font-weight: bold; }
+
+        /* Hide number input spin arrows */
+        input::-webkit-outer-spin-button,
+        input::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+        }
+
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
+<body class="min-h-screen flex flex-col pb-12">
 
     <!-- Header Navigation -->
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
@@ -43,7 +54,7 @@
         <div class="flex items-center space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
             <button onclick="switchHabitTab('matrix')" id="tab_btn_matrix" class="h-6 px-3 rounded font-bold bg-emerald-600 text-white text-[11px]">Tracking Grid</button>
             <button onclick="switchHabitTab('reminders')" id="tab_btn_reminders" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Reminders</button>
-            <button onclick="switchHabitTab('charts')" id="tab_btn_charts" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Charts & Trends</button>
+            <button onclick="switchHabitTab('charts')" id="tab_btn_charts" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Charts & Inspector</button>
         </div>
 
         <div class="flex items-center">
@@ -52,13 +63,23 @@
     </header>
 
     <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
+        <!-- Tab 1: Habit Matrix & Historical Navigation -->
         <section id="habit_tab_matrix" class="space-y-4">
-            <div class="flex justify-between items-center">
+            <div class="flex flex-wrap justify-between items-center gap-3 bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
                 <div>
                     <h2 class="text-lg font-bold text-white">Daily Habit Matrix</h2>
-                    <p class="text-xs text-slate-400">Click cells or use quick controls to log daily progress.</p>
+                    <p class="text-xs text-slate-400">Log past or present daily progress. Type values directly for numeric habits.</p>
                 </div>
-                <div class="flex items-center space-x-2 text-xs text-slate-400">
+
+                <!-- Past / Future Week Navigation -->
+                <div class="flex items-center space-x-2 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)] text-xs">
+                    <button onclick="prevWeek()" class="px-2.5 py-1 rounded font-bold text-slate-300 hover:text-white hover:bg-[#222536] transition">&lt; Prev Week</button>
+                    <button onclick="resetToCurrentWeek()" class="px-2.5 py-1 rounded font-bold text-emerald-400 hover:bg-[#222536] transition">Today</button>
+                    <button onclick="nextWeek()" class="px-2.5 py-1 rounded font-bold text-slate-300 hover:text-white hover:bg-[#222536] transition">Next Week &gt;</button>
+                    <span id="matrix_week_range_label" class="px-3 font-mono font-bold text-purple-300 border-l border-[var(--border-muted)]">Loading dates...</span>
+                </div>
+
+                <div class="flex items-center space-x-3 text-xs text-slate-400">
                     <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-completed inline-block"></span><span>Done</span></span>
                     <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-failed inline-block"></span><span>Failed</span></span>
                     <span class="flex items-center space-x-1"><span class="w-3 h-3 rounded cell-skipped inline-block"></span><span>Skipped</span></span>
@@ -77,6 +98,7 @@
             </div>
         </section>
 
+        <!-- Tab 2: Reminders -->
         <section id="habit_tab_reminders" class="hidden space-y-4 max-w-3xl mx-auto">
             <div class="flex justify-between items-center border-b border-[var(--border-color)] pb-3">
                 <h2 class="text-lg font-bold text-white">Habit Reminders & Schedule</h2>
@@ -85,25 +107,61 @@
             <div id="reminders_card_list" class="space-y-3"></div>
         </section>
 
+        <!-- Tab 3: Inspector Style Multi-Habit Selection & Completeness Table -->
         <section id="habit_tab_charts" class="hidden space-y-6">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div>
-                    <label class="text-xs text-slate-400 font-semibold block mb-1">Select Habit for Chart</label>
-                    <select id="chart_habit_select" onchange="renderSelectedHabitCharts()" class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-emerald-500"></select>
+            <!-- Habit Inspector Multi-Select Filter Bar -->
+            <div class="bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)] space-y-3">
+                <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                    <div>
+                        <h3 class="font-bold text-sm text-white">Habits Inspector Filter</h3>
+                        <p class="text-xs text-slate-400">Select specific habits to include in the completeness report and trend charts.</p>
+                    </div>
+                    <div class="flex space-x-2 text-xs">
+                        <button onclick="selectAllHabits()" class="px-2.5 py-1 rounded bg-[#181a28] hover:bg-[#222536] text-emerald-400 border border-emerald-800/50 font-bold transition">Select All</button>
+                        <button onclick="deselectAllHabits()" class="px-2.5 py-1 rounded bg-[#181a28] hover:bg-[#222536] text-slate-400 border border-[var(--border-muted)] font-bold transition">Deselect All</button>
+                    </div>
                 </div>
-                <div id="chart_habit_kpis" class="flex space-x-6 text-right"></div>
+
+                <div id="habit_inspector_chips" class="flex flex-wrap gap-2 pt-1"></div>
             </div>
 
+            <!-- Completeness Summary KPIs & Table -->
+            <div class="habit-card p-5 space-y-4">
+                <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
+                    <h3 class="font-bold text-base text-white">Completeness Summary Report</h3>
+                    <div id="inspector_kpi_summary" class="flex space-x-6 text-right text-xs"></div>
+                </div>
+
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead>
+                            <tr class="border-b border-[var(--border-muted)] text-slate-400 uppercase font-bold text-[10px] tracking-wider">
+                                <th class="py-2 px-3">Habit Name</th>
+                                <th class="py-2 px-3">Type / Target</th>
+                                <th class="py-2 px-3">Total Logs</th>
+                                <th class="py-2 px-3">Completed</th>
+                                <th class="py-2 px-3">Failed</th>
+                                <th class="py-2 px-3">Skipped</th>
+                                <th class="py-2 px-3">Compliance Rate</th>
+                                <th class="py-2 px-3 text-right">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="completeness_table_body" class="divide-y divide-[var(--border-muted)]"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Visual Charts Row -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div class="habit-card p-5 flex flex-col space-y-3">
-                    <h3 class="font-bold text-sm text-slate-200">Consistency Ratio</h3>
+                    <h3 class="font-bold text-sm text-slate-200">Overall Compliance Share</h3>
                     <div class="h-64 relative flex items-center justify-center">
                         <canvas id="chart_habit_doughnut"></canvas>
                     </div>
                 </div>
 
                 <div class="habit-card p-5 col-span-2 flex flex-col space-y-3">
-                    <h3 class="font-bold text-sm text-slate-200">Daily Progress History</h3>
+                    <h3 class="font-bold text-sm text-slate-200">30-Day Aggregated Daily Progress</h3>
                     <div class="h-64 relative">
                         <canvas id="chart_habit_bar"></canvas>
                     </div>
@@ -112,9 +170,9 @@
         </section>
     </main>
 
-    <!-- Create/Edit Habit Modal -->
-    <div id="habit_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[#161824] border border-[#262938] w-96 rounded-xl p-5 shadow-2xl space-y-3 text-white">
+    <!-- Create/Edit Habit Modal with Shortcuts Hints -->
+    <div id="habit_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+        <div class="bg-[#161824] border border-[#262938] w-full max-w-sm rounded-xl p-5 shadow-2xl space-y-3 text-white">
             <div class="flex justify-between items-center border-b border-[#262938] pb-2">
                 <h3 id="modal_habit_title" class="font-bold text-lg text-white">Create Habit</h3>
                 <button onclick="closeHabitModal()" class="text-slate-400 hover:text-white font-bold">&times;</button>
@@ -167,11 +225,11 @@
                 </div>
             </div>
 
-            <div class="flex justify-between items-center pt-2 border-t border-[#262938]">
+            <div class="flex justify-between items-center pt-3 border-t border-[#262938]">
                 <button id="modal_habit_delete_btn" onclick="deleteHabit()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
-                <div class="space-x-2 ml-auto">
-                    <button onclick="closeHabitModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs">Cancel</button>
-                    <button onclick="saveHabit()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs">Save Habit</button>
+                <div class="flex items-center space-x-2 ml-auto">
+                    <button onclick="closeHabitModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
+                    <button onclick="saveHabit()" class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold px-4 py-1.5 rounded-lg text-xs flex items-center">Save Habit <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
                 </div>
             </div>
         </div>

@@ -1,23 +1,78 @@
+/**
+ * TimeTrace Habits Engine & Multi-Select Inspector
+ */
+
 let allHabits = [];
 let matrixDates = [];
 let habitCharts = {};
 
+let currentWeekOffset = 0;
+let selectedInspectorHabitIds = new Set();
+
 document.addEventListener('DOMContentLoaded', () => {
     generateMatrixDateHeaders();
     loadHabitsData();
+    setupHabitModalKeyboardShortcuts();
 });
+
+function setupHabitModalKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        const modal = document.getElementById('habit_modal');
+        if (!modal || modal.classList.contains('hidden')) return;
+
+        if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            saveHabit();
+        } else if (e.key === 'Escape' || e.key === 'Esc') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeHabitModal();
+        }
+    });
+}
+
+function prevWeek() {
+    currentWeekOffset -= 1;
+    generateMatrixDateHeaders();
+    renderMatrixTable();
+}
+
+function nextWeek() {
+    currentWeekOffset += 1;
+    generateMatrixDateHeaders();
+    renderMatrixTable();
+}
+
+function resetToCurrentWeek() {
+    currentWeekOffset = 0;
+    generateMatrixDateHeaders();
+    renderMatrixTable();
+}
 
 function generateMatrixDateHeaders() {
     matrixDates = [];
     const today = new Date();
+    
+    // Shift target date by week offset (7 days per week)
+    const baseDate = new Date(today);
+    baseDate.setDate(today.getDate() + (currentWeekOffset * 7));
+
     for (let i = 6; i >= 0; i--) {
-        const d = new Date(today);
-        d.setDate(today.getDate() - i);
+        const d = new Date(baseDate);
+        d.setDate(baseDate.getDate() - i);
         const yyyy = d.getFullYear();
         const mm = String(d.getMonth() + 1).padStart(2, '0');
         const dd = String(d.getDate()).padStart(2, '0');
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-        matrixDates.push({ date_str: `${yyyy}-${mm}-${dd}`, dayName: dayName, dayNum: d.getDate(), isToday: i === 0 });
+        
+        const isToday = (yyyy === today.getFullYear() && (d.getMonth() === today.getMonth()) && d.getDate() === today.getDate());
+        matrixDates.push({ date_str: `${yyyy}-${mm}-${dd}`, dayName: dayName, dayNum: d.getDate(), isToday: isToday });
+    }
+
+    const labelEl = document.getElementById('matrix_week_range_label');
+    if (labelEl && matrixDates.length === 7) {
+        labelEl.innerText = `${matrixDates[0].date_str} to ${matrixDates[6].date_str}`;
     }
 }
 
@@ -25,9 +80,15 @@ async function loadHabitsData() {
     try {
         const res = await fetch('/habits');
         allHabits = await res.json();
+
+        // Default all habit IDs to selected if filter set is empty
+        if (selectedInspectorHabitIds.size === 0) {
+            allHabits.forEach(h => selectedInspectorHabitIds.add(h.id));
+        }
+
         renderMatrixTable();
         renderRemindersList();
-        populateChartHabitSelect();
+        renderHabitInspectorChips();
     } catch (e) {
         console.error("Failed to load habits:", e);
     }
@@ -92,7 +153,7 @@ function renderMatrixCell(habit, dateStr, log) {
         let bgClass = 'bg-[#181a28] text-slate-600';
 
         if (log.status === 'completed') { badgeContent = '✓'; bgClass = 'cell-completed'; }
-        else if (log.status === 'failed') { badgeContent = '✗'; bgClass = 'cell-failed'; }
+        else if (log.status === 'failed') { badgeContent = '✕'; bgClass = 'cell-failed'; }
         else if (log.status === 'skipped') { badgeContent = '↷'; bgClass = 'cell-skipped'; }
 
         return `
@@ -109,8 +170,9 @@ function renderMatrixCell(habit, dateStr, log) {
         return `
             <td class="py-2 px-1 text-center">
                 <div class="flex flex-col items-center space-y-1">
-                    <div class="px-2 py-1 rounded-lg ${bgClass} text-[11px] font-black w-14 text-center">
-                        ${log.value} ${habit.unit ? habit.unit.slice(0,3) : ''}
+                    <div class="flex items-center space-x-1">
+                        <input type="number" step="any" min="0" value="${log.value}" onchange="setHabitDirectValue(${habit.id}, '${dateStr}', this.value)" class="w-12 py-0.5 px-1 rounded-lg ${bgClass} text-[11px] font-black text-center focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                        <span class="text-[9px] text-slate-500 font-bold">${habit.unit ? habit.unit.slice(0,3) : ''}</span>
                     </div>
                     <div class="flex space-x-1">
                         <button onclick="incrementHabitVal(${habit.id}, '${dateStr}', -1)" class="w-4 h-4 bg-[#222536] hover:bg-red-900 text-slate-300 rounded text-[10px] flex items-center justify-center">-</button>
@@ -146,6 +208,18 @@ async function incrementHabitVal(habitId, dateStr, delta) {
     loadHabitsData();
 }
 
+async function setHabitDirectValue(habitId, dateStr, rawVal) {
+    const val = parseFloat(rawVal);
+    if (isNaN(val)) return;
+
+    await fetch(`/habits/${habitId}/log`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date_str: dateStr, set_value: Math.max(0, val) })
+    });
+    loadHabitsData();
+}
+
 function renderRemindersList() {
     const container = document.getElementById('reminders_card_list');
     if (!container) return;
@@ -166,7 +240,7 @@ function renderRemindersList() {
             </div>
             <div class="flex items-center space-x-3">
                 <span class="bg-[#181a28] border border-[#262938] px-3 py-1 rounded-lg text-xs font-bold text-slate-300">
-                    ⏰ ${h.reminder_time || '09:00 AM'}
+                    Time: ${h.reminder_time || '09:00 AM'}
                 </span>
                 <button type="button" onclick="event.stopPropagation(); openEditHabitModal(${h.id})" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
             </div>
@@ -174,38 +248,141 @@ function renderRemindersList() {
     `).join('');
 }
 
-function populateChartHabitSelect() {
-    const select = document.getElementById('chart_habit_select');
-    if (!select) return;
+/* ----------------------------------------------------
+ * Habits Inspector & Multi-Select Completeness Engine
+ * ---------------------------------------------------- */
 
-    select.innerHTML = allHabits.map(h => `<option value="${h.id}">${h.name}</option>`).join('');
-    if (allHabits.length > 0 && !select.value) {
-        select.value = allHabits[0].id;
+function renderHabitInspectorChips() {
+    const container = document.getElementById('habit_inspector_chips');
+    if (!container) return;
+
+    if (allHabits.length === 0) {
+        container.innerHTML = '<span class="text-xs text-slate-500">No habits available.</span>';
+        return;
     }
+
+    container.innerHTML = allHabits.map(h => {
+        const isSelected = selectedInspectorHabitIds.has(h.id);
+        const activeClass = "bg-emerald-900/80 text-emerald-200 border-emerald-600 font-bold";
+        const inactiveClass = "bg-[#181a28] text-slate-500 border-[var(--border-muted)] hover:text-slate-300";
+
+        return `
+            <button onclick="toggleHabitInspectorSelection(${h.id})" class="px-2.5 py-1 rounded-lg text-xs border transition flex items-center space-x-1.5 ${isSelected ? activeClass : inactiveClass}">
+                <span class="w-2 h-2 rounded-full inline-block" style="background-color: ${h.color || '#10b981'}"></span>
+                <span>${h.name}</span>
+            </button>
+        `;
+    }).join('');
+}
+
+function toggleHabitInspectorSelection(habitId) {
+    if (selectedInspectorHabitIds.has(habitId)) {
+        selectedInspectorHabitIds.delete(habitId);
+    } else {
+        selectedInspectorHabitIds.add(habitId);
+    }
+    renderHabitInspectorChips();
+    renderSelectedHabitCharts();
+}
+
+function selectAllHabits() {
+    allHabits.forEach(h => selectedInspectorHabitIds.add(h.id));
+    renderHabitInspectorChips();
+    renderSelectedHabitCharts();
+}
+
+function deselectAllHabits() {
+    selectedInspectorHabitIds.clear();
+    renderHabitInspectorChips();
+    renderSelectedHabitCharts();
 }
 
 async function renderSelectedHabitCharts() {
-    const select = document.getElementById('chart_habit_select');
-    if (!select || !select.value) return;
+    const tbody = document.getElementById('completeness_table_body');
+    const kpiSummary = document.getElementById('inspector_kpi_summary');
+    if (!tbody) return;
 
-    const habitId = select.value;
-    const res = await fetch(`/habits/${habitId}/stats`);
-    const data = await res.json();
+    const activeHabits = allHabits.filter(h => selectedInspectorHabitIds.has(h.id));
 
-    const kpiContainer = document.getElementById('chart_habit_kpis');
-    if (kpiContainer) {
-        kpiContainer.innerHTML = `
+    if (activeHabits.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="8" class="text-center py-6 text-slate-500">No habits selected. Click chips above to select habits to inspect.</td></tr>`;
+        if (kpiSummary) kpiSummary.innerHTML = '';
+        if (habitCharts.doughnut) habitCharts.doughnut.destroy();
+        if (habitCharts.bar) habitCharts.bar.destroy();
+        return;
+    }
+
+    let grandCompleted = 0;
+    let grandFailed = 0;
+    let grandSkipped = 0;
+    let grandLogsCount = 0;
+
+    const dateAggregates = {};
+
+    const rowsHTML = activeHabits.map(h => {
+        const logsMap = h.logs || {};
+        const logEntries = Object.values(logsMap);
+
+        const compCount = logEntries.filter(l => l.status === 'completed').length;
+        const failCount = logEntries.filter(l => l.status === 'failed').length;
+        const skipCount = logEntries.filter(l => l.status === 'skipped').length;
+        const totalLogs = logEntries.length;
+
+        grandCompleted += compCount;
+        grandFailed += failCount;
+        grandSkipped += skipCount;
+        grandLogsCount += totalLogs;
+
+        Object.entries(logsMap).forEach(([dStr, l]) => {
+            if (!dateAggregates[dStr]) dateAggregates[dStr] = 0;
+            if (l.status === 'completed') dateAggregates[dStr] += 1;
+        });
+
+        const rate = totalLogs > 0 ? Math.round((compCount / totalLogs) * 100) : 0;
+        const rateColor = rate >= 80 ? 'text-emerald-400' : (rate >= 50 ? 'text-amber-400' : 'text-red-400');
+
+        return `
+            <tr onclick="openEditHabitModal(${h.id})" class="hover:bg-[#161824] cursor-pointer transition">
+                <td class="py-2.5 px-3 font-bold text-white flex items-center space-x-2">
+                    <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${h.color || '#10b981'}"></span>
+                    <span>${h.name}</span>
+                </td>
+                <td class="py-2.5 px-3 text-slate-400">${h.habit_type === 'numeric' ? `${h.target_value} ${h.unit}` : 'Checkmark'}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-slate-300">${totalLogs}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-emerald-400">${compCount}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-red-400">${failCount}</td>
+                <td class="py-2.5 px-3 font-mono font-bold text-slate-400">${skipCount}</td>
+                <td class="py-2.5 px-3 font-mono font-black ${rateColor}">${rate}%</td>
+                <td class="py-2.5 px-3 text-right">
+                    <span class="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase ${rate >= 70 ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}">
+                        ${rate >= 70 ? 'Optimal' : 'Needs Focus'}
+                    </span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+
+    tbody.innerHTML = rowsHTML;
+
+    const overallRate = grandLogsCount > 0 ? Math.round((grandCompleted / grandLogsCount) * 100) : 0;
+    if (kpiSummary) {
+        kpiSummary.innerHTML = `
             <div>
-                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Completed</span>
-                <span class="text-xl font-black text-emerald-400">${data.summary.completed} days</span>
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Selected Habits</span>
+                <span class="text-base font-black text-purple-400">${activeHabits.length}</span>
             </div>
             <div>
-                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Failed</span>
-                <span class="text-xl font-black text-red-400">${data.summary.failed} days</span>
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Completed Days</span>
+                <span class="text-base font-black text-emerald-400">${grandCompleted}</span>
+            </div>
+            <div>
+                <span class="text-[10px] text-slate-400 uppercase font-semibold block">Compliance Score</span>
+                <span class="text-base font-black text-blue-400">${overallRate}%</span>
             </div>
         `;
     }
 
+    // Render Doughnut Chart
     const ctxDoughnut = document.getElementById('chart_habit_doughnut').getContext('2d');
     if (habitCharts.doughnut) habitCharts.doughnut.destroy();
 
@@ -214,7 +391,7 @@ async function renderSelectedHabitCharts() {
         data: {
             labels: ['Completed', 'Failed', 'Skipped'],
             datasets: [{
-                data: [data.summary.completed, data.summary.failed, data.summary.skipped],
+                data: [grandCompleted, grandFailed, grandSkipped],
                 backgroundColor: ['#10b981', '#ef4444', '#475569'],
                 borderWidth: 0
             }]
@@ -226,16 +403,18 @@ async function renderSelectedHabitCharts() {
         }
     });
 
+    // Render Bar Chart
+    const sortedDates = Object.keys(dateAggregates).sort().slice(-30);
     const ctxBar = document.getElementById('chart_habit_bar').getContext('2d');
     if (habitCharts.bar) habitCharts.bar.destroy();
 
     habitCharts.bar = new Chart(ctxBar, {
         type: 'bar',
         data: {
-            labels: data.history.map(h => h.date.slice(5)),
+            labels: sortedDates.map(d => d.slice(5)),
             datasets: [{
-                label: 'Progress Value',
-                data: data.history.map(h => h.value || (h.status === 'completed' ? 1 : 0)),
+                label: 'Completed Habits Count',
+                data: sortedDates.map(d => dateAggregates[d] || 0),
                 backgroundColor: '#10b981',
                 borderRadius: 4
             }]
@@ -246,7 +425,7 @@ async function renderSelectedHabitCharts() {
             plugins: { legend: { display: false } },
             scales: {
                 x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
+                y: { ticks: { color: '#64748b', precision: 0 }, grid: { color: '#1a1c26' } }
             }
         }
     });
@@ -271,6 +450,11 @@ function openNewHabitModal() {
     document.getElementById('modal_habit_delete_btn').classList.add('hidden');
     toggleHabitTypeFields();
     document.getElementById('habit_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const nameInput = document.getElementById('modal_habit_name');
+        if (nameInput) nameInput.focus();
+    }, 50);
 }
 
 function openEditHabitModal(id) {
@@ -289,6 +473,11 @@ function openEditHabitModal(id) {
     document.getElementById('modal_habit_delete_btn').classList.remove('hidden');
     toggleHabitTypeFields();
     document.getElementById('habit_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const nameInput = document.getElementById('modal_habit_name');
+        if (nameInput) nameInput.focus();
+    }, 50);
 }
 
 function closeHabitModal() {
