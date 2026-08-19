@@ -92,21 +92,23 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         if pr in task_priority_counts:
             task_priority_counts[pr] += 1
 
-    # Estimation Accuracy Analysis
+    # Estimation Accuracy Analysis (Excludes tasks with 'Ongoing' status)
     task_actual_secs: dict[int, int] = {}
     for s in sessions:
         tid = s.get("task_id")
         if tid:
             task_actual_secs[tid] = task_actual_secs.get(tid, 0) + (s.get("duration_seconds") or 0)
 
-    total_est_minutes = sum(t.get("estimated_minutes") or 15 for t in tasks)
+    eval_tasks = [t for t in tasks if str(t.get("status", "")).lower() != "ongoing"]
+
+    total_est_minutes = sum(t.get("estimated_minutes") or 15 for t in eval_tasks)
     total_est_hours = round(total_est_minutes / 60.0, 2)
 
     accurate_count = 0
     underestimated_count = 0
     overestimated_count = 0
 
-    for t in tasks:
+    for t in eval_tasks:
         tid = t.get("id")
         est_secs = (t.get("estimated_minutes") or 15) * 60
         actual_secs = task_actual_secs.get(tid, 0)

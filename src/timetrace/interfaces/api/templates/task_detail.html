@@ -16,7 +16,8 @@
             --bg-main: #282a36; --bg-header: #21222c; --bg-card: #21222c; --border-color: #44475a; --border-muted: #6272a4; --text-main: #f8f8f2;
         }
         :root[data-theme="cyberpunk"] {
-            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #150538; --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
+            --bg-main: #0d0221; --bg-header: #150538; --bg-card: #1d0847; --bg-sidebar: #150538;
+            --border-color: #2b0b5c; --border-muted: #ff0055; --text-main: #ffffff;
         }
         :root[data-theme="monokai"] {
             --bg-main: #2d2a2e; --bg-header: #221f22; --bg-card: #3a373d; --border-color: #4a474f; --border-muted: #5b5760; --text-main: #fcfcfa;
@@ -131,15 +132,8 @@
                     </select>
                 </div>
                 <div>
-                    <label class="text-slate-400 block mb-1">Estimated Minutes</label>
-                    <select id="inspector_edit_est" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
-                        <option value="15">15 mins</option>
-                        <option value="30">30 mins</option>
-                        <option value="45">45 mins</option>
-                        <option value="60">60 mins</option>
-                        <option value="90">90 mins</option>
-                        <option value="120">120 mins</option>
-                    </select>
+                    <label class="text-slate-400 block mb-1">Estimated Duration <span class="text-[10px] text-slate-500 font-normal ml-1">e.g. 15m, 2h, 20h, or -</span></label>
+                    <input id="inspector_edit_est" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
                 </div>
             </div>
 
@@ -224,13 +218,8 @@
 
             <div class="grid grid-cols-2 gap-2">
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Estimated Duration</label>
-                    <select id="modal_subtask_est" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
-                        <option value="15">15 mins</option>
-                        <option value="30">30 mins</option>
-                        <option value="45">45 mins</option>
-                        <option value="60">60 mins</option>
-                    </select>
+                    <label class="text-xs text-slate-400 block mb-1">Estimated Duration <span class="text-[10px] text-slate-500 font-normal ml-1">e.g. 15m, 2h, or -</span></label>
+                    <input id="modal_subtask_est" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
                 </div>
                 <div>
                     <label class="text-xs text-slate-400 block mb-1">Initial Status</label>

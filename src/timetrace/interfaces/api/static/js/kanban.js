@@ -68,7 +68,7 @@ function renderKanbanColumns() {
 
 function renderKanbanCard(task) {
     const isOngoing = (task.status || '').toLowerCase() === 'ongoing';
-    const estBadge = task.estimated_minutes ? `${task.estimated_minutes}m` : '15m';
+    const estBadge = formatMinutesToDuration(task.estimated_minutes);
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 

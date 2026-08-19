@@ -12,13 +12,18 @@ from timetrace.interfaces.api.utils import ensure_utc
 
 
 def parse_title_estimation(title: str) -> tuple[str, int | None]:
-    """Extracts estimation tags like [30min], [45m], [1h] from title string."""
-    match = re.search(r"\[(\d+(?:\.\d+)?)\s*(min|mins|m|h|hours|hour)?\]", title, re.IGNORECASE)
+    """Extracts estimation tags like [30min], [45m], [1h], [2d], [10d] from title string."""
+    match = re.search(r"\[(\d+(?:\.\d+)?)\s*(min|mins|m|h|hours|hour|d|day|days)?\]", title, re.IGNORECASE)
     if match:
         val = float(match.group(1))
         unit = (match.group(2) or "m").lower()
-        est_minutes = int(val * 60) if unit in ("h", "hour", "hours") else int(val)
-        clean_title = re.sub(r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour)?\]", "", title, flags=re.IGNORECASE).strip()
+        if unit in ("d", "day", "days"):
+            est_minutes = int(val * 1440)
+        elif unit in ("h", "hour", "hours"):
+            est_minutes = int(val * 60)
+        else:
+            est_minutes = int(val)
+        clean_title = re.sub(r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour|d|day|days)?\]", "", title, flags=re.IGNORECASE).strip()
         return clean_title, est_minutes
     return title, None
 
@@ -391,9 +396,10 @@ class TaskService:
         total_seconds = sum(s.duration_seconds or 0 for s in sessions)
         total_hours = round(total_seconds / 3600.0, 2)
 
-        est_minutes = task.estimated_minutes or 0
-        est_hours = round(est_minutes / 60.0, 2)
-        progress_pct = round((total_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None
+        is_ongoing = str(task.status or "").lower() == "ongoing"
+        est_minutes = 0 if is_ongoing else (task.estimated_minutes or 0)
+        est_hours = round(est_minutes / 60.0, 2) if not is_ongoing else 0.0
+        progress_pct = (round((total_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None) if not is_ongoing else None
 
         session_list = []
         for s in sessions:

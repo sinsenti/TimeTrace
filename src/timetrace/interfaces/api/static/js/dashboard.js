@@ -128,7 +128,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     await api.post('/sessions', payload);
 
                     if (taskId) {
-                        try { await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
+                        const isOngoing = targetTask && (targetTask.status || '').toLowerCase() === 'ongoing';
+                        if (!isOngoing) {
+                            try { await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
+                        }
                     }
 
                     if (calendar) calendar.refetchEvents();

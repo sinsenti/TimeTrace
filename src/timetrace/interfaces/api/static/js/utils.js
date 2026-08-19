@@ -9,11 +9,63 @@ let defaultPalette = [
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 let pendingDeleteSessionId = null;
 
+function parseDurationToMinutes(val) {
+    if (val === null || val === undefined) return 15;
+    const clean = String(val).trim().toLowerCase();
+    if (clean === '-' || clean === '' || clean === 'none' || clean === 'null') {
+        return null;
+    }
+    const daysMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(d|day|days)$/);
+    if (daysMatch) {
+        return Math.round(parseFloat(daysMatch[1]) * 1440);
+    }
+    const hoursMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/);
+    if (hoursMatch) {
+        return Math.round(parseFloat(hoursMatch[1]) * 60);
+    }
+    const minsMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)$/);
+    if (minsMatch) {
+        return Math.round(parseFloat(minsMatch[1]));
+    }
+    const numMatch = clean.match(/^(\d+(?:\.\d+)?)$/);
+    if (numMatch) {
+        return Math.round(parseFloat(numMatch[1]));
+    }
+    return null;
+}
+
+function formatMinutesToDuration(mins) {
+    if (mins === null || mins === undefined || mins === 0) return '-';
+    if (mins >= 1440 && mins % 1440 === 0) {
+        return `${mins / 1440}d`;
+    }
+    if (mins >= 60 && mins % 60 === 0) {
+        return `${mins / 60}h`;
+    }
+    return `${mins}m`;
+}
+
 function openNativePicker(pickerId, textInputId) {
     const picker = document.getElementById(pickerId);
+    const textInput = document.getElementById(textInputId);
     if (!picker) return;
 
-    picker.value = "";
+    if (textInput && textInput.value && textInput.value.trim()) {
+        const parsed = parseFlexibleDateInput(textInput.value);
+        if (parsed) {
+            if (parsed.isTimeSet) {
+                const dt = new Date(parsed.isoString);
+                if (!isNaN(dt.getTime())) {
+                    const pad = (n) => String(n).padStart(2, '0');
+                    picker.value = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+                }
+            } else {
+                picker.value = `${parsed.dateStr}T23:59`;
+            }
+        }
+    } else {
+        picker.value = "";
+    }
 
     if (typeof picker.showPicker === 'function') {
         try {
@@ -33,14 +85,17 @@ function syncPickerToText(pickerId, textInputId) {
     const textInput = document.getElementById(textInputId);
     if (!picker || !textInput || !picker.value) return;
 
-    const selectedDate = picker.value.trim();
-    const existingText = textInput.value.trim();
-
-    const timeMatch = existingText.match(/\b(\d{2}:\d{2})\b/);
-    if (timeMatch && timeMatch[1] !== '00:00' && timeMatch[1] !== '23:59') {
-        textInput.value = `${selectedDate} ${timeMatch[1]}`;
+    const val = picker.value;
+    if (val.includes('T')) {
+        const [datePart, timePart] = val.split('T');
+        const cleanTime = timePart.substring(0, 5);
+        if (cleanTime === '23:59' || cleanTime === '00:00') {
+            textInput.value = datePart;
+        } else {
+            textInput.value = `${datePart} ${cleanTime}`;
+        }
     } else {
-        textInput.value = selectedDate;
+        textInput.value = val;
     }
 }
 
@@ -48,13 +103,11 @@ function parseFlexibleDateInput(val) {
     if (!val || !val.trim()) return null;
     const clean = val.trim();
     
-    // 1. Date-only format: YYYY-MM-DD -> default to 23:59:00
     const dateOnlyMatch = clean.match(/^(\d{4}-\d{2}-\d{2})$/);
     if (dateOnlyMatch) {
         return { isTimeSet: false, isoString: `${dateOnlyMatch[1]}T23:59:00`, dateStr: dateOnlyMatch[1] };
     }
     
-    // 2. Date and Time format: YYYY-MM-DD HH:MM or YYYY-MM-DDTHH:MM
     const dateTimeMatch = clean.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{2}:\d{2})(?::\d{2})?$/);
     if (dateTimeMatch) {
         const dt = new Date(`${dateTimeMatch[1]}T${dateTimeMatch[2]}:00`);

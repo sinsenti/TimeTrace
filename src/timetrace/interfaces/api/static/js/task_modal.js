@@ -72,8 +72,8 @@ function openNewTaskModal() {
     const catSelect = document.getElementById('modal_input_category');
     if (catSelect) catSelect.value = 'work';
 
-    const estSelect = document.getElementById('modal_input_est');
-    if (estSelect) estSelect.value = '15';
+    const estInput = document.getElementById('modal_input_est');
+    if (estInput) estInput.value = '15m';
 
     const assignedInput = document.getElementById('modal_input_assigned_date');
     if (assignedInput) assignedInput.value = '';
@@ -152,8 +152,8 @@ async function openEditTaskModal(id) {
     const catSelect = document.getElementById('modal_input_category');
     if (catSelect) catSelect.value = t.category || 'work';
 
-    const estSelect = document.getElementById('modal_input_est');
-    if (estSelect) estSelect.value = String(t.estimated_minutes || 15);
+    const estInput = document.getElementById('modal_input_est');
+    if (estInput) estInput.value = formatMinutesToDuration(t.estimated_minutes);
 
     const assignedInput = document.getElementById('modal_input_assigned_date');
     if (assignedInput) assignedInput.value = t.assigned_date ? formatFlexibleDateForInput(t.assigned_date) : '';
@@ -232,9 +232,11 @@ async function saveTask() {
 
         const assignedInput = document.getElementById('modal_input_assigned_date') ? document.getElementById('modal_input_assigned_date').value.trim() : '';
         const dueInput = document.getElementById('modal_input_due_date') ? document.getElementById('modal_input_due_date').value.trim() : '';
+        const estInputVal = document.getElementById('modal_input_est') ? document.getElementById('modal_input_est').value : '15m';
         
         const assignedParsed = parseFlexibleDateInput(assignedInput);
         const dueParsed = parseFlexibleDateInput(dueInput);
+        const parsedEstMins = parseDurationToMinutes(estInputVal);
 
         const colorMode = document.getElementById('modal_input_color_mode') ? document.getElementById('modal_input_color_mode').value : 'auto';
         const chosenColor = colorMode === 'custom' ? (document.getElementById('modal_input_color') ? document.getElementById('modal_input_color').value : '#7c3aed') : 'auto';
@@ -246,7 +248,7 @@ async function saveTask() {
             priority: document.getElementById('modal_input_priority') ? document.getElementById('modal_input_priority').value : '-',
             status: document.getElementById('modal_input_status') ? document.getElementById('modal_input_status').value : 'To Do',
             category: document.getElementById('modal_input_category') ? document.getElementById('modal_input_category').value : 'work',
-            estimated_minutes: document.getElementById('modal_input_est') ? parseInt(document.getElementById('modal_input_est').value) || 15 : 15,
+            estimated_minutes: parsedEstMins,
             assigned_date: assignedParsed ? assignedParsed.dateStr : null,
             due_date: dueParsed ? dueParsed.isoString : null,
             attachments: document.getElementById('modal_input_attachments') ? document.getElementById('modal_input_attachments').value : '',

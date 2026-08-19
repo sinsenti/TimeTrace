@@ -126,7 +126,7 @@ async function loadTaskDetailTree() {
         } else {
             if (estContainer) estContainer.classList.remove('hidden');
             if (progressContainer) progressContainer.classList.remove('hidden');
-            if (estBadge) estBadge.innerText = `${tree.estimated_minutes || 15}m`;
+            if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
         }
 
         const titleInput = document.getElementById('inspector_edit_title');
@@ -147,8 +147,8 @@ async function loadTaskDetailTree() {
         const prioSelect = document.getElementById('inspector_edit_priority');
         if (prioSelect) prioSelect.value = tree.priority || '-';
 
-        const estSelect = document.getElementById('inspector_edit_est');
-        if (estSelect) estSelect.value = String(tree.estimated_minutes || 15);
+        const estInput = document.getElementById('inspector_edit_est');
+        if (estInput) estInput.value = formatMinutesToDuration(tree.estimated_minutes);
 
         const isRecur = tree.is_recurring === true;
         const recurCheck = document.getElementById('inspector_edit_is_recurring');
@@ -212,6 +212,7 @@ async function saveInspectorTaskProperties(event) {
     const oldStatus = currentTreeData ? currentTreeData.status : null;
     const assignedInputVal = document.getElementById('inspector_edit_assigned_date') ? document.getElementById('inspector_edit_assigned_date').value.trim() : '';
     const dueInputVal = document.getElementById('inspector_edit_due_date') ? document.getElementById('inspector_edit_due_date').value.trim() : '';
+    const estInputVal = document.getElementById('inspector_edit_est') ? document.getElementById('inspector_edit_est').value : '15m';
     const titleVal = document.getElementById('inspector_edit_title').value.trim();
 
     if (!titleVal) {
@@ -221,6 +222,7 @@ async function saveInspectorTaskProperties(event) {
 
     const assignedParsed = parseFlexibleDateInput(assignedInputVal);
     const dueParsed = parseFlexibleDateInput(dueInputVal);
+    const parsedEstMins = parseDurationToMinutes(estInputVal);
 
     const payload = {
         title: titleVal,
@@ -229,7 +231,7 @@ async function saveInspectorTaskProperties(event) {
         status: document.getElementById('inspector_edit_status').value,
         category: document.getElementById('inspector_edit_category').value,
         priority: document.getElementById('inspector_edit_priority').value,
-        estimated_minutes: parseInt(document.getElementById('inspector_edit_est').value) || 15,
+        estimated_minutes: parsedEstMins,
         is_recurring: document.getElementById('inspector_edit_is_recurring') ? document.getElementById('inspector_edit_is_recurring').checked : false,
         recurrence_rule: document.getElementById('inspector_edit_recurrence_rule') ? document.getElementById('inspector_edit_recurrence_rule').value : 'daily',
         assigned_date: assignedParsed ? assignedParsed.dateStr : null,
@@ -303,7 +305,7 @@ function renderSubtaskCardHTML(node) {
                 <div class="flex items-center space-x-2">
                     <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleSubtaskCompletion(${node.id}, '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
                     <span class="font-bold text-xs ${isDone ? 'line-through text-slate-500' : 'text-white'}">${node.title}</span>
-                    ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${node.estimated_minutes || 15}m</span>` : ''}
+                    ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>` : ''}
                     <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
@@ -323,7 +325,7 @@ function openSubtaskCreationModal(parentId = null) {
 
     document.getElementById('subtask_parent_id').value = targetParentId;
     document.getElementById('modal_subtask_title').value = '';
-    document.getElementById('modal_subtask_est').value = '15';
+    document.getElementById('modal_subtask_est').value = '15m';
     document.getElementById('modal_subtask_status').value = 'To Do';
 
     const heading = document.getElementById('subtask_modal_heading');
@@ -355,11 +357,13 @@ async function saveSubtaskFromModal() {
         return;
     }
 
+    const estVal = document.getElementById('modal_subtask_est') ? document.getElementById('modal_subtask_est').value : '15m';
+
     const payload = {
         title: titleVal,
         parent_id: parseInt(parentId),
         status: document.getElementById('modal_subtask_status').value,
-        estimated_minutes: parseInt(document.getElementById('modal_subtask_est').value) || 15,
+        estimated_minutes: parseDurationToMinutes(estVal),
         category: currentTreeData ? currentTreeData.category : "work"
     };
 

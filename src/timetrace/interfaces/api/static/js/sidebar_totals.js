@@ -247,7 +247,7 @@ async function fetchTasks() {
                     const color = getTaskColor(t, idx);
                     const isOngoing = (t.status || '').toLowerCase() === 'ongoing';
                     const prioLabel = (t.priority || '-').toUpperCase();
-                    const estBadge = t.estimated_minutes ? `${t.estimated_minutes}m` : '15m';
+                    const estBadge = formatMinutesToDuration(t.estimated_minutes);
                     const hasAttachments = Boolean(t.attachments && t.attachments.trim());
                     const isRecurring = t.is_recurring === true;
 

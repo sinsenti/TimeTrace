@@ -69,10 +69,10 @@ function renderMatrixTable() {
         const logs = h.logs || {};
         return `
             <tr class="hover:bg-[#161824] transition">
-                <td class="py-3 px-3">
+                <td onclick="openEditHabitModal(${h.id})" class="py-3 px-3 cursor-pointer group hover:bg-[#1f2234] transition rounded-l-lg">
                     <div class="flex items-center justify-between">
                         <div>
-                            <span onclick="openEditHabitModal(${h.id})" class="font-bold text-sm text-white hover:text-emerald-400 cursor-pointer">${h.name}</span>
+                            <span class="font-bold text-sm text-white group-hover:text-emerald-400 transition">${h.name}</span>
                             <span class="block text-[10px] text-slate-400">${h.habit_type === 'numeric' ? `Target: ${h.target_value} ${h.unit}` : h.frequency}</span>
                         </div>
                     </div>
@@ -156,7 +156,7 @@ function renderRemindersList() {
     }
 
     container.innerHTML = allHabits.map(h => `
-        <div class="habit-card p-4 flex items-center justify-between hover:border-emerald-500 transition">
+        <div onclick="openEditHabitModal(${h.id})" class="habit-card p-4 flex items-center justify-between hover:border-emerald-500 cursor-pointer transition">
             <div class="flex items-center space-x-3">
                 <span class="w-3 h-3 rounded-full inline-block shrink-0" style="background-color: ${h.color || '#10b981'}"></span>
                 <div>
@@ -168,7 +168,7 @@ function renderRemindersList() {
                 <span class="bg-[#181a28] border border-[#262938] px-3 py-1 rounded-lg text-xs font-bold text-slate-300">
                     ⏰ ${h.reminder_time || '09:00 AM'}
                 </span>
-                <button onclick="openEditHabitModal(${h.id})" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
+                <button type="button" onclick="event.stopPropagation(); openEditHabitModal(${h.id})" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
             </div>
         </div>
     `).join('');
