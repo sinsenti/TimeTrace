@@ -29,8 +29,8 @@ class SessionService:
         duration = int((end_utc - start_utc).total_seconds())
         db_session = SessionModel(
             task_id=valid_task_id,
-            start_time=start_utc,
-            end_time=end_utc,
+            start_time=start_utc.replace(tzinfo=None),
+            end_time=end_utc.replace(tzinfo=None),
             duration_seconds=duration,
             tags=req.tags or "#general",
             notes=req.notes or "",
@@ -84,7 +84,7 @@ class SessionService:
         update_dict = req.model_dump(exclude_unset=True)
         for key, val in update_dict.items():
             if key in ("start_time", "end_time") and val is not None:
-                setattr(db_session, key, ensure_utc(val))
+                setattr(db_session, key, ensure_utc(val).replace(tzinfo=None))
             elif key == "task_id" and val is not None:
                 if self.db.get(Task, val):
                     db_session.task_id = val
@@ -144,8 +144,8 @@ class SessionService:
         duration = int((end_utc - start_utc).total_seconds())
         db_session = SessionModel(
             task_id=valid_task_id,
-            start_time=start_utc,
-            end_time=end_utc,
+            start_time=start_utc.replace(tzinfo=None),
+            end_time=end_utc.replace(tzinfo=None),
             duration_seconds=duration,
             tags=req.tags or "#general",
             notes=req.notes or "",

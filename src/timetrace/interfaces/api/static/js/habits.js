@@ -54,7 +54,6 @@ function generateMatrixDateHeaders() {
     matrixDates = [];
     const today = new Date();
     
-    // Shift target date by week offset (7 days per week)
     const baseDate = new Date(today);
     baseDate.setDate(today.getDate() + (currentWeekOffset * 7));
 
@@ -78,10 +77,8 @@ function generateMatrixDateHeaders() {
 
 async function loadHabitsData() {
     try {
-        const res = await fetch('/habits');
-        allHabits = await res.json();
+        allHabits = await api.get('/habits') || [];
 
-        // Default all habit IDs to selected if filter set is empty
         if (selectedInspectorHabitIds.size === 0) {
             allHabits.forEach(h => selectedInspectorHabitIds.add(h.id));
         }
@@ -191,20 +188,12 @@ async function toggleBooleanHabitLog(habitId, dateStr, currentStatus) {
     else if (currentStatus === 'failed') nextStatus = 'skipped';
     else if (currentStatus === 'skipped') nextStatus = 'erase';
 
-    await fetch(`/habits/${habitId}/log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date_str: dateStr, status: nextStatus })
-    });
+    await api.post(`/habits/${habitId}/log`, { date_str: dateStr, status: nextStatus });
     loadHabitsData();
 }
 
 async function incrementHabitVal(habitId, dateStr, delta) {
-    await fetch(`/habits/${habitId}/log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date_str: dateStr, delta_value: delta })
-    });
+    await api.post(`/habits/${habitId}/log`, { date_str: dateStr, delta_value: delta });
     loadHabitsData();
 }
 
@@ -212,11 +201,7 @@ async function setHabitDirectValue(habitId, dateStr, rawVal) {
     const val = parseFloat(rawVal);
     if (isNaN(val)) return;
 
-    await fetch(`/habits/${habitId}/log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date_str: dateStr, set_value: Math.max(0, val) })
-    });
+    await api.post(`/habits/${habitId}/log`, { date_str: dateStr, set_value: Math.max(0, val) });
     loadHabitsData();
 }
 
@@ -247,10 +232,6 @@ function renderRemindersList() {
         </div>
     `).join('');
 }
-
-/* ----------------------------------------------------
- * Habits Inspector & Multi-Select Completeness Engine
- * ---------------------------------------------------- */
 
 function renderHabitInspectorChips() {
     const container = document.getElementById('habit_inspector_chips');
@@ -382,7 +363,6 @@ async function renderSelectedHabitCharts() {
         `;
     }
 
-    // Render Doughnut Chart
     const ctxDoughnut = document.getElementById('chart_habit_doughnut').getContext('2d');
     if (habitCharts.doughnut) habitCharts.doughnut.destroy();
 
@@ -403,7 +383,6 @@ async function renderSelectedHabitCharts() {
         }
     });
 
-    // Render Bar Chart
     const sortedDates = Object.keys(dateAggregates).sort().slice(-30);
     const ctxBar = document.getElementById('chart_habit_bar').getContext('2d');
     if (habitCharts.bar) habitCharts.bar.destroy();
@@ -499,17 +478,9 @@ async function saveHabit() {
     if (!payload.name) return;
 
     if (id) {
-        await fetch(`/habits/${id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        await api.put(`/habits/${id}`, payload);
     } else {
-        await fetch('/habits', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
+        await api.post('/habits', payload);
     }
 
     closeHabitModal();
@@ -522,7 +493,7 @@ async function deleteHabit() {
 
     const confirmed = await showCustomConfirm("Delete Habit", "Are you sure you want to delete this habit and all its history?");
     if (confirmed) {
-        await fetch(`/habits/${id}`, { method: 'DELETE' });
+        await api.delete(`/habits/${id}`);
         closeHabitModal();
         loadHabitsData();
     }

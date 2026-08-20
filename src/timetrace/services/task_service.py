@@ -12,7 +12,6 @@ from timetrace.interfaces.api.utils import ensure_utc
 
 
 def parse_title_estimation(title: str) -> tuple[str, int | None]:
-    """Extracts estimation tags like [30min], [45m], [1h], [2d], [10d] from title string."""
     match = re.search(r"\[(\d+(?:\.\d+)?)\s*(min|mins|m|h|hours|hour|d|day|days)?\]", title, re.IGNORECASE)
     if match:
         val = float(match.group(1))
@@ -106,7 +105,6 @@ class TaskService:
         return db_task
 
     def schedule_recurrent_sessions_three_months(self, task: Task) -> list[SessionModel]:
-        """Schedules recurring sessions 3 months (90 days) ahead."""
         if not task.id or not task.is_recurring:
             return []
 
@@ -128,7 +126,7 @@ class TaskService:
         end_boundary = start_base + timedelta(days=90)
 
         while curr_date <= end_boundary:
-            curr_naive = curr_date.replace(tzinfo=None)
+            curr_naive = ensure_utc(curr_date).replace(tzinfo=None)
             existing = self.db.exec(
                 select(SessionModel).where(
                     SessionModel.task_id == task.id,
@@ -139,8 +137,8 @@ class TaskService:
             if not existing:
                 sess = SessionModel(
                     task_id=task.id,
-                    start_time=ensure_utc(curr_date),
-                    end_time=ensure_utc(curr_date + timedelta(minutes=duration_mins)),
+                    start_time=curr_naive,
+                    end_time=curr_naive + timedelta(minutes=duration_mins),
                     duration_seconds=duration_mins * 60,
                     tags=task.tags or "#general",
                     notes=f"Recurring: {task.title}",
@@ -172,34 +170,15 @@ class TaskService:
         assigned_date: str | None = None,
         due_before: str | None = None,
     ) -> list[Task]:
-        all_db_tasks = self.db.exec(select(Task)).all()
-        status_map = {
-            "in_progress": "To Do",
-            "in progress": "To Do",
-            "ip": "To Do",
-            "completed": "Done",
-            "done": "Done",
-            "c": "Done",
-            "ongoing": "Ongoing",
-            "og": "Ongoing"
-        }
-        needs_commit = False
-        for t in all_db_tasks:
-            if t.status in status_map:
-                t.status = status_map[t.status]
-                needs_commit = True
-            elif not t.status:
-                t.status = "To Do"
-                needs_commit = True
-
-        if needs_commit:
-            self.db.commit()
-
         query = select(Task)
 
         if status_filter and status_filter != "all":
             if status_filter == "hide_completed":
                 query = query.where(Task.status.notin_(["Done", "completed", "done"]))
+            elif status_filter.lower() in ("in_progress", "in progress", "ip"):
+                query = query.where(Task.status.in_(["To Do", "in_progress", "in progress", "ip"]))
+            elif status_filter.lower() in ("completed", "done", "c"):
+                query = query.where(Task.status.in_(["Done", "completed", "done", "c"]))
             else:
                 query = query.where(Task.status == status_filter)
 
@@ -211,7 +190,7 @@ class TaskService:
 
         if due_before:
             try:
-                due_dt = datetime.fromisoformat(due_before)
+                due_dt = datetime.fromisoformat(due_before).replace(tzinfo=None)
                 query = query.where(Task.due_date <= due_dt)
             except Exception:
                 pass
@@ -230,7 +209,7 @@ class TaskService:
                 is_ongoing = status_lower == "ongoing"
                 is_done = status_lower in ("completed", "done")
                 prio_val = priority_map.get(str(t.priority).lower(), 0)
-                
+
                 due_ts = ensure_utc(t.due_date).timestamp() if t.due_date else float('inf')
                 created_ts = t.created_at.timestamp() if t.created_at else 0
 
@@ -443,7 +422,7 @@ class TaskService:
 
         existing = self.db.exec(select(TaskReview).where(TaskReview.task_id == req.task_id)).first()
         if existing:
-            existing.difficulty = req.difficulty
+            existing.difficulty = req.difficulty or 3
             existing.what_went_well = req.what_went_well
             existing.blockers = req.blockers
             existing.key_takeaways = req.key_takeaways

@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import sys
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -17,7 +16,6 @@ from timetrace.db.session import init_db
 from timetrace.interfaces.api.routers import api_router
 from timetrace.interfaces.api.routers.web import router as web_router
 
-# Configure logging format
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("timetrace")
 
@@ -57,7 +55,6 @@ def create_daemon_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Domain Exception Handlers
     @app.exception_handler(EntityNotFoundError)
     async def entity_not_found_handler(request: Request, exc: EntityNotFoundError):
         return JSONResponse(status_code=404, content={"detail": str(exc)})
@@ -70,7 +67,6 @@ def create_daemon_app() -> FastAPI:
     async def validation_error_handler(request: Request, exc: ValidationError):
         return JSONResponse(status_code=400, content={"detail": str(exc)})
 
-    # 422 Validation Error Logger Handler
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
         try:
@@ -90,14 +86,8 @@ def create_daemon_app() -> FastAPI:
             content={"detail": jsonable_encoder(exc.errors())},
         )
 
-    # 1. Register Web HTML Page Routes
     app.include_router(web_router)
-
-    # 2. Register Clean Root REST API Routes (/timer/status, /tasks, etc.)
     app.include_router(api_router)
-
-    # 3. Fallback Route Mount for Cached Clients (/api/v1/timer/status, etc.)
-    app.include_router(api_router, prefix="/api/v1")
 
     @app.get("/")
     def root_redirect():

@@ -83,13 +83,14 @@ async function handleDeleteUnderCursor() {
             `Delete session "${label}"? Press Enter to confirm.`
         );
         if (confirmed) {
-            fetch(`/sessions/${s.id}`, { method: 'DELETE' })
-                .then(res => {
-                    if (res.ok && typeof calendar !== 'undefined' && calendar) {
-                        calendar.refetchEvents();
-                    }
-                })
-                .catch(() => {});
+            try {
+                await api.delete(`/sessions/${s.id}`);
+                if (typeof calendar !== 'undefined' && calendar) {
+                    calendar.refetchEvents();
+                }
+            } catch (err) {
+                console.error("Failed to delete session under cursor:", err);
+            }
         }
     }
 }

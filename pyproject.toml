@@ -24,6 +24,9 @@ dependencies = [
 [project.scripts]
 timetrace = "timetrace.main:app"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src/timetrace"]
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
