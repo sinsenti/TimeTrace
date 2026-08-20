@@ -23,6 +23,17 @@ target_metadata = SQLModel.metadata
 
 
 def get_url():
+    """Resolve the database URL, honouring an explicitly configured one first.
+
+    An explicit `sqlalchemy.url` (set programmatically via
+    `config.set_main_option(...)`, or with `alembic -x`/alembic.ini) must win, so a
+    caller that points Alembic at a scratch copy actually migrates that copy.
+    Returning `settings.database_url` unconditionally silently redirected every
+    migration back to the real database no matter what the caller asked for.
+    """
+    configured = config.get_main_option("sqlalchemy.url", None)
+    if configured:
+        return configured
     return settings.database_url
 
 

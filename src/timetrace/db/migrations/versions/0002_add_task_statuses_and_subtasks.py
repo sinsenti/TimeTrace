@@ -6,6 +6,7 @@ Create Date: 2026-08-14 17:30:00.000000
 
 """
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 import sqlmodel
@@ -46,14 +47,19 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime)
     )
 
+    # A literal datetime, not sa.func.now(): SQLAlchemy's SQLite DateTime binder
+    # rejects a SQL function object, which made `alembic upgrade head` die here on
+    # any fresh database. Naive UTC, matching how every other datetime is stored.
+    seeded_at = datetime.now(UTC).replace(tzinfo=None)
+
     op.bulk_insert(
         taskstatus_table,
         [
-            {'id': 1, 'name': 'To Do', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#2563eb', 'position': 0, 'created_at': sa.func.now()},
-            {'id': 2, 'name': 'Ongoing', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#d97706', 'position': 1, 'created_at': sa.func.now()},
-            {'id': 3, 'name': 'Scheduled', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': True, 'color': '#7c3aed', 'position': 2, 'created_at': sa.func.now()},
-            {'id': 4, 'name': 'Done', 'is_completed': True, 'is_hide_by_default': True, 'is_scheduled_trigger': False, 'color': '#059669', 'position': 3, 'created_at': sa.func.now()},
-            {'id': 5, 'name': 'Backlog', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#64748b', 'position': 4, 'created_at': sa.func.now()},
+            {'id': 1, 'name': 'To Do', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#2563eb', 'position': 0, 'created_at': seeded_at},
+            {'id': 2, 'name': 'Ongoing', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#d97706', 'position': 1, 'created_at': seeded_at},
+            {'id': 3, 'name': 'Scheduled', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': True, 'color': '#7c3aed', 'position': 2, 'created_at': seeded_at},
+            {'id': 4, 'name': 'Done', 'is_completed': True, 'is_hide_by_default': True, 'is_scheduled_trigger': False, 'color': '#059669', 'position': 3, 'created_at': seeded_at},
+            {'id': 5, 'name': 'Backlog', 'is_completed': False, 'is_hide_by_default': False, 'is_scheduled_trigger': False, 'color': '#64748b', 'position': 4, 'created_at': seeded_at},
         ]
     )
 
