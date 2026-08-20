@@ -10,7 +10,7 @@ class ActiveTimerState:
     def __init__(self):
         self.state_file = settings.db_file.parent / "active_timer.json"
         self.is_running: bool = False
-        self.task_id: int | None = None
+        self.task_id: str | None = None
         self.task_title: str | None = None
         self.start_time: datetime | None = None
         self.tags: str = ""
@@ -137,7 +137,7 @@ class ActiveTimerState:
 
     def start(
         self,
-        task_id: int | None = None,
+        task_id: str | None = None,
         task_title: str | None = None,
         tags: str = "",
         notes: str = "",

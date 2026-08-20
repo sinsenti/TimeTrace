@@ -33,7 +33,7 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
                         <span class="font-bold text-slate-200">${d.name} ${d.is_required ? '<span class="text-red-400">*</span>' : ''}</span>
                         <div class="flex items-center space-x-2">
                             <span id="score_label_${d.id}" class="font-mono ${isDismissed ? 'text-slate-500' : 'text-purple-400'} font-bold">${isDismissed ? 'Dismissed' : `${currentScore} / ${d.max_score}`}</span>
-                            <button type="button" onclick="toggleDismissRatingInput(${d.id}, ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
+                            <button type="button" onclick="toggleDismissRatingInput('${d.id}', ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
                         </div>
                     </div>
                     ${d.description ? `<p class="text-[10px] text-slate-400">${d.description}</p>` : ''}
@@ -87,7 +87,7 @@ function validateRequiredCustomRatings(targetType, targetId) {
 async function submitCustomRatings(targetType, targetId) {
     const cards = document.querySelectorAll(`[data-rating-def-id]`);
     for (let card of cards) {
-        const defId = parseInt(card.getAttribute('data-rating-def-id'));
+        const defId = card.getAttribute('data-rating-def-id');
         const input = card.querySelector('.custom-rating-input');
         if (input) {
             const isDismissed = input.disabled;
@@ -116,7 +116,7 @@ async function loadRatingDefinitionsList() {
         }
 
         container.innerHTML = allRatingDefinitions.map(d => `
-            <div onclick="openEditRatingDefModal(${d.id})" class="rev-card flex items-center justify-between hover:border-purple-500 cursor-pointer transition">
+            <div onclick="openEditRatingDefModal('${d.id}')" class="rev-card flex items-center justify-between hover:border-purple-500 cursor-pointer transition">
                 <div class="space-y-1">
                     <div class="flex items-center space-x-2">
                         <span class="font-bold text-sm text-white">${d.name}</span>

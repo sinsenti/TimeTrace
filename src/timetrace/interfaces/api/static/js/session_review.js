@@ -98,14 +98,14 @@ function filterSessionsReviewList() {
         const attachedTask = s.attachedTask;
 
         return `
-            <div onclick="openSessionReviewModal(${s.id})" class="rev-card hover:border-purple-500 cursor-pointer space-y-2 text-xs transition">
+            <div onclick="openSessionReviewModal('${s.id}')" class="rev-card hover:border-purple-500 cursor-pointer space-y-2 text-xs transition">
                 <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                     <div class="flex items-center space-x-2">
                         <span class="font-bold text-purple-400">${dateLabel} (${timeLabel})</span>
                         ${statusBadge}
                     </div>
                     <div class="flex items-center space-x-2">
-                        ${!s.is_reviewed && !s.is_exempt ? `<button onclick="quickDismissSessionReview(${s.id}, event)" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/80 transition">Dismiss</button>` : ''}
+                        ${!s.is_reviewed && !s.is_exempt ? `<button onclick="quickDismissSessionReview('${s.id}', event)" class="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/80 transition">Dismiss</button>` : ''}
                         <span class="font-mono font-bold text-slate-300">${durMins} mins</span>
                         <span class="px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 font-bold border border-purple-800">${s.tags || '#general'}</span>
                     </div>

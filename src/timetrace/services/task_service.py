@@ -54,7 +54,7 @@ class TaskService:
         self.db.refresh(st)
         return st
 
-    def update_status(self, status_id: int, req: TaskStatusUpdate) -> TaskStatus:
+    def update_status(self, status_id: str, req: TaskStatusUpdate) -> TaskStatus:
         st = self.db.get(TaskStatus, status_id)
         if not st:
             raise EntityNotFoundError("TaskStatus", status_id)
@@ -65,7 +65,7 @@ class TaskService:
         self.db.refresh(st)
         return st
 
-    def delete_status(self, status_id: int) -> None:
+    def delete_status(self, status_id: str) -> None:
         st = self.db.get(TaskStatus, status_id)
         if not st:
             raise EntityNotFoundError("TaskStatus", status_id)
@@ -247,7 +247,7 @@ class TaskService:
 
         return tasks
 
-    def update_task(self, task_id: int, req: TaskUpdate) -> Task:
+    def update_task(self, task_id: str, req: TaskUpdate) -> Task:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
@@ -307,7 +307,7 @@ class TaskService:
         task.assigned_date = next_date.strftime("%Y-%m-%d")
         task.status = "To Do"
 
-    def delete_task(self, task_id: int) -> None:
+    def delete_task(self, task_id: str) -> None:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
@@ -332,7 +332,7 @@ class TaskService:
         self.db.commit()
         return count
 
-    def get_task_tree(self, task_id: int) -> dict[str, Any]:
+    def get_task_tree(self, task_id: str) -> dict[str, Any]:
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
@@ -361,7 +361,7 @@ class TaskService:
 
         return build_node(task)
 
-    def get_task_statistics(self, task_id: int) -> dict[str, Any]:
+    def get_task_statistics(self, task_id: str) -> dict[str, Any]:
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
@@ -437,5 +437,5 @@ class TaskService:
             self.db.refresh(review)
             return review
 
-    def get_task_review(self, task_id: int) -> TaskReview | None:
+    def get_task_review(self, task_id: str) -> TaskReview | None:
         return self.db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()

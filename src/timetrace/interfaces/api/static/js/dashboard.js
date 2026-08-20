@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "#general";
 
                     const payload = {
-                        task_id: taskId ? parseInt(taskId) : null,
+                        task_id: taskId ? taskId : null,
                         start_time: startTime.toISOString(),
                         end_time: endTime.toISOString(),
                         tags: defaultTags,
@@ -181,7 +181,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     backgroundColor: card.getAttribute('data-task-color') || '#7c3aed',
                     duration: { minutes: estMins },
                     extendedProps: {
-                        taskId: rawId ? parseInt(rawId) : null,
+                        taskId: rawId ? rawId : null,
                         estimatedMinutes: estMins
                     }
                 };

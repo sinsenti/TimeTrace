@@ -279,7 +279,7 @@ async function fetchTasks() {
                                 </div>
                                 <div class="flex items-center space-x-1">
                                     <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
-                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal(${t.id});" class="bg-black/40 hover:bg-black/70 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
+                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/40 hover:bg-black/70 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
                                 </div>
                             </div>
                         </div>

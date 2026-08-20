@@ -24,12 +24,12 @@ def list_rating_definitions(
 
 
 @router.put("/rating-definitions/{def_id}", response_model=RatingDefinition)
-def update_rating_definition(def_id: int, req: RatingDefinitionUpdate, db: DBSession = Depends(get_session)):
+def update_rating_definition(def_id: str, req: RatingDefinitionUpdate, db: DBSession = Depends(get_session)):
     return RatingService(db).update_definition(def_id, req)
 
 
 @router.delete("/rating-definitions/{def_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_rating_definition(def_id: int, db: DBSession = Depends(get_session)):
+def delete_rating_definition(def_id: str, db: DBSession = Depends(get_session)):
     RatingService(db).delete_definition(def_id)
     return None
 

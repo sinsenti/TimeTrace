@@ -127,7 +127,7 @@ function renderMatrixTable() {
         const logs = h.logs || {};
         return `
             <tr class="hover:bg-[#161824] transition">
-                <td onclick="openEditHabitModal(${h.id})" class="py-3 px-3 cursor-pointer group hover:bg-[#1f2234] transition rounded-l-lg">
+                <td onclick="openEditHabitModal('${h.id}')" class="py-3 px-3 cursor-pointer group hover:bg-[#1f2234] transition rounded-l-lg">
                     <div class="flex items-center justify-between">
                         <div>
                             <span class="font-bold text-sm text-white group-hover:text-emerald-400 transition">${h.name}</span>
@@ -155,7 +155,7 @@ function renderMatrixCell(habit, dateStr, log) {
 
         return `
             <td class="py-2 px-1 text-center">
-                <button onclick="toggleBooleanHabitLog(${habit.id}, '${dateStr}', '${log.status}')" class="w-8 h-8 rounded-lg ${bgClass} font-bold text-sm hover:scale-110 transition flex items-center justify-center mx-auto">
+                <button onclick="toggleBooleanHabitLog('${habit.id}', '${dateStr}', '${log.status}')" class="w-8 h-8 rounded-lg ${bgClass} font-bold text-sm hover:scale-110 transition flex items-center justify-center mx-auto">
                     ${badgeContent}
                 </button>
             </td>
@@ -168,13 +168,13 @@ function renderMatrixCell(habit, dateStr, log) {
             <td class="py-2 px-1 text-center">
                 <div class="flex flex-col items-center space-y-1">
                     <div class="flex items-center space-x-1">
-                        <input type="number" step="any" min="0" value="${log.value}" onchange="setHabitDirectValue(${habit.id}, '${dateStr}', this.value)" class="w-12 py-0.5 px-1 rounded-lg ${bgClass} text-[11px] font-black text-center focus:outline-none focus:ring-1 focus:ring-emerald-400">
+                        <input type="number" step="any" min="0" value="${log.value}" onchange="setHabitDirectValue('${habit.id}', '${dateStr}', this.value)" class="w-12 py-0.5 px-1 rounded-lg ${bgClass} text-[11px] font-black text-center focus:outline-none focus:ring-1 focus:ring-emerald-400">
                         <span class="text-[9px] text-slate-500 font-bold">${habit.unit ? habit.unit.slice(0,3) : ''}</span>
                     </div>
                     <div class="flex space-x-1">
-                        <button onclick="incrementHabitVal(${habit.id}, '${dateStr}', -1)" class="w-4 h-4 bg-[#222536] hover:bg-red-900 text-slate-300 rounded text-[10px] flex items-center justify-center">-</button>
-                        <button onclick="incrementHabitVal(${habit.id}, '${dateStr}', 1)" class="w-4 h-4 bg-[#222536] hover:bg-emerald-900 text-slate-300 rounded text-[10px] flex items-center justify-center">+</button>
-                        <button onclick="incrementHabitVal(${habit.id}, '${dateStr}', 5)" class="w-5 h-4 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 font-bold rounded text-[9px] flex items-center justify-center">+5</button>
+                        <button onclick="incrementHabitVal('${habit.id}', '${dateStr}', -1)" class="w-4 h-4 bg-[#222536] hover:bg-red-900 text-slate-300 rounded text-[10px] flex items-center justify-center">-</button>
+                        <button onclick="incrementHabitVal('${habit.id}', '${dateStr}', 1)" class="w-4 h-4 bg-[#222536] hover:bg-emerald-900 text-slate-300 rounded text-[10px] flex items-center justify-center">+</button>
+                        <button onclick="incrementHabitVal('${habit.id}', '${dateStr}', 5)" class="w-5 h-4 bg-emerald-900/60 hover:bg-emerald-700 text-emerald-200 font-bold rounded text-[9px] flex items-center justify-center">+5</button>
                     </div>
                 </div>
             </td>
@@ -215,7 +215,7 @@ function renderRemindersList() {
     }
 
     container.innerHTML = allHabits.map(h => `
-        <div onclick="openEditHabitModal(${h.id})" class="habit-card p-4 flex items-center justify-between hover:border-emerald-500 cursor-pointer transition">
+        <div onclick="openEditHabitModal('${h.id}')" class="habit-card p-4 flex items-center justify-between hover:border-emerald-500 cursor-pointer transition">
             <div class="flex items-center space-x-3">
                 <span class="w-3 h-3 rounded-full inline-block shrink-0" style="background-color: ${h.color || '#10b981'}"></span>
                 <div>
@@ -227,7 +227,7 @@ function renderRemindersList() {
                 <span class="bg-[#181a28] border border-[#262938] px-3 py-1 rounded-lg text-xs font-bold text-slate-300">
                     Time: ${h.reminder_time || '09:00 AM'}
                 </span>
-                <button type="button" onclick="event.stopPropagation(); openEditHabitModal(${h.id})" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
+                <button type="button" onclick="event.stopPropagation(); openEditHabitModal('${h.id}')" class="text-xs text-slate-400 hover:text-white underline">Edit</button>
             </div>
         </div>
     `).join('');
@@ -248,7 +248,7 @@ function renderHabitInspectorChips() {
         const inactiveClass = "bg-[#181a28] text-slate-500 border-[var(--border-muted)] hover:text-slate-300";
 
         return `
-            <button onclick="toggleHabitInspectorSelection(${h.id})" class="px-2.5 py-1 rounded-lg text-xs border transition flex items-center space-x-1.5 ${isSelected ? activeClass : inactiveClass}">
+            <button onclick="toggleHabitInspectorSelection('${h.id}')" class="px-2.5 py-1 rounded-lg text-xs border transition flex items-center space-x-1.5 ${isSelected ? activeClass : inactiveClass}">
                 <span class="w-2 h-2 rounded-full inline-block" style="background-color: ${h.color || '#10b981'}"></span>
                 <span>${h.name}</span>
             </button>
@@ -323,7 +323,7 @@ async function renderSelectedHabitCharts() {
         const rateColor = rate >= 80 ? 'text-emerald-400' : (rate >= 50 ? 'text-amber-400' : 'text-red-400');
 
         return `
-            <tr onclick="openEditHabitModal(${h.id})" class="hover:bg-[#161824] cursor-pointer transition">
+            <tr onclick="openEditHabitModal('${h.id}')" class="hover:bg-[#161824] cursor-pointer transition">
                 <td class="py-2.5 px-3 font-bold text-white flex items-center space-x-2">
                     <span class="w-2.5 h-2.5 rounded-full shrink-0" style="background-color: ${h.color || '#10b981'}"></span>
                     <span>${h.name}</span>

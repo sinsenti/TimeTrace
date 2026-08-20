@@ -27,7 +27,7 @@ class HabitService:
         start_date_str = (today_dt - timedelta(days=365)).strftime("%Y-%m-%d")
         logs = self.db.exec(select(HabitLog).where(HabitLog.date_str >= start_date_str)).all()
 
-        log_map: dict[int, dict[str, Any]] = {}
+        log_map: dict[str, dict[str, Any]] = {}
         for log_entry in logs:
             if log_entry.habit_id not in log_map:
                 log_map[log_entry.habit_id] = {}
@@ -41,7 +41,7 @@ class HabitService:
 
         return result
 
-    def update_habit(self, habit_id: int, req: HabitUpdate) -> Habit:
+    def update_habit(self, habit_id: str, req: HabitUpdate) -> Habit:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -55,7 +55,7 @@ class HabitService:
         self.db.refresh(db_habit)
         return db_habit
 
-    def delete_habit(self, habit_id: int) -> None:
+    def delete_habit(self, habit_id: str) -> None:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -63,7 +63,7 @@ class HabitService:
         self.db.delete(db_habit)
         self.db.commit()
 
-    def log_progress(self, habit_id: int, req: HabitLogRequest) -> dict[str, Any] | HabitLog:
+    def log_progress(self, habit_id: str, req: HabitLogRequest) -> dict[str, Any] | HabitLog:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)
@@ -102,7 +102,7 @@ class HabitService:
         self.db.refresh(log)
         return log
 
-    def get_stats(self, habit_id: int) -> dict[str, Any]:
+    def get_stats(self, habit_id: str) -> dict[str, Any]:
         db_habit = self.db.get(Habit, habit_id)
         if not db_habit:
             raise EntityNotFoundError("Habit", habit_id)

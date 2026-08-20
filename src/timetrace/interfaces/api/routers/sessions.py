@@ -26,18 +26,18 @@ def list_sessions(
 
 
 @router.get("/sessions/{session_id}")
-def get_session_by_id(session_id: int, db: DBSession = Depends(get_session)):
+def get_session_by_id(session_id: str, db: DBSession = Depends(get_session)):
     return SessionService(db).get_session_by_id(session_id)
 
 
 @router.put("/sessions/{session_id}", response_model=SessionModel)
-def update_session(session_id: int, req: SessionUpdate, db: DBSession = Depends(get_session)):
+def update_session(session_id: str, req: SessionUpdate, db: DBSession = Depends(get_session)):
     return SessionService(db).update_session(session_id, req)
 
 
 @router.delete("/sessions/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_session(
-    session_id: int,
+    session_id: str,
     scope: str = Query("only_this", description="Deletion scope: 'only_this', 'following', 'all'"),
     db: DBSession = Depends(get_session)
 ):

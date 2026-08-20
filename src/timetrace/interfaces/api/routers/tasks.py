@@ -30,12 +30,12 @@ def create_task_status(req: TaskStatusCreate, db: DBSession = Depends(get_sessio
 
 
 @router.put("/statuses/{status_id}", response_model=TaskStatus)
-def update_task_status(status_id: int, req: TaskStatusUpdate, db: DBSession = Depends(get_session)):
+def update_task_status(status_id: str, req: TaskStatusUpdate, db: DBSession = Depends(get_session)):
     return TaskService(db).update_status(status_id, req)
 
 
 @router.delete("/statuses/{status_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task_status(status_id: int, db: DBSession = Depends(get_session)):
+def delete_task_status(status_id: str, db: DBSession = Depends(get_session)):
     TaskService(db).delete_status(status_id)
     return None
 
@@ -78,28 +78,28 @@ def list_tasks(
 # ============================================================
 
 @router.get("/{task_id}", response_model=Task)
-def get_task_by_id(task_id: int, db: DBSession = Depends(get_session)):
+def get_task_by_id(task_id: str, db: DBSession = Depends(get_session)):
     stats = TaskService(db).get_task_statistics(task_id)
     return stats["task"]
 
 
 @router.get("/{task_id}/tree")
-def get_task_tree(task_id: int, db: DBSession = Depends(get_session)):
+def get_task_tree(task_id: str, db: DBSession = Depends(get_session)):
     return TaskService(db).get_task_tree(task_id)
 
 
 @router.get("/{task_id}/stats")
-def get_task_statistics(task_id: int, db: DBSession = Depends(get_session)):
+def get_task_statistics(task_id: str, db: DBSession = Depends(get_session)):
     return TaskService(db).get_task_statistics(task_id)
 
 
 @router.put("/{task_id}", response_model=Task)
-def update_task(task_id: int, task_data: TaskUpdate, db: DBSession = Depends(get_session)):
+def update_task(task_id: str, task_data: TaskUpdate, db: DBSession = Depends(get_session)):
     return TaskService(db).update_task(task_id, task_data)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_task(task_id: int, db: DBSession = Depends(get_session)):
+def delete_task(task_id: str, db: DBSession = Depends(get_session)):
     TaskService(db).delete_task(task_id)
     return None
 
@@ -114,5 +114,5 @@ def create_or_update_task_review(req: TaskReviewCreate, db: DBSession = Depends(
 
 
 @task_reviews_router.get("/{task_id}")
-def get_task_review(task_id: int, db: DBSession = Depends(get_session)):
+def get_task_review(task_id: str, db: DBSession = Depends(get_session)):
     return TaskService(db).get_task_review(task_id)

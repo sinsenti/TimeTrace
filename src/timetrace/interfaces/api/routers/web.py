@@ -34,7 +34,7 @@ def get_tasks_kanban_page(request: Request):
 
 @router.get("/task-inspector/{task_id}")
 @router.get("/tasks-detail/{task_id}")
-def get_single_task_detail_page(task_id: int, request: Request):
+def get_single_task_detail_page(task_id: str, request: Request):
     return templates.TemplateResponse(
         request=request,
         name="task_detail.html",

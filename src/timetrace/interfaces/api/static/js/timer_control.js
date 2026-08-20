@@ -154,7 +154,7 @@ async function toggleTimer() {
         const taskId = select ? select.value : null;
         const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
         await api.post('/timer/start', {
-            task_id: taskId ? parseInt(taskId) : null,
+            task_id: taskId ? taskId : null,
             tags: settings.defaultTag || "#general"
         });
     }

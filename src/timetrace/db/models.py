@@ -1,3 +1,4 @@
+import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
@@ -8,8 +9,13 @@ def utc_now() -> datetime:
     return datetime.now(UTC)
 
 
+def generate_uuid7() -> str:
+    """Time-ordered ID: sorts chronologically, safe to generate offline on any client."""
+    return str(uuid.uuid7())
+
+
 class TaskStatus(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
     name: str = Field(unique=True, index=True)
     is_completed: bool = Field(default=False)
     is_hide_by_default: bool = Field(default=False)
@@ -22,14 +28,14 @@ class TaskStatus(SQLModel, table=True):
 
 
 class Task(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
     title: str
     description: str | None = None
     priority: str = Field(default="-")  # "-", "low", "medium", "high"
     estimated_minutes: int | None = Field(default=15)
     status: str = Field(default="To Do")
-    status_id: int | None = Field(default=None, foreign_key="taskstatus.id")
-    parent_id: int | None = Field(default=None, foreign_key="task.id")
+    status_id: str | None = Field(default=None, foreign_key="taskstatus.id")
+    parent_id: str | None = Field(default=None, foreign_key="task.id")
     category: str = Field(default="work")
     color: str = Field(default="auto")
     tags: str = Field(default="")
@@ -59,8 +65,8 @@ class Task(SQLModel, table=True):
 
 
 class Session(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    task_id: int | None = Field(default=None, foreign_key="task.id")
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    task_id: str | None = Field(default=None, foreign_key="task.id")
     start_time: datetime
     end_time: datetime | None = None
     duration_seconds: int | None = None
@@ -68,12 +74,18 @@ class Session(SQLModel, table=True):
     notes: str | None = None
     review_skipped: bool = Field(default=False)
 
+    # External calendar sync (Google/Outlook)
+    timezone: str = Field(default="UTC")
+    external_sync_id: str | None = Field(default=None, index=True)
+    external_provider: str | None = Field(default=None)
+    extended_properties_json: str = Field(default="{}")
+
     task: Optional[Task] = Relationship(back_populates="sessions")
 
 
 class TaskReview(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    task_id: int = Field(foreign_key="task.id", unique=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    task_id: str = Field(foreign_key="task.id", unique=True)
     difficulty: int = Field(default=3)
     what_went_well: str | None = None
     blockers: str | None = None
@@ -84,7 +96,7 @@ class TaskReview(SQLModel, table=True):
 
 
 class DayReview(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
     date_str: str = Field(index=True, unique=True)
     rating: int = Field(default=3)
     highlights: str | None = None
@@ -95,7 +107,7 @@ class DayReview(SQLModel, table=True):
 
 
 class RatingDefinition(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
     name: str
     target_type: str = Field(default="session")
     min_score: int = Field(default=1)
@@ -106,8 +118,8 @@ class RatingDefinition(SQLModel, table=True):
 
 
 class RatingEntry(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    rating_definition_id: int = Field(foreign_key="ratingdefinition.id")
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    rating_definition_id: str = Field(foreign_key="ratingdefinition.id")
     target_type: str = Field(index=True)
     target_id: str = Field(index=True)
     score: int | None = Field(default=0, nullable=True)
@@ -117,7 +129,7 @@ class RatingEntry(SQLModel, table=True):
 
 
 class Habit(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
     name: str
     habit_type: str = Field(default="boolean")
     target_value: float = Field(default=1.0)
@@ -134,11 +146,21 @@ class Habit(SQLModel, table=True):
 
 
 class HabitLog(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    habit_id: int = Field(foreign_key="habit.id")
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    habit_id: str = Field(foreign_key="habit.id")
     date_str: str = Field(index=True)
     status: str = Field(default="completed")
     value: float = Field(default=0.0)
     notes: str | None = None
 
     habit: Optional[Habit] = Relationship(back_populates="logs")
+
+
+class ExternalSyncState(SQLModel, table=True):
+    """Per-account sync cursor for external calendar providers (Google/Outlook)."""
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    provider: str = Field(index=True)
+    account_id: str = Field(index=True)
+    sync_token: str | None = Field(default=None)
+    last_synced_at: datetime = Field(default_factory=utc_now)

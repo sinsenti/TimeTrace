@@ -27,8 +27,8 @@ class TaskCreate(BaseModel):
     description: str | None = None
     priority: str = "-"
     status: str = "To Do"
-    status_id: int | None = None
-    parent_id: int | None = None
+    status_id: str | None = None
+    parent_id: str | None = None
     category: str = "work"
     color: str = "auto"
     tags: str = ""
@@ -47,8 +47,8 @@ class TaskUpdate(BaseModel):
     description: str | None = None
     priority: str | None = None
     status: str | None = None
-    status_id: int | None = None
-    parent_id: int | None = None
+    status_id: str | None = None
+    parent_id: str | None = None
     category: str | None = None
     color: str | None = None
     tags: str | None = None
@@ -63,7 +63,7 @@ class TaskUpdate(BaseModel):
 
 
 class TaskTreeResponse(BaseModel):
-    id: int
+    id: str
     title: str
     description: str | None = None
     priority: str
@@ -77,13 +77,13 @@ class TaskTreeResponse(BaseModel):
     attachments: str | None
     is_recurring: bool
     recurrence_rule: str | None
-    parent_id: int | None
+    parent_id: str | None
     created_at: str
     subtasks: list[Any] = []
 
 
 class SessionCreate(BaseModel):
-    task_id: int | None = None
+    task_id: str | None = None
     start_time: datetime
     end_time: datetime
     tags: str = "#general"
@@ -96,12 +96,12 @@ class SessionUpdate(BaseModel):
     end_time: datetime | None = None
     tags: str | None = None
     notes: str | None = None
-    task_id: int | None = None
+    task_id: str | None = None
     review_skipped: bool | None = None
 
 
 class TimerStartRequest(BaseModel):
-    task_id: int | None = None
+    task_id: str | None = None
     tags: str = ""
     notes: str = ""
     mode: str = "flowtime"
@@ -123,7 +123,7 @@ class DayReviewCreate(BaseModel):
 
 
 class TaskReviewCreate(BaseModel):
-    task_id: int
+    task_id: str
     difficulty: int | None = 3
     what_went_well: str | None = ""
     blockers: str | None = ""
@@ -149,7 +149,7 @@ class RatingDefinitionUpdate(BaseModel):
 
 
 class RatingEntryCreate(BaseModel):
-    rating_definition_id: int
+    rating_definition_id: str
     target_type: str
     target_id: str
     score: int | None = 0
@@ -158,7 +158,7 @@ class RatingEntryCreate(BaseModel):
 
 
 class RetroSessionCreate(BaseModel):
-    task_id: int | None = None
+    task_id: str | None = None
     start_time: datetime
     end_time: datetime
     tags: str = ""
@@ -166,7 +166,7 @@ class RetroSessionCreate(BaseModel):
 
 
 class ReflectionCreate(BaseModel):
-    session_id: int
+    session_id: str
     energy_level: int | None = 3
     obstacles: str | None = ""
     habits_completed: list[str] = []

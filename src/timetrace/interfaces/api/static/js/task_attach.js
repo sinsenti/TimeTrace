@@ -28,7 +28,7 @@ function renderTaskSuggestions(query) {
 
     activeTaskSuggestionIndex = 0;
     dropdown.innerHTML = filtered.map((t, idx) => `
-        <div onclick="attachTaskById(${t.id})" class="task-suggestion-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
+        <div onclick="attachTaskById('${t.id}')" class="task-suggestion-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
             <div>
                 <span class="font-bold text-white block">${t.title}</span>
                 <span class="text-[10px] text-slate-400 truncate block">${t.description || ''}</span>
@@ -51,7 +51,7 @@ function highlightTaskSuggestionItem(items) {
 }
 
 function attachTaskById(taskId, preventFocus = false) {
-    const t = typeof allTasksMap !== 'undefined' ? (allTasksMap[taskId] || allTasksMap[parseInt(taskId)]) : null;
+    const t = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
     if (!t) return;
     attachedTask = t;
 

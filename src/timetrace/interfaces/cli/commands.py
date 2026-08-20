@@ -92,7 +92,7 @@ def toggle_idle_cli():
 def start_timer(
     tags: str = typer.Option("", "--tags", "-t", help="Tags for session (e.g. '#programming')"),
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
-    task_id: int | None = typer.Option(None, "--task", "-k", help="Task ID to attach"),
+    task_id: str | None = typer.Option(None, "--task", "-k", help="Task ID to attach"),
     pomo: int | None = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes"),
 ):
     """Start active session timer."""
@@ -266,7 +266,7 @@ def add_task(
     category: str = typer.Option("work", "--category", "-c", help="Category (work, family, personal, study)"),
     tags: str = typer.Option("", "--tags", "-t", help="Default tags for task"),
     est: int = typer.Option(15, "--est", "-e", help="Estimated duration in minutes"),
-    parent_id: int | None = typer.Option(None, "--parent", "-parent", help="Parent task ID for subtasks"),
+    parent_id: str | None = typer.Option(None, "--parent", "-parent", help="Parent task ID for subtasks"),
     status_name: str = typer.Option("To Do", "--status", "-s", help="Initial status name"),
 ):
     """Create a new task slot or subtask."""
@@ -293,7 +293,7 @@ def add_task(
 
 
 @cli_app.command("task-tree")
-def view_task_tree_cli(task_id: int = typer.Argument(..., help="ID of the root task to inspect")):
+def view_task_tree_cli(task_id: str = typer.Argument(..., help="ID of the root task to inspect")):
     """View nested subtasks hierarchy tree for a parent task."""
     ensure_daemon_running()
     with get_client() as client:
@@ -319,7 +319,7 @@ def view_task_tree_cli(task_id: int = typer.Argument(..., help="ID of the root t
 
 
 @cli_app.command("task-delete")
-def delete_task_cli(task_id: int = typer.Argument(..., help="ID of the task to delete")):
+def delete_task_cli(task_id: str = typer.Argument(..., help="ID of the task to delete")):
     """Delete a task slot by ID."""
     ensure_daemon_running()
     with get_client() as client:

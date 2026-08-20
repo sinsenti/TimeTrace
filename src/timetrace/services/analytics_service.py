@@ -137,7 +137,7 @@ class AnalyticsService:
         elif mode == "habits":
             habits = self.db.exec(select(Habit)).all()
             logs = self.db.exec(select(HabitLog)).all()
-            log_map: dict[int, list[HabitLog]] = {}
+            log_map: dict[str, list[HabitLog]] = {}
             for l in logs:
                 log_map.setdefault(l.habit_id, []).append(l)
 

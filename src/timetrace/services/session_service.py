@@ -63,7 +63,7 @@ class SessionService:
             result.append(s_dict)
         return result
 
-    def get_session_by_id(self, session_id: int) -> dict[str, Any]:
+    def get_session_by_id(self, session_id: str) -> dict[str, Any]:
         s = self.db.get(SessionModel, session_id)
         if not s:
             raise EntityNotFoundError("Session", session_id)
@@ -76,7 +76,7 @@ class SessionService:
 
         return s_dict
 
-    def update_session(self, session_id: int, req: SessionUpdate) -> SessionModel:
+    def update_session(self, session_id: str, req: SessionUpdate) -> SessionModel:
         db_session = self.db.get(SessionModel, session_id)
         if not db_session:
             raise EntityNotFoundError("Session", session_id)
@@ -105,7 +105,7 @@ class SessionService:
         db_session.end_time = ensure_utc(db_session.end_time)
         return db_session
 
-    def delete_session(self, session_id: int, scope: str = "only_this") -> None:
+    def delete_session(self, session_id: str, scope: str = "only_this") -> None:
         db_session = self.db.get(SessionModel, session_id)
         if not db_session:
             raise EntityNotFoundError("Session", session_id)

@@ -238,7 +238,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
             if (typeof attachTaskById === 'function') {
                 attachTaskById(taskId, true);
             }
-            const attachedTaskObj = typeof allTasksMap !== 'undefined' ? (allTasksMap[taskId] || allTasksMap[parseInt(taskId)]) : null;
+            const attachedTaskObj = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
             if (!attachedTaskObj || !attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
                 if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
             }
@@ -302,7 +302,7 @@ async function saveSessionFromModal() {
         }
 
         const payload = {
-            task_id: taskIdVal ? parseInt(taskIdVal) : null,
+            task_id: taskIdVal ? taskIdVal : null,
             start_time: startDt.toISOString(),
             end_time: endDt.toISOString(),
             tags: tagsVal,
@@ -339,7 +339,7 @@ async function startTimerFromModal() {
     const notesVal = document.getElementById('session_modal_notes').value;
 
     await api.post('/timer/start', {
-        task_id: taskIdVal ? parseInt(taskIdVal) : null,
+        task_id: taskIdVal ? taskIdVal : null,
         tags: tagsVal,
         notes: notesVal || ""
     });

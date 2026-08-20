@@ -21,21 +21,21 @@ def list_habits(db: DBSession = Depends(get_session)):
 
 
 @router.put("/{habit_id}", response_model=Habit)
-def update_habit(habit_id: int, req: HabitUpdate, db: DBSession = Depends(get_session)):
+def update_habit(habit_id: str, req: HabitUpdate, db: DBSession = Depends(get_session)):
     return HabitService(db).update_habit(habit_id, req)
 
 
 @router.delete("/{habit_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_habit(habit_id: int, db: DBSession = Depends(get_session)):
+def delete_habit(habit_id: str, db: DBSession = Depends(get_session)):
     HabitService(db).delete_habit(habit_id)
     return None
 
 
 @router.post("/{habit_id}/log")
-def log_habit_progress(habit_id: int, req: HabitLogRequest, db: DBSession = Depends(get_session)):
+def log_habit_progress(habit_id: str, req: HabitLogRequest, db: DBSession = Depends(get_session)):
     return HabitService(db).log_progress(habit_id, req)
 
 
 @router.get("/{habit_id}/stats")
-def get_habit_stats(habit_id: int, db: DBSession = Depends(get_session)):
+def get_habit_stats(habit_id: str, db: DBSession = Depends(get_session)):
     return HabitService(db).get_stats(habit_id)

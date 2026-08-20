@@ -303,14 +303,14 @@ function renderSubtaskCardHTML(node) {
         <div class="subtask-node bg-[#0f1016] p-3 rounded-lg border border-[var(--border-muted)] space-y-2">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-2">
-                    <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleSubtaskCompletion(${node.id}, '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
+                    <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleSubtaskCompletion('${node.id}', '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
                     <span class="font-bold text-xs ${isDone ? 'line-through text-slate-500' : 'text-white'}">${node.title}</span>
                     ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>` : ''}
                     <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button type="button" onclick="openSubtaskCreationModal(${node.id})" class="text-purple-400 hover:text-purple-300 font-bold">+ Subtask</button>
-                    <button type="button" onclick="deleteSubtaskNode(${node.id})" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
+                    <button type="button" onclick="openSubtaskCreationModal('${node.id}')" class="text-purple-400 hover:text-purple-300 font-bold">+ Subtask</button>
+                    <button type="button" onclick="deleteSubtaskNode('${node.id}')" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
                 </div>
             </div>
 
@@ -321,7 +321,7 @@ function renderSubtaskCardHTML(node) {
 
 function openSubtaskCreationModal(parentId = null) {
     const mainTaskId = document.getElementById('inspector_task_id').value;
-    const targetParentId = parentId ? parentId : parseInt(mainTaskId);
+    const targetParentId = parentId ? parentId : mainTaskId;
 
     document.getElementById('subtask_parent_id').value = targetParentId;
     document.getElementById('modal_subtask_title').value = '';
@@ -361,7 +361,7 @@ async function saveSubtaskFromModal() {
 
     const payload = {
         title: titleVal,
-        parent_id: parseInt(parentId),
+        parent_id: parentId,
         status: document.getElementById('modal_subtask_status').value,
         estimated_minutes: parseDurationToMinutes(estVal),
         category: currentTreeData ? currentTreeData.category : "work"

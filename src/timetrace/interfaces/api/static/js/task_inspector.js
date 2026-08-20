@@ -21,7 +21,7 @@ function renderTaskQuickChipsBar() {
     bar.innerHTML = allTasksList.map((t, idx) => {
         const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
         return `
-            <button onclick="selectTaskInspectorById(${t.id})" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${color};">
+            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${color};">
                 <span>${t.title}</span>
                 <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${t.status}</span>
             </button>
@@ -91,7 +91,7 @@ function renderTaskInspectorSuggestions(query) {
 
     activeTaskInspectorSearchIdx = 0;
     dropdown.innerHTML = filtered.map((t, idx) => `
-        <div onclick="selectTaskInspectorById(${t.id})" class="task-inspect-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
+        <div onclick="selectTaskInspectorById('${t.id}')" class="task-inspect-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
             <div>
                 <span class="font-bold text-white block">${t.title}</span>
                 <span class="text-[10px] text-slate-400 block">${t.description || 'No description'}</span>
@@ -181,7 +181,7 @@ async function loadTaskInspectorStats(taskId) {
                     const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
                     const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
                     return `
-                        <div onclick="openSessionReviewModal(${s.id})" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
+                        <div onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
                             <div class="flex justify-between items-center font-mono">
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>

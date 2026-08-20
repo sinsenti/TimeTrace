@@ -24,7 +24,7 @@ class RatingService:
             query = query.where(RatingDefinition.target_type == target_type)
         return self.db.exec(query).all()
 
-    def update_definition(self, def_id: int, req: RatingDefinitionUpdate) -> RatingDefinition:
+    def update_definition(self, def_id: str, req: RatingDefinitionUpdate) -> RatingDefinition:
         db_def = self.db.get(RatingDefinition, def_id)
         if not db_def:
             raise EntityNotFoundError("RatingDefinition", def_id)
@@ -38,7 +38,7 @@ class RatingService:
         self.db.refresh(db_def)
         return db_def
 
-    def delete_definition(self, def_id: int) -> None:
+    def delete_definition(self, def_id: str) -> None:
         db_def = self.db.get(RatingDefinition, def_id)
         if not db_def:
             raise EntityNotFoundError("RatingDefinition", def_id)

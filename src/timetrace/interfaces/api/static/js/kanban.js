@@ -101,7 +101,7 @@ function renderKanbanCard(task) {
                 </div>
                 <div class="flex items-center space-x-1.5">
                     <span class="font-bold text-slate-400 bg-black/30 px-1.5 py-0.5 rounded">${prioLabel}</span>
-                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal(${task.id});" class="bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/80 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
+                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${task.id}');" class="bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/80 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
                 </div>
             </div>
         </div>
@@ -205,28 +205,28 @@ function renderStatusManagerRows() {
     list.innerHTML = allStatuses.map((st) => `
         <div data-status-id="${st.id}" class="status-manager-row bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg flex items-center justify-between text-xs space-x-2 cursor-grab hover:border-purple-500 transition">
             <div class="flex items-center space-x-2 shrink-0">
-                <input type="text" value="${st.name}" onchange="updateStatusField(${st.id}, 'name', this.value)" class="bg-[#181a28] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white font-bold w-32">
+                <input type="text" value="${st.name}" onchange="updateStatusField('${st.id}', 'name', this.value)" class="bg-[#181a28] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-white font-bold w-32">
             </div>
 
             <div class="flex items-center space-x-2">
-                <input type="color" value="${st.color}" onchange="updateStatusField(${st.id}, 'color', this.value)" class="w-7 h-7 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
+                <input type="color" value="${st.color}" onchange="updateStatusField('${st.id}', 'color', this.value)" class="w-7 h-7 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
                 
                 <label class="flex items-center space-x-1 cursor-pointer">
-                    <input type="checkbox" ${st.is_hide_by_default ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_hide_by_default', this.checked)" class="accent-amber-500 rounded">
+                    <input type="checkbox" ${st.is_hide_by_default ? 'checked' : ''} onchange="updateStatusField('${st.id}', 'is_hide_by_default', this.checked)" class="accent-amber-500 rounded">
                     <span class="text-[10px] text-amber-400 font-bold">Hide</span>
                 </label>
 
                 <label class="flex items-center space-x-1 cursor-pointer">
-                    <input type="checkbox" ${st.is_completed ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_completed', this.checked)" class="accent-emerald-600 rounded">
+                    <input type="checkbox" ${st.is_completed ? 'checked' : ''} onchange="updateStatusField('${st.id}', 'is_completed', this.checked)" class="accent-emerald-600 rounded">
                     <span class="text-[10px] text-slate-400">Done</span>
                 </label>
 
                 <label class="flex items-center space-x-1 cursor-pointer">
-                    <input type="checkbox" ${st.is_scheduled_trigger ? 'checked' : ''} onchange="updateStatusField(${st.id}, 'is_scheduled_trigger', this.checked)" class="accent-purple-600 rounded">
+                    <input type="checkbox" ${st.is_scheduled_trigger ? 'checked' : ''} onchange="updateStatusField('${st.id}', 'is_scheduled_trigger', this.checked)" class="accent-purple-600 rounded">
                     <span class="text-[10px] text-slate-400">Calendar</span>
                 </label>
 
-                <button type="button" onclick="deleteStatusRow(${st.id})" class="text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5 text-sm">&times;</button>
+                <button type="button" onclick="deleteStatusRow('${st.id}')" class="text-red-400 hover:text-red-300 font-bold px-1.5 py-0.5 text-sm">&times;</button>
             </div>
         </div>
     `).join('');
