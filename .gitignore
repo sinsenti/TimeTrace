@@ -4,8 +4,9 @@ __pycache__/
 *$py.class
 
 copy.py
-log.md
-todo.md
+# log.md
+# todo.md
+chat.pdf
 
 # C extensions
 *.so
@@ -220,3 +221,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Claude Code: agents/skills/settings.json are versioned and shared;
+# only per-machine overrides (plugin toggles, local perms) stay untracked.
+.claude/settings.local.json
