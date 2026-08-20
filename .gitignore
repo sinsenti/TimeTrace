@@ -225,3 +225,6 @@ __marimo__/
 # Claude Code: agents/skills/settings.json are versioned and shared;
 # only per-machine overrides (plugin toggles, local perms) stay untracked.
 .claude/settings.local.json
+
+# Per-worktree scratch DB + port, written by .claude/scripts/tt-worktree.sh
+.tt-env
