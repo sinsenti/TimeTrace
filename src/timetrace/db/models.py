@@ -33,8 +33,8 @@ class Task(SQLModel, table=True):
     category: str = Field(default="work")
     color: str = Field(default="auto")
     tags: str = Field(default="")
-    
-    # Optional Fields (Default is_recurring is False)
+
+    # Optional Fields
     due_date: datetime | None = Field(default=None)
     assigned_date: str | None = Field(default=None)  # YYYY-MM-DD
     attachments: str | None = Field(default="")
@@ -47,17 +47,14 @@ class Task(SQLModel, table=True):
     # Relationships
     status_rel: Optional[TaskStatus] = Relationship(back_populates="tasks")
     parent: Optional["Task"] = Relationship(
-        back_populates="subtasks",
-        sa_relationship_kwargs={"remote_side": "Task.id"}
+        back_populates="subtasks", sa_relationship_kwargs={"remote_side": "Task.id"}
     )
     subtasks: list["Task"] = Relationship(
-        back_populates="parent",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"}
+        back_populates="parent", sa_relationship_kwargs={"cascade": "all, delete-orphan"}
     )
     sessions: list["Session"] = Relationship(back_populates="task")
     review: Optional["TaskReview"] = Relationship(
-        back_populates="task",
-        sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"}
+        back_populates="task", sa_relationship_kwargs={"uselist": False, "cascade": "all, delete-orphan"}
     )
 
 
@@ -71,7 +68,7 @@ class Session(SQLModel, table=True):
     notes: str | None = None
     review_skipped: bool = Field(default=False)
 
-    task: Task | None = Relationship(back_populates="sessions")
+    task: Optional[Task] = Relationship(back_populates="sessions")
 
 
 class TaskReview(SQLModel, table=True):
@@ -83,7 +80,7 @@ class TaskReview(SQLModel, table=True):
     key_takeaways: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
 
-    task: Task | None = Relationship(back_populates="review")
+    task: Optional[Task] = Relationship(back_populates="review")
 
 
 class DayReview(SQLModel, table=True):
@@ -144,4 +141,4 @@ class HabitLog(SQLModel, table=True):
     value: float = Field(default=0.0)
     notes: str | None = None
 
-    habit: Habit | None = Relationship(back_populates="logs")
+    habit: Optional[Habit] = Relationship(back_populates="logs")
