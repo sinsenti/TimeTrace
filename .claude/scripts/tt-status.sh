@@ -17,7 +17,10 @@ printf '%s TimeTrace %s%s\n' "$BOLD" "$(date '+%Y-%m-%d %H:%M:%S')" "$NC"
 hr
 
 # ---------- worktrees ----------
-printf '%s%-26s %-24s %-6s %-7s %s%s\n' "$BOLD" WORKTREE BRANCH PORT STATE "vs $BASE_BRANCH" "$NC"
+# Colour codes are counted by printf's width specifier, so every coloured field
+# is padded as a plain string first and the colour applied around the result.
+printf '%s%-26s %-24s %-6s %-7s %-8s %s%s\n' \
+  "$BOLD" WORKTREE BRANCH PORT STATE "vs $BASE_BRANCH" "" "$NC"
 
 git -C "$MAIN_REPO" worktree list --porcelain 2>/dev/null \
 | awk '/^worktree /{w=$2} /^branch /{print w"\t"$2}' \
@@ -33,17 +36,20 @@ git -C "$MAIN_REPO" worktree list --porcelain 2>/dev/null \
       state="dirty"; scolor="$YELLOW"
     fi
 
-    delta="–"
+    delta="–"; dcolor=""
     if [[ "$br" != "$BASE_BRANCH" ]] && git -C "$wt" rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
       ahead="$(git -C "$wt" rev-list --count "${BASE_BRANCH}..HEAD" 2>/dev/null || echo 0)"
       behind="$(git -C "$wt" rev-list --count "HEAD..${BASE_BRANCH}" 2>/dev/null || echo 0)"
       delta="+${ahead}/-${behind}"
-      [[ "$ahead" != "0" ]] && delta="${CYAN}${delta}${NC}"
+      [[ "$ahead" != "0" ]] && dcolor="$CYAN"
     fi
 
-    name="$(basename "$wt")"
-    (( is_main )) && name="${name} ${RED}(real)${NC}"
-    printf '%-26b %-24s %-6s %b%-7s%b %b\n' "$name" "$br" "$port" "$scolor" "$state" "$NC" "$delta"
+    flag=""; (( is_main )) && flag="real data"
+    printf '%-26s %-24s %-6s %b%-7s%b %b%-8s%b %b%s%b\n' \
+      "$(basename "$wt")" "$br" "$port" \
+      "$scolor" "$state" "$NC" \
+      "$dcolor" "$delta" "$NC" \
+      "$RED" "$flag" "$NC"
   done
 
 hr
@@ -65,14 +71,26 @@ done
 hr
 
 # ---------- open reviews ----------
-printf '%sTUICR REVIEW SESSIONS%s\n' "$BOLD" "$NC"
+printf '%sTUICR REVIEWS%s  %s(this repo)%s\n' "$BOLD" "$NC" "$DIM" "$NC"
 if command -v tuicr >/dev/null 2>&1; then
-  out="$(tuicr review list --all 2>/dev/null)"
-  if [[ -n "$out" && "$out" != "[]" ]]; then
-    printf '%s\n' "$out" | head -20
-  else
-    printf '  %snone%s\n' "$DIM" "$NC"
-  fi
+  tuicr review list --repo "$MAIN_REPO" 2>/dev/null \
+  | python3 -c '
+import json, sys
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    print("  (could not read tuicr output)"); raise SystemExit
+if not rows:
+    print("  none"); raise SystemExit
+for r in rows[:6]:
+    slug = r.get("slug", "?")
+    if slug.count("/") > 1:            # trim the owner/repo prefix, keep the useful tail
+        slug = slug.split("/", 1)[1]
+    n, done = r.get("comment_count", 0), r.get("reviewed_count", 0)
+    mark = " <- OPEN COMMENTS" if n and not r.get("active") else ""
+    star = "*" if r.get("active") else " "
+    print(f"  {star} {slug[:52]:52s} {n:>2} comment(s), {done:>2} reviewed{mark}")
+' 2>/dev/null || printf '  %s(tuicr query failed)%s\n' "$DIM" "$NC"
 else
   printf '  %stuicr not installed%s\n' "$DIM" "$NC"
 fi
