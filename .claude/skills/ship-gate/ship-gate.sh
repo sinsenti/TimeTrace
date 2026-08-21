@@ -49,8 +49,22 @@ else
     done
     cp pyproject.toml "$BASE_TREE/" 2>/dev/null
 
-    # strip file:line:col prefixes so a violation that merely moved doesn't count as new
-    ruff_codes() { sed -E 's/^[^ ]+:[0-9]+:[0-9]+: //' | sort; }
+    # Keep only actual per-violation lines (drop ruff's "Found N errors."/"[*] N
+    # fixable" footer, which otherwise gets compared as if it were a violation and
+    # differs -- spuriously -- any time the total count differs between the two
+    # trees, i.e. on every real branch). Strip only the line:col, keeping the file
+    # path, so the comparison stays scoped per-file -- stripping the path too
+    # collapses every file's violations into one global bag, where a fix in file A
+    # can silently cancel out a genuinely new violation in file B. Normalize E501's
+    # embedded overflow count so a pre-existing long line getting a few characters
+    # longer isn't indistinguishable from a brand new violation elsewhere in the
+    # same file -- only (file + rule) is what "new" should mean here.
+    ruff_codes() {
+        grep -E ':[0-9]+:[0-9]+: ' \
+        | sed -E 's/^([^:]+):[0-9]+:[0-9]+: /\1: /' \
+        | sed -E 's/\([0-9]+ > [0-9]+\)/(N > N)/' \
+        | sort
+    }
     (cd "$BASE_TREE" && uv run --project "$REPO_ROOT" ruff check . --output-format=concise 2>/dev/null) \
         | ruff_codes > "$SCRATCH_DIR/ruff_before.txt"
     # shellcheck disable=SC2086
