@@ -58,7 +58,7 @@ def parse_inline_task(text: str) -> dict[str, Any]:
     local_now = datetime.now().astimezone()
 
     due_date_value = None
-    due_match = re.search(r"\b(?:due|d):(\d+)(h|d)?\b", first_line, re.IGNORECASE)
+    due_match = re.search(r"\b(?:due|d):(\d+)(?!\.\d)(h|d)?\b", first_line, re.IGNORECASE)
     if due_match:
         n = int(due_match.group(1))
         unit = (due_match.group(2) or "d").lower()
@@ -71,7 +71,7 @@ def parse_inline_task(text: str) -> dict[str, Any]:
 
     assigned_date_value = None
     schedule_session_at = None
-    target_match = re.search(r"\b(?:target|t):(\d+)(h|d)?\b", first_line, re.IGNORECASE)
+    target_match = re.search(r"\b(?:target|t):(\d+)(?!\.\d)(h|d)?\b", first_line, re.IGNORECASE)
     if target_match:
         n = int(target_match.group(1))
         unit = (target_match.group(2) or "d").lower()
@@ -80,9 +80,10 @@ def parse_inline_task(text: str) -> dict[str, Any]:
             # specific hour, so an hour-precision target becomes a real
             # scheduled Session instead (see apply_quick_task_syntax in
             # task_service.py, which is what actually creates that row).
-            # assigned_date is still set to today for list/filter UIs.
+            # Derived from schedule_session_at (not local_now) so it agrees
+            # with the actual session day when the offset crosses midnight.
             schedule_session_at = local_now + timedelta(hours=n)
-            assigned_date_value = local_now.date().strftime("%Y-%m-%d")
+            assigned_date_value = schedule_session_at.date().strftime("%Y-%m-%d")
         else:
             target_day = (local_now + timedelta(days=n)).date()
             assigned_date_value = target_day.strftime("%Y-%m-%d")
@@ -99,8 +100,8 @@ def parse_inline_task(text: str) -> dict[str, Any]:
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"\b(?:due|d):\d+(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"\b(?:target|t):\d+(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\b(?:due|d):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\b(?:target|t):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = " ".join(clean_title.split()).strip()
 
     result: dict[str, Any] = {
