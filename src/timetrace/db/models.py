@@ -171,6 +171,11 @@ class HabitGoalHistory(SQLModel, table=True):
     effective_from: str = Field(index=True)  # YYYY-MM-DD, matching HabitLog.date_str
     created_at: datetime = Field(default_factory=utc_now)
 
+    # Optional[X] rather than X | None to match every other relationship in this
+    # file (see e.g. TaskReview.task below) -- most of those genuinely need the
+    # quoted-string form for a forward reference to a class defined later in the
+    # file (this module has no `from __future__ import annotations`), so the
+    # file keeps one uniform style rather than mixing it per-declaration.
     habit: Optional[Habit] = Relationship(back_populates="goal_history")
 
 
