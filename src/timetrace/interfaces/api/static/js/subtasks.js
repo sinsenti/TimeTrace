@@ -325,8 +325,10 @@ function openSubtaskCreationModal(parentId = null) {
 
     document.getElementById('subtask_parent_id').value = targetParentId;
     document.getElementById('modal_subtask_title').value = '';
+    document.getElementById('modal_subtask_tags').value = '';
     document.getElementById('modal_subtask_est').value = '15m';
     document.getElementById('modal_subtask_status').value = 'To Do';
+    document.getElementById('modal_subtask_priority').value = '-';
 
     const heading = document.getElementById('subtask_modal_heading');
     if (heading) {
@@ -362,7 +364,9 @@ async function saveSubtaskFromModal() {
     const payload = {
         title: titleVal,
         parent_id: parentId,
+        tags: document.getElementById('modal_subtask_tags') ? document.getElementById('modal_subtask_tags').value : '',
         status: document.getElementById('modal_subtask_status').value,
+        priority: document.getElementById('modal_subtask_priority') ? document.getElementById('modal_subtask_priority').value : '-',
         estimated_minutes: parseDurationToMinutes(estVal),
         category: currentTreeData ? currentTreeData.category : "work"
     };

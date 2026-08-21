@@ -34,9 +34,13 @@ def parse_title_estimation(title: str) -> tuple[str, int | None]:
     return title, None
 
 
-def apply_quick_task_syntax(task_dict: dict) -> None:
-    """Extracts `#tag`s, `!priority`, `due:Nd`/`target:Nd`, and `(description)`
-    text out of a task's title and merges them into task_dict in place.
+def apply_quick_task_syntax(task_dict: dict) -> datetime | None:
+    """Extracts `#tag`s, `!priority`, `due:`/`d:`, `target:`/`t:`, and
+    `(description)` text out of a task's title and merges them into task_dict
+    in place. Returns the start time for an auto-scheduled Session if the
+    title gave an hour-precision target (`t:Nh`), else None -- the caller is
+    responsible for actually creating that row (this function only parses;
+    it has no DB access, per this module's core/ layering).
 
     Title-embedded values win over whatever was already in task_dict, matching
     the existing precedent for `[15m]` estimate parsing just above: the title
@@ -46,7 +50,7 @@ def apply_quick_task_syntax(task_dict: dict) -> None:
     """
     quick = parse_inline_task(task_dict.get("title") or "")
     if not quick:
-        return
+        return None
 
     task_dict["title"] = quick["title"]
     if quick.get("tags"):
@@ -59,6 +63,7 @@ def apply_quick_task_syntax(task_dict: dict) -> None:
         task_dict["due_date"] = quick["due_date"]
     if quick.get("assigned_date") is not None:
         task_dict["assigned_date"] = quick["assigned_date"]
+    return quick.get("schedule_session_at")
 
 
 class TaskService:
@@ -108,7 +113,7 @@ class TaskService:
 
     def create_task(self, req: TaskCreate) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
-        apply_quick_task_syntax(task_dict)
+        schedule_session_at = apply_quick_task_syntax(task_dict)
         clean_title, parsed_est = parse_title_estimation(task_dict["title"])
         task_dict["title"] = clean_title
         if parsed_est is not None:
@@ -129,21 +134,58 @@ class TaskService:
             db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
         self.db.add(db_task)
+
+        if schedule_session_at is not None:
+            self._create_scheduled_session(db_task, schedule_session_at)
+        if db_task.is_recurring:
+            self.schedule_recurrent_sessions_three_months(db_task)
+
+        # One commit for the task plus every related row added above -- a
+        # second commit anywhere after this expires db_task's attributes
+        # (SQLAlchemy's default expire_on_commit) before the API layer
+        # serializes it, silently returning `{}` instead of the created task.
+        # This exact bug previously existed here for is_recurring tasks (the
+        # old code committed+refreshed, THEN called
+        # schedule_recurrent_sessions_three_months, which committed again) --
+        # fixed by moving that call before this single commit.
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
 
-        if db_task.is_recurring:
-            self.schedule_recurrent_sessions_three_months(db_task)
-
         return db_task
+
+    def _create_scheduled_session(self, task: Task, start_at: datetime) -> SessionModel:
+        """Creates a Session for a task whose title gave an hour-precision
+        target (`t:Nh`) -- see apply_quick_task_syntax. assigned_date is a
+        bare date string and can't hold a specific hour, so an actual
+        calendar Session is the only way to represent "work on this at this
+        time". Does not commit -- the caller folds this into its own commit.
+        """
+        duration_mins = task.estimated_minutes or 15
+        start_utc = ensure_utc(start_at)
+        end_utc = start_utc + timedelta(minutes=duration_mins)
+        session = SessionModel(
+            task_id=task.id,
+            start_time=start_utc.replace(tzinfo=None),
+            end_time=end_utc.replace(tzinfo=None),
+            duration_seconds=duration_mins * 60,
+            tags=task.tags or "#general",
+            notes=f"Scheduled: {task.title}",
+        )
+        self.db.add(session)
+        return session
 
     def schedule_recurrent_sessions_three_months(self, task: Task) -> list[SessionModel]:
         if not task.id or not task.is_recurring:
             return []
 
-        start_base = datetime.now(UTC)
+        # Anchored to today's date at a fixed hour (not datetime.now(UTC)) so that
+        # repeat calls on the same day -- e.g. create, then an unrelated update --
+        # derive the identical curr_naive sequence below and the existing-session
+        # dedup check actually dedups, instead of regenerating every future
+        # session because "now" drifted by a few seconds between calls.
+        start_base = datetime.now(UTC).replace(hour=9, minute=0, second=0, microsecond=0)
         if task.assigned_date:
             try:
                 dt_str = str(task.assigned_date).replace(' ', 'T')
@@ -194,7 +236,10 @@ class TaskService:
             else:
                 curr_date += timedelta(days=1)
 
-        self.db.commit()
+        # No commit here: the existing-session dedup check above relies on
+        # autoflush (not a commit) to see this loop's own pending adds, and
+        # every caller folds these rows into its own single final commit --
+        # see the note in create_task about why a second commit is unsafe.
         return created_sessions
 
     def list_tasks(
@@ -288,9 +333,10 @@ class TaskService:
             raise EntityNotFoundError("Task", task_id)
 
         update_dict = req.model_dump(exclude_unset=True)
+        schedule_session_at = None
 
         if "title" in update_dict and update_dict["title"]:
-            apply_quick_task_syntax(update_dict)
+            schedule_session_at = apply_quick_task_syntax(update_dict)
             clean_title, parsed_est = parse_title_estimation(update_dict["title"])
             update_dict["title"] = clean_title
             if parsed_est is not None:
@@ -310,6 +356,8 @@ class TaskService:
         if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
             self.handle_task_recurrence(db_task)
 
+        if schedule_session_at is not None:
+            self._create_scheduled_session(db_task, schedule_session_at)
         if db_task.is_recurring:
             self.schedule_recurrent_sessions_three_months(db_task)
 
