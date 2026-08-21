@@ -33,7 +33,7 @@ function renderTaskSuggestions(query) {
                 <span class="font-bold text-white block">${t.title}</span>
                 <span class="text-[10px] text-slate-400 truncate block">${t.description || ''}</span>
             </div>
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${t.color || '#7c3aed'}">#${t.id}</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${t.color || '#7c3aed'}">${(t.category || 'work').toUpperCase()}</span>
         </div>
     `).join('');
 

@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 
@@ -14,14 +14,17 @@ def strip_comments(text: str) -> str:
 
 
 def parse_inline_task(text: str) -> dict[str, Any]:
-    """Parses 1-2 line task creation markdown."""
+    """Parses quick-add task creation syntax typed into a single title field
+    (or a 1-2 line Neovim buffer): `#tag`s, `!priority`, `@status`, `due:Nd` /
+    `target:Nd` relative day offsets, and `(parenthesized)` description text.
+    """
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
         return {}
 
     first_line = lines[0]
-    description = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
+    extra_description = "\n".join(lines[1:]).strip() if len(lines) > 1 else ""
 
     tags = re.findall(r"#\w+", first_line)
 
@@ -45,19 +48,51 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         elif s_val in ("ongoing", "og"):
             status = "Ongoing"
 
+    # `due:Nd` / `target:Nd`: N days from today, local time. 0d = today, 1d = tomorrow.
+    # "due" sets the deadline (Task.due_date); "target" sets the day the user plans
+    # to work on it (Task.assigned_date) -- distinct fields, same offset syntax.
+    local_today = datetime.now().astimezone()
+
+    due_date_value = None
+    due_match = re.search(r"\bdue:(\d+)d\b", first_line, re.IGNORECASE)
+    if due_match:
+        target_day = (local_today + timedelta(days=int(due_match.group(1)))).date()
+        due_date_value = datetime.combine(target_day, time(23, 59, 59), tzinfo=local_today.tzinfo)
+
+    assigned_date_value = None
+    target_match = re.search(r"\btarget:(\d+)d\b", first_line, re.IGNORECASE)
+    if target_match:
+        target_day = (local_today + timedelta(days=int(target_match.group(1)))).date()
+        assigned_date_value = target_day.strftime("%Y-%m-%d")
+
+    # Any `(...)` group is lifted out into the description rather than left in
+    # the title -- e.g. "Renew passport (bring old one + 2 photos)".
+    paren_groups = re.findall(r"\(([^)]*)\)", first_line)
+    paren_description = " ".join(g.strip() for g in paren_groups if g.strip())
+    description_parts = [p for p in (paren_description, extra_description) if p]
+    description = "\n".join(description_parts)
+
     clean_title = first_line
+    clean_title = re.sub(r"\([^)]*\)", "", clean_title)
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\bdue:\d+d\b", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\btarget:\d+d\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = " ".join(clean_title.split()).strip()
 
-    return {
+    result: dict[str, Any] = {
         "title": clean_title if clean_title else "Untitled Task",
         "description": description,
         "priority": priority,
         "status": status,
         "tags": " ".join(tags) if tags else "",
     }
+    if due_date_value is not None:
+        result["due_date"] = due_date_value
+    if assigned_date_value is not None:
+        result["assigned_date"] = assigned_date_value
+    return result
 
 
 def parse_inline_timer(text: str) -> dict[str, Any]:

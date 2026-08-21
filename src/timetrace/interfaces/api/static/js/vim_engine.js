@@ -77,11 +77,11 @@ function handleOpenSessionBefore() {
 async function handleDeleteUnderCursor() {
     const s = getSessionUnderCursor();
     if (s && s.id) {
-        const label = s.notes || s.tags || `#${s.id}`;
-        const confirmed = await showCustomConfirm(
-            "Delete Session", 
-            `Delete session "${label}"? Press Enter to confirm.`
-        );
+        const label = s.notes || s.tags;
+        const message = label
+            ? `Delete session "${label}"? Press Enter to confirm.`
+            : "Delete this session? Press Enter to confirm.";
+        const confirmed = await showCustomConfirm("Delete Session", message);
         if (confirmed) {
             try {
                 await api.delete(`/sessions/${s.id}`);

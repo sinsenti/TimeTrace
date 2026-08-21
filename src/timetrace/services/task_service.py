@@ -5,9 +5,16 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
+from timetrace.core.inline_parser import parse_inline_task
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
-from timetrace.interfaces.api.schemas import TaskCreate, TaskReviewCreate, TaskStatusCreate, TaskStatusUpdate, TaskUpdate
+from timetrace.interfaces.api.schemas import (
+    TaskCreate,
+    TaskReviewCreate,
+    TaskStatusCreate,
+    TaskStatusUpdate,
+    TaskUpdate,
+)
 from timetrace.interfaces.api.utils import ensure_utc
 
 
@@ -25,6 +32,33 @@ def parse_title_estimation(title: str) -> tuple[str, int | None]:
         clean_title = re.sub(r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour|d|day|days)?\]", "", title, flags=re.IGNORECASE).strip()
         return clean_title, est_minutes
     return title, None
+
+
+def apply_quick_task_syntax(task_dict: dict) -> None:
+    """Extracts `#tag`s, `!priority`, `due:Nd`/`target:Nd`, and `(description)`
+    text out of a task's title and merges them into task_dict in place.
+
+    Title-embedded values win over whatever was already in task_dict, matching
+    the existing precedent for `[15m]` estimate parsing just above: the title
+    is the fast-capture surface, so what you type there is authoritative. Only
+    fields the title actually specifies are touched -- e.g. no `!priority` in
+    the title leaves task_dict["priority"] alone.
+    """
+    quick = parse_inline_task(task_dict.get("title") or "")
+    if not quick:
+        return
+
+    task_dict["title"] = quick["title"]
+    if quick.get("tags"):
+        task_dict["tags"] = quick["tags"]
+    if quick.get("priority") and quick["priority"] != "-":
+        task_dict["priority"] = quick["priority"]
+    if quick.get("description"):
+        task_dict["description"] = quick["description"]
+    if quick.get("due_date") is not None:
+        task_dict["due_date"] = quick["due_date"]
+    if quick.get("assigned_date") is not None:
+        task_dict["assigned_date"] = quick["assigned_date"]
 
 
 class TaskService:
@@ -74,6 +108,7 @@ class TaskService:
 
     def create_task(self, req: TaskCreate) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
+        apply_quick_task_syntax(task_dict)
         clean_title, parsed_est = parse_title_estimation(task_dict["title"])
         task_dict["title"] = clean_title
         if parsed_est is not None:
@@ -255,6 +290,7 @@ class TaskService:
         update_dict = req.model_dump(exclude_unset=True)
 
         if "title" in update_dict and update_dict["title"]:
+            apply_quick_task_syntax(update_dict)
             clean_title, parsed_est = parse_title_estimation(update_dict["title"])
             update_dict["title"] = clean_title
             if parsed_est is not None:
