@@ -4,10 +4,10 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.analytics import calculate_detailed_analytics, calculate_tag_summaries
+from timetrace.core.ids import short_id
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
-from timetrace.db.models import Habit, HabitLog
+from timetrace.db.models import Habit, HabitLog, Task
 from timetrace.db.models import Session as SessionModel
-from timetrace.db.models import Task
 from timetrace.interfaces.api.utils import ensure_utc
 
 
@@ -86,7 +86,7 @@ class AnalyticsService:
             for t in sorted(tasks, key=lambda x: (x.status != "To Do", x.status != "Ongoing")):
                 due_info = t.due_date.strftime("%Y-%m-%d %H:%M") if t.due_date else (t.assigned_date or "-")
                 lines.append(
-                    f"| #{t.id} | {t.title} | {t.status} | {t.priority.upper()} | {t.category} | {due_info} | {t.tags or '-'} |"
+                    f"| #{short_id(t.id)} | {t.title} | {t.status} | {t.priority.upper()} | {t.category} | {due_info} | {t.tags or '-'} |"
                 )
             lines.append("")
             return "\n".join(lines)
@@ -107,7 +107,7 @@ class AnalyticsService:
             for t in root_tasks:
                 subtasks = [child for child in tasks if child.parent_id == t.id]
                 lines.extend([
-                    f"## Task #{t.id}: {t.title}",
+                    f"## Task #{short_id(t.id)}: {t.title}",
                     f"- Status: {t.status}",
                     f"- Priority: {t.priority.upper()}",
                     f"- Category: {t.category}",
@@ -128,7 +128,9 @@ class AnalyticsService:
                     lines.extend(["", "### Subtasks Breakdown"])
                     for sub in subtasks:
                         check = "[x]" if sub.status in ("Done", "completed") else "[ ]"
-                        lines.append(f"- {check} #{sub.id} {sub.title} ({sub.estimated_minutes or 15}m) [{sub.status}]")
+                        lines.append(
+                            f"- {check} #{short_id(sub.id)} {sub.title} ({sub.estimated_minutes or 15}m) [{sub.status}]"
+                        )
 
                 lines.extend(["", "---", ""])
 
@@ -160,7 +162,7 @@ class AnalyticsService:
                 rate = f"{round((comp / tot) * 100)}%" if tot > 0 else "0%"
                 target_str = f"{h.target_value} {h.unit or ''}".strip() if h.habit_type == "numeric" else "Checkmark"
                 lines.append(
-                    f"| #{h.id} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {tot} | {comp} | {rate} |"
+                    f"| #{short_id(h.id)} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {tot} | {comp} | {rate} |"
                 )
             lines.append("")
             return "\n".join(lines)
@@ -202,7 +204,9 @@ class AnalyticsService:
                 st = ensure_utc(s.start_time).strftime("%Y-%m-%d %H:%M") if s.start_time else "-"
                 et = ensure_utc(s.end_time).strftime("%Y-%m-%d %H:%M") if s.end_time else "-"
                 dur_m = round((s.duration_seconds or 0) / 60)
-                lines.append(f"| #{s.id} | {st} | {et} | {dur_m}m | {s.task_id or '-'} | {s.tags or '-'} | {s.notes or '-'} |")
+                lines.append(
+                    f"| #{short_id(s.id)} | {st} | {et} | {dur_m}m | {s.task_id or '-'} | {s.tags or '-'} | {s.notes or '-'} |"
+                )
 
             lines.extend(["", "---", ""])
 
@@ -215,7 +219,10 @@ class AnalyticsService:
             ])
             for t in tasks:
                 due_info = t.due_date.strftime("%Y-%m-%d %H:%M") if t.due_date else "-"
-                lines.append(f"| #{t.id} | {t.title} | {t.status} | {t.priority.upper()} | {t.category} | {t.assigned_date or '-'} | {due_info} | {t.tags or '-'} |")
+                lines.append(
+                    f"| #{short_id(t.id)} | {t.title} | {t.status} | {t.priority.upper()} | {t.category} "
+                    f"| {t.assigned_date or '-'} | {due_info} | {t.tags or '-'} |"
+                )
 
             lines.extend(["", "---", ""])
 
@@ -229,7 +236,9 @@ class AnalyticsService:
             ])
             for h in habits:
                 target_str = f"{h.target_value} {h.unit or ''}".strip() if h.habit_type == "numeric" else "Checkmark"
-                lines.append(f"| #{h.id} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {h.reminder_time or '-'} |")
+                lines.append(
+                    f"| #{short_id(h.id)} | {h.name} | {h.habit_type} | {target_str} | {h.frequency} | {h.reminder_time or '-'} |"
+                )
 
             lines.append("")
             return "\n".join(lines)
