@@ -204,30 +204,47 @@
     </main>
 
     <div id="subtask_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[400px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-3 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="subtask_modal_heading" class="font-bold text-base text-white">Create Subtask</h3>
+        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[440px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-3 text-white">
+            <div class="flex justify-between items-start border-b border-[var(--border-muted)] pb-2">
+                <div>
+                    <h3 id="subtask_modal_heading" class="font-bold text-lg text-white">Create Subtask</h3>
+                    <p class="text-[11px] text-slate-400 mt-0.5">Quick add -- a lightweight child task under this item.</p>
+                </div>
                 <button type="button" onclick="closeSubtaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
             </div>
             <input type="hidden" id="subtask_parent_id">
-            
+
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Subtask Title (Use [30min] for estimate)</label>
                 <input id="modal_subtask_title" type="text" placeholder="e.g. Implement OAuth Flow [30min]" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
             </div>
 
-            <div class="grid grid-cols-2 gap-2">
+            <div>
+                <label class="text-xs text-slate-400 block mb-1">Tags</label>
+                <input id="modal_subtask_tags" type="text" placeholder="e.g. #programming #backend" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-500">
+            </div>
+
+            <div class="grid grid-cols-3 gap-2 text-xs">
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Estimated Duration <span class="text-[10px] text-slate-500 font-normal ml-1">e.g. 15m, 2h, or -</span></label>
-                    <input id="modal_subtask_est" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                    <label class="text-slate-400 block mb-1">Priority</label>
+                    <select id="modal_subtask_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
+                        <option value="-">- (None)</option>
+                        <option value="low">low</option>
+                        <option value="medium">medium</option>
+                        <option value="high">high</option>
+                    </select>
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Initial Status</label>
-                    <select id="modal_subtask_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
+                    <label class="text-slate-400 block mb-1">Initial Status</label>
+                    <select id="modal_subtask_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-white">
                         <option value="To Do">To Do</option>
                         <option value="Ongoing">Ongoing</option>
                         <option value="Done">Done</option>
                     </select>
+                </div>
+                <div>
+                    <label class="text-slate-400 block mb-1">Estimate <span class="text-[10px] text-slate-500 font-normal">15m, 2h, -</span></label>
+                    <input id="modal_subtask_est" type="text" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
                 </div>
             </div>
 
