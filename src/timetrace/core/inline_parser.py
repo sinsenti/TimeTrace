@@ -15,8 +15,9 @@ def strip_comments(text: str) -> str:
 
 def parse_inline_task(text: str) -> dict[str, Any]:
     """Parses quick-add task creation syntax typed into a single title field
-    (or a 1-2 line Neovim buffer): `#tag`s, `!priority`, `@status`, `due:Nd` /
-    `target:Nd` relative day offsets, and `(parenthesized)` description text.
+    (or a 1-2 line Neovim buffer): `#tag`s, `!priority`, `@status`,
+    `due:Nd`/`d:Nh`/`d:Nd` and `target:Nd`/`t:Nh`/`t:Nd` relative offsets, and
+    `(parenthesized)` description text.
     """
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
@@ -48,22 +49,43 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         elif s_val in ("ongoing", "og"):
             status = "Ongoing"
 
-    # `due:Nd` / `target:Nd`: N days from today, local time. 0d = today, 1d = tomorrow.
-    # "due" sets the deadline (Task.due_date); "target" sets the day the user plans
-    # to work on it (Task.assigned_date) -- distinct fields, same offset syntax.
-    local_today = datetime.now().astimezone()
+    # `due:`/`d:` and `target:`/`t:`: N days OR hours from now, local time.
+    # "due" sets the deadline (Task.due_date); "target" sets the day/time the
+    # user plans to work on it (Task.assigned_date, or a real scheduled Session
+    # when hour-precision is given -- see schedule_session_at below). A bare
+    # number with no unit suffix defaults to days, matching the original
+    # due:Nd/target:Nd form (0d/0 = today, 1d/1 = tomorrow).
+    local_now = datetime.now().astimezone()
 
     due_date_value = None
-    due_match = re.search(r"\bdue:(\d+)d\b", first_line, re.IGNORECASE)
+    due_match = re.search(r"\b(?:due|d):(\d+)(h|d)?\b", first_line, re.IGNORECASE)
     if due_match:
-        target_day = (local_today + timedelta(days=int(due_match.group(1)))).date()
-        due_date_value = datetime.combine(target_day, time(23, 59, 59), tzinfo=local_today.tzinfo)
+        n = int(due_match.group(1))
+        unit = (due_match.group(2) or "d").lower()
+        if unit == "h":
+            # Hour precision is an exact deadline instant, not just "by end of day".
+            due_date_value = local_now + timedelta(hours=n)
+        else:
+            due_day = (local_now + timedelta(days=n)).date()
+            due_date_value = datetime.combine(due_day, time(23, 59, 59), tzinfo=local_now.tzinfo)
 
     assigned_date_value = None
-    target_match = re.search(r"\btarget:(\d+)d\b", first_line, re.IGNORECASE)
+    schedule_session_at = None
+    target_match = re.search(r"\b(?:target|t):(\d+)(h|d)?\b", first_line, re.IGNORECASE)
     if target_match:
-        target_day = (local_today + timedelta(days=int(target_match.group(1)))).date()
-        assigned_date_value = target_day.strftime("%Y-%m-%d")
+        n = int(target_match.group(1))
+        unit = (target_match.group(2) or "d").lower()
+        if unit == "h":
+            # assigned_date is a bare YYYY-MM-DD string -- it can't hold a
+            # specific hour, so an hour-precision target becomes a real
+            # scheduled Session instead (see apply_quick_task_syntax in
+            # task_service.py, which is what actually creates that row).
+            # assigned_date is still set to today for list/filter UIs.
+            schedule_session_at = local_now + timedelta(hours=n)
+            assigned_date_value = local_now.date().strftime("%Y-%m-%d")
+        else:
+            target_day = (local_now + timedelta(days=n)).date()
+            assigned_date_value = target_day.strftime("%Y-%m-%d")
 
     # Any `(...)` group is lifted out into the description rather than left in
     # the title -- e.g. "Renew passport (bring old one + 2 photos)".
@@ -77,8 +99,8 @@ def parse_inline_task(text: str) -> dict[str, Any]:
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"\bdue:\d+d\b", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"\btarget:\d+d\b", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\b(?:due|d):\d+(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(r"\b(?:target|t):\d+(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = " ".join(clean_title.split()).strip()
 
     result: dict[str, Any] = {
@@ -92,6 +114,8 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         result["due_date"] = due_date_value
     if assigned_date_value is not None:
         result["assigned_date"] = assigned_date_value
+    if schedule_session_at is not None:
+        result["schedule_session_at"] = schedule_session_at
     return result
 
 
