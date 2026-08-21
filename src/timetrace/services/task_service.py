@@ -180,12 +180,17 @@ class TaskService:
         if not task.id or not task.is_recurring:
             return []
 
-        # Anchored to today's date at a fixed hour (not datetime.now(UTC)) so that
-        # repeat calls on the same day -- e.g. create, then an unrelated update --
-        # derive the identical curr_naive sequence below and the existing-session
-        # dedup check actually dedups, instead of regenerating every future
-        # session because "now" drifted by a few seconds between calls.
-        start_base = datetime.now(UTC).replace(hour=9, minute=0, second=0, microsecond=0)
+        # Anchored to the task's own created_at (never "now"), so the generated
+        # 90-day sequence is byte-identical across every call for a given task.
+        # A `now()`-based anchor (even truncated to a fixed hour) drifts by
+        # whatever the gap is between calls: a 1-day-step "daily" rule tolerates
+        # a one-day drift by accident (89 of 90 slots still coincide), but
+        # "weekly" (7-day step) or "monthly" (30-day step) produce a fully
+        # disjoint sequence on the very next call -- duplicating every session
+        # instead of deduping any of them. Anchoring to created_at also means
+        # day zero is never in the past: it's the moment the task actually
+        # came into existence, not "today at 9am" for a task created at 6pm.
+        start_base = ensure_utc(task.created_at) if task.created_at else datetime.now(UTC)
         if task.assigned_date:
             try:
                 dt_str = str(task.assigned_date).replace(' ', 'T')
