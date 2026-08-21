@@ -143,6 +143,10 @@ class Habit(SQLModel, table=True):
         back_populates="habit",
         sa_relationship_kwargs={"cascade": "all, delete-orphan"},
     )
+    goal_history: list["HabitGoalHistory"] = Relationship(
+        back_populates="habit",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
 
 
 class HabitLog(SQLModel, table=True):
@@ -154,6 +158,25 @@ class HabitLog(SQLModel, table=True):
     notes: str | None = None
 
     habit: Optional[Habit] = Relationship(back_populates="logs")
+
+
+class HabitGoalHistory(SQLModel, table=True):
+    """One row per target_value a numeric habit has ever had, so the UI can
+    chart the goal's own progression (e.g. pull-ups 50 -> 75 -> 100) alongside
+    logged performance, instead of only ever showing today's target."""
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    habit_id: str = Field(foreign_key="habit.id", index=True)
+    target_value: float
+    effective_from: str = Field(index=True)  # YYYY-MM-DD, matching HabitLog.date_str
+    created_at: datetime = Field(default_factory=utc_now)
+
+    # Optional[X] rather than X | None to match every other relationship in this
+    # file (see e.g. TaskReview.task below) -- most of those genuinely need the
+    # quoted-string form for a forward reference to a class defined later in the
+    # file (this module has no `from __future__ import annotations`), so the
+    # file keeps one uniform style rather than mixing it per-declaration.
+    habit: Optional[Habit] = Relationship(back_populates="goal_history")
 
 
 class ExternalSyncState(SQLModel, table=True):
