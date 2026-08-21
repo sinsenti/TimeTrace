@@ -20,9 +20,18 @@ uv run timetrace                 # CLI status / subcommands (talks to the runnin
 uv run ruff check .              # lint
 uv run ruff check --fix .        # lint with autofix
 uv run ruff format .             # format
+uv run pytest -q                 # run the test suite
 ```
 
-There is no test suite in this repo currently — do not assume `pytest` is configured.
+### Tests
+
+`tests/` (pytest, bootstrapped 2026-08-21) covers the timer state machine, `ensure_utc`, session
+creation validation, the `[15m]`-style title-estimate parser, and the documented tag fan-out contract
+in `core/analytics.py`. `tests/conftest.py` redirects `TIMETRACE_DB_FILE` to a tempdir **before** the
+first `timetrace` import (required, since `timetrace.config.settings` is a module-level singleton and
+`db/session.py` builds its engine at import time) and uses an in-memory `StaticPool` SQLite engine, so
+the suite never touches `~/.timetrace/timetrace.db`. Coverage is intentionally partial — extend it
+rather than assuming it's exhaustive.
 
 ### Database migrations (Alembic)
 
@@ -121,14 +130,22 @@ Two further migration bugs were found and fixed on 2026-08-21, both invisible un
 When testing migrations, verify against **both** a copy of the real database and a genuinely fresh
 one. The first catches data-shape problems; only the second catches a broken migration chain.
 
-**Known follow-ups from this migration, not yet addressed:**
-- CLI output and the Markdown agenda/dossier exports (`analytics_service.py`) now print full 36-char
-  UUIDs instead of short integers — functional but far less readable (e.g. `timetrace tasks` table,
-  `#{t.id}` in exported `.md` files). Worth a UX pass (e.g. showing a short prefix) if it bothers you.
-- `core/inline_parser.py`'s Neovim/TUI quick-syntax grammar (`@task_id`, `@123`) still assumes a
-  short numeric task reference via `int(...)`. This module has no call sites anywhere in the codebase
-  today (dead code), so nothing is broken, but reviving it will need a different task-reference scheme
-  now that ids are UUIDs (e.g. fuzzy title match instead of a typed id).
+**Resolved (2026-08-21):** CLI output and the Markdown agenda/dossier exports now show
+`short_id()` (`core/ids.py`) — a **suffix**, not a prefix, of the UUID. A prefix looked natural
+(UUIDv7's leading bits are a timestamp) but is actively wrong: any rows minted close together in time
+share an identical leading prefix regardless of length, which is exactly this project's own real data
+(every row was created in one fast migration run). The CLI's `task-tree`/`task-delete`/`--task`/
+`--parent` accept a full id or a unique short suffix, matching what's displayed; an ambiguous suffix
+lists candidates by title instead of guessing.
+
+**Still open:** `core/inline_parser.py`'s Neovim/TUI quick-syntax grammar for **timer/session**
+commands (`@task_id`, `@123` in `parse_inline_timer`/`parse_inline_session_edit`/`parse_inline_retro`)
+still assumes a short numeric task reference via `int(...)`. These three functions have no call sites
+anywhere in the codebase (dead code), so nothing is broken, but reviving them will need a different
+task-reference scheme now that ids are UUIDs (e.g. fuzzy title match, or the same short-suffix
+resolution the CLI now uses). Note this is separate from `parse_inline_task` (task **creation**
+quick-add: `#tag`, `!priority`, `due:Nd`/`target:Nd`, `(description)`), which was revived and wired
+into `TaskService.create_task`/`update_task` on 2026-08-21 and never touched a task id at all.
 
 ## Current focus: statistics & custom dashboards
 
