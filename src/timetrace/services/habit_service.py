@@ -4,7 +4,7 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
-from timetrace.db.models import Habit, HabitLog
+from timetrace.db.models import Habit, HabitGoalHistory, HabitLog
 from timetrace.interfaces.api.schemas import HabitCreate, HabitLogRequest, HabitUpdate
 
 
@@ -13,8 +13,19 @@ class HabitService:
         self.db = db
 
     def create_habit(self, req: HabitCreate) -> Habit:
+        # UUIDv7 ids are assigned client-side at construction (default_factory), not
+        # by the DB on insert, so db_habit.id is already usable here for the FK below.
         db_habit = Habit.model_validate(req.model_dump())
         self.db.add(db_habit)
+        self.db.add(HabitGoalHistory(
+            habit_id=db_habit.id,
+            target_value=db_habit.target_value,
+            effective_from=datetime.now().strftime("%Y-%m-%d"),
+        ))
+        # One commit, matching every other create-path in this file: a second
+        # commit expires db_habit's already-loaded attributes (SQLAlchemy's
+        # default expire_on_commit), which silently serialized as `{}` over the
+        # API before the two inserts were folded into a single commit here.
         self.db.commit()
         self.db.refresh(db_habit)
         return db_habit
@@ -47,9 +58,41 @@ class HabitService:
             raise EntityNotFoundError("Habit", habit_id)
 
         update_dict = req.model_dump(exclude_unset=True)
+        goal_changed = (
+            "target_value" in update_dict
+            and update_dict["target_value"] is not None
+            and update_dict["target_value"] != db_habit.target_value
+        )
+
         for k, v in update_dict.items():
             setattr(db_habit, k, v)
 
+        if goal_changed:
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            # Upsert on the day: raising the target twice in one sitting
+            # replaces that day's entry instead of leaving a same-day trail.
+            # Reads db_habit.target_value from the pending in-memory change
+            # above -- no flush needed, SQLAlchemy tracks it on the instance
+            # before the row is written.
+            todays_entry = self.db.exec(
+                select(HabitGoalHistory).where(
+                    HabitGoalHistory.habit_id == habit_id,
+                    HabitGoalHistory.effective_from == today_str,
+                )
+            ).first()
+            if todays_entry:
+                todays_entry.target_value = db_habit.target_value
+                self.db.add(todays_entry)
+            else:
+                self.db.add(HabitGoalHistory(
+                    habit_id=habit_id,
+                    target_value=db_habit.target_value,
+                    effective_from=today_str,
+                ))
+
+        # One commit: a second commit here would expire db_habit's attributes
+        # (SQLAlchemy's default expire_on_commit) before the API layer
+        # serializes it -- see the identical note in create_habit above.
         self.db.add(db_habit)
         self.db.commit()
         self.db.refresh(db_habit)
@@ -119,6 +162,12 @@ class HabitService:
             for log_item in logs[-30:]
         ]
 
+        goal_history = self.db.exec(
+            select(HabitGoalHistory)
+            .where(HabitGoalHistory.habit_id == habit_id)
+            .order_by(HabitGoalHistory.effective_from)
+        ).all()
+
         return {
             "habit": db_habit.model_dump(),
             "summary": {
@@ -128,4 +177,8 @@ class HabitService:
                 "total_logs": len(logs),
             },
             "history": history,
+            "goal_history": [
+                {"target_value": g.target_value, "effective_from": g.effective_from}
+                for g in goal_history
+            ],
         }

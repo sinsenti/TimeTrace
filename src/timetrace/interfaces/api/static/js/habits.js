@@ -290,6 +290,7 @@ async function renderSelectedHabitCharts() {
         if (kpiSummary) kpiSummary.innerHTML = '';
         if (habitCharts.doughnut) habitCharts.doughnut.destroy();
         if (habitCharts.bar) habitCharts.bar.destroy();
+        hideGoalProgressionChart();
         return;
     }
 
@@ -405,6 +406,104 @@ async function renderSelectedHabitCharts() {
             scales: {
                 x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
                 y: { ticks: { color: '#64748b', precision: 0 }, grid: { color: '#1a1c26' } }
+            }
+        }
+    });
+
+    if (activeHabits.length === 1 && activeHabits[0].habit_type === 'numeric') {
+        renderGoalProgressionChart(activeHabits[0]);
+    } else {
+        hideGoalProgressionChart();
+    }
+}
+
+function hideGoalProgressionChart() {
+    const card = document.getElementById('goal_progression_card');
+    if (card) card.classList.add('hidden');
+    if (habitCharts.goalProgression) {
+        habitCharts.goalProgression.destroy();
+        habitCharts.goalProgression = null;
+    }
+}
+
+async function renderGoalProgressionChart(habit) {
+    const card = document.getElementById('goal_progression_card');
+    if (!card) return;
+
+    let stats;
+    try {
+        stats = await api.get(`/habits/${habit.id}/stats`);
+    } catch (e) {
+        hideGoalProgressionChart();
+        return;
+    }
+    if (!stats || !stats.goal_history || stats.goal_history.length === 0) {
+        hideGoalProgressionChart();
+        return;
+    }
+
+    card.classList.remove('hidden');
+
+    const sortedGoals = [...stats.goal_history].sort((a, b) => a.effective_from.localeCompare(b.effective_from));
+    const historyEntries = stats.history || [];
+
+    // Chart x-axis covers every date either logged or the goal changed, so a
+    // goal bump shows up even on a day with no log, and vice versa.
+    const allDates = Array.from(new Set([
+        ...historyEntries.map(h => h.date),
+        ...sortedGoals.map(g => g.effective_from)
+    ])).sort();
+
+    const valueByDate = {};
+    historyEntries.forEach(h => { valueByDate[h.date] = h.value; });
+
+    // Step function: the target in effect on a given date is the most recent
+    // goal_history entry whose effective_from is on or before that date.
+    const targetForDate = (dateStr) => {
+        let active = sortedGoals[0].target_value;
+        for (const g of sortedGoals) {
+            if (g.effective_from <= dateStr) active = g.target_value;
+            else break;
+        }
+        return active;
+    };
+
+    const unitLabel = habit.unit ? `Logged (${habit.unit})` : 'Logged';
+
+    const ctx = document.getElementById('chart_habit_goal_progression').getContext('2d');
+    if (habitCharts.goalProgression) habitCharts.goalProgression.destroy();
+
+    habitCharts.goalProgression = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: allDates.map(d => d.slice(5)),
+            datasets: [
+                {
+                    label: unitLabel,
+                    data: allDates.map(d => (d in valueByDate ? valueByDate[d] : null)),
+                    borderColor: habit.color || '#10b981',
+                    backgroundColor: 'transparent',
+                    spanGaps: true,
+                    tension: 0.2
+                },
+                {
+                    label: 'Target',
+                    data: allDates.map(d => targetForDate(d)),
+                    borderColor: '#f59e0b',
+                    borderDash: [6, 4],
+                    stepped: true,
+                    pointRadius: 0,
+                    backgroundColor: 'transparent'
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } } },
+            scales: {
+                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
+                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
             }
         }
     });
