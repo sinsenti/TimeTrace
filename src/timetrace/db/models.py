@@ -179,46 +179,6 @@ class HabitGoalHistory(SQLModel, table=True):
     habit: Optional[Habit] = Relationship(back_populates="goal_history")
 
 
-class Dashboard(SQLModel, table=True):
-    """A named collection of statistics widgets. The former hardcoded /stats page
-    becomes one of these, seeded with slug "overview" at application boot (not in
-    a migration), and stays editable like any user-created dashboard."""
-
-    id: str = Field(default_factory=generate_uuid7, primary_key=True)
-    name: str
-    slug: str = Field(index=True, unique=True)  # e.g. "overview"
-    is_seeded: bool = Field(default=False)
-    position: int = Field(default=0)
-    created_at: datetime = Field(default_factory=utc_now)
-
-    widgets: list["DashboardWidget"] = Relationship(
-        back_populates="dashboard",
-        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
-    )
-
-
-class DashboardWidget(SQLModel, table=True):
-    """One widget on a dashboard: a structured analytics query plus how to draw it.
-
-    `spec_json` is a JSON-serialized query spec held as a plain string column on
-    purpose -- the Pydantic schema on the API side is the authority on its shape,
-    so the DB deliberately stores it opaquely rather than as a JSON column type.
-    """
-
-    id: str = Field(default_factory=generate_uuid7, primary_key=True)
-    dashboard_id: str = Field(foreign_key="dashboard.id", index=True)
-    title: str
-    chart_type: str = Field(default="bar")  # kpi | bar | line | doughnut | table
-    width: str = Field(default="half")  # half | full
-    position: int = Field(default=0)
-    spec_json: str = Field(default="{}")
-    created_at: datetime = Field(default_factory=utc_now)
-
-    # Optional[X] rather than X | None, matching the uniform relationship style
-    # used throughout this file (see the note on HabitGoalHistory.habit above).
-    dashboard: Optional[Dashboard] = Relationship(back_populates="widgets")
-
-
 class ExternalSyncState(SQLModel, table=True):
     """Per-account sync cursor for external calendar providers (Google/Outlook)."""
 
