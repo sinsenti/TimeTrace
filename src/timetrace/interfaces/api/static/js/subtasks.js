@@ -118,14 +118,20 @@ async function loadTaskDetailTree() {
         const isOngoing = (tree.status || '').toLowerCase() === 'ongoing';
         const estContainer = document.getElementById('detail_task_est_container');
         const progressContainer = document.getElementById('detail_task_progress_container');
+        const scheduledContainer = document.getElementById('detail_task_scheduled_container');
+        const remainingContainer = document.getElementById('detail_task_remaining_container');
         const estBadge = document.getElementById('detail_task_est');
 
         if (isOngoing) {
             if (estContainer) estContainer.classList.add('hidden');
             if (progressContainer) progressContainer.classList.add('hidden');
+            if (scheduledContainer) scheduledContainer.classList.add('hidden');
+            if (remainingContainer) remainingContainer.classList.add('hidden');
         } else {
             if (estContainer) estContainer.classList.remove('hidden');
             if (progressContainer) progressContainer.classList.remove('hidden');
+            if (scheduledContainer) scheduledContainer.classList.remove('hidden');
+            if (remainingContainer) remainingContainer.classList.remove('hidden');
             if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
         }
 
@@ -170,10 +176,39 @@ async function loadTaskDetailTree() {
 
         const stats = await api.get(`/api/tasks/${taskId}/stats`);
         const trackedEl = document.getElementById('detail_task_tracked');
-        if (trackedEl) trackedEl.innerText = `${stats.total_hours}h`;
+        if (trackedEl) trackedEl.innerText = `${stats.logged_hours}h`;
 
         const progressEl = document.getElementById('detail_task_progress');
         if (progressEl && !isOngoing) progressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
+
+        if (!isOngoing) {
+            const scheduledEl = document.getElementById('detail_task_scheduled');
+            if (scheduledEl) scheduledEl.innerText = `${stats.scheduled_hours}h`;
+
+            const remainingEl = document.getElementById('detail_task_remaining');
+            if (remainingEl) {
+                if (stats.is_unbounded || stats.remaining_hours === null || stats.remaining_hours === undefined) {
+                    remainingEl.innerText = '--';
+                } else if (stats.remaining_hours < 0) {
+                    remainingEl.innerText = `over by ${Math.abs(stats.remaining_hours)}h`;
+                } else {
+                    remainingEl.innerText = `${stats.remaining_hours}h`;
+                }
+            }
+
+            const unscheduledEl = document.getElementById('detail_task_unscheduled');
+            if (unscheduledEl) {
+                if (stats.scheduled_hours > 0 && stats.unscheduled_hours !== null && stats.unscheduled_hours !== undefined) {
+                    const label = stats.unscheduled_hours < 0
+                        ? `${Math.abs(stats.unscheduled_hours)}h over once scheduled sessions are counted`
+                        : `${stats.unscheduled_hours}h still unscheduled`;
+                    unscheduledEl.innerText = label;
+                    unscheduledEl.classList.remove('hidden');
+                } else {
+                    unscheduledEl.classList.add('hidden');
+                }
+            }
+        }
 
         const counts = calculateTreeCompletionStats(tree.subtasks || []);
         const completionContainer = document.getElementById('detail_subtask_completion_container');
@@ -209,7 +244,6 @@ async function saveInspectorTaskProperties(event) {
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
 
-    const oldStatus = currentTreeData ? currentTreeData.status : null;
     const assignedInputVal = document.getElementById('inspector_edit_assigned_date') ? document.getElementById('inspector_edit_assigned_date').value.trim() : '';
     const dueInputVal = document.getElementById('inspector_edit_due_date') ? document.getElementById('inspector_edit_due_date').value.trim() : '';
     const estInputVal = document.getElementById('inspector_edit_est') ? document.getElementById('inspector_edit_est').value : '15m';
@@ -240,11 +274,14 @@ async function saveInspectorTaskProperties(event) {
     };
 
     try {
-        await api.put(`/api/tasks/${taskId}`, payload);
-        if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
-            await discardFutureSessionsForTask(taskId);
+        const updatedTask = await api.put(`/api/tasks/${taskId}`, payload);
+        if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
+        // Only leave the page automatically when there's no completion-policy
+        // prompt to show -- navigating away immediately would yank the modal
+        // out from under the user before they can act on it.
+        if (!updatedTask || !updatedTask.completion_policy) {
+            navigateBack();
         }
-        navigateBack();
     } catch (err) {
         console.error("Failed to save inspector task properties:", err);
         alert("Failed to save changes: " + (err.message || err));

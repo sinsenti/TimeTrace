@@ -4,7 +4,8 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.db.models import Session as SessionModel, Task
+from timetrace.db.models import Session as SessionModel
+from timetrace.db.models import Task
 from timetrace.interfaces.api.schemas import ReflectionCreate, RetroSessionCreate, SessionCreate, SessionUpdate
 from timetrace.interfaces.api.utils import ensure_utc
 

@@ -160,14 +160,11 @@ function initKanbanDragAndDrop() {
                 if (taskId && newStatusName && sourceList !== targetList) {
                     try {
                         const oldTask = kanbanTasks.find(t => String(t.id) === String(taskId));
-                        const oldStatus = oldTask ? oldTask.status : null;
 
-                        await api.put(`/api/tasks/${taskId}`, { status: newStatusName });
+                        const updatedTask = await api.put(`/api/tasks/${taskId}`, { status: newStatusName });
                         if (oldTask) oldTask.status = newStatusName;
 
-                        if ((oldStatus || '').toLowerCase() === 'scheduled' && newStatusName.toLowerCase() !== 'scheduled') {
-                            await discardFutureSessionsForTask(taskId);
-                        }
+                        if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
                     } catch (err) {
                         console.error("Failed to update task status on drag:", err);
                         loadKanbanBoard();

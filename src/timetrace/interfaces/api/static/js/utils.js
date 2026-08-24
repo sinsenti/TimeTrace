@@ -247,6 +247,7 @@ window.addEventListener('keydown', function(e) {
         let closedAny = false;
 
         const modalOrder = [
+            { id: 'completion_policy_modal', closeFn: typeof closeCompletionPolicyModal === 'function' ? closeCompletionPolicyModal : null },
             { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
             { id: 'subtask_modal', closeFn: typeof closeSubtaskModal === 'function' ? closeSubtaskModal : null },
@@ -329,26 +330,6 @@ async function confirmRecurringDelete(scope) {
         if (typeof loadCurrentRevisionView === 'function') loadCurrentRevisionView();
     } catch (err) {
         console.error("Failed to delete session:", err);
-    }
-}
-
-async function discardFutureSessionsForTask(taskId) {
-    if (!taskId) return;
-    try {
-        const sessions = await api.get('/sessions') || [];
-        const now = new Date();
-        const futureSessions = sessions.filter(s => 
-            String(s.task_id) === String(taskId) && new Date(s.start_time) > now
-        );
-        for (const s of futureSessions) {
-            await api.delete(`/sessions/${s.id}`);
-        }
-        if (futureSessions.length > 0) {
-            if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
-            if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        }
-    } catch (err) {
-        console.error("Failed to discard future sessions for task:", err);
     }
 }
 
