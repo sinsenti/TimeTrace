@@ -9,13 +9,19 @@ from timetrace.core.inline_parser import parse_inline_task
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import (
+    ClearScheduledSessionsRequest,
+    ClearScheduledSessionsResponse,
+    CompletionPolicyPrompt,
+    ScheduledSessionInfo,
     TaskCreate,
     TaskReviewCreate,
     TaskStatusCreate,
     TaskStatusUpdate,
     TaskUpdate,
+    TaskWithPolicyResponse,
 )
 from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.services.session_service import SessionService
 
 
 def parse_title_estimation(title: str) -> tuple[str, int | None]:
@@ -327,10 +333,12 @@ class TaskService:
 
         return tasks
 
-    def update_task(self, task_id: str, req: TaskUpdate) -> Task:
+    def update_task(self, task_id: str, req: TaskUpdate) -> TaskWithPolicyResponse:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
+
+        old_status_name = db_task.status
 
         update_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
@@ -371,7 +379,22 @@ class TaskService:
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
-        return db_task
+
+        # Recurring tasks regenerate their own future sessions a few lines up
+        # (schedule_recurrent_sessions_three_months), so prompting the user
+        # about clearing "scheduled sessions" on them makes no sense.
+        policy = None
+        if not db_task.is_recurring:
+            was_completed, was_scheduled = self._status_flags(old_status_name)
+            now_completed, now_scheduled = self._status_flags(db_task.status)
+            if not was_completed and now_completed:
+                policy = self._build_completion_policy(db_task, "completed")
+            elif was_scheduled and not now_scheduled and not now_completed:
+                policy = self._build_completion_policy(db_task, "left_scheduled")
+
+        declared_fields = set(TaskWithPolicyResponse.model_fields) - {"completion_policy"}
+        task_data = {k: v for k, v in db_task.model_dump().items() if k in declared_fields}
+        return TaskWithPolicyResponse(**task_data, completion_policy=policy)
 
     def handle_task_recurrence(self, task: Task) -> None:
         today = date.today()
@@ -390,6 +413,84 @@ class TaskService:
 
         task.assigned_date = next_date.strftime("%Y-%m-%d")
         task.status = "To Do"
+
+    def _status_flags(self, name: str | None) -> tuple[bool, bool]:
+        """Returns (is_completed, is_scheduled_trigger) for a status name, preferring
+        the configured TaskStatus row and falling back to a name-based guess for
+        statuses that don't have one (e.g. legacy/free-text status values)."""
+        if name is None:
+            return (False, False)
+
+        st = self.db.exec(select(TaskStatus).where(TaskStatus.name == name)).first()
+        if st:
+            return (st.is_completed, st.is_scheduled_trigger)
+
+        lname = name.lower()
+        return (lname in {"done", "completed"}, lname == "scheduled")
+
+    def _collect_subtree_ids(self, task_id: str) -> list[str]:
+        """Iterative BFS over Task.parent_id, returning descendant ids only
+        (excluding task_id itself). Guards against a parent_id cycle."""
+        result: list[str] = []
+        seen: set[str] = {task_id}
+        frontier = [task_id]
+
+        while frontier:
+            next_frontier: list[str] = []
+            for current in frontier:
+                children = self.db.exec(select(Task.id).where(Task.parent_id == current)).all()
+                for child_id in children:
+                    if child_id in seen:
+                        continue
+                    seen.add(child_id)
+                    result.append(child_id)
+                    next_frontier.append(child_id)
+            frontier = next_frontier
+
+        return result
+
+    def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
+        session_service = SessionService(self.db)
+        sessions = session_service.list_future_sessions([task.id])
+        if not sessions:
+            return None
+
+        scheduled_sessions = [
+            ScheduledSessionInfo(
+                id=s.id,
+                start_time=ensure_utc(s.start_time),
+                end_time=ensure_utc(s.end_time) if s.end_time else None,
+                duration_seconds=s.duration_seconds,
+                tags=s.tags,
+                notes=s.notes,
+            )
+            for s in sessions
+        ]
+        scheduled_seconds = sum(s.duration_seconds or 0 for s in sessions)
+        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
+
+        return CompletionPolicyPrompt(
+            reason=reason,
+            task_id=task.id,
+            task_title=task.title,
+            scheduled_sessions=scheduled_sessions,
+            scheduled_seconds=scheduled_seconds,
+            subtask_scheduled_count=subtask_scheduled_count,
+        )
+
+    def clear_scheduled_sessions(
+        self, task_id: str, req: ClearScheduledSessionsRequest
+    ) -> ClearScheduledSessionsResponse:
+        task = self.db.get(Task, task_id)
+        if not task:
+            raise EntityNotFoundError("Task", task_id)
+
+        scope = [task_id]
+        if req.include_subtasks:
+            scope.extend(self._collect_subtree_ids(task_id))
+
+        deleted_ids = SessionService(self.db).clear_future_sessions(scope, req.session_ids)
+        return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
     def delete_task(self, task_id: str) -> None:
         db_task = self.db.get(Task, task_id)
@@ -459,10 +560,29 @@ class TaskService:
         total_seconds = sum(s.duration_seconds or 0 for s in sessions)
         total_hours = round(total_seconds / 3600.0, 2)
 
+        logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task_id])
+
         is_ongoing = str(task.status or "").lower() == "ongoing"
+        is_unbounded = is_ongoing
         est_minutes = 0 if is_ongoing else (task.estimated_minutes or 0)
         est_hours = round(est_minutes / 60.0, 2) if not is_ongoing else 0.0
-        progress_pct = (round((total_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None) if not is_ongoing else None
+        progress_pct = (
+            (round((logged_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None)
+            if not is_ongoing
+            else None
+        )
+
+        logged_hours = round(logged_seconds / 3600, 2)
+        scheduled_hours = round(scheduled_seconds / 3600, 2)
+        if is_unbounded:
+            remaining_hours = None
+            unscheduled_hours = None
+        else:
+            estimated_seconds = (task.estimated_minutes or 0) * 60
+            remaining_seconds = estimated_seconds - logged_seconds
+            unscheduled_seconds = estimated_seconds - logged_seconds - scheduled_seconds
+            remaining_hours = round(remaining_seconds / 3600, 2)
+            unscheduled_hours = round(unscheduled_seconds / 3600, 2)
 
         session_list = []
         for s in sessions:
@@ -497,6 +617,11 @@ class TaskService:
             "sessions": session_list,
             "task_review": review.model_dump() if review else None,
             "custom_ratings": ratings_detailed,
+            "logged_hours": logged_hours,
+            "scheduled_hours": scheduled_hours,
+            "remaining_hours": remaining_hours,
+            "unscheduled_hours": unscheduled_hours,
+            "is_unbounded": is_unbounded,
         }
 
     def create_or_update_task_review(self, req: TaskReviewCreate) -> TaskReview:
