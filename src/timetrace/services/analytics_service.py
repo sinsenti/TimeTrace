@@ -3,12 +3,21 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from timetrace.core.analytics import calculate_detailed_analytics, calculate_tag_summaries
 from timetrace.core.ids import short_id
 from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to_sessions
+from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, QuerySource, SortKey
 from timetrace.db.models import Habit, HabitLog, Task
 from timetrace.db.models import Session as SessionModel
+from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.services.query_service import QueryService
+
+# `get_detailed()` (backing the old `/analytics/detailed` route) has been retired, not
+# re-pointed: it only ever had one caller, `static/js/stats.js`'s `loadAnalyticsData()`, and
+# that's been replaced by the `/stats` page composing the same charts itself out of real
+# `AnalyticsQuery` widgets via `POST /analytics/query/batch` (see `static/js/dashboards.js`).
+# `core/analytics.py`'s `calculate_detailed_analytics` stays as documentation of the exact
+# behaviour (including its one deliberate divergence) the new SQL path reproduces.
 
 
 class AnalyticsService:
@@ -16,23 +25,23 @@ class AnalyticsService:
         self.db = db
 
     def get_summary(self) -> list[dict[str, Any]]:
-        sessions = self.db.exec(select(SessionModel)).all()
-        session_dicts = [s.model_dump() for s in sessions]
-        return calculate_tag_summaries(session_dicts)
-
-    def get_detailed(self) -> dict[str, Any]:
-        sessions = self.db.exec(select(SessionModel)).all()
-        tasks = self.db.exec(select(Task)).all()
-
-        session_dicts = []
-        for s in sessions:
-            s_dict = s.model_dump()
-            s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
-            s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-            session_dicts.append(s_dict)
-
-        task_dicts = [t.model_dump() for t in tasks]
-        return calculate_detailed_analytics(session_dicts, task_dicts)
+        """Time-per-tag summary backing the CLI's `timetrace analytics` output. Re-pointed at
+        the structured query engine (sessions x sum_duration x [tag], fan-out attribution,
+        all-time) -- this must keep returning the exact same `[{tag, total_hours,
+        session_count}]` shape the CLI already prints.
+        """
+        query = AnalyticsQuery(
+            source=QuerySource.SESSIONS,
+            measure=Measure.SUM_DURATION,
+            group_by=[Dimension.TAG],
+            sort=SortKey.VALUE_DESC,
+            limit=2000,
+        )
+        result = QueryService(self.db).run(query, QueryContextRequest())
+        return [
+            {"tag": row.labels[0], "total_hours": round(row.value or 0.0, 2), "session_count": row.count}
+            for row in result.rows
+        ]
 
     def export_markdown(self) -> str:
         sessions = self.db.exec(select(SessionModel)).all()

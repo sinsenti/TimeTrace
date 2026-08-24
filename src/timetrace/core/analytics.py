@@ -3,7 +3,14 @@ from typing import Any
 
 
 def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Calculates cumulative time spent per tag."""
+    """Calculates cumulative time spent per tag.
+
+    Reference implementation. `AnalyticsService.get_summary()` used to call this directly; it
+    now goes through `QueryService`/`core/query_compiler.py` (sessions x sum_duration x [tag],
+    fan-out attribution), which reproduces this exact tag fan-out/`#general` fallback contract
+    in SQL. This function is kept as the documented contract that SQL must match, and as a
+    fallback reference if the SQL path is ever in doubt -- not because anything still calls it.
+    """
     tag_totals: dict[str, dict[str, Any]] = {}
 
     for s in sessions:
@@ -32,7 +39,20 @@ def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, An
 
 
 def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dict[str, Any]]) -> dict[str, Any]:
-    """Generates comprehensive statistics and estimation accuracy metrics."""
+    """Generates comprehensive statistics and estimation accuracy metrics.
+
+    Reference implementation, retired from the live request path. This loaded every session
+    and task into Python to aggregate them and bucketed `daily_trend` by UTC date while
+    `hourly_distribution` used local time -- both defects the structured query engine
+    (`core/query_compiler.py` + `services/query_service.py`) fixes by aggregating in SQL and
+    bucketing everything by local calendar time. The `/stats` "Overview" dashboard now composes
+    the equivalent widgets through `POST /analytics/query/batch` instead of calling
+    `AnalyticsService.get_detailed()` (retired; see `analytics_service.py`). Kept here, unused,
+    as the documented behavioural reference for estimation-accuracy bucketing (0.85-1.15 =
+    accurate) that the SQL estimation CTE deliberately reproduces, including its one noted
+    divergence (zero-evaluated-tasks fallback to 100%, which the SQL path intentionally does
+    NOT copy).
+    """
     now = datetime.now(UTC)
     
     total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)

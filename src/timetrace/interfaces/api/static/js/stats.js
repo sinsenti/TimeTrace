@@ -1,156 +1,10 @@
-let charts = {};
-let rawAnalyticsData = null;
-
-document.addEventListener('DOMContentLoaded', () => {
-    loadAnalyticsData();
-});
-
-async function loadAnalyticsData() {
-    try {
-        rawAnalyticsData = await api.get('/analytics/detailed');
-        const data = rawAnalyticsData;
-        if (!data) return;
-
-        document.getElementById('kpi_total_hours').innerText = `${data.summary.total_hours}h`;
-        document.getElementById('kpi_total_sessions').innerText = data.summary.total_sessions;
-        document.getElementById('kpi_total_tasks').innerText = data.summary.tasks_count;
-
-        if (data.estimation) {
-            document.getElementById('kpi_estimation_accuracy').innerText = `${data.estimation.accuracy_score_pct}%`;
-            document.getElementById('estimation_accuracy_ratio').innerText = `Tracked: ${data.estimation.total_actual_hours}h / Est: ${data.estimation.total_estimated_hours}h`;
-            renderEstimationAccuracyChart(data.estimation);
-        }
-
-        renderDailyChart(data.daily_trend);
-        renderHourlyChart(data.hourly_distribution);
-        renderTagsPieChart(data.tags_summary);
-
-    } catch (err) {
-        console.error("Failed to load detailed analytics:", err);
-    }
-}
-
-function renderEstimationAccuracyChart(est) {
-    const ctx = document.getElementById('chart_estimation_accuracy').getContext('2d');
-    if (charts.estimation) charts.estimation.destroy();
-
-    charts.estimation = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: ['Accurate (±15%)', 'Underestimated (>115%)', 'Overestimated (<85%)'],
-            datasets: [{
-                data: [est.accurate_count, est.underestimated_count, est.overestimated_count],
-                backgroundColor: ['#10b981', '#ef4444', '#f59e0b'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } }
-            },
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const idx = elements[0].index;
-                    inspectEstimationCategory(idx);
-                }
-            }
-        }
-    });
-}
-
-function renderDailyChart(dailyData) {
-    const ctx = document.getElementById('chart_daily_trend').getContext('2d');
-    if (charts.daily) charts.daily.destroy();
-
-    charts.daily = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: Object.keys(dailyData),
-            datasets: [{
-                label: 'Focus Hours',
-                data: Object.values(dailyData),
-                backgroundColor: '#8b5cf6',
-                borderRadius: 6
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
-            },
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const dateStr = Object.keys(dailyData)[elements[0].index];
-                    inspectDaySessions(dateStr);
-                }
-            }
-        }
-    });
-}
-
-function renderHourlyChart(hourlyData) {
-    const ctx = document.getElementById('chart_hourly_heatmap').getContext('2d');
-    if (charts.hourly) charts.hourly.destroy();
-
-    charts.hourly = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: Object.keys(hourlyData),
-            datasets: [{
-                label: 'Hours Spent',
-                data: Object.values(hourlyData),
-                backgroundColor: '#10b981',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } },
-            scales: {
-                x: { ticks: { color: '#64748b', fontSize: 10 }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
-            }
-        }
-    });
-}
-
-function renderTagsPieChart(tagsData) {
-    const ctx = document.getElementById('chart_tags_pie').getContext('2d');
-    if (charts.tags) charts.tags.destroy();
-
-    const palette = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
-
-    charts.tags = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: tagsData.map(t => t.tag),
-            datasets: [{
-                data: tagsData.map(t => t.total_hours),
-                backgroundColor: palette,
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'right', labels: { color: '#94a3b8', boxWidth: 12 } }
-            },
-            onClick: (e, elements) => {
-                if (elements.length > 0) {
-                    const tag = tagsData[elements[0].index].tag;
-                    inspectTagSessions(tag);
-                }
-            }
-        }
-    });
-}
+/**
+ * Drill-down inspectors for the /stats "Overview" dashboard.
+ *
+ * Widget rendering itself lives in dashboards.js -- this file only answers "the user clicked a
+ * bar/slice, show me the underlying sessions or tasks", reusing the same endpoints the old
+ * hardcoded charts used.
+ */
 
 async function inspectTagSessions(tag) {
     try {
@@ -162,7 +16,7 @@ async function inspectTagSessions(tag) {
             `Displaying ${filtered.length} session logs tagged with ${tag}`,
             filtered.map(s => renderSessionDrilldownRow(s)).join('')
         );
-    } catch(e) {}
+    } catch (e) {}
 }
 
 async function inspectDaySessions(dateStr) {
@@ -175,11 +29,16 @@ async function inspectDaySessions(dateStr) {
             `Logged ${sessions.length} sessions totaling ${summary ? summary.total_hours : 0} hours`,
             sessions.map(s => renderSessionDrilldownRow(s)).join('')
         );
-    } catch(e) {}
+    } catch (e) {}
 }
 
-async function inspectEstimationCategory(bucketIdx) {
-    const labels = ['Accurate Tasks (±15%)', 'Underestimated Tasks (>115%)', 'Overestimated Tasks (<85%)'];
+const ESTIMATION_BUCKET_LABELS = {
+    accurate: 'Accurate Tasks (+/-15%)',
+    underestimated: 'Underestimated Tasks (>115%)',
+    overestimated: 'Overestimated Tasks (<85%)'
+};
+
+async function inspectEstimationCategory(bucket) {
     try {
         const tasks = await api.get('/api/tasks?status=all') || [];
         const sessions = await api.get('/sessions') || [];
@@ -196,14 +55,14 @@ async function inspectEstimationCategory(bucketIdx) {
             const estSecs = (t.estimated_minutes || 15) * 60;
             const ratio = actualSecs / estSecs;
 
-            if (bucketIdx === 0) return ratio >= 0.85 && ratio <= 1.15;
-            if (bucketIdx === 1) return ratio > 1.15;
-            if (bucketIdx === 2) return ratio < 0.85;
+            if (bucket === 'accurate') return ratio >= 0.85 && ratio <= 1.15;
+            if (bucket === 'underestimated') return ratio > 1.15;
+            if (bucket === 'overestimated') return ratio < 0.85;
             return false;
         });
 
         showDrilldownInspector(
-            labels[bucketIdx],
+            ESTIMATION_BUCKET_LABELS[bucket] || bucket,
             `Displaying ${filteredTasks.length} tasks matching this estimation bucket`,
             filteredTasks.map(t => `
                 <div onclick="window.location.href='/task-inspector/${t.id}'" class="bg-[#0f1016] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg flex justify-between items-center text-xs cursor-pointer transition">
@@ -215,12 +74,12 @@ async function inspectEstimationCategory(bucketIdx) {
                 </div>
             `).join('')
         );
-    } catch(e) {}
+    } catch (e) {}
 }
 
 function renderSessionDrilldownRow(s) {
     const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
-    const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
+    const durMins = Math.round(((s.duration_seconds || 0) / 60) * 10) / 10;
     const taskTitle = s.task ? s.task.title : (s.notes || s.tags || 'Session Log');
 
     return `

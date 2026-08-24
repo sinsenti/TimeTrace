@@ -46,6 +46,14 @@ const DEFAULT_SETTINGS = {
     defaultTag: '#general'
 };
 
+function getQueryContext() {
+    const s = getUserSettings();
+    return {
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        first_day_of_week: s.firstDayOfWeek
+    };
+}
+
 function getUserSettings() {
     try {
         const raw = localStorage.getItem(SETTINGS_KEY);
