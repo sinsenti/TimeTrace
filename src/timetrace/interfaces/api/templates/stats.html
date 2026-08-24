@@ -41,90 +41,16 @@
         </div>
 
         <div class="flex items-center space-x-2 text-xs">
-            <button onclick="loadAnalyticsData()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
+            <button onclick="loadOverviewDashboard()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
                 Refresh
             </button>
         </div>
     </header>
 
     <main class="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        <!-- Core KPI Cards -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-purple-900/40 border border-purple-700/50 rounded-xl text-purple-400 text-sm font-bold">LOGGED</div>
-                <div>
-                    <span class="text-xs text-slate-400 font-semibold block">Total Time Logged</span>
-                    <span id="kpi_total_hours" class="text-2xl font-black text-purple-400">0.0h</span>
-                </div>
-            </div>
-
-            <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-emerald-900/40 border border-emerald-700/50 rounded-xl text-emerald-400 text-sm font-bold">SESSIONS</div>
-                <div>
-                    <span class="text-xs text-slate-400 font-semibold block">Logged Sessions</span>
-                    <span id="kpi_total_sessions" class="text-2xl font-black text-emerald-400">0</span>
-                </div>
-            </div>
-
-            <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-amber-900/40 border border-amber-700/50 rounded-xl text-amber-400 text-sm font-bold">TASKS</div>
-                <div>
-                    <span class="text-xs text-slate-400 font-semibold block">Active Tasks</span>
-                    <span id="kpi_total_tasks" class="text-2xl font-black text-amber-400">0</span>
-                </div>
-            </div>
-
-            <div class="widget-card flex items-center space-x-4">
-                <div class="p-3 bg-blue-900/40 border border-blue-700/50 rounded-xl text-blue-400 text-sm font-bold">ACCURACY</div>
-                <div>
-                    <span class="text-xs text-slate-400 font-semibold block">Estimation Score</span>
-                    <span id="kpi_estimation_accuracy" class="text-2xl font-black text-blue-400">0%</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Interactive Core Analytics Charts Grid -->
-        <div id="widget_grid" class="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div id="widget_estimation_accuracy" class="widget-card flex flex-col space-y-3 cursor-pointer">
-                <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Estimation Accuracy Breakdown (Click slice to inspect)</h3>
-                    <span id="estimation_accuracy_ratio" class="text-xs text-blue-400 font-semibold">0.0h / 0.0h</span>
-                </div>
-                <div class="h-64 relative flex items-center justify-center">
-                    <canvas id="chart_estimation_accuracy"></canvas>
-                </div>
-            </div>
-
-            <div id="widget_daily_trend" class="widget-card flex flex-col space-y-3 cursor-pointer">
-                <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Daily Focus Trend (Click bar to inspect day)</h3>
-                    <span class="text-xs text-purple-400 font-semibold">Hours / Day</span>
-                </div>
-                <div class="h-64 relative">
-                    <canvas id="chart_daily_trend"></canvas>
-                </div>
-            </div>
-
-            <div id="widget_hourly_heatmap" class="widget-card flex flex-col space-y-3">
-                <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Peak Focus Hours (24h Distribution)</h3>
-                    <span class="text-xs text-emerald-400 font-semibold">Time Slots</span>
-                </div>
-                <div class="h-64 relative">
-                    <canvas id="chart_hourly_heatmap"></canvas>
-                </div>
-            </div>
-
-            <div id="widget_tags_pie" class="widget-card flex flex-col space-y-3 cursor-pointer">
-                <div class="flex justify-between items-center">
-                    <h3 class="font-bold text-sm text-slate-200">Activity Breakdown (#tags) (Click slice to inspect)</h3>
-                    <span class="text-xs text-purple-400 font-semibold">Share %</span>
-                </div>
-                <div class="h-64 relative flex items-center justify-center">
-                    <canvas id="chart_tags_pie"></canvas>
-                </div>
-            </div>
-        </div>
+        <!-- Seeded "Overview" dashboard: populated entirely by dashboards.js via
+             POST /analytics/query/batch. See OVERVIEW_SEED in dashboards.js. -->
+        <div id="widget_grid"></div>
 
         <!-- Interactive Statistics Item Inspector List -->
         <div id="stats_drilldown_inspector" class="widget-card space-y-4 hidden">
@@ -146,5 +72,6 @@
     <script src="/static/js/timer_control.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/stats.js"></script>
+    <script src="/static/js/dashboards.js"></script>
 </body>
 </html>
