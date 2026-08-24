@@ -72,7 +72,7 @@
                     
                     <div>
                         <label class="text-xs text-slate-400 block mb-1">Day Performance Score (1 - 5)</label>
-                        <select id="day_form_rating" onchange="markDayFormDirty()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold">
+                        <select id="day_form_rating" onchange="markDayFormDirty(); applyDayRatingColor()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold">
                             <option value="5">5 / 5 - Exceptional Focus</option>
                             <option value="4">4 / 5 - Productive Day</option>
                             <option value="3" selected>3 / 5 - Average Day</option>
@@ -101,9 +101,33 @@
                     <button id="day_form_save_btn" onclick="saveDayReviewForm()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition">Save Day Review</button>
                 </div>
 
-                <div class="rev-card md:col-span-2 space-y-4">
-                    <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Logged Sessions Timeline (Click session to inspect)</h3>
-                    <div id="day_sessions_timeline" class="space-y-3 max-h-[520px] overflow-y-auto pr-1"></div>
+                <div class="md:col-span-2 space-y-4">
+                    <div class="rev-card space-y-3">
+                        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                            <h3 class="font-bold text-base text-white">Day Breakdown</h3>
+                            <div class="flex items-center space-x-3">
+                                <span id="day_breakdown_filter_chip" class="hidden items-center space-x-2 bg-purple-900/50 border border-purple-700/60 px-2 py-1 rounded-lg text-[10px] font-bold text-purple-200"></span>
+                                <span id="day_breakdown_total" class="text-sm font-black text-purple-400">0.0h</span>
+                            </div>
+                        </div>
+
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">By Activity (#tags)</span>
+                                <div id="day_breakdown_tags_list" class="space-y-1.5"></div>
+                                <p class="text-[10px] text-slate-500 mt-2">Sessions with multiple tags are counted in full under each tag, so percentages can add up to more than 100%.</p>
+                            </div>
+                            <div>
+                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">By Task</span>
+                                <div id="day_breakdown_tasks_list" class="space-y-1.5"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="rev-card space-y-4">
+                        <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Logged Sessions Timeline (Click session to inspect)</h3>
+                        <div id="day_sessions_timeline" class="space-y-3 max-h-[520px] overflow-y-auto pr-1"></div>
+                    </div>
                 </div>
             </div>
         </section>

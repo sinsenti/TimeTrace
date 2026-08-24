@@ -392,6 +392,41 @@ function reshuffleColors() {
     if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
 }
 
+function roundVal(val, decimals) {
+    return Number(Math.round(val + 'e' + decimals) + 'e-' + decimals);
+}
+
+/**
+ * Maps a 1-5 (or any min-max) grade/rating score to a fixed red-to-green
+ * Tailwind color step. Five discrete steps, not a continuous gradient --
+ * this is a settled decision, not something to make configurable/invertible.
+ */
+function getGradeColorClasses(score, minScore = 1, maxScore = 5) {
+    const neutral = { text: 'text-slate-400', badge: 'bg-slate-800 text-slate-400 border border-slate-700', hex: '#94a3b8' };
+
+    const numScore = Number(score);
+    if (score === null || score === undefined || isNaN(numScore) || maxScore === minScore) {
+        return neutral;
+    }
+
+    const steps = [
+        { text: 'text-red-400', badge: 'bg-red-900/60 text-red-300 border border-red-700', hex: '#f87171' },
+        { text: 'text-orange-400', badge: 'bg-orange-900/60 text-orange-300 border border-orange-700', hex: '#fb923c' },
+        { text: 'text-amber-400', badge: 'bg-amber-900/60 text-amber-300 border border-amber-700', hex: '#fbbf24' },
+        { text: 'text-lime-400', badge: 'bg-lime-900/60 text-lime-300 border border-lime-700', hex: '#a3e635' },
+        { text: 'text-emerald-400', badge: 'bg-emerald-900/60 text-emerald-300 border border-emerald-700', hex: '#34d399' }
+    ];
+
+    let normalized = (numScore - minScore) / (maxScore - minScore);
+    normalized = Math.min(1, Math.max(0, normalized));
+
+    let idx = Math.floor(normalized * steps.length);
+    if (idx >= steps.length) idx = steps.length - 1;
+    if (idx < 0) idx = 0;
+
+    return steps[idx];
+}
+
 function getTagColor(tagStr) {
     let clean = tagStr.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
     if (!clean) return defaultPalette[0];

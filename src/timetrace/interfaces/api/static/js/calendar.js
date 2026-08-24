@@ -67,7 +67,15 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
         allSessions = res || [];
 
-        const events = allSessions.map((s, idx) => {
+        // allSessions itself must stay unfiltered -- fetchRangeTotals() (called
+        // below) needs the full range to compute percentages correctly. Only
+        // the rendered calendar events are narrowed by the active breakdown
+        // filter, and events are hidden entirely rather than dimmed.
+        const visibleForCalendar = typeof sessionMatchesBreakdownFilter === 'function'
+            ? allSessions.filter(sessionMatchesBreakdownFilter)
+            : allSessions;
+
+        const events = visibleForCalendar.map((s, idx) => {
             const matchedTask = typeof allTasksMap !== 'undefined' ? allTasksMap[s.task_id] : null;
             const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
 

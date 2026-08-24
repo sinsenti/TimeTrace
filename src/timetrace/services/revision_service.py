@@ -1,8 +1,10 @@
-from datetime import datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 from sqlmodel import Session, select
 
+from timetrace.core.analytics import calculate_day_breakdowns
+from timetrace.core.exceptions import ValidationError
 from timetrace.db.models import DayReview, RatingDefinition, RatingEntry, Task
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import DayReviewCreate
@@ -52,26 +54,41 @@ class RevisionService:
         return history
 
     def get_day_summary(self, date_str: str) -> dict[str, Any]:
-        sessions = self.db.exec(select(SessionModel)).all()
-        matching_sessions = []
+        try:
+            day = date.fromisoformat(date_str)
+        except ValueError as e:
+            raise ValidationError(f"Invalid date_str '{date_str}': expected YYYY-MM-DD") from e
 
-        for s in sessions:
-            if s.start_time:
-                local_dt = ensure_utc(s.start_time).astimezone()
-                if local_dt.strftime("%Y-%m-%d") == date_str:
-                    matching_sessions.append(s)
+        # Local calendar day, by session start time -- datetime.combine(...).astimezone()
+        # resolves the UTC offset for THIS specific date (DST-safe), unlike
+        # datetime.now().astimezone().tzinfo which would use today's offset for
+        # every date queried.
+        start_local = datetime.combine(day, time.min).astimezone()
+        end_local = start_local + timedelta(days=1)
+        start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
+        end_utc = end_local.astimezone(UTC).replace(tzinfo=None)
 
-        tasks = self.db.exec(select(Task)).all()
-        tasks_map = {t.id: t for t in tasks}
-
-        completed_tasks = [
-            t for t in tasks
-            if (
-                t.status == "completed"
-                and t.created_at
-                and ensure_utc(t.created_at).astimezone().strftime("%Y-%m-%d") == date_str
+        matching_sessions = self.db.exec(
+            select(SessionModel).where(
+                SessionModel.start_time >= start_utc,
+                SessionModel.start_time < end_utc,
             )
-        ]
+        ).all()
+
+        task_ids = {s.task_id for s in matching_sessions if s.task_id}
+        tasks_map: dict[str, Task] = {}
+        if task_ids:
+            tasks_map = {t.id: t for t in self.db.exec(select(Task).where(Task.id.in_(task_ids))).all()}
+
+        # The app always writes "Done", not "completed" -- widened so this
+        # KPI isn't permanently 0.
+        completed_tasks = self.db.exec(
+            select(Task).where(
+                Task.status.in_(("Done", "completed", "done")),
+                Task.created_at >= start_utc,
+                Task.created_at < end_utc,
+            )
+        ).all()
 
         total_seconds = sum(s.duration_seconds or 0 for s in matching_sessions)
         saved_review = self.db.exec(select(DayReview).where(DayReview.date_str == date_str)).first()
@@ -93,6 +110,9 @@ class RevisionService:
             r_dict["definition"] = r_def.model_dump() if r_def else None
             ratings_detailed.append(r_dict)
 
+        task_titles = {tid: t.title for tid, t in tasks_map.items()}
+        breakdowns = calculate_day_breakdowns([s.model_dump() for s in matching_sessions], task_titles)
+
         return {
             "date_str": date_str,
             "total_hours": round(total_seconds / 3600.0, 2),
@@ -101,6 +121,9 @@ class RevisionService:
             "sessions": session_details,
             "day_review": saved_review.model_dump() if saved_review else None,
             "custom_ratings": ratings_detailed,
+            "tag_breakdown": breakdowns["tag_breakdown"],
+            "task_breakdown": breakdowns["task_breakdown"],
+            "tag_attribution": "fanout",
         }
 
     def save_day_review(self, req: DayReviewCreate) -> DayReview:

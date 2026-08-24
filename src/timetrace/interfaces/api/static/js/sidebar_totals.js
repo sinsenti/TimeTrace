@@ -303,6 +303,118 @@ async function clearCompletedTasks() {
     }
 }
 
+let breakdownFilter = null; // { type: 'tag'|'task', value } or null
+let lastTagSecs = {};
+let lastTaskSecs = {};
+let lastGrandTotalSecs = 0;
+
+function sessionMatchesBreakdownFilter(s) {
+    if (!breakdownFilter) return true;
+    if (breakdownFilter.type === 'tag') {
+        const tagStr = s.tags || '#general';
+        const tokens = tagStr.split(/\s+/).filter(t => t.startsWith('#'));
+        const effectiveTokens = tokens.length ? tokens : ['#general'];
+        return effectiveTokens.includes(breakdownFilter.value);
+    }
+    if (breakdownFilter.type === 'task') {
+        if (breakdownFilter.value === '__none__') return !s.task_id;
+        return String(s.task_id) === String(breakdownFilter.value);
+    }
+    return true;
+}
+
+function toggleBreakdownFilter(type, value) {
+    if (breakdownFilter && breakdownFilter.type === type && String(breakdownFilter.value) === String(value)) {
+        breakdownFilter = null;
+    } else {
+        breakdownFilter = { type, value };
+    }
+    renderBreakdownLists();
+    renderBreakdownFilterChip();
+    if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+}
+
+function clearBreakdownFilter() {
+    breakdownFilter = null;
+    renderBreakdownLists();
+    renderBreakdownFilterChip();
+    if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+}
+
+function renderBreakdownFilterChip() {
+    const chip = document.getElementById('breakdown_filter_chip');
+    if (!chip) return;
+
+    if (!breakdownFilter) {
+        chip.classList.add('hidden');
+        chip.innerHTML = '';
+        return;
+    }
+
+    let label = breakdownFilter.value;
+    if (breakdownFilter.type === 'task') {
+        if (breakdownFilter.value === '__none__') {
+            label = 'No task';
+        } else {
+            const t = typeof allTasksMap !== 'undefined' ? allTasksMap[breakdownFilter.value] : null;
+            label = t ? t.title : '(deleted task)';
+        }
+    }
+
+    chip.classList.remove('hidden');
+    chip.innerHTML = `
+        <span class="text-purple-200">Filtered: ${label}</span>
+        <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">&times;</button>
+    `;
+}
+
+function renderBreakdownLists() {
+    const activityList = document.getElementById('activity_totals_list');
+    const sortedTags = Object.entries(lastTagSecs).sort((a, b) => b[1] - a[1]);
+    if (activityList) {
+        if (sortedTags.length === 0) {
+            activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
+        } else {
+            activityList.innerHTML = sortedTags.map(([tag, secs]) => {
+                const isActive = breakdownFilter && breakdownFilter.type === 'tag' && breakdownFilter.value === tag;
+                const isDimmed = breakdownFilter && !isActive;
+                const pct = lastGrandTotalSecs > 0 ? ((secs / lastGrandTotalSecs) * 100).toFixed(1) : '0.0';
+                return `
+                    <div onclick="toggleBreakdownFilter('tag', '${tag}')" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                        <span class="text-xs font-bold text-emerald-400">${tag}</span>
+                        <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h <span class="text-slate-500 font-medium">(${pct}%)</span></span>
+                    </div>
+                `;
+            }).join('');
+            activityList.insertAdjacentHTML('beforeend', '<p class="text-[10px] text-slate-500 pt-1">Multi-tag sessions are counted in full under each tag, so totals overlap.</p>');
+        }
+    }
+
+    const totalsList = document.getElementById('weekly_totals_list');
+    const sortedTasks = Object.entries(lastTaskSecs).sort((a, b) => b[1] - a[1]);
+    if (totalsList) {
+        if (sortedTasks.length === 0) {
+            totalsList.innerHTML = '<div class="text-xs text-slate-500">No tracked tasks in this range.</div>';
+        } else {
+            totalsList.innerHTML = sortedTasks.map(([tid, secs], idx) => {
+                const isNone = tid === '__none__';
+                const task = isNone ? null : (typeof allTasksMap !== 'undefined' ? allTasksMap[tid] : null);
+                const title = isNone ? 'No task' : (task ? task.title : '(deleted task)');
+                const color = task ? getTaskColor(task, idx) : '#334155';
+                const isActive = breakdownFilter && breakdownFilter.type === 'task' && String(breakdownFilter.value) === String(tid);
+                const isDimmed = breakdownFilter && !isActive;
+                const hrs = (secs / 3600).toFixed(1);
+                return `
+                    <div onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${color};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                        <span class="font-bold text-xs truncate">${title}</span>
+                        <span class="text-sm font-black">${hrs}h</span>
+                    </div>
+                `;
+            }).join('');
+        }
+    }
+}
+
 function fetchRangeTotals() {
     if (!calendar) return;
     const viewType = calendar.view.type;
@@ -319,10 +431,14 @@ function fetchRangeTotals() {
     const viewStart = calendar.view.activeStart;
     const viewEnd = calendar.view.activeEnd;
 
-    let taskHours = {};
-    let tagHours = {};
+    const taskSecs = {};
+    const tagSecs = {};
     let grandTotalSecs = 0;
 
+    // Aggregated over the sessions actually visible in the current calendar
+    // range -- NOT the left sidebar's activeTasks list, which is independently
+    // filtered by status tab / custom filter / sort and has no relationship
+    // to what's on screen (that mismatch was the source of the "By Task" bug).
     const visibleSessions = allSessions.filter(s => {
         const start = new Date(s.start_time);
         return start >= viewStart && start < viewEnd;
@@ -332,48 +448,26 @@ function fetchRangeTotals() {
         const dur = s.duration_seconds || 0;
         grandTotalSecs += dur;
 
-        const tid = s.task_id || 0;
-        taskHours[tid] = (taskHours[tid] || 0) + dur;
+        const tid = s.task_id || '__none__';
+        taskSecs[tid] = (taskSecs[tid] || 0) + dur;
 
         const tagStr = s.tags || '#general';
-        const tags = tagStr.split(' ').filter(t => t.startsWith('#'));
+        const tags = tagStr.split(/\s+/).filter(t => t.startsWith('#'));
         if (tags.length === 0) tags.push('#general');
         tags.forEach(tg => {
-            tagHours[tg] = (tagHours[tg] || 0) + dur;
+            tagSecs[tg] = (tagSecs[tg] || 0) + dur;
         });
     });
+
+    lastTagSecs = tagSecs;
+    lastTaskSecs = taskSecs;
+    lastGrandTotalSecs = grandTotalSecs;
 
     const badgeEl = document.getElementById('weekly_total_badge');
     const sideEl = document.getElementById('side_total_hours');
     if (badgeEl) badgeEl.innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
     if (sideEl) sideEl.innerText = `${(grandTotalSecs / 3600).toFixed(1)}h`;
 
-    const activityList = document.getElementById('activity_totals_list');
-    const sortedTags = Object.entries(tagHours).sort((a,b) => b[1] - a[1]);
-    if (activityList) {
-        if (sortedTags.length === 0) {
-            activityList.innerHTML = '<div class="text-xs text-slate-500">No activities in this range.</div>';
-        } else {
-            activityList.innerHTML = sortedTags.map(([tag, secs]) => `
-                <div class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center">
-                    <span class="text-xs font-bold text-emerald-400">${tag}</span>
-                    <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h</span>
-                </div>
-            `).join('');
-        }
-    }
-
-    const totalsList = document.getElementById('weekly_totals_list');
-    if (totalsList) {
-        totalsList.innerHTML = activeTasks.map((t, idx) => {
-            const color = getTaskColor(t, idx);
-            const hrs = ((taskHours[t.id] || 0) / 3600).toFixed(1);
-            return `
-                <div style="background-color: ${color};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center">
-                    <span class="font-bold text-xs truncate">${t.title}</span>
-                    <span class="text-sm font-black">${hrs}h</span>
-                </div>
-            `;
-        }).join('');
-    }
+    renderBreakdownLists();
+    renderBreakdownFilterChip();
 }

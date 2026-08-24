@@ -319,13 +319,31 @@ function renderSubtaskCardHTML(node) {
     `;
 }
 
+function findNodeInTree(node, id) {
+    if (!node) return null;
+    if (node.id === id) return node;
+    if (node.subtasks) {
+        for (const child of node.subtasks) {
+            const found = findNodeInTree(child, id);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
 function openSubtaskCreationModal(parentId = null) {
     const mainTaskId = document.getElementById('inspector_task_id').value;
     const targetParentId = parentId ? parentId : mainTaskId;
 
+    let inheritedTags = '';
+    if (currentTreeData) {
+        const parentNode = parentId ? findNodeInTree(currentTreeData, parentId) : currentTreeData;
+        inheritedTags = (parentNode && parentNode.tags) ? parentNode.tags : '';
+    }
+
     document.getElementById('subtask_parent_id').value = targetParentId;
     document.getElementById('modal_subtask_title').value = '';
-    document.getElementById('modal_subtask_tags').value = '';
+    document.getElementById('modal_subtask_tags').value = inheritedTags;
     document.getElementById('modal_subtask_est').value = '15m';
     document.getElementById('modal_subtask_status').value = 'To Do';
     document.getElementById('modal_subtask_priority').value = '-';
