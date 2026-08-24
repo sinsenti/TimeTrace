@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import Session as SessionModel
@@ -157,6 +157,64 @@ class SessionService:
         db_session.start_time = ensure_utc(db_session.start_time)
         db_session.end_time = ensure_utc(db_session.end_time)
         return db_session
+
+    def list_future_sessions(self, task_ids: list[str]) -> list[SessionModel]:
+        if not task_ids:
+            return []
+        now_naive = datetime.now(UTC).replace(tzinfo=None)
+        return list(
+            self.db.exec(
+                select(SessionModel).where(
+                    SessionModel.task_id.in_(task_ids),
+                    SessionModel.start_time > now_naive,
+                )
+            ).all()
+        )
+
+    def sum_durations_for_tasks(self, task_ids: list[str]) -> tuple[int, int]:
+        """Returns (logged_seconds, scheduled_seconds) for the given tasks, computed
+        via SQL aggregates rather than pulling every session into Python."""
+        if not task_ids:
+            return (0, 0)
+
+        now_naive = datetime.now(UTC).replace(tzinfo=None)
+
+        logged_seconds = self.db.exec(
+            select(func.coalesce(func.sum(SessionModel.duration_seconds), 0)).where(
+                SessionModel.task_id.in_(task_ids),
+                SessionModel.end_time.is_not(None),
+                SessionModel.end_time <= now_naive,
+            )
+        ).one()
+
+        scheduled_seconds = self.db.exec(
+            select(func.coalesce(func.sum(SessionModel.duration_seconds), 0)).where(
+                SessionModel.task_id.in_(task_ids),
+                SessionModel.start_time > now_naive,
+            )
+        ).one()
+
+        return (int(logged_seconds), int(scheduled_seconds))
+
+    def clear_future_sessions(self, task_ids: list[str], session_ids: list[str] | None = None) -> list[str]:
+        future_sessions = self.list_future_sessions(task_ids)
+        future_ids = {s.id for s in future_sessions}
+
+        if session_ids is not None:
+            requested_ids = set(session_ids)
+            if not requested_ids.issubset(future_ids):
+                raise ValidationError(
+                    "session_ids must be a subset of the task's future scheduled sessions"
+                )
+            to_delete = [s for s in future_sessions if s.id in requested_ids]
+        else:
+            to_delete = future_sessions
+
+        deleted_ids = [s.id for s in to_delete]
+        for s in to_delete:
+            self.db.delete(s)
+        self.db.commit()
+        return deleted_ids
 
     def record_reflection(self, req: ReflectionCreate) -> dict[str, Any]:
         db_session = self.db.get(SessionModel, req.session_id)
