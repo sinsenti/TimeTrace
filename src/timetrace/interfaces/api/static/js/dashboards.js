@@ -73,9 +73,43 @@ const OVERVIEW_SEED = [
 
 let dashboardCharts = {};
 
+// User-built widgets, created via the "+ Add Widget" button. Persisted only in this browser's
+// localStorage -- there is no dashboard/widget table (that's slice 2's builder UI, deliberately
+// not built yet), so a custom widget doesn't follow the user across devices/browsers.
+const CUSTOM_WIDGETS_KEY = 'tt_custom_widgets_v1';
+let capabilitiesBySource = null; // GET /analytics/capabilities, cached for the builder modal's lifetime
+
 function _fmtNum(val, decimals) {
     const factor = Math.pow(10, decimals);
     return Math.round((val + Number.EPSILON) * factor) / factor;
+}
+
+function _unitFormatter(unit) {
+    switch (unit) {
+        case 'hours': return (v) => `${_fmtNum(v || 0, 1)}h`;
+        case 'minutes': return (v) => `${_fmtNum(v || 0, 1)}m`;
+        case 'percent': return (v) => (v === null || v === undefined) ? 'n/a' : `${_fmtNum(v, 1)}%`;
+        case 'count': return (v) => `${Math.round(v || 0)}`;
+        default: return (v) => (v === null || v === undefined) ? 'n/a' : `${_fmtNum(v, 2)}`;
+    }
+}
+
+function _loadCustomWidgetSpecs() {
+    try {
+        const raw = localStorage.getItem(CUSTOM_WIDGETS_KEY);
+        return raw ? JSON.parse(raw) : [];
+    } catch (e) {
+        console.error('Failed to read saved widgets from localStorage:', e);
+        return [];
+    }
+}
+
+function _saveCustomWidgetSpecs(specs) {
+    try {
+        localStorage.setItem(CUSTOM_WIDGETS_KEY, JSON.stringify(specs));
+    } catch (e) {
+        console.error('Failed to save widgets to localStorage:', e);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -92,6 +126,9 @@ async function loadOverviewDashboard() {
     // Widget 4's subtitle ("Tracked: Xh / Est: Yh") reuses widget 1's total for "Tracked" and
     // needs exactly one extra query for "Est".
     queries['est_total_hours'] = { source: 'tasks', measure: 'sum_estimated_duration', chart: 'tile' };
+
+    const customSpecs = _loadCustomWidgetSpecs();
+    customSpecs.forEach(spec => { queries[spec.key] = spec.query; });
 
     let batchResult;
     try {
@@ -124,6 +161,212 @@ async function loadOverviewDashboard() {
             chartRow.appendChild(renderChartWidget(widget, result));
         }
     });
+
+    renderCustomWidgets(customSpecs, batchResult);
+}
+
+function renderCustomWidgets(specs, batchResult) {
+    const section = document.getElementById('custom_widget_section');
+    const grid = document.getElementById('custom_widget_grid');
+    if (!section || !grid) return;
+
+    grid.innerHTML = '';
+    section.classList.toggle('hidden', specs.length === 0);
+
+    specs.forEach(spec => {
+        const result = batchResult.results[spec.key];
+        if (!result) {
+            console.error(`Custom widget '${spec.key}' failed:`, batchResult.errors[spec.key]);
+            const errCard = document.createElement('div');
+            errCard.className = 'widget-card text-xs text-red-400';
+            errCard.innerHTML = `<div class="flex justify-between"><span>${spec.title} failed to load</span>` +
+                `<button onclick="removeCustomWidget('${spec.key}')" class="text-slate-400 hover:text-white font-bold">&times;</button></div>`;
+            grid.appendChild(errCard);
+            return;
+        }
+
+        let card;
+        if (spec.query.chart === 'tile') {
+            card = renderTileWidget(
+                { title: spec.title, badge: 'CUSTOM', accent: 'blue', format: _unitFormatter(spec.unit) },
+                result
+            );
+        } else if (spec.query.chart === 'table') {
+            card = renderTableWidget(spec, result);
+        } else {
+            card = renderChartWidget(
+                { key: spec.key, kind: spec.query.chart, title: spec.title, clickable: false },
+                result
+            );
+        }
+
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'absolute top-3 right-3 text-slate-500 hover:text-red-400 font-bold text-sm';
+        removeBtn.innerText = '×';
+        removeBtn.title = 'Remove this widget';
+        removeBtn.onclick = () => removeCustomWidget(spec.key);
+        card.classList.add('relative');
+        card.appendChild(removeBtn);
+
+        grid.appendChild(card);
+    });
+}
+
+function renderTableWidget(spec, result) {
+    const card = document.createElement('div');
+    card.className = 'widget-card space-y-2';
+    const rowsHtml = result.rows.map(r =>
+        `<tr class="border-t border-[var(--border-color)]"><td class="py-1 pr-3">${r.labels.join(' / ')}</td><td class="py-1 text-right font-bold">${r.value === null ? 'n/a' : _fmtNum(r.value, 2)}</td></tr>`
+    ).join('');
+    card.innerHTML = `
+        <h3 class="font-bold text-sm text-slate-200">${spec.title}</h3>
+        <table class="w-full text-xs text-slate-300">
+            <tbody>${rowsHtml || '<tr><td class="py-2 text-slate-500">No data</td></tr>'}</tbody>
+        </table>
+    `;
+    return card;
+}
+
+function removeCustomWidget(key) {
+    const specs = _loadCustomWidgetSpecs().filter(s => s.key !== key);
+    _saveCustomWidgetSpecs(specs);
+    if (dashboardCharts[key]) {
+        dashboardCharts[key].destroy();
+        delete dashboardCharts[key];
+    }
+    loadOverviewDashboard();
+}
+
+// ---- Manual widget builder ----
+
+async function _ensureCapabilitiesLoaded() {
+    if (capabilitiesBySource) return capabilitiesBySource;
+    const resp = await api.get('/analytics/capabilities');
+    capabilitiesBySource = {};
+    resp.sources.forEach(s => { capabilitiesBySource[s.source] = s; });
+    return capabilitiesBySource;
+}
+
+function _fillSelect(select, options, placeholder) {
+    select.innerHTML = '';
+    if (placeholder) {
+        const opt = document.createElement('option');
+        opt.value = '';
+        opt.innerText = placeholder;
+        select.appendChild(opt);
+    }
+    options.forEach(o => {
+        const opt = document.createElement('option');
+        opt.value = o.value;
+        opt.innerText = o.label;
+        select.appendChild(opt);
+    });
+}
+
+async function openWidgetBuilder() {
+    const modal = document.getElementById('widget_builder_modal');
+    if (!modal) return;
+
+    document.getElementById('wb_title').value = '';
+    document.getElementById('wb_filter_value').value = '';
+    document.getElementById('wb_error').classList.add('hidden');
+    document.getElementById('wb_chart').value = 'bar';
+    document.getElementById('wb_date_range').value = 'all_time';
+    document.getElementById('wb_tag_attribution').value = 'fan_out';
+    document.getElementById('wb_filter_op').value = 'eq';
+
+    const caps = await _ensureCapabilitiesLoaded();
+    const sourceSelect = document.getElementById('wb_source');
+    _fillSelect(sourceSelect, Object.keys(caps).map(src => ({ value: src, label: src.replace('_', ' ') })));
+    _onWidgetBuilderSourceChange();
+
+    modal.classList.remove('hidden');
+}
+
+function closeWidgetBuilder() {
+    document.getElementById('widget_builder_modal').classList.add('hidden');
+}
+
+function _onWidgetBuilderSourceChange() {
+    const source = document.getElementById('wb_source').value;
+    const spec = capabilitiesBySource[source];
+    if (!spec) return;
+
+    _fillSelect(document.getElementById('wb_measure'), spec.measures.map(m => ({ value: m.value, label: m.label })));
+
+    const dimOptions = spec.dimensions.map(d => ({ value: d.value, label: d.label }));
+    _fillSelect(document.getElementById('wb_group_by_1'), dimOptions, 'None');
+    _fillSelect(document.getElementById('wb_group_by_2'), dimOptions, 'None');
+
+    _fillSelect(document.getElementById('wb_filter_field'), spec.filter_fields.map(f => ({ value: f.value, label: f.label })), 'No filter');
+}
+
+function _genWidgetKey() {
+    return 'custom_' + Math.random().toString(36).slice(2, 10);
+}
+
+async function submitWidgetBuilder() {
+    const errorBox = document.getElementById('wb_error');
+    errorBox.classList.add('hidden');
+
+    const title = document.getElementById('wb_title').value.trim() || 'Custom Widget';
+    const source = document.getElementById('wb_source').value;
+    const measure = document.getElementById('wb_measure').value;
+    const groupBy1 = document.getElementById('wb_group_by_1').value;
+    const groupBy2 = document.getElementById('wb_group_by_2').value;
+    const chart = document.getElementById('wb_chart').value;
+    const dateRangePreset = document.getElementById('wb_date_range').value;
+    const tagAttribution = document.getElementById('wb_tag_attribution').value;
+    const filterField = document.getElementById('wb_filter_field').value;
+    const filterOp = document.getElementById('wb_filter_op').value;
+    const filterValueRaw = document.getElementById('wb_filter_value').value.trim();
+
+    if (!source || !measure) {
+        errorBox.innerText = 'Pick a source and a measure.';
+        errorBox.classList.remove('hidden');
+        return;
+    }
+
+    const query = {
+        source, measure,
+        group_by: [groupBy1, groupBy2].filter(Boolean),
+        chart,
+        tag_attribution: tagAttribution,
+        sort: 'value_desc',
+        date_range: { preset: dateRangePreset }
+    };
+
+    if (filterField) {
+        let values = [];
+        if (filterOp !== 'is_null' && filterOp !== 'is_not_null') {
+            values = filterValueRaw.split(',').map(v => v.trim()).filter(v => v.length > 0).map(v => {
+                const n = Number(v);
+                return (v !== '' && !Number.isNaN(n)) ? n : v;
+            });
+        }
+        query.filters = [{ field: filterField, op: filterOp, values }];
+    }
+
+    const measureSpec = (capabilitiesBySource[source].measures || []).find(m => m.value === measure);
+    const key = _genWidgetKey();
+    const spec = { key, title, unit: measureSpec ? measureSpec.unit : null, query };
+
+    // Run it once here so a bad combination (e.g. hour_of_day on a date-only source) surfaces
+    // immediately in the modal instead of silently failing in the dashboard batch call later.
+    try {
+        await api.post('/analytics/query', { ...getQueryContext(), query });
+    } catch (err) {
+        errorBox.innerText = err.message || 'That combination is not supported.';
+        errorBox.classList.remove('hidden');
+        return;
+    }
+
+    const specs = _loadCustomWidgetSpecs();
+    specs.push(spec);
+    _saveCustomWidgetSpecs(specs);
+
+    closeWidgetBuilder();
+    loadOverviewDashboard();
 }
 
 function renderTileWidget(widget, result, batchResult) {
@@ -187,27 +430,32 @@ function renderChartWidget(widget, result) {
         dashboardCharts[widget.key].destroy();
     }
 
+    const chartType = widget.kind === 'doughnut' ? 'doughnut' : (widget.kind === 'line' ? 'line' : 'bar');
+
     dashboardCharts[widget.key] = new Chart(canvas.getContext('2d'), {
-        type: widget.kind === 'doughnut' ? 'doughnut' : 'bar',
+        type: chartType,
         data: {
             labels,
             datasets: [{
                 label: widget.title,
                 data: values,
-                backgroundColor: widget.kind === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
-                borderRadius: widget.kind === 'bar' ? 6 : 0,
-                borderWidth: widget.kind === 'doughnut' ? 0 : undefined
+                backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
+                borderColor: chartType === 'line' ? (palette[0] || '#8b5cf6') : undefined,
+                fill: chartType === 'line' ? false : undefined,
+                tension: chartType === 'line' ? 0.3 : undefined,
+                borderRadius: chartType === 'bar' ? 6 : 0,
+                borderWidth: chartType === 'doughnut' ? 0 : undefined
             }]
         },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: widget.kind === 'doughnut'
+                legend: chartType === 'doughnut'
                     ? { position: 'right', labels: { color: '#94a3b8', boxWidth: 12 } }
                     : { display: false }
             },
-            scales: widget.kind === 'bar' ? {
+            scales: chartType !== 'doughnut' ? {
                 x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
                 y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
             } : undefined,
