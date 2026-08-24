@@ -27,24 +27,39 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
         ${defs.map(d => {
             const isDismissed = dismissedMap[d.id] === true;
             const currentScore = existingMap[d.id] !== undefined && existingMap[d.id] !== null ? existingMap[d.id] : Math.ceil((d.min_score + d.max_score) / 2);
+            const scoreColorClass = typeof getGradeColorClasses === 'function' ? getGradeColorClasses(currentScore, d.min_score, d.max_score).text : 'text-purple-400';
             return `
                 <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-1.5" data-rating-def-id="${d.id}" data-required="${d.is_required}">
                     <div class="flex justify-between items-center text-xs">
                         <span class="font-bold text-slate-200">${d.name} ${d.is_required ? '<span class="text-red-400">*</span>' : ''}</span>
                         <div class="flex items-center space-x-2">
-                            <span id="score_label_${d.id}" class="font-mono ${isDismissed ? 'text-slate-500' : 'text-purple-400'} font-bold">${isDismissed ? 'Dismissed' : `${currentScore} / ${d.max_score}`}</span>
-                            <button type="button" onclick="toggleDismissRatingInput('${d.id}', ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
+                            <span id="score_label_${d.id}" class="font-mono ${isDismissed ? 'text-slate-500' : scoreColorClass} font-bold">${isDismissed ? 'Dismissed' : `${currentScore} / ${d.max_score}`}</span>
+                            <button type="button" onclick="toggleDismissRatingInput('${d.id}', ${d.min_score}, ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
                         </div>
                     </div>
                     ${d.description ? `<p class="text-[10px] text-slate-400">${d.description}</p>` : ''}
-                    <input type="range" min="${d.min_score}" max="${d.max_score}" value="${currentScore}" ${isDismissed ? 'disabled' : ''} id="rating_range_input_${d.id}" oninput="document.getElementById('score_label_${d.id}').innerText = this.value + ' / ${d.max_score}'; if(typeof markDayFormDirty === 'function') markDayFormDirty();" class="custom-rating-input w-full accent-purple-600 ${isDismissed ? 'opacity-30 cursor-not-allowed' : ''}">
+                    <input type="range" min="${d.min_score}" max="${d.max_score}" value="${currentScore}" ${isDismissed ? 'disabled' : ''} id="rating_range_input_${d.id}" oninput="onRatingRangeInput('${d.id}', ${d.min_score}, ${d.max_score})" class="custom-rating-input w-full accent-purple-600 ${isDismissed ? 'opacity-30 cursor-not-allowed' : ''}">
                 </div>
             `;
         }).join('')}
     `;
 }
 
-function toggleDismissRatingInput(defId, maxScore) {
+function onRatingRangeInput(defId, minScore, maxScore) {
+    const input = document.getElementById(`rating_range_input_${defId}`);
+    const label = document.getElementById(`score_label_${defId}`);
+    if (!input || !label) return;
+
+    label.innerText = `${input.value} / ${maxScore}`;
+    const colorClass = typeof getGradeColorClasses === 'function'
+        ? getGradeColorClasses(input.value, minScore, maxScore).text
+        : 'text-purple-400';
+    label.className = `font-mono ${colorClass} font-bold`;
+
+    if (typeof markDayFormDirty === 'function') markDayFormDirty();
+}
+
+function toggleDismissRatingInput(defId, minScore, maxScore) {
     const input = document.getElementById(`rating_range_input_${defId}`);
     const label = document.getElementById(`score_label_${defId}`);
     const btn = document.getElementById(`dismiss_btn_${defId}`);
@@ -55,7 +70,10 @@ function toggleDismissRatingInput(defId, maxScore) {
         input.disabled = false;
         input.classList.remove('opacity-30', 'cursor-not-allowed');
         label.innerText = `${input.value} / ${maxScore}`;
-        label.className = "font-mono text-purple-400 font-bold";
+        const colorClass = typeof getGradeColorClasses === 'function'
+            ? getGradeColorClasses(input.value, minScore, maxScore).text
+            : 'text-purple-400';
+        label.className = `font-mono ${colorClass} font-bold`;
         btn.innerText = "Dismiss";
         btn.className = "px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 hover:text-white";
     } else {
@@ -211,8 +229,4 @@ async function deleteRatingDefinition() {
         closeRatingDefModal();
         loadRatingDefinitionsList();
     }
-}
-
-function roundVal(val, decimals) {
-    return Number(Math.round(val + 'e' + decimals) + 'e-' + decimals);
 }

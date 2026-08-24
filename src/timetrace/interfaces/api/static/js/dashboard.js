@@ -14,6 +14,20 @@ document.addEventListener('DOMContentLoaded', async function() {
         await fetchAllTasksRegistry();
     }
 
+    // Seed the breakdown filter from a day-review "Open in Calendar" handoff
+    // (feature 2) before the calendar's first events fetch, so the filter is
+    // already active on first render rather than requiring a manual click.
+    const seedParams = new URLSearchParams(window.location.search);
+    const seedTag = seedParams.get('tag');
+    const seedTask = seedParams.get('task');
+    if (typeof breakdownFilter !== 'undefined') {
+        if (seedTag) {
+            breakdownFilter = { type: 'tag', value: seedTag };
+        } else if (seedTask) {
+            breakdownFilter = { type: 'task', value: seedTask };
+        }
+    }
+
     const durationSelect = document.getElementById('config_slot_duration');
     if (durationSelect) durationSelect.value = userSettings.slotDuration;
 

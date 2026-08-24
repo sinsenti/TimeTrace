@@ -48,7 +48,10 @@ function renderDayHistoryGrid() {
         if (d.review_skipped) {
             statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">Dismissed</span>';
         } else if (d.has_review) {
-            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-emerald-900/60 text-emerald-300 border border-emerald-700">Reviewed (${d.rating}/5)</span>`;
+            const gradeClasses = typeof getGradeColorClasses === 'function'
+                ? getGradeColorClasses(d.rating, 1, 5).badge
+                : "bg-emerald-900/60 text-emerald-300 border border-emerald-700";
+            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${gradeClasses}">Reviewed (${d.rating}/5)</span>`;
         }
 
         return `

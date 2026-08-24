@@ -38,6 +38,67 @@ def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, An
     return summary
 
 
+def calculate_day_breakdowns(sessions: list[dict[str, Any]], task_titles: dict[str, str]) -> dict[str, Any]:
+    """Breaks a single day's sessions down by tag (fan-out attribution -- the
+    full session duration is credited to every tag on that session, so tag
+    percentages of the day total can sum past 100%, matching
+    calculate_tag_summaries's tokenizing rules) and by task (exclusive -- each
+    session contributes to exactly one task row). Sessions without a task_id
+    collapse into a single "No task" row; a task_id not present in
+    task_titles (task since deleted) becomes "(deleted task)".
+    """
+    total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)
+
+    if total_seconds == 0:
+        return {"total_seconds": 0, "tag_breakdown": [], "task_breakdown": []}
+
+    tag_totals: dict[str, dict[str, Any]] = {}
+    task_totals: dict[str | None, dict[str, Any]] = {}
+
+    for s in sessions:
+        dur_seconds = s.get("duration_seconds") or 0
+
+        tag_str = s.get("tags") or "#general"
+        tags = [t.strip() for t in tag_str.split() if t.startswith("#")]
+        if not tags:
+            tags = ["#general"]
+        for tag in tags:
+            if tag not in tag_totals:
+                tag_totals[tag] = {"tag": tag, "total_seconds": 0, "session_count": 0}
+            tag_totals[tag]["total_seconds"] += dur_seconds
+            tag_totals[tag]["session_count"] += 1
+
+        task_id = s.get("task_id")
+        if task_id not in task_totals:
+            if task_id is None:
+                title = "No task"
+            elif task_id in task_titles:
+                title = task_titles[task_id]
+            else:
+                title = "(deleted task)"
+            task_totals[task_id] = {
+                "task_id": task_id,
+                "title": title,
+                "total_seconds": 0,
+                "session_count": 0,
+            }
+        task_totals[task_id]["total_seconds"] += dur_seconds
+        task_totals[task_id]["session_count"] += 1
+
+    def finalize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        for row in rows:
+            row["total_hours"] = round(row["total_seconds"] / 3600.0, 2)
+            row["percent"] = round((row["total_seconds"] / total_seconds) * 100, 1)
+        rows.sort(key=lambda r: r["total_seconds"], reverse=True)
+        return rows
+
+    return {
+        "total_seconds": total_seconds,
+        "tag_breakdown": finalize(list(tag_totals.values())),
+        "task_breakdown": finalize(list(task_totals.values())),
+    }
+
+
 def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dict[str, Any]]) -> dict[str, Any]:
     """Generates comprehensive statistics and estimation accuracy metrics.
 

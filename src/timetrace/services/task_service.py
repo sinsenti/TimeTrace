@@ -111,6 +111,23 @@ class TaskService:
         self.db.delete(st)
         self.db.commit()
 
+    def _inherit_parent_tags(self, task_dict: dict) -> None:
+        """A subtask created with no tags of its own inherits the parent's
+        tags -- a blank tags string means "inherit", not "field absent" (the
+        subtask modal JS and the CLI both always send tags:"" explicitly).
+        Title-embedded #tags (parsed earlier by apply_quick_task_syntax) win
+        over this, since that call already populated task_dict["tags"] before
+        this runs. Silently does nothing if parent_id doesn't resolve --
+        matches SessionService.create_session's handling of an unresolvable
+        task_id.
+        """
+        parent_id = task_dict.get("parent_id")
+        if not parent_id or (task_dict.get("tags") or "").strip():
+            return
+        parent = self.db.get(Task, parent_id)
+        if parent and parent.tags:
+            task_dict["tags"] = parent.tags
+
     def create_task(self, req: TaskCreate) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = apply_quick_task_syntax(task_dict)
@@ -118,6 +135,8 @@ class TaskService:
         task_dict["title"] = clean_title
         if parsed_est is not None:
             task_dict["estimated_minutes"] = parsed_est
+
+        self._inherit_parent_tags(task_dict)
 
         if not task_dict.get("color"):
             task_dict["color"] = "auto"
