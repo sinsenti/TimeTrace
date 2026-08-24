@@ -1,7 +1,9 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
+
+from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, QuerySource, TagAttribution
 
 
 class TaskStatusCreate(BaseModel):
@@ -207,3 +209,95 @@ class HabitLogRequest(BaseModel):
     status: str | None = None
     delta_value: float | None = None
     set_value: float | None = None
+
+
+# ---------------------------------------------------------------------------
+# Structured analytics query engine (statistics dashboards, slice 1)
+# ---------------------------------------------------------------------------
+
+
+class QueryContextRequest(BaseModel):
+    """Request-scoped context that isn't part of a saved widget definition (see
+    `core/query_spec.AnalyticsQuery`'s docstring for why timezone/first_day_of_week live here
+    instead)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str | None = None
+    first_day_of_week: int | None = Field(default=None, ge=0, le=6)
+
+
+class AnalyticsQueryRequest(QueryContextRequest):
+    query: AnalyticsQuery
+
+
+class AnalyticsQueryBatchRequest(QueryContextRequest):
+    queries: dict[str, AnalyticsQuery] = Field(max_length=40)
+
+
+class ColumnSpec(BaseModel):
+    key: str
+    label: str
+    kind: Literal["dimension", "measure"]
+    dimension: Dimension | None = None
+    measure: Measure | None = None
+    unit: Literal["hours", "minutes", "count", "percent", "score"] | None = None
+
+
+class QueryRow(BaseModel):
+    keys: list[str]
+    labels: list[str]
+    value: float | None
+    count: int
+
+
+class QueryMeta(BaseModel):
+    timezone: str
+    first_day_of_week: int
+    range_start_utc: datetime | None
+    range_end_utc: datetime | None
+    tag_attribution: TagAttribution
+    totals_overlap: bool
+    truncated: bool
+    elapsed_ms: int
+    warnings: list[str] = []
+
+
+class AnalyticsQueryResponse(BaseModel):
+    columns: list[ColumnSpec]
+    rows: list[QueryRow]
+    total: float | None
+    row_count: int
+    meta: QueryMeta
+
+
+class AnalyticsQueryBatchResponse(BaseModel):
+    results: dict[str, AnalyticsQueryResponse]
+    errors: dict[str, str]
+
+
+class CapabilityMeasure(BaseModel):
+    value: Measure
+    label: str
+    unit: str
+
+
+class CapabilityDimension(BaseModel):
+    value: Dimension
+    label: str
+
+
+class CapabilityFilterField(BaseModel):
+    value: str
+    label: str
+
+
+class SourceCapabilities(BaseModel):
+    source: QuerySource
+    measures: list[CapabilityMeasure]
+    dimensions: list[CapabilityDimension]
+    filter_fields: list[CapabilityFilterField]
+
+
+class QueryCapabilitiesResponse(BaseModel):
+    sources: list[SourceCapabilities]

@@ -3,7 +3,14 @@ from fastapi.responses import PlainTextResponse
 from sqlmodel import Session as DBSession
 
 from timetrace.db.session import get_session
-from timetrace.services import AnalyticsService
+from timetrace.interfaces.api.schemas import (
+    AnalyticsQueryBatchRequest,
+    AnalyticsQueryBatchResponse,
+    AnalyticsQueryRequest,
+    AnalyticsQueryResponse,
+    QueryCapabilitiesResponse,
+)
+from timetrace.services import AnalyticsService, QueryService
 
 router = APIRouter(tags=["Analytics & Markdown Agenda"])
 
@@ -13,9 +20,19 @@ def get_analytics_summary(db: DBSession = Depends(get_session)):
     return AnalyticsService(db).get_summary()
 
 
-@router.get("/analytics/detailed")
-def get_detailed_analytics(db: DBSession = Depends(get_session)):
-    return AnalyticsService(db).get_detailed()
+@router.post("/analytics/query", response_model=AnalyticsQueryResponse)
+def run_analytics_query(request: AnalyticsQueryRequest, db: DBSession = Depends(get_session)):
+    return QueryService(db).run(request.query, request)
+
+
+@router.post("/analytics/query/batch", response_model=AnalyticsQueryBatchResponse)
+def run_analytics_query_batch(request: AnalyticsQueryBatchRequest, db: DBSession = Depends(get_session)):
+    return QueryService(db).run_batch(request)
+
+
+@router.get("/analytics/capabilities", response_model=QueryCapabilitiesResponse)
+def get_analytics_capabilities(db: DBSession = Depends(get_session)):
+    return QueryService(db).capabilities()
 
 
 @router.get("/markdown/export", response_class=PlainTextResponse)

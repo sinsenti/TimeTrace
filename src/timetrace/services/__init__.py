@@ -1,5 +1,6 @@
 from timetrace.services.analytics_service import AnalyticsService
 from timetrace.services.habit_service import HabitService
+from timetrace.services.query_service import QueryService
 from timetrace.services.rating_service import RatingService
 from timetrace.services.revision_service import RevisionService
 from timetrace.services.session_service import SessionService
@@ -14,4 +15,5 @@ __all__ = [
     "RatingService",
     "HabitService",
     "AnalyticsService",
+    "QueryService",
 ]
