@@ -416,7 +416,8 @@ async function saveSubtaskFromModal() {
 async function toggleSubtaskCompletion(subtaskId, currentStatus) {
     const stLower = (currentStatus || '').toLowerCase();
     const newStatus = (stLower === 'done' || stLower === 'completed') ? 'To Do' : 'Done';
-    await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
+    const updatedTask = await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
+    if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
     loadTaskDetailTree();
 }
 

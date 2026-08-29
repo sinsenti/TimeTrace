@@ -198,13 +198,23 @@ class SessionService:
 
     def clear_future_sessions(self, task_ids: list[str], session_ids: list[str] | None = None) -> list[str]:
         future_sessions = self.list_future_sessions(task_ids)
-        future_ids = {s.id for s in future_sessions}
 
         if session_ids is not None:
             requested_ids = set(session_ids)
-            if not requested_ids.issubset(future_ids):
+            # Ownership is checked against every session for task_ids, not just the
+            # still-future ones: a ValidationError here means "this id never
+            # belonged to this task's scope" (a real cross-task/bogus-id error).
+            # An id that belonged but slipped into the past between the prompt
+            # being shown and the clear request (a session starting while the
+            # modal was open) is just skipped rather than failing the whole
+            # batch -- see the exact ownership set below.
+            owned_ids = {
+                s.id
+                for s in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))).all()
+            }
+            if not requested_ids.issubset(owned_ids):
                 raise ValidationError(
-                    "session_ids must be a subset of the task's future scheduled sessions"
+                    "session_ids must belong to the task's scheduled sessions"
                 )
             to_delete = [s for s in future_sessions if s.id in requested_ids]
         else:

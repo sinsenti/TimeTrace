@@ -452,7 +452,11 @@ class TaskService:
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
         sessions = session_service.list_future_sessions([task.id])
-        if not sessions:
+        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
+        # Fire when EITHER the task's own sessions or its subtree's are non-empty --
+        # a container-style parent task with no sessions of its own but subtasks
+        # that do must still prompt, or include_subtasks has nothing to reach.
+        if not sessions and not subtask_scheduled_count:
             return None
 
         scheduled_sessions = [
@@ -467,7 +471,6 @@ class TaskService:
             for s in sessions
         ]
         scheduled_seconds = sum(s.duration_seconds or 0 for s in sessions)
-        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
 
         return CompletionPolicyPrompt(
             reason=reason,
@@ -485,11 +488,24 @@ class TaskService:
         if not task:
             raise EntityNotFoundError("Task", task_id)
 
-        scope = [task_id]
-        if req.include_subtasks:
-            scope.extend(self._collect_subtree_ids(task_id))
+        session_service = SessionService(self.db)
+        deleted_ids: list[str] = []
 
-        deleted_ids = SessionService(self.db).clear_future_sessions(scope, req.session_ids)
+        # session_ids (when given) selects a subset of the TASK'S OWN future
+        # sessions -- that's the only list the modal shows checkboxes for.
+        # include_subtasks is a separate, all-or-nothing blanket clear of the
+        # whole subtree, since there's no per-child selection UI for it. These
+        # must stay two independent calls: folding subtree ids into the same
+        # scope as session_ids would make the subtree clear silently no-op
+        # any time the user deselects even one of the task's own sessions,
+        # because session_ids would then no longer cover the subtree ids either.
+        deleted_ids.extend(session_service.clear_future_sessions([task_id], req.session_ids))
+
+        if req.include_subtasks:
+            subtree_ids = self._collect_subtree_ids(task_id)
+            if subtree_ids:
+                deleted_ids.extend(session_service.clear_future_sessions(subtree_ids))
+
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
     def delete_task(self, task_id: str) -> None:
@@ -563,7 +579,13 @@ class TaskService:
         logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task_id])
 
         is_ongoing = str(task.status or "").lower() == "ongoing"
-        is_unbounded = is_ongoing
+        # Unbounded whenever the estimate can't be meaningfully compared to logged/
+        # scheduled time: no estimate at all, an open-ended Ongoing task, or a
+        # recurring task (its estimate is per-occurrence, but scheduled_seconds
+        # sums duration across every pre-generated future occurrence, so
+        # "remaining" would silently subtract months of projected instances from
+        # a single occurrence's estimate).
+        is_unbounded = is_ongoing or not (task.estimated_minutes or 0) or task.is_recurring
         est_minutes = 0 if is_ongoing else (task.estimated_minutes or 0)
         est_hours = round(est_minutes / 60.0, 2) if not is_ongoing else 0.0
         progress_pct = (
