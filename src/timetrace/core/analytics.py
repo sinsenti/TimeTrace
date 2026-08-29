@@ -28,11 +28,13 @@ def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, An
 
     summary = []
     for tag, data in tag_totals.items():
-        summary.append({
-            "tag": tag,
-            "total_hours": round(data["total_seconds"] / 3600.0, 2),
-            "session_count": data["session_count"]
-        })
+        summary.append(
+            {
+                "tag": tag,
+                "total_hours": round(data["total_seconds"] / 3600.0, 2),
+                "session_count": data["session_count"],
+            }
+        )
 
     summary.sort(key=lambda x: x["total_hours"], reverse=True)
     return summary
@@ -115,7 +117,7 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
     NOT copy).
     """
     now = datetime.now(UTC)
-    
+
     total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)
     total_hours = round(total_seconds / 3600.0, 2)
     total_sessions = len(sessions)
@@ -146,7 +148,7 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
                 st_dt = datetime.fromisoformat(st_raw.replace("Z", "+00:00"))
             else:
                 st_dt = st_raw
-            
+
             local_dt = st_dt.astimezone() if st_dt.tzinfo else st_dt.replace(tzinfo=UTC).astimezone()
             hour_key = f"{local_dt.hour:02d}:00"
             dur = (s.get("duration_seconds") or 0) / 3600.0
@@ -155,7 +157,6 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         except Exception:
             pass
 
-    # Task Status & Priority Breakdown
     task_status_counts = {"To Do": 0, "Ongoing": 0, "Scheduled": 0, "Done": 0, "Backlog": 0}
     task_priority_counts = {"high": 0, "medium": 0, "low": 0, "-": 0}
 
@@ -173,14 +174,13 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
         if pr in task_priority_counts:
             task_priority_counts[pr] += 1
 
-    # Estimation Accuracy Analysis (Excludes tasks with 'Ongoing' status)
     task_actual_secs: dict[int, int] = {}
     for s in sessions:
         tid = s.get("task_id")
         if tid:
             task_actual_secs[tid] = task_actual_secs.get(tid, 0) + (s.get("duration_seconds") or 0)
 
-    eval_tasks = [t for t in tasks if str(t.get("status", "")).lower() != "ongoing"]
+    eval_tasks = tasks
 
     total_est_minutes = sum(t.get("estimated_minutes") or 15 for t in eval_tasks)
     total_est_hours = round(total_est_minutes / 60.0, 2)
@@ -206,14 +206,12 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
             overestimated_count += 1
 
     evaluated_tasks_count = accurate_count + underestimated_count + overestimated_count
-    accuracy_score_pct = round((accurate_count / evaluated_tasks_count) * 100, 1) if evaluated_tasks_count > 0 else 100.0
+    accuracy_score_pct = (
+        round((accurate_count / evaluated_tasks_count) * 100, 1) if evaluated_tasks_count > 0 else 100.0
+    )
 
     return {
-        "summary": {
-            "total_hours": total_hours,
-            "total_sessions": total_sessions,
-            "tasks_count": len(tasks)
-        },
+        "summary": {"total_hours": total_hours, "total_sessions": total_sessions, "tasks_count": len(tasks)},
         "estimation": {
             "total_estimated_hours": total_est_hours,
             "total_actual_hours": total_hours,
@@ -221,11 +219,11 @@ def calculate_detailed_analytics(sessions: list[dict[str, Any]], tasks: list[dic
             "accurate_count": accurate_count,
             "underestimated_count": underestimated_count,
             "overestimated_count": overestimated_count,
-            "evaluated_tasks_count": evaluated_tasks_count
+            "evaluated_tasks_count": evaluated_tasks_count,
         },
         "tags_summary": calculate_tag_summaries(sessions),
         "daily_trend": daily_trend,
         "hourly_distribution": hourly_distribution,
         "task_status": task_status_counts,
-        "task_priority": task_priority_counts
+        "task_priority": task_priority_counts,
     }

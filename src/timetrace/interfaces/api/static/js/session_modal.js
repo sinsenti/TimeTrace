@@ -216,8 +216,12 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         const now = new Date();
         const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
+        const attachedTaskObj = taskId && typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
+        const estMins = attachedTaskObj ? (attachedTaskObj.estimated_minutes || 15) : 15;
+        const defaultSessionMins = estMins > 120 ? 30 : estMins;
+
         if (!endDate || endDate <= startDate) {
-            endDate = new Date(startDate.getTime() + 15 * 60 * 1000);
+            endDate = new Date(startDate.getTime() + defaultSessionMins * 60 * 1000);
         }
 
         const startInput = document.getElementById('session_modal_start');
@@ -238,7 +242,6 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
             if (typeof attachTaskById === 'function') {
                 attachTaskById(taskId, true);
             }
-            const attachedTaskObj = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
             if (!attachedTaskObj || !attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
                 if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
             }

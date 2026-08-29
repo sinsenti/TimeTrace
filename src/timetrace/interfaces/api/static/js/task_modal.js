@@ -270,7 +270,9 @@ async function saveTask() {
             sessionModalStateBackup = null;
 
             const startDt = backup.startVal ? new Date(backup.startVal) : new Date();
-            const endDt = backup.endVal ? new Date(backup.endVal) : new Date(startDt.getTime() + (createdTask.estimated_minutes || 15) * 60000);
+            const taskEst = createdTask.estimated_minutes || 15;
+            const sessionMins = taskEst > 120 ? 30 : taskEst;
+            const endDt = backup.endVal ? new Date(backup.endVal) : new Date(startDt.getTime() + sessionMins * 60000);
 
             openCreateSessionModal(startDt, endDt, createdTask.id, createdTask.title);
             if (backup.notesVal) {

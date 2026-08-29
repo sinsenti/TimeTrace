@@ -143,9 +143,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     const taskTitle = info.event.title;
                     const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
                     const estMins = info.event.extendedProps && info.event.extendedProps.estimatedMinutes ? parseInt(info.event.extendedProps.estimatedMinutes) : 15;
+                    const sessionMins = estMins > 120 ? 30 : estMins;
                     
                     const startTime = info.event.start;
-                    const endTime = new Date(startTime.getTime() + estMins * 60 * 1000);
+                    const endTime = new Date(startTime.getTime() + sessionMins * 60 * 1000);
 
                     info.event.remove();
 
@@ -210,11 +211,12 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const rawId = card.getAttribute('data-task-id');
                 const rawEst = card.getAttribute('data-task-est');
                 const estMins = rawEst ? parseInt(rawEst) : 15;
+                const sessionMins = estMins > 120 ? 30 : estMins;
 
                 return {
                     title: card.getAttribute('data-task-title') || '',
                     backgroundColor: card.getAttribute('data-task-color') || '#7c3aed',
-                    duration: { minutes: estMins },
+                    duration: { minutes: sessionMins },
                     extendedProps: {
                         taskId: rawId ? rawId : null,
                         estimatedMinutes: estMins

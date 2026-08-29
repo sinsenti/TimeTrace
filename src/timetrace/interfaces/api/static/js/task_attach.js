@@ -68,6 +68,19 @@ function attachTaskById(taskId, preventFocus = false) {
         setTagChips(t.tags);
     }
 
+    const startInput = document.getElementById('session_modal_start');
+    const endInput = document.getElementById('session_modal_end');
+    if (startInput && endInput && startInput.value) {
+        const startDt = new Date(startInput.value);
+        const estMins = t.estimated_minutes || 15;
+        const sessionMins = estMins > 120 ? 30 : estMins;
+        const newEnd = new Date(startDt.getTime() + sessionMins * 60000);
+        endInput.value = formatIsoLocal(newEnd);
+        if (typeof updateSessionModalDurationBadge === 'function') {
+            updateSessionModalDurationBadge();
+        }
+    }
+
     const input = document.getElementById('session_modal_task_search');
     if (input) input.value = '';
 

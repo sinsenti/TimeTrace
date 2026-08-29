@@ -115,25 +115,17 @@ async function loadTaskDetailTree() {
             }
         }
 
-        const isOngoing = (tree.status || '').toLowerCase() === 'ongoing';
         const estContainer = document.getElementById('detail_task_est_container');
         const progressContainer = document.getElementById('detail_task_progress_container');
         const scheduledContainer = document.getElementById('detail_task_scheduled_container');
         const remainingContainer = document.getElementById('detail_task_remaining_container');
         const estBadge = document.getElementById('detail_task_est');
 
-        if (isOngoing) {
-            if (estContainer) estContainer.classList.add('hidden');
-            if (progressContainer) progressContainer.classList.add('hidden');
-            if (scheduledContainer) scheduledContainer.classList.add('hidden');
-            if (remainingContainer) remainingContainer.classList.add('hidden');
-        } else {
-            if (estContainer) estContainer.classList.remove('hidden');
-            if (progressContainer) progressContainer.classList.remove('hidden');
-            if (scheduledContainer) scheduledContainer.classList.remove('hidden');
-            if (remainingContainer) remainingContainer.classList.remove('hidden');
-            if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
-        }
+        if (estContainer) estContainer.classList.remove('hidden');
+        if (progressContainer) progressContainer.classList.remove('hidden');
+        if (scheduledContainer) scheduledContainer.classList.remove('hidden');
+        if (remainingContainer) remainingContainer.classList.remove('hidden');
+        if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
 
         const titleInput = document.getElementById('inspector_edit_title');
         if (titleInput) titleInput.value = tree.title || '';
@@ -179,34 +171,32 @@ async function loadTaskDetailTree() {
         if (trackedEl) trackedEl.innerText = `${stats.logged_hours}h`;
 
         const progressEl = document.getElementById('detail_task_progress');
-        if (progressEl && !isOngoing) progressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
+        if (progressEl) progressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
 
-        if (!isOngoing) {
-            const scheduledEl = document.getElementById('detail_task_scheduled');
-            if (scheduledEl) scheduledEl.innerText = `${stats.scheduled_hours}h`;
+        const scheduledEl = document.getElementById('detail_task_scheduled');
+        if (scheduledEl) scheduledEl.innerText = `${stats.scheduled_hours}h`;
 
-            const remainingEl = document.getElementById('detail_task_remaining');
-            if (remainingEl) {
-                if (stats.is_unbounded || stats.remaining_hours === null || stats.remaining_hours === undefined) {
-                    remainingEl.innerText = '--';
-                } else if (stats.remaining_hours < 0) {
-                    remainingEl.innerText = `over by ${Math.abs(stats.remaining_hours)}h`;
-                } else {
-                    remainingEl.innerText = `${stats.remaining_hours}h`;
-                }
+        const remainingEl = document.getElementById('detail_task_remaining');
+        if (remainingEl) {
+            if (stats.is_unbounded || stats.remaining_hours === null || stats.remaining_hours === undefined) {
+                remainingEl.innerText = '--';
+            } else if (stats.remaining_hours < 0) {
+                remainingEl.innerText = `over by ${Math.abs(stats.remaining_hours)}h`;
+            } else {
+                remainingEl.innerText = `${stats.remaining_hours}h`;
             }
+        }
 
-            const unscheduledEl = document.getElementById('detail_task_unscheduled');
-            if (unscheduledEl) {
-                if (stats.scheduled_hours > 0 && stats.unscheduled_hours !== null && stats.unscheduled_hours !== undefined) {
-                    const label = stats.unscheduled_hours < 0
-                        ? `${Math.abs(stats.unscheduled_hours)}h over once scheduled sessions are counted`
-                        : `${stats.unscheduled_hours}h still unscheduled`;
-                    unscheduledEl.innerText = label;
-                    unscheduledEl.classList.remove('hidden');
-                } else {
-                    unscheduledEl.classList.add('hidden');
-                }
+        const unscheduledEl = document.getElementById('detail_task_unscheduled');
+        if (unscheduledEl) {
+            if (stats.scheduled_hours > 0 && stats.unscheduled_hours !== null && stats.unscheduled_hours !== undefined) {
+                const label = stats.unscheduled_hours < 0
+                    ? `${Math.abs(stats.unscheduled_hours)}h over once scheduled sessions are counted`
+                    : `${stats.unscheduled_hours}h still unscheduled`;
+                unscheduledEl.innerText = label;
+                unscheduledEl.classList.remove('hidden');
+            } else {
+                unscheduledEl.classList.add('hidden');
             }
         }
 
@@ -331,7 +321,6 @@ function renderSubtasksTreeNodes(subtasks, container) {
 
 function renderSubtaskCardHTML(node) {
     const isDone = (node.status || '').toLowerCase() === 'done' || (node.status || '').toLowerCase() === 'completed';
-    const isOngoing = (node.status || '').toLowerCase() === 'ongoing';
 
     return `
         <div onclick="window.location.href='/task-inspector/${node.id}'" class="subtask-node bg-[#0f1016] hover:bg-[#151724] p-3 rounded-lg border border-[var(--border-muted)] hover:border-purple-500/80 space-y-2 cursor-pointer transition">
@@ -339,7 +328,7 @@ function renderSubtaskCardHTML(node) {
                 <div class="flex items-center space-x-2">
                     <input type="checkbox" ${isDone ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleSubtaskCompletion('${node.id}', '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
                     <span class="font-bold text-xs text-left ${isDone ? 'line-through text-slate-500' : 'text-white'} hover:text-purple-300 hover:underline cursor-pointer">${node.title}</span>
-                    ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>` : ''}
+                    <span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>
                     <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">

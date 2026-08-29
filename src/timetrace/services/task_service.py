@@ -193,7 +193,8 @@ class TaskService:
         return db_task
 
     def _create_scheduled_session(self, task: Task, start_at: datetime) -> SessionModel:
-        duration_mins = task.estimated_minutes or 15
+        est = task.estimated_minutes or 15
+        duration_mins = 30 if est > 120 else est
         start_utc = ensure_utc(start_at)
         end_utc = start_utc + timedelta(minutes=duration_mins)
         session = SessionModel(
@@ -222,7 +223,8 @@ class TaskService:
                 pass
 
         rule = (task.recurrence_rule or "daily").lower()
-        duration_mins = task.estimated_minutes or 15
+        est = task.estimated_minutes or 15
+        duration_mins = 30 if est > 120 else est
 
         created_sessions = []
         curr_date = start_base
@@ -435,7 +437,6 @@ class TaskService:
             task.status_id = st.id
 
     def _get_all_descendant_task_ids(self, task_id: str) -> set[str]:
-        """Recursively collects a task ID and all its descendant subtask IDs."""
         ids = {task_id}
         subtask_ids = self.db.exec(select(Task.id).where(Task.parent_id == task_id)).all()
         for sub_id in subtask_ids:
@@ -611,15 +612,10 @@ class TaskService:
 
         logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task_id])
 
-        is_ongoing = str(task.status or "").lower() == "ongoing"
-        is_unbounded = is_ongoing or not (task.estimated_minutes or 0) or task.is_recurring
-        est_minutes = 0 if is_ongoing else (task.estimated_minutes or 0)
-        est_hours = round(est_minutes / 60.0, 2) if not is_ongoing else 0.0
-        progress_pct = (
-            (round((logged_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None)
-            if not is_ongoing
-            else None
-        )
+        is_unbounded = not (task.estimated_minutes or 0) or task.is_recurring
+        est_minutes = task.estimated_minutes or 0
+        est_hours = round(est_minutes / 60.0, 2)
+        progress_pct = round((logged_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None
 
         logged_hours = round(logged_seconds / 3600, 2)
         scheduled_hours = round(scheduled_seconds / 3600, 2)

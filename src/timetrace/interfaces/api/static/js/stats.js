@@ -49,7 +49,6 @@ async function inspectEstimationCategory(bucket) {
         });
 
         const filteredTasks = tasks.filter(t => {
-            if ((t.status || '').toLowerCase() === 'ongoing') return false;
             const actualSecs = taskSecs[t.id] || 0;
             if (actualSecs === 0) return false;
             const estSecs = (t.estimated_minutes || 15) * 60;

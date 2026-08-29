@@ -72,9 +72,6 @@ def _time_dimension_sql(dim: Dimension, anchor: str, anchor_kind: TimeAnchorKind
     if dim == Dimension.DAY:
         return f"DATE({anchor}{mod})"
     if dim == Dimension.WEEK:
-        # '-6 days' THEN 'weekday N' is required. The tempting 'weekday N','-7 days'
-        # form is off by a whole week whenever the local date already IS weekday N
-        # (probed: local Mon 2026-08-10 with N=1 returns 2026-08-03).
         return f"DATE({anchor}{mod}, '-6 days', :__week_start)"
     if dim == Dimension.MONTH:
         return f"DATE({anchor}{mod}, 'start of month')"
@@ -105,9 +102,7 @@ def _range_where(anchor_kind: TimeAnchorKind, anchor: str, ctx: QueryContext) ->
 
 
 # ---------------------------------------------------------------------------
-# Non-time dimension / filter columns, per source. `None` means "not directly
-# selectable here" (tag is handled by the recursive CTE, estimation_bucket by
-# the estimation CTE prelude).
+# Non-time dimension / filter columns, per source.
 # ---------------------------------------------------------------------------
 
 _NON_TIME_DIMENSION_SQL: dict[QuerySource, dict[Dimension, str | None]] = {
@@ -122,7 +117,7 @@ _NON_TIME_DIMENSION_SQL: dict[QuerySource, dict[Dimension, str | None]] = {
         Dimension.CATEGORY: "t.category",
         Dimension.STATUS: "t.status",
         Dimension.PRIORITY: "t.priority",
-        Dimension.ESTIMATION_BUCKET: None,  # only inside the estimation CTE, see _compile_tasks
+        Dimension.ESTIMATION_BUCKET: None,
     },
     QuerySource.HABIT_LOGS: {
         Dimension.HABIT: "hl.habit_id",
@@ -133,8 +128,6 @@ _NON_TIME_DIMENSION_SQL: dict[QuerySource, dict[Dimension, str | None]] = {
     },
 }
 
-# Same idea for filters -- FilterField shares string values with the matching Dimension for
-# every field that is valid as both a group-by and a filter.
 _NON_TIME_FILTER_SQL: dict[QuerySource, dict[FilterField, str]] = {
     QuerySource.SESSIONS: {
         FilterField.CATEGORY: "t.category",
@@ -184,7 +177,6 @@ def _build_filter_clause(
 
     for i, f in enumerate(filters):
         if f.field == FilterField.TAG:
-            # Tag filtering is handled by the caller (needs the recursive fan-out CTE).
             continue
 
         if f.field in (
@@ -268,14 +260,10 @@ def _group_by_clause(n: int) -> str:
 # sessions
 # ---------------------------------------------------------------------------
 
-# `weight` (sessions only) is the per-row duration in seconds credited to a bucket. On the
-# non-tag path it's the session's own duration; on the tag fan-out path (see below) the same
-# session may be repeated once per tag with `weight` divided per the chosen attribution mode.
 _SESSION_MEASURE_SQL: dict[Measure, str] = {
     Measure.SUM_DURATION: "SUM(weight) / 3600.0",
     Measure.SESSION_COUNT: "COUNT(*)",
     Measure.AVG_SESSION_LENGTH: "SUM(weight) / COUNT(*) / 60.0",
-    # AVG_RATING is handled specially below -- it needs a join, not just `weight`.
 }
 
 
@@ -357,13 +345,9 @@ def _compile_sessions_plain(query: AnalyticsQuery, ctx: QueryContext, anchor_kin
 
 
 def _compile_sessions_tagged(query: AnalyticsQuery, ctx: QueryContext, anchor_kind: TimeAnchorKind) -> CompiledQuery:
-    # `ts` inside the CTEs below stands in for `s.start_time` -- the anchor column, once we're
-    # selecting from the CTE chain rather than the `session` table directly.
     conditions, params = _sessions_base_where(query, ctx, "s.start_time", anchor_kind)
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
-    # This recursive CTE is a full, unindexable scan over every session in range, tokenizing
-    # `tags` on the fly. Fine at current data volumes; revisit if the sessions table grows large.
     weight_expr = (
         "dur" if query.tag_attribution == TagAttribution.FAN_OUT else "dur * 1.0 / COUNT(*) OVER (PARTITION BY sid)"
     )
@@ -474,15 +458,9 @@ attributed AS (
 # ---------------------------------------------------------------------------
 
 _IS_DONE_SQL = (
-    # Deliberate: `status` (free text) and `status_id` (FK to a user-configurable list) aren't
-    # guaranteed to agree -- the FK wins where it's set, matching how the rest of the app treats
-    # these two fields as loosely, not strictly, synced.
     "(COALESCE(ts.is_completed, 0) = 1 OR LOWER(COALESCE(t.status, '')) IN ('done', 'completed'))"
 )
 
-# COALESCE(t.estimated_minutes, 15) reproduces Python's `t.get("estimated_minutes") or 15` for
-# the common case (column is NULL), but NOT for an explicit `0` -- Python's `or` would still
-# fall back to 15 there, COALESCE would not. Pre-existing, latent divergence; not fixed here.
 _EST_MINUTES_SQL = "COALESCE(t.estimated_minutes, 15)"
 
 _TASK_MEASURE_SQL: dict[Measure, str] = {
@@ -591,12 +569,10 @@ base AS (
         WHEN act_secs * 1.0 / est_secs > 1.15 THEN 'underestimated'
         ELSE 'overestimated' END AS estimation_bucket
     FROM est
-    WHERE LOWER(COALESCE(status, '')) <> 'ongoing' AND act_secs > 0
+    WHERE act_secs > 0
 )
 """.strip()
 
-    # `estimation_bucket` isn't in `_NON_TIME_FILTER_SQL` (it only exists inside this CTE), so
-    # build its condition directly instead of routing through the generic helper's column lookup.
     bucket_conditions: list[str] = []
     bucket_params: dict[str, object] = {}
     for i, f in enumerate([flt for flt in query.filters if flt.field == FilterField.ESTIMATION_BUCKET]):
@@ -621,9 +597,6 @@ base AS (
             raise ValidationError(
                 "estimation_accuracy does not support group_by; use task_count grouped by estimation_bucket instead"
             )
-        # Deliberate divergence from the Python reference implementation: it returns 100.0 when
-        # zero tasks were evaluated. This engine returns no rows / value=None instead so the
-        # tile renders "n/a" client-side rather than a misleading "100%".
         sql = (
             f"{prelude} SELECT 100.0 * SUM(CASE WHEN estimation_bucket = 'accurate' THEN 1 ELSE 0 END)"
             f" / COUNT(*) AS value, COUNT(*) AS n FROM base {bucket_where}"
@@ -638,7 +611,6 @@ base AS (
             totals_overlap=False,
         )
 
-    # measure=task_count, group_by=[estimation_bucket] (the only other supported combination here)
     group_cols = []
     for dim in query.group_by:
         if dim == Dimension.ESTIMATION_BUCKET:
