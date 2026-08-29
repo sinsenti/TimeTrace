@@ -2,6 +2,7 @@ import re
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
+import sqlalchemy as sa
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
@@ -35,7 +36,9 @@ def parse_title_estimation(title: str) -> tuple[str, int | None]:
             est_minutes = int(val * 60)
         else:
             est_minutes = int(val)
-        clean_title = re.sub(r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour|d|day|days)?\]", "", title, flags=re.IGNORECASE).strip()
+        clean_title = re.sub(
+            r"\[\d+(?:\.\d+)?\s*(?:min|mins|m|h|hours|hour|d|day|days)?\]", "", title, flags=re.IGNORECASE
+        ).strip()
         return clean_title, est_minutes
     return title, None
 
@@ -67,11 +70,46 @@ class TaskService:
         statuses = self.db.exec(select(TaskStatus).order_by(TaskStatus.position)).all()
         if not statuses:
             defaults = [
-                TaskStatus(name="To Do", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#2563eb", position=0),
-                TaskStatus(name="Ongoing", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#d97706", position=1),
-                TaskStatus(name="Scheduled", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=True, color="#7c3aed", position=2),
-                TaskStatus(name="Done", is_completed=True, is_hide_by_default=True, is_scheduled_trigger=False, color="#059669", position=3),
-                TaskStatus(name="Backlog", is_completed=False, is_hide_by_default=False, is_scheduled_trigger=False, color="#64748b", position=4),
+                TaskStatus(
+                    name="To Do",
+                    is_completed=False,
+                    is_hide_by_default=False,
+                    is_scheduled_trigger=False,
+                    color="#2563eb",
+                    position=0,
+                ),
+                TaskStatus(
+                    name="Ongoing",
+                    is_completed=False,
+                    is_hide_by_default=False,
+                    is_scheduled_trigger=False,
+                    color="#d97706",
+                    position=1,
+                ),
+                TaskStatus(
+                    name="Scheduled",
+                    is_completed=False,
+                    is_hide_by_default=False,
+                    is_scheduled_trigger=True,
+                    color="#7c3aed",
+                    position=2,
+                ),
+                TaskStatus(
+                    name="Done",
+                    is_completed=True,
+                    is_hide_by_default=True,
+                    is_scheduled_trigger=False,
+                    color="#059669",
+                    position=3,
+                ),
+                TaskStatus(
+                    name="Backlog",
+                    is_completed=False,
+                    is_hide_by_default=False,
+                    is_scheduled_trigger=False,
+                    color="#64748b",
+                    position=4,
+                ),
             ]
             for st in defaults:
                 self.db.add(st)
@@ -176,8 +214,8 @@ class TaskService:
         start_base = ensure_utc(task.created_at) if task.created_at else datetime.now(UTC)
         if task.assigned_date:
             try:
-                dt_str = str(task.assigned_date).replace(' ', 'T')
-                if 'T' not in dt_str:
+                dt_str = str(task.assigned_date).replace(" ", "T")
+                if "T" not in dt_str:
                     dt_str = f"{dt_str}T09:00:00"
                 start_base = ensure_utc(datetime.fromisoformat(dt_str))
             except Exception:
@@ -194,8 +232,7 @@ class TaskService:
             curr_naive = ensure_utc(curr_date).replace(tzinfo=None)
             existing = self.db.exec(
                 select(SessionModel).where(
-                    SessionModel.task_id == task.id,
-                    SessionModel.start_time == curr_naive
+                    SessionModel.task_id == task.id, SessionModel.start_time == curr_naive
                 )
             ).first()
 
@@ -267,6 +304,7 @@ class TaskService:
         priority_map = {"high": 3, "medium": 2, "low": 1, "-": 0}
 
         if sort_by == "smart_gap_filler":
+
             def smart_score(t: Task) -> tuple:
                 status_lower = (t.status or "").lower()
                 is_scheduled = status_lower == "scheduled"
@@ -274,7 +312,7 @@ class TaskService:
                 is_done = status_lower in ("completed", "done")
                 prio_val = priority_map.get(str(t.priority).lower(), 0)
 
-                due_ts = ensure_utc(t.due_date).timestamp() if t.due_date else float('inf')
+                due_ts = ensure_utc(t.due_date).timestamp() if t.due_date else float("inf")
                 created_ts = t.created_at.timestamp() if t.created_at else 0
 
                 group = 5
@@ -299,10 +337,10 @@ class TaskService:
             tasks.sort(
                 key=lambda t: (
                     priority_map.get(str(t.priority).lower(), 0),
-                    -(ensure_utc(t.due_date).timestamp() if t.due_date else float('inf')),
-                    -t.created_at.timestamp() if t.created_at else 0
+                    -(ensure_utc(t.due_date).timestamp() if t.due_date else float("inf")),
+                    -t.created_at.timestamp() if t.created_at else 0,
                 ),
-                reverse=True
+                reverse=True,
             )
         elif sort_by == "created_at":
             tasks.sort(key=lambda t: t.created_at or datetime.min.replace(tzinfo=UTC))
@@ -362,9 +400,6 @@ class TaskService:
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
 
-        # Recurring tasks regenerate their own future sessions a few lines up
-        # (schedule_recurrent_sessions_three_months), so prompting the user
-        # about clearing "scheduled sessions" on them makes no sense.
         policy = None
         if not db_task.is_recurring:
             was_completed, was_scheduled = self._status_flags(old_status_name)
@@ -408,9 +443,6 @@ class TaskService:
         return ids
 
     def _status_flags(self, name: str | None) -> tuple[bool, bool]:
-        """Returns (is_completed, is_scheduled_trigger) for a status name, preferring
-        the configured TaskStatus row and falling back to a name-based guess for
-        statuses that don't have one (e.g. legacy/free-text status values)."""
         if name is None:
             return (False, False)
 
@@ -422,8 +454,6 @@ class TaskService:
         return (lname in {"done", "completed"}, lname == "scheduled")
 
     def _collect_subtree_ids(self, task_id: str) -> list[str]:
-        """Iterative BFS over Task.parent_id, returning descendant ids only
-        (excluding task_id itself). Guards against a parent_id cycle."""
         result: list[str] = []
         seen: set[str] = {task_id}
         frontier = [task_id]
@@ -445,10 +475,9 @@ class TaskService:
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
         sessions = session_service.list_future_sessions([task.id])
-        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
-        # Fire when EITHER the task's own sessions or its subtree's are non-empty --
-        # a container-style parent task with no sessions of its own but subtasks
-        # that do must still prompt, or include_subtasks has nothing to reach.
+        subtask_scheduled_count = len(
+            session_service.list_future_sessions(self._collect_subtree_ids(task.id))
+        )
         if not sessions and not subtask_scheduled_count:
             return None
 
@@ -484,14 +513,6 @@ class TaskService:
         session_service = SessionService(self.db)
         deleted_ids: list[str] = []
 
-        # session_ids (when given) selects a subset of the TASK'S OWN future
-        # sessions -- that's the only list the modal shows checkboxes for.
-        # include_subtasks is a separate, all-or-nothing blanket clear of the
-        # whole subtree, since there's no per-child selection UI for it. These
-        # must stay two independent calls: folding subtree ids into the same
-        # scope as session_ids would make the subtree clear silently no-op
-        # any time the user deselects even one of the task's own sessions,
-        # because session_ids would then no longer cover the subtree ids either.
         deleted_ids.extend(session_service.clear_future_sessions([task_id], req.session_ids))
 
         if req.include_subtasks:
@@ -499,7 +520,9 @@ class TaskService:
             if subtree_ids:
                 deleted_ids.extend(session_service.clear_future_sessions(subtree_ids))
 
-        return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
+        return ClearScheduledSessionsResponse(
+            deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids
+        )
 
     def delete_task(self, task_id: str) -> None:
         db_task = self.db.get(Task, task_id)
@@ -519,7 +542,9 @@ class TaskService:
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
-        completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
+        completed_tasks = self.db.exec(
+            select(Task).where(Task.status.in_(["Done", "completed", "done"]))
+        ).all()
         if not completed_tasks:
             return 0
 
@@ -534,7 +559,7 @@ class TaskService:
 
         count = 0
         for task in completed_tasks:
-            if task in self.db:
+            if task in self.db and not sa.inspect(task).deleted:
                 self.db.delete(task)
                 count += 1
 
@@ -565,7 +590,7 @@ class TaskService:
                 "tags": t.tags,
                 "parent_id": t.parent_id,
                 "created_at": ensure_utc(t.created_at).isoformat() if t.created_at else "",
-                "subtasks": [build_node(child) for child in subtasks]
+                "subtasks": [build_node(child) for child in subtasks],
             }
 
         return build_node(task)
@@ -575,8 +600,8 @@ class TaskService:
         if not task:
             raise EntityNotFoundError("Task", task_id)
 
-        task.created_at = ensure_utc(task.created_at)
-        task.due_date = ensure_utc(task.due_date)
+        created_at_utc = ensure_utc(task.created_at)
+        due_date_utc = ensure_utc(task.due_date)
 
         sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
         sessions.sort(key=lambda s: ensure_utc(s.start_time) or datetime.min.replace(tzinfo=UTC))
@@ -587,12 +612,6 @@ class TaskService:
         logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task_id])
 
         is_ongoing = str(task.status or "").lower() == "ongoing"
-        # Unbounded whenever the estimate can't be meaningfully compared to logged/
-        # scheduled time: no estimate at all, an open-ended Ongoing task, or a
-        # recurring task (its estimate is per-occurrence, but scheduled_seconds
-        # sums duration across every pre-generated future occurrence, so
-        # "remaining" would silently subtract months of projected instances from
-        # a single occurrence's estimate).
         is_unbounded = is_ongoing or not (task.estimated_minutes or 0) or task.is_recurring
         est_minutes = 0 if is_ongoing else (task.estimated_minutes or 0)
         est_hours = round(est_minutes / 60.0, 2) if not is_ongoing else 0.0
@@ -635,8 +654,10 @@ class TaskService:
             ratings_detailed.append(r_dict)
 
         task_data = task.model_dump()
-        if task.due_date:
-            task_data["due_date"] = ensure_utc(task.due_date).isoformat()
+        if due_date_utc:
+            task_data["due_date"] = due_date_utc.isoformat()
+        if created_at_utc:
+            task_data["created_at"] = created_at_utc.isoformat()
 
         return {
             "task": task_data,

@@ -23,7 +23,7 @@
 
 | Component | Technology |
 | :--- | :--- |
-| **Language** | Python 3.11+ |
+| **Language** | Python 3.14+ |
 | **Daemon Engine** | FastAPI + Uvicorn (Port 8002) |
 | **Database** | SQLite (`~/.timetrace/timetrace.db`) + SQLModel |
 | **Terminal UI (TUI)** | Textual |
@@ -41,16 +41,14 @@
 git clone [https://github.com/your-username/timetrace.git](https://github.com/your-username/timetrace.git)
 cd timetrace
 
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
+uv sync
 
 ```
 
 ### 2. Start the Daemon
 
 ```bash
-timetrace daemon
+uv run timetrace daemon
 
 ```
 
@@ -59,8 +57,8 @@ timetrace daemon
 ### 3. Usage Modes
 
 * **Web Dashboard**: Open `http://127.0.0.1:8002/` in your browser.
-* **Interactive TUI**: Run `timetrace` in a new terminal tab.
-* **CLI Commands**: Use subcommands like `timetrace start -t "#programming"` or `timetrace summary`.
+* **Interactive TUI**: Run `uv run timetrace` in a new terminal tab.
+* **CLI Commands**: Use subcommands like `uv run timetrace start -t "#programming"` or `uv run timetrace summary`.
 
 ---
 
@@ -105,4 +103,3 @@ total_sessions: 2
 ## License
 
 Distributed under the [MIT License](https://www.google.com/search?q=LICENSE).
-

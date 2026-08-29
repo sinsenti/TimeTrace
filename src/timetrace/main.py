@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
 
+from timetrace import __version__
 from timetrace.config import settings
 from timetrace.core.exceptions import EntityNotFoundError, TimerError, ValidationError
 from timetrace.core.idle_detector import get_idle_seconds
@@ -45,7 +46,7 @@ async def lifespan(app: FastAPI):
 
 
 def create_daemon_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
     app.add_middleware(
         CORSMiddleware,

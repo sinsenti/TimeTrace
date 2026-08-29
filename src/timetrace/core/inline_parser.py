@@ -37,7 +37,11 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         elif p_val in ("low", "l"):
             priority = "low"
 
-    status_match = re.search(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", first_line, re.IGNORECASE)
+    status_match = re.search(
+        r"@(in_progress|ongoing|completed|scheduled|backlog|ip|og|done|c|todo|to do|sch|bl)",
+        first_line,
+        re.IGNORECASE,
+    )
     status = "To Do"
     if status_match:
         s_val = status_match.group(1).lower()
@@ -45,13 +49,13 @@ def parse_inline_task(text: str) -> dict[str, Any]:
             status = "Done"
         elif s_val in ("ongoing", "og"):
             status = "Ongoing"
+        elif s_val in ("scheduled", "sch"):
+            status = "Scheduled"
+        elif s_val in ("backlog", "bl"):
+            status = "Backlog"
+        elif s_val in ("in_progress", "ip", "todo", "to do"):
+            status = "To Do"
 
-    # `due:`/`d:` and `target:`/`t:`: N days OR hours from now, local time.
-    # "due" sets the deadline (Task.due_date); "target" sets the day/time the
-    # user plans to work on it (Task.assigned_date, or a real scheduled Session
-    # when hour-precision is given -- see schedule_session_at below). A bare
-    # number with no unit suffix defaults to days, matching the original
-    # due:Nd/target:Nd form (0d/0 = today, 1d/1 = tomorrow).
     local_now = datetime.now().astimezone()
 
     due_date_value = None
@@ -60,7 +64,6 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         n = int(due_match.group(1))
         unit = (due_match.group(2) or "d").lower()
         if unit == "h":
-            # Hour precision is an exact deadline instant, not just "by end of day".
             due_date_value = local_now + timedelta(hours=n)
         else:
             due_day = (local_now + timedelta(days=n)).date()
@@ -73,20 +76,12 @@ def parse_inline_task(text: str) -> dict[str, Any]:
         n = int(target_match.group(1))
         unit = (target_match.group(2) or "d").lower()
         if unit == "h":
-            # assigned_date is a bare YYYY-MM-DD string -- it can't hold a
-            # specific hour, so an hour-precision target becomes a real
-            # scheduled Session instead (see apply_quick_task_syntax in
-            # task_service.py, which is what actually creates that row).
-            # Derived from schedule_session_at (not local_now) so it agrees
-            # with the actual session day when the offset crosses midnight.
             schedule_session_at = local_now + timedelta(hours=n)
             assigned_date_value = schedule_session_at.date().strftime("%Y-%m-%d")
         else:
             target_day = (local_now + timedelta(days=n)).date()
             assigned_date_value = target_day.strftime("%Y-%m-%d")
 
-    # Any `(...)` group is lifted out into the description rather than left in
-    # the title -- e.g. "Renew passport (bring old one + 2 photos)".
     paren_groups = re.findall(r"\(([^)]*)\)", first_line)
     paren_description = " ".join(g.strip() for g in paren_groups if g.strip())
     description_parts = [p for p in (paren_description, extra_description) if p]
@@ -97,7 +92,10 @@ def parse_inline_task(text: str) -> dict[str, Any]:
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(
-        r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE
+        r"@(in_progress|ongoing|completed|scheduled|backlog|ip|og|done|c|todo|to do|sch|bl)",
+        "",
+        clean_title,
+        flags=re.IGNORECASE,
     )
     clean_title = re.sub(r"\b(?:due|d):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(r"\b(?:target|t):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
@@ -132,7 +130,7 @@ def parse_inline_timer(text: str) -> dict[str, Any]:
     tags = re.findall(r"#\w+", first_line)
     tags_str = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{4,36})", first_line, re.IGNORECASE)
     task_id = task_id_match.group(2) if task_id_match else None
 
     pomo_match = re.search(r"!(\d+)m?", first_line)
@@ -140,7 +138,7 @@ def parse_inline_timer(text: str) -> dict[str, Any]:
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{4,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = re.sub(r"!\d+m?", "", clean_notes)
     clean_notes = " ".join(clean_notes.split()).strip()
 
@@ -217,13 +215,13 @@ def parse_inline_session_edit(text: str, base_session: dict[str, Any] | None = N
     if tags:
         result["tags"] = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{4,36})", first_line, re.IGNORECASE)
     if task_id_match:
         result["task_id"] = task_id_match.group(2)
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{4,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = " ".join(clean_notes.split()).strip()
 
     if extra_notes:
@@ -246,7 +244,7 @@ def parse_inline_retro(text: str) -> dict[str, Any]:
     tags = re.findall(r"#\w+", first_line)
     tags_str = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{4,36})", first_line, re.IGNORECASE)
     task_id = task_id_match.group(2) if task_id_match else None
 
     start_ago_match = re.search(r"-\d+(m|h)", first_line)
@@ -262,7 +260,7 @@ def parse_inline_retro(text: str) -> dict[str, Any]:
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{4,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = re.sub(r"-\d+(m|h)", "", clean_notes)
     clean_notes = re.sub(r"\b\d+m\b", "", clean_notes)
     clean_notes = " ".join(clean_notes.split()).strip()

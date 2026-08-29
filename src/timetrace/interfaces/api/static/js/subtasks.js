@@ -82,7 +82,7 @@ async function loadTaskDetailTree() {
                 if (parentBannerEl) {
                     parentBannerEl.classList.remove('hidden');
                     parentBannerEl.innerHTML = `
-                        <div class="bg-purple-950/40 border border-purple-800/80 rounded-xl p-3 flex justify-between items-center text-xs shadow-md">
+                        <div class="bg-purple-950/40 border border-purple-800/80 rounded-xl p-3 flex justify-between items-center text-xs shadow-md mb-4">
                             <div class="flex items-center space-x-2">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-purple-900/80 text-purple-300 border border-purple-700">Subtask Of</span>
                                 <a href="/task-inspector/${parentTask.id}" class="font-black text-sm text-white hover:underline hover:text-purple-300">${parentTask.title}</a>
@@ -276,9 +276,6 @@ async function saveInspectorTaskProperties(event) {
     try {
         const updatedTask = await api.put(`/api/tasks/${taskId}`, payload);
         if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
-        // Only leave the page automatically when there's no completion-policy
-        // prompt to show -- navigating away immediately would yank the modal
-        // out from under the user before they can act on it.
         if (!updatedTask || !updatedTask.completion_policy) {
             navigateBack();
         }
@@ -337,21 +334,22 @@ function renderSubtaskCardHTML(node) {
     const isOngoing = (node.status || '').toLowerCase() === 'ongoing';
 
     return `
-        <div class="subtask-node bg-[#0f1016] p-3 rounded-lg border border-[var(--border-muted)] space-y-2">
+        <div onclick="window.location.href='/task-inspector/${node.id}'" class="subtask-node bg-[#0f1016] hover:bg-[#151724] p-3 rounded-lg border border-[var(--border-muted)] hover:border-purple-500/80 space-y-2 cursor-pointer transition">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-2">
-                    <input type="checkbox" ${isDone ? 'checked' : ''} onchange="toggleSubtaskCompletion('${node.id}', '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
-                    <span class="font-bold text-xs ${isDone ? 'line-through text-slate-500' : 'text-white'}">${node.title}</span>
+                    <input type="checkbox" ${isDone ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleSubtaskCompletion('${node.id}', '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
+                    <span class="font-bold text-xs text-left ${isDone ? 'line-through text-slate-500' : 'text-white'} hover:text-purple-300 hover:underline cursor-pointer">${node.title}</span>
                     ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>` : ''}
                     <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
-                    <button type="button" onclick="openSubtaskCreationModal('${node.id}')" class="text-purple-400 hover:text-purple-300 font-bold">+ Subtask</button>
-                    <button type="button" onclick="deleteSubtaskNode('${node.id}')" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
+                    <button type="button" onclick="event.stopPropagation(); openSubtaskEditModal('${node.id}')" class="text-slate-400 hover:text-white font-bold" title="Quick edit modal">Quick Edit</button>
+                    <button type="button" onclick="event.stopPropagation(); openSubtaskCreationModal('${node.id}')" class="text-purple-400 hover:text-purple-300 font-bold" title="Add child subtask">+ Subtask</button>
+                    <button type="button" onclick="event.stopPropagation(); deleteSubtaskNode('${node.id}')" class="text-red-400 hover:text-red-300 font-bold">&times;</button>
                 </div>
             </div>
 
-            ${node.subtasks && node.subtasks.length > 0 ? `<div class="subtask-children pl-3 border-l border-purple-900/50 space-y-2 mt-2">${node.subtasks.map(child => renderSubtaskCardHTML(child)).join('')}</div>` : ''}
+            ${node.subtasks && node.subtasks.length > 0 ? `<div onclick="event.stopPropagation();" class="subtask-children pl-3 border-l border-purple-900/50 space-y-2 mt-2">${node.subtasks.map(child => renderSubtaskCardHTML(child)).join('')}</div>` : ''}
         </div>
     `;
 }
@@ -378,6 +376,9 @@ function openSubtaskCreationModal(parentId = null) {
         inheritedTags = (parentNode && parentNode.tags) ? parentNode.tags : '';
     }
 
+    const editSubtaskIdEl = document.getElementById('edit_subtask_id');
+    if (editSubtaskIdEl) editSubtaskIdEl.value = '';
+
     document.getElementById('subtask_parent_id').value = targetParentId;
     document.getElementById('modal_subtask_title').value = '';
     document.getElementById('modal_subtask_tags').value = inheritedTags;
@@ -401,12 +402,45 @@ function openSubtaskCreationModal(parentId = null) {
     }, 50);
 }
 
+function openSubtaskEditModal(subtaskId) {
+    const subtask = findNodeInTree(currentTreeData, subtaskId);
+    if (!subtask) return;
+
+    const editSubtaskIdEl = document.getElementById('edit_subtask_id');
+    if (editSubtaskIdEl) editSubtaskIdEl.value = subtask.id;
+
+    document.getElementById('subtask_parent_id').value = subtask.parent_id || '';
+    document.getElementById('modal_subtask_title').value = subtask.title || '';
+    document.getElementById('modal_subtask_tags').value = subtask.tags || '';
+    document.getElementById('modal_subtask_est').value = formatMinutesToDuration(subtask.estimated_minutes);
+    document.getElementById('modal_subtask_status').value = subtask.status || 'To Do';
+    document.getElementById('modal_subtask_priority').value = subtask.priority || '-';
+
+    const heading = document.getElementById('subtask_modal_heading');
+    if (heading) {
+        heading.innerText = "Edit Subtask";
+    }
+
+    document.getElementById('subtask_modal').classList.remove('hidden');
+
+    setTimeout(() => {
+        const input = document.getElementById('modal_subtask_title');
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }, 50);
+}
+
 function closeSubtaskModal() {
     const modal = document.getElementById('subtask_modal');
     if (modal) modal.classList.add('hidden');
+    const editSubtaskIdEl = document.getElementById('edit_subtask_id');
+    if (editSubtaskIdEl) editSubtaskIdEl.value = '';
 }
 
 async function saveSubtaskFromModal() {
+    const editSubtaskId = document.getElementById('edit_subtask_id') ? document.getElementById('edit_subtask_id').value : '';
     const parentId = document.getElementById('subtask_parent_id').value;
     const titleVal = document.getElementById('modal_subtask_title').value.trim();
     if (!titleVal) {
@@ -418,7 +452,7 @@ async function saveSubtaskFromModal() {
 
     const payload = {
         title: titleVal,
-        parent_id: parentId,
+        parent_id: parentId || null,
         tags: document.getElementById('modal_subtask_tags') ? document.getElementById('modal_subtask_tags').value : '',
         status: document.getElementById('modal_subtask_status').value,
         priority: document.getElementById('modal_subtask_priority') ? document.getElementById('modal_subtask_priority').value : '-',
@@ -426,7 +460,13 @@ async function saveSubtaskFromModal() {
         category: currentTreeData ? currentTreeData.category : "work"
     };
 
-    await api.post('/api/tasks', payload);
+    if (editSubtaskId) {
+        const updatedTask = await api.put(`/api/tasks/${editSubtaskId}`, payload);
+        if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
+    } else {
+        await api.post('/api/tasks', payload);
+    }
+
     closeSubtaskModal();
     loadTaskDetailTree();
 }
