@@ -152,8 +152,8 @@ async function loadTaskInspectorStats(taskId) {
             const ratioStr = data.progress_pct !== null ? `${data.progress_pct}%` : 'N/A';
             kpiContainer.innerHTML = `
                 <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Tracked Hours</span>
-                    <span class="text-lg font-black text-purple-400">${data.total_hours}h</span>
+                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Logged</span>
+                    <span class="text-lg font-black text-purple-400">${data.logged_hours}h</span>
                 </div>
                 <div>
                     <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimated</span>

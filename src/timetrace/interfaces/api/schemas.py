@@ -301,3 +301,61 @@ class SourceCapabilities(BaseModel):
 
 class QueryCapabilitiesResponse(BaseModel):
     sources: list[SourceCapabilities]
+
+
+# ---------------------------------------------------------------------------
+# Session/task completion policy
+# ---------------------------------------------------------------------------
+
+
+class ScheduledSessionInfo(BaseModel):
+    id: str
+    start_time: datetime
+    end_time: datetime | None
+    duration_seconds: int | None
+    tags: str
+    notes: str | None
+
+
+class CompletionPolicyPrompt(BaseModel):
+    reason: str  # "completed" | "left_scheduled"
+    task_id: str
+    task_title: str
+    scheduled_sessions: list[ScheduledSessionInfo]
+    scheduled_seconds: int
+    subtask_scheduled_count: int
+
+
+class TaskWithPolicyResponse(BaseModel):
+    id: str
+    title: str
+    description: str | None = None
+    priority: str
+    estimated_minutes: int | None = None
+    status: str
+    status_id: str | None = None
+    parent_id: str | None = None
+    category: str
+    color: str
+    tags: str
+
+    due_date: datetime | None = None
+    assigned_date: str | None = None
+    attachments: str | None = None
+    is_recurring: bool
+    recurrence_rule: str | None = None
+
+    requires_session_review: bool
+    created_at: datetime
+
+    completion_policy: CompletionPolicyPrompt | None = None
+
+
+class ClearScheduledSessionsRequest(BaseModel):
+    include_subtasks: bool = False
+    session_ids: list[str] | None = None
+
+
+class ClearScheduledSessionsResponse(BaseModel):
+    deleted_count: int
+    deleted_session_ids: list[str]

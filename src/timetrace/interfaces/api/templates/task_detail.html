@@ -64,12 +64,21 @@
                     <span id="detail_task_est" class="font-bold text-slate-200">15m</span>
                 </div>
                 <div>
-                    <span class="text-slate-400 block font-semibold">Tracked Time:</span>
+                    <span class="text-slate-400 block font-semibold">Logged:</span>
                     <span id="detail_task_tracked" class="font-bold text-purple-400">0.0h</span>
                 </div>
                 <div id="detail_task_progress_container">
                     <span class="text-slate-400 block font-semibold">Time Estimation Ratio:</span>
                     <span id="detail_task_progress" class="font-bold text-emerald-400">0%</span>
+                </div>
+                <div id="detail_task_scheduled_container">
+                    <span class="text-slate-400 block font-semibold">Scheduled ahead:</span>
+                    <span id="detail_task_scheduled" class="font-bold text-blue-400">0.0h</span>
+                </div>
+                <div id="detail_task_remaining_container">
+                    <span class="text-slate-400 block font-semibold">Remaining:</span>
+                    <span id="detail_task_remaining" class="font-bold text-amber-400">0.0h</span>
+                    <span id="detail_task_unscheduled" class="hidden text-[10px] text-slate-500 font-normal block mt-0.5"></span>
                 </div>
                 <div id="detail_subtask_completion_container" class="hidden">
                     <span class="text-slate-400 block font-semibold">Subtasks Completion:</span>
@@ -257,9 +266,11 @@
 
     {% include "components/settings_modal.html" %}
     {% include "components/confirm_modal.html" %}
+    {% include "components/completion_policy_modal.html" %}
 
     <script src="/static/js/api_client.js"></script>
     <script src="/static/js/utils.js"></script>
+    <script src="/static/js/completion_policy.js"></script>
     <script src="/static/js/timer_control.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/subtasks.js"></script>

@@ -4,11 +4,14 @@ from sqlmodel import Session as DBSession
 from timetrace.db.models import Task, TaskReview, TaskStatus
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
+    ClearScheduledSessionsRequest,
+    ClearScheduledSessionsResponse,
     TaskCreate,
     TaskReviewCreate,
     TaskStatusCreate,
     TaskStatusUpdate,
     TaskUpdate,
+    TaskWithPolicyResponse,
 )
 from timetrace.services import TaskService
 
@@ -93,9 +96,16 @@ def get_task_statistics(task_id: str, db: DBSession = Depends(get_session)):
     return TaskService(db).get_task_statistics(task_id)
 
 
-@router.put("/{task_id}", response_model=Task)
+@router.put("/{task_id}", response_model=TaskWithPolicyResponse)
 def update_task(task_id: str, task_data: TaskUpdate, db: DBSession = Depends(get_session)):
     return TaskService(db).update_task(task_id, task_data)
+
+
+@router.post("/{task_id}/clear-scheduled-sessions", response_model=ClearScheduledSessionsResponse)
+def clear_scheduled_sessions(
+    task_id: str, req: ClearScheduledSessionsRequest, db: DBSession = Depends(get_session)
+):
+    return TaskService(db).clear_scheduled_sessions(task_id, req)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)

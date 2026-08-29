@@ -216,14 +216,6 @@ async function saveTask() {
         const idEl = document.getElementById('edit_task_id');
         const id = idEl ? idEl.value : '';
 
-        let oldStatus = null;
-        if (id) {
-            const existingTask = (typeof activeTasks !== 'undefined' && Array.isArray(activeTasks) ? activeTasks.find(item => item && String(item.id) === String(id)) : null)
-                || (typeof kanbanTasks !== 'undefined' && Array.isArray(kanbanTasks) ? kanbanTasks.find(item => item && String(item.id) === String(id)) : null)
-                || (typeof allTasksMap !== 'undefined' && allTasksMap ? (allTasksMap[id] || allTasksMap[String(id)]) : null);
-            if (existingTask) oldStatus = existingTask.status;
-        }
-
         const titleVal = document.getElementById('modal_input_title') ? document.getElementById('modal_input_title').value.trim() : '';
         if (!titleVal) {
             alert("Task title is required.");
@@ -261,9 +253,7 @@ async function saveTask() {
         let createdTask = null;
         if (id) {
             createdTask = await api.put(`/api/tasks/${id}`, payload);
-            if ((oldStatus || '').toLowerCase() === 'scheduled' && payload.status.toLowerCase() !== 'scheduled') {
-                await discardFutureSessionsForTask(id);
-            }
+            if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(createdTask);
         } else {
             createdTask = await api.post('/api/tasks', payload);
         }
