@@ -72,12 +72,15 @@ function attachTaskById(taskId, preventFocus = false) {
     const endInput = document.getElementById('session_modal_end');
     if (startInput && endInput && startInput.value) {
         const startDt = new Date(startInput.value);
-        const estMins = t.estimated_minutes || 15;
-        const sessionMins = estMins > 120 ? 30 : estMins;
-        const newEnd = new Date(startDt.getTime() + sessionMins * 60000);
-        endInput.value = formatIsoLocal(newEnd);
-        if (typeof updateSessionModalDurationBadge === 'function') {
-            updateSessionModalDurationBadge();
+        const endDt = endInput.value ? new Date(endInput.value) : null;
+        if (!endDt || isNaN(endDt.getTime()) || endDt <= startDt) {
+            const estMins = t.estimated_minutes || 15;
+            const sessionMins = estMins > 120 ? 30 : estMins;
+            const newEnd = new Date(startDt.getTime() + sessionMins * 60000);
+            endInput.value = formatIsoLocal(newEnd);
+            if (typeof updateSessionModalDurationBadge === 'function') {
+                updateSessionModalDurationBadge();
+            }
         }
     }
 

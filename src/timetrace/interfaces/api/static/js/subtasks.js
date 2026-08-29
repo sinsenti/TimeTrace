@@ -200,6 +200,52 @@ async function loadTaskDetailTree() {
             }
         }
 
+        // Bottom Task Statistics & Session History Section
+        const statsBadgeEl = document.getElementById('detail_stats_total_badge');
+        if (statsBadgeEl) statsBadgeEl.innerText = `${stats.total_sessions} sessions`;
+
+        const statLoggedEl = document.getElementById('detail_stat_logged');
+        if (statLoggedEl) statLoggedEl.innerText = `${stats.logged_hours}h (${stats.total_sessions} sessions)`;
+
+        const statScheduledEl = document.getElementById('detail_stat_scheduled');
+        if (statScheduledEl) statScheduledEl.innerText = `${stats.scheduled_hours}h`;
+
+        const statRemainingEl = document.getElementById('detail_stat_remaining');
+        if (statRemainingEl) {
+            if (stats.is_unbounded || stats.remaining_hours === null || stats.remaining_hours === undefined) {
+                statRemainingEl.innerText = '--';
+            } else if (stats.remaining_hours < 0) {
+                statRemainingEl.innerText = `Over by ${Math.abs(stats.remaining_hours)}h`;
+            } else {
+                statRemainingEl.innerText = `${stats.remaining_hours}h`;
+            }
+        }
+
+        const statProgressEl = document.getElementById('detail_stat_progress');
+        if (statProgressEl) statProgressEl.innerText = stats.progress_pct !== null ? `${stats.progress_pct}%` : 'N/A';
+
+        const sessionListEl = document.getElementById('detail_task_sessions_list');
+        if (sessionListEl) {
+            if (!stats.sessions || stats.sessions.length === 0) {
+                sessionListEl.innerHTML = '<div class="text-xs text-slate-500 py-3 text-center">No sessions logged for this task yet.</div>';
+            } else {
+                sessionListEl.innerHTML = stats.sessions.map(s => {
+                    const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
+                    const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
+                    return `
+                        <div class="bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg text-xs space-y-1">
+                            <div class="flex justify-between items-center font-mono">
+                                <span class="text-purple-300 font-bold">${st}</span>
+                                <span class="text-slate-400 font-bold">${durMins} mins</span>
+                            </div>
+                            ${s.notes ? `<div class="text-white font-semibold">${s.notes}</div>` : ''}
+                            ${s.tags ? `<div class="text-[10px] text-purple-300 font-mono">${s.tags}</div>` : ''}
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
         const counts = calculateTreeCompletionStats(tree.subtasks || []);
         const completionContainer = document.getElementById('detail_subtask_completion_container');
         const pBarWrapper = document.getElementById('subtasks_completion_bar_wrapper');

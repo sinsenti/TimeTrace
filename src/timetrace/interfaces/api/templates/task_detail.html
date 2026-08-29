@@ -199,6 +199,7 @@
             </div>
         </div>
 
+        <!-- Subtasks Hierarchy Tree -->
         <div class="detail-card space-y-4">
             <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
                 <div>
@@ -209,6 +210,41 @@
             </div>
 
             <div id="subtasks_tree_container" class="space-y-2"></div>
+        </div>
+
+        <!-- Task Statistics & Session History (Very Bottom) -->
+        <div class="detail-card space-y-4">
+            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
+                <div>
+                    <h2 class="font-bold text-base text-white">Task Statistics &amp; Session History</h2>
+                    <p class="text-xs text-slate-400">Detailed breakdown of time logged, scheduled sessions, and session history.</p>
+                </div>
+                <span id="detail_stats_total_badge" class="text-xs font-bold text-purple-400">0 sessions</span>
+            </div>
+
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-[#0f1016] p-3 rounded-lg border border-[var(--border-muted)] text-xs">
+                <div>
+                    <span class="text-slate-400 block font-semibold">Total Logged:</span>
+                    <span id="detail_stat_logged" class="font-bold text-purple-400 text-sm">0.0h</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold">Scheduled Ahead:</span>
+                    <span id="detail_stat_scheduled" class="font-bold text-blue-400 text-sm">0.0h</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold">Remaining Balance:</span>
+                    <span id="detail_stat_remaining" class="font-bold text-amber-400 text-sm">--</span>
+                </div>
+                <div>
+                    <span class="text-slate-400 block font-semibold">Progress Ratio:</span>
+                    <span id="detail_stat_progress" class="font-bold text-emerald-400 text-sm">N/A</span>
+                </div>
+            </div>
+
+            <div class="space-y-2 pt-2">
+                <h3 class="font-bold text-xs text-slate-300 uppercase tracking-wider">Logged Sessions History</h3>
+                <div id="detail_task_sessions_list" class="space-y-2 max-h-64 overflow-y-auto pr-1"></div>
+            </div>
         </div>
     </main>
 
