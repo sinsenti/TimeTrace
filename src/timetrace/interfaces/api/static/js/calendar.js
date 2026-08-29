@@ -74,6 +74,29 @@ function scrollToCurrentTime() {
     }
 }
 
+function formatCalEventFromSession(s, idx = 0) {
+    if (!s) return null;
+    const matchedTask = (s.task_id && typeof allTasksMap !== 'undefined') ? allTasksMap[s.task_id] : null;
+    const color = matchedTask 
+        ? getTaskColor(matchedTask, idx) 
+        : (typeof defaultPalette !== 'undefined' ? defaultPalette[idx % defaultPalette.length] : '#7c3aed');
+
+    return {
+        id: String(s.id),
+        title: matchedTask ? matchedTask.title : (s.tags || s.notes || 'Session'),
+        start: s.start_time,
+        end: s.end_time || new Date().toISOString(),
+        backgroundColor: color,
+        borderColor: 'transparent',
+        extendedProps: {
+            taskId: s.task_id || null,
+            taskTitle: matchedTask ? matchedTask.title : '',
+            notes: s.notes || '',
+            tags: s.tags || ''
+        }
+    };
+}
+
 async function handleCalendarEventUpdate(event) {
     const startIso = event.start.toISOString();
     const endIso = event.end ? event.end.toISOString() : event.start.toISOString();
@@ -83,7 +106,12 @@ async function handleCalendarEventUpdate(event) {
         end_time: endIso
     };
 
-    await api.put(`/sessions/${event.id}`, payload);
+    const updatedSession = await api.put(`/sessions/${event.id}`, payload);
+
+    if (updatedSession && typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+        const idx = allSessions.findIndex(s => String(s.id) === String(event.id));
+        if (idx !== -1) allSessions[idx] = updatedSession;
+    }
 
     if (event.extendedProps && event.extendedProps.taskId && event.end) {
         const newMins = Math.max(15, Math.round((event.end - event.start) / 60000));
@@ -94,7 +122,7 @@ async function handleCalendarEventUpdate(event) {
         } catch (e) {}
     }
 
-    if (calendar) calendar.refetchEvents();
+    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
 }
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -107,25 +135,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
             ? allSessions.filter(sessionMatchesBreakdownFilter)
             : allSessions;
 
-        const events = visibleForCalendar.map((s, idx) => {
-            const matchedTask = typeof allTasksMap !== 'undefined' ? allTasksMap[s.task_id] : null;
-            const color = matchedTask ? getTaskColor(matchedTask, idx) : defaultPalette[idx % defaultPalette.length];
-
-            return {
-                id: String(s.id),
-                title: matchedTask ? matchedTask.title : (s.tags || s.notes || '#general'),
-                start: s.start_time,
-                end: s.end_time || new Date().toISOString(),
-                backgroundColor: color,
-                borderColor: 'transparent',
-                extendedProps: {
-                    taskId: s.task_id,
-                    taskTitle: matchedTask ? matchedTask.title : '',
-                    notes: s.notes || '',
-                    tags: s.tags || ''
-                }
-            };
-        });
+        const events = visibleForCalendar.map((s, idx) => formatCalEventFromSession(s, idx));
         successCallback(events);
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof updateDocumentTitle === 'function') updateDocumentTitle();

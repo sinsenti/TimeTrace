@@ -2,7 +2,10 @@ let allTasksMap = {};
 let attachedTask = null;
 let activeTaskSuggestionIndex = -1;
 
-async function fetchAllTasksRegistry() {
+async function fetchAllTasksRegistry(force = false) {
+    if (!force && Object.keys(allTasksMap).length > 0) {
+        return allTasksMap;
+    }
     try {
         const tasks = await api.get('/api/tasks?status=all') || [];
         allTasksMap = {};
@@ -10,6 +13,7 @@ async function fetchAllTasksRegistry() {
             allTasksMap[t.id] = t;
         });
     } catch(e) {}
+    return allTasksMap;
 }
 
 function renderTaskSuggestions(query) {

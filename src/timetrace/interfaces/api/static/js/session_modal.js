@@ -309,14 +309,37 @@ async function saveSessionFromModal() {
             notes: notesVal || ""
         };
 
+        let savedSession;
         if (sessionId) {
-            await api.put(`/sessions/${sessionId}`, payload);
+            savedSession = await api.put(`/sessions/${sessionId}`, payload);
         } else {
-            await api.post('/sessions', payload);
+            savedSession = await api.post('/sessions', payload);
+        }
+
+        if (savedSession) {
+            if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+                const existingIdx = allSessions.findIndex(s => String(s.id) === String(savedSession.id));
+                if (existingIdx !== -1) {
+                    allSessions[existingIdx] = savedSession;
+                } else {
+                    allSessions.push(savedSession);
+                }
+            }
+
+            if (typeof calendar !== 'undefined' && calendar && typeof formatCalEventFromSession === 'function') {
+                const calEventData = formatCalEventFromSession(savedSession);
+                const existingCalEvent = calendar.getEventById(String(savedSession.id));
+                if (existingCalEvent) {
+                    existingCalEvent.remove();
+                }
+                calendar.addEvent(calEventData);
+            }
         }
 
         closeSessionModal();
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
     } catch (err) {
         console.error("Failed to save session:", err);
         alert("Failed to save session: " + (err.message || err));

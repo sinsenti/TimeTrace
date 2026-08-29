@@ -327,9 +327,19 @@ async function confirmRecurringDelete(scope) {
 
     try {
         await api.delete(`/sessions/${sid}?scope=${scope}`);
+        
+        if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+            allSessions = allSessions.filter(item => String(item.id) !== String(sid));
+        }
+
+        if (typeof calendar !== 'undefined' && calendar) {
+            const calEv = calendar.getEventById(String(sid));
+            if (calEv) calEv.remove();
+        }
+
         if (typeof closeSessionModal === 'function') closeSessionModal();
         if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof loadCurrentRevisionView === 'function') loadCurrentRevisionView();
     } catch (err) {
         console.error("Failed to delete session:", err);

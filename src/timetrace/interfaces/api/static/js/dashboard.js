@@ -43,6 +43,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             nowIndicator: true,
             editable: true,
             selectable: true,
+            unselectAuto: false,
+            unselectCancel: '#session_modal, #task_modal, #subtask_modal, #custom_filter_modal, #settings_modal, .task-suggestion-item, .tag-suggestion-item',
             selectMirror: true,
             droppable: true,
             defaultTimedEventDuration: `00:15:00`,
@@ -161,7 +163,16 @@ document.addEventListener('DOMContentLoaded', async function() {
                         notes: ""
                     };
 
-                    await api.post('/sessions', payload);
+                    const createdSession = await api.post('/sessions', payload);
+
+                    if (createdSession) {
+                        if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+                            allSessions.push(createdSession);
+                        }
+                        if (calendar && typeof formatCalEventFromSession === 'function') {
+                            calendar.addEvent(formatCalEventFromSession(createdSession));
+                        }
+                    }
 
                     if (taskId) {
                         const isOngoing = targetTask && (targetTask.status || '').toLowerCase() === 'ongoing';
@@ -170,12 +181,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                         }
                     }
 
-                    if (calendar) calendar.refetchEvents();
                     if (typeof fetchTasks === 'function') fetchTasks();
                     if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+                    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
                 } catch (err) {
                     console.error("Failed to create session from dropped task:", err);
                     alert("Failed to create session from task: " + (err.message || err));
+                    if (calendar) calendar.refetchEvents();
                 }
             },
 
