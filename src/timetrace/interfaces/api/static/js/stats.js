@@ -80,7 +80,7 @@ async function inspectEstimationCategory(bucket) {
 function renderSessionDrilldownRow(s) {
     const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
     const durMins = Math.round(((s.duration_seconds || 0) / 60) * 10) / 10;
-    const taskTitle = s.task ? s.task.title : (s.notes || s.tags || 'Session Log');
+    const taskTitle = s.task ? s.task.title : (s.notes || 'Direct Session Log');
 
     return `
         <div class="bg-[#0f1016] border border-[var(--border-muted)] p-3 rounded-lg text-xs space-y-1">
@@ -89,7 +89,7 @@ function renderSessionDrilldownRow(s) {
                 <span class="text-slate-400 font-bold">${durMins} mins</span>
             </div>
             <div class="text-white font-bold text-sm">${taskTitle}</div>
-            ${s.notes ? `<div class="text-slate-300">${s.notes}</div>` : ''}
+            ${s.notes && s.task ? `<div class="text-slate-300">${s.notes}</div>` : ''}
         </div>
     `;
 }

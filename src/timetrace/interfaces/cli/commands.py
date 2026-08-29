@@ -142,7 +142,7 @@ def stop_timer():
         if res.status_code == 200:
             data = res.json()
             duration_min = round(data.get("duration_seconds", 0) / 60, 1)
-            print(f"Timer stopped. Saved Session #{data['id']} ({duration_min} mins).")
+            print(f"Timer stopped. Saved Session #{short_id(data['id'])} ({duration_min} mins).")
         else:
             print(f"Error: {res.json().get('detail')}")
 
@@ -171,7 +171,7 @@ def retro_session(
         )
         if res.status_code == 201:
             data = res.json()
-            print(f"Retroactive Session #{data['id']} saved ({duration_mins} mins).")
+            print(f"Retroactive Session #{short_id(data['id'])} saved ({duration_mins} mins).")
         else:
             print(f"Error: {res.json().get('detail')}")
 
@@ -236,7 +236,7 @@ def list_tasks_cli(
             print("-" * 95)
             if not tasks:
                 print("No tasks found.")
-            today = datetime.now().date()
+            today = datetime.now().astimezone().date()
             for t in tasks:
                 t_tags = f"[{t.get('tags', '')}]" if t.get("tags") else ""
                 parent_str = f"(Subtask of #{short_id(t['parent_id'])})" if t.get("parent_id") else ""
@@ -246,7 +246,7 @@ def list_tasks_cli(
                 due_alert = ""
                 if t.get("due_date"):
                     try:
-                        due_dt = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00")).date()
+                        due_dt = datetime.fromisoformat(t["due_date"].replace("Z", "+00:00")).astimezone().date()
                         if due_dt < today:
                             due_alert = " | [OVERDUE]"
                         elif due_dt == today:
@@ -272,7 +272,7 @@ def add_task(
     category: str = typer.Option("work", "--category", "-c", help="Category (work, family, personal, study)"),
     tags: str = typer.Option("", "--tags", "-t", help="Default tags for task"),
     est: int = typer.Option(15, "--est", "-e", help="Estimated duration in minutes"),
-    parent_id: str | None = typer.Option(None, "--parent", "-parent", help="Parent task ID for subtasks"),
+    parent_id: str | None = typer.Option(None, "--parent", "-P", help="Parent task ID for subtasks"),
     status_name: str = typer.Option("To Do", "--status", "-s", help="Initial status name"),
 ):
     """Create a new task slot or subtask."""
@@ -294,8 +294,8 @@ def add_task(
         )
         if res.status_code == 201:
             task = res.json()
-            parent_msg = f" (Subtask of #{parent_id})" if parent_id else ""
-            print(f"Created Task #{task['id']}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]")
+            parent_msg = f" (Subtask of #{short_id(parent_id)})" if parent_id else ""
+            print(f"Created Task #{short_id(task['id'])}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]")
         else:
             print("Failed to create task.")
 
@@ -315,16 +315,16 @@ def view_task_tree_cli(task_id: str = typer.Argument(..., help="ID of the root t
                 st = node.get("status", "To Do")
                 prio = node.get("priority", "-")
                 est = node.get("estimated_minutes", 15)
-                print(f"{indent}- #{node['id']} [{st}] [{prio}] ({est}m) : {node['title']}")
+                print(f"{indent}- #{short_id(node['id'])} [{st}] [{prio}] ({est}m) : {node['title']}")
                 for child in node.get("subtasks", []):
                     print_node(child, depth + 1)
 
-            print(f"\nSubtask Hierarchy Tree for #{task_id}:")
+            print(f"\nSubtask Hierarchy Tree for #{short_id(task_id)}:")
             print("-" * 60)
             print_node(tree)
             print("-" * 60 + "\n")
         else:
-            print(f"Task #{task_id} not found.")
+            print(f"Task #{short_id(task_id)} not found.")
 
 
 @cli_app.command("task-delete")
@@ -335,9 +335,9 @@ def delete_task_cli(task_id: str = typer.Argument(..., help="ID of the task to d
     with get_client() as client:
         res = client.delete(f"/api/tasks/{task_id}")
         if res.status_code == 204:
-            print(f"Task #{task_id} deleted successfully.")
+            print(f"Task #{short_id(task_id)} deleted successfully.")
         else:
-            print(f"Failed to delete Task #{task_id}.")
+            print(f"Failed to delete Task #{short_id(task_id)}.")
 
 
 @cli_app.command("task-clean")

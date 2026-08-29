@@ -59,10 +59,7 @@ class RevisionService:
         except ValueError as e:
             raise ValidationError(f"Invalid date_str '{date_str}': expected YYYY-MM-DD") from e
 
-        # Local calendar day, by session start time -- datetime.combine(...).astimezone()
-        # resolves the UTC offset for THIS specific date (DST-safe), unlike
-        # datetime.now().astimezone().tzinfo which would use today's offset for
-        # every date queried.
+        # Local calendar day, by session start time
         start_local = datetime.combine(day, time.min).astimezone()
         end_local = start_local + timedelta(days=1)
         start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
@@ -80,8 +77,6 @@ class RevisionService:
         if task_ids:
             tasks_map = {t.id: t for t in self.db.exec(select(Task).where(Task.id.in_(task_ids))).all()}
 
-        # The app always writes "Done", not "completed" -- widened so this
-        # KPI isn't permanently 0.
         completed_tasks = self.db.exec(
             select(Task).where(
                 Task.status.in_(("Done", "completed", "done")),
@@ -96,6 +91,8 @@ class RevisionService:
         session_details = []
         for s in matching_sessions:
             s_dict = s.model_dump()
+            s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+            s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
             s_dict["task"] = tasks_map.get(s.task_id).model_dump() if s.task_id and s.task_id in tasks_map else None
             session_details.append(s_dict)
 

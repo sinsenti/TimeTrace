@@ -6,10 +6,7 @@ from typing import Any
 def strip_comments(text: str) -> str:
     """Strips HTML comments, blockquotes, and comments from text before parsing."""
     clean = re.sub(r"<!--.*?-->", "", text, flags=re.DOTALL)
-    lines = [
-        line for line in clean.splitlines()
-        if not line.strip().startswith(("> ", ">", "//"))
-    ]
+    lines = [line for line in clean.splitlines() if not line.strip().startswith(("> ", ">", "//"))]
     return "\n".join(lines).strip()
 
 
@@ -99,7 +96,9 @@ def parse_inline_task(text: str) -> dict[str, Any]:
     clean_title = re.sub(r"\([^)]*\)", "", clean_title)
     clean_title = re.sub(r"#\w+", "", clean_title)
     clean_title = re.sub(r"!(high|medium|med|low|h|m|l|-)", "", clean_title, flags=re.IGNORECASE)
-    clean_title = re.sub(r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE)
+    clean_title = re.sub(
+        r"@(in_progress|ongoing|completed|ip|og|done|c|todo|to do)", "", clean_title, flags=re.IGNORECASE
+    )
     clean_title = re.sub(r"\b(?:due|d):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = re.sub(r"\b(?:target|t):\d+(?!\.\d)(?:h|d)?\b", "", clean_title, flags=re.IGNORECASE)
     clean_title = " ".join(clean_title.split()).strip()
@@ -121,7 +120,7 @@ def parse_inline_task(text: str) -> dict[str, Any]:
 
 
 def parse_inline_timer(text: str) -> dict[str, Any]:
-    """Parses 1-line timer start / split markdown."""
+    """Parses 1-line timer start / split markdown supporting string/UUID task IDs."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
@@ -133,15 +132,15 @@ def parse_inline_timer(text: str) -> dict[str, Any]:
     tags = re.findall(r"#\w+", first_line)
     tags_str = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?(\d+)", first_line, re.IGNORECASE)
-    task_id = int(task_id_match.group(2)) if task_id_match else None
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
+    task_id = task_id_match.group(2) if task_id_match else None
 
     pomo_match = re.search(r"!(\d+)m?", first_line)
     pomo_mins = int(pomo_match.group(1)) if pomo_match else 0
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?\d+", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = re.sub(r"!\d+m?", "", clean_notes)
     clean_notes = " ".join(clean_notes.split()).strip()
 
@@ -152,7 +151,7 @@ def parse_inline_timer(text: str) -> dict[str, Any]:
         "tags": tags_str if tags_str else "#general",
         "notes": clean_notes,
         "task_id": task_id,
-        "pomo_minutes": pomo_mins
+        "pomo_minutes": pomo_mins,
     }
 
 
@@ -165,7 +164,7 @@ def _local_time_to_utc(date_str: str, time_str: str) -> datetime:
 
 
 def parse_inline_session_edit(text: str, base_session: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Parses edited session text from Neovim buffer."""
+    """Parses edited session text from Neovim buffer supporting string/UUID task IDs."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
@@ -218,13 +217,13 @@ def parse_inline_session_edit(text: str, base_session: dict[str, Any] | None = N
     if tags:
         result["tags"] = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?(\d+)", first_line, re.IGNORECASE)
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
     if task_id_match:
-        result["task_id"] = int(task_id_match.group(2))
+        result["task_id"] = task_id_match.group(2)
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?\d+", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = " ".join(clean_notes.split()).strip()
 
     if extra_notes:
@@ -235,7 +234,7 @@ def parse_inline_session_edit(text: str, base_session: dict[str, Any] | None = N
 
 
 def parse_inline_retro(text: str) -> dict[str, Any]:
-    """Parses 1-2 line retroactive session markdown."""
+    """Parses 1-2 line retroactive session markdown supporting string/UUID task IDs."""
     clean_text = strip_comments(text)
     lines = [line.strip() for line in clean_text.splitlines() if line.strip()]
     if not lines:
@@ -247,8 +246,8 @@ def parse_inline_retro(text: str) -> dict[str, Any]:
     tags = re.findall(r"#\w+", first_line)
     tags_str = " ".join(tags)
 
-    task_id_match = re.search(r"@(task\s*)?(\d+)", first_line, re.IGNORECASE)
-    task_id = int(task_id_match.group(2)) if task_id_match else None
+    task_id_match = re.search(r"@(task\s*)?([a-f0-9-]{8,36})", first_line, re.IGNORECASE)
+    task_id = task_id_match.group(2) if task_id_match else None
 
     start_ago_match = re.search(r"-\d+(m|h)", first_line)
     start_ago_mins = 60
@@ -263,7 +262,7 @@ def parse_inline_retro(text: str) -> dict[str, Any]:
 
     clean_notes = first_line
     clean_notes = re.sub(r"#\w+", "", clean_notes)
-    clean_notes = re.sub(r"@(task\s*)?\d+", "", clean_notes, flags=re.IGNORECASE)
+    clean_notes = re.sub(r"@(task\s*)?[a-f0-9-]{8,36}", "", clean_notes, flags=re.IGNORECASE)
     clean_notes = re.sub(r"-\d+(m|h)", "", clean_notes)
     clean_notes = re.sub(r"\b\d+m\b", "", clean_notes)
     clean_notes = " ".join(clean_notes.split()).strip()
@@ -276,7 +275,7 @@ def parse_inline_retro(text: str) -> dict[str, Any]:
         "start_mins_ago": start_ago_mins,
         "duration_mins": dur_mins,
         "tags": tags_str if tags_str else "#general",
-        "notes": clean_notes
+        "notes": clean_notes,
     }
 
 
@@ -300,5 +299,5 @@ def parse_inline_reflection(text: str) -> dict[str, Any]:
     return {
         "energy_level": max(1, min(5, energy_level)),
         "habits": habits,
-        "obstacles": obstacles
+        "obstacles": obstacles,
     }

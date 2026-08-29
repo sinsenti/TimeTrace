@@ -106,11 +106,15 @@
                 <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Month</button>
             </div>
 
-            <!-- Header Date Navigation Controls (< > August 2026) -->
-            <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[var(--border-muted)] px-1 whitespace-nowrap text-[11px]">
-                <button onclick="calendar.prev()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs">&lt;</button>
-                <button onclick="calendar.next()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs">&gt;</button>
-                <span id="calendar_range_title" class="px-2 font-bold text-slate-200">August 2026</span>
+            <!-- Header Date Navigation Controls (< > August 2026 with Date Picker) -->
+            <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[var(--border-muted)] px-1 whitespace-nowrap text-[11px] relative">
+                <button onclick="navigateCalendarPrev()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs" title="Previous">&lt;</button>
+                <button onclick="navigateCalendarNext()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs" title="Next">&gt;</button>
+                <button type="button" onclick="openCalendarHeaderDatePicker()" class="px-2 font-bold text-slate-200 hover:text-purple-300 flex items-center space-x-1" title="Select date to jump to">
+                    <span id="calendar_range_title">August 2026</span>
+                    <svg class="w-3 h-3 opacity-60 ml-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                </button>
+                <input id="calendar_header_datepicker" type="date" onchange="if(this.value && calendar) calendar.gotoDate(this.value);" class="sr-only">
             </div>
             
             <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 rounded-lg border border-[var(--border-muted)] text-[11px] font-semibold">Today</button>

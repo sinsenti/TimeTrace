@@ -75,8 +75,8 @@ class TimerService:
 
         db_session = SessionModel(
             task_id=stopped_data["task_id"],
-            start_time=ensure_utc(stopped_data["start_time"]),
-            end_time=ensure_utc(stopped_data["end_time"]),
+            start_time=ensure_utc(stopped_data["start_time"]).replace(tzinfo=None),
+            end_time=ensure_utc(stopped_data["end_time"]).replace(tzinfo=None),
             duration_seconds=stopped_data["duration_seconds"],
             tags=stopped_data["tags"],
             notes=stopped_data["notes"],
@@ -96,8 +96,8 @@ class TimerService:
 
         db_session = SessionModel(
             task_id=session_data["task_id"],
-            start_time=ensure_utc(session_data["start_time"]),
-            end_time=ensure_utc(session_data["end_time"]),
+            start_time=ensure_utc(session_data["start_time"]).replace(tzinfo=None),
+            end_time=ensure_utc(session_data["end_time"]).replace(tzinfo=None),
             duration_seconds=session_data["duration_seconds"],
             tags=session_data["tags"],
             notes=session_data["notes"],
@@ -121,8 +121,8 @@ class TimerService:
         if saved_data and saved_data.get("duration_seconds", 0) > 0:
             db_work = SessionModel(
                 task_id=saved_data.get("task_id"),
-                start_time=ensure_utc(datetime.fromisoformat(saved_data["start_time"])),
-                end_time=ensure_utc(datetime.fromisoformat(saved_data["end_time"])),
+                start_time=ensure_utc(datetime.fromisoformat(saved_data["start_time"])).replace(tzinfo=None),
+                end_time=ensure_utc(datetime.fromisoformat(saved_data["end_time"])).replace(tzinfo=None),
                 duration_seconds=saved_data["duration_seconds"],
                 tags=saved_data.get("tags") or "#general",
                 notes=saved_data.get("notes") or "",
@@ -130,8 +130,8 @@ class TimerService:
             self.db.add(db_work)
             self.db.commit()
 
-        idle_start = ensure_utc(datetime.fromisoformat(gap["idle_start"]))
-        idle_end = ensure_utc(datetime.fromisoformat(gap["idle_end"]))
+        idle_start = ensure_utc(datetime.fromisoformat(gap["idle_start"])).replace(tzinfo=None)
+        idle_end = ensure_utc(datetime.fromisoformat(gap["idle_end"])).replace(tzinfo=None)
         idle_duration = int((idle_end - idle_start).total_seconds())
 
         if req.option == "break":

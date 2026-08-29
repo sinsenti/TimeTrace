@@ -7,7 +7,7 @@ def calculate_tag_summaries(sessions: list[dict[str, Any]]) -> list[dict[str, An
 
     Reference implementation. `AnalyticsService.get_summary()` used to call this directly; it
     now goes through `QueryService`/`core/query_compiler.py` (sessions x sum_duration x [tag],
-    fan-out attribution), which reproduces this exact tag fan-out/`#general` fallback contract
+    fan-out attribution), which reproduces this exact tag fan-out/#general fallback contract
     in SQL. This function is kept as the documented contract that SQL must match, and as a
     fallback reference if the SQL path is ever in doubt -- not because anything still calls it.
     """
@@ -44,7 +44,7 @@ def calculate_day_breakdowns(sessions: list[dict[str, Any]], task_titles: dict[s
     percentages of the day total can sum past 100%, matching
     calculate_tag_summaries's tokenizing rules) and by task (exclusive -- each
     session contributes to exactly one task row). Sessions without a task_id
-    collapse into a single "No task" row; a task_id not present in
+    collapse into a single "Direct Session Log" row; a task_id not present in
     task_titles (task since deleted) becomes "(deleted task)".
     """
     total_seconds = sum(s.get("duration_seconds") or 0 for s in sessions)
@@ -71,7 +71,7 @@ def calculate_day_breakdowns(sessions: list[dict[str, Any]], task_titles: dict[s
         task_id = s.get("task_id")
         if task_id not in task_totals:
             if task_id is None:
-                title = "No task"
+                title = "Direct Session Log"
             elif task_id in task_titles:
                 title = task_titles[task_id]
             else:

@@ -65,9 +65,6 @@ def upgrade() -> None:
 
     # --- taskstatus ---
     op.rename_table("taskstatus", "taskstatus_old")
-    # SQLite keeps index names attached to the renamed table, not the new one
-    # sitting at the old table's name, so the old index must go before a
-    # same-named index can be created on the rebuilt table.
     op.drop_index("ix_taskstatus_name", table_name="taskstatus_old")
     op.create_table(
         "taskstatus",
@@ -238,12 +235,16 @@ def upgrade() -> None:
     def _ratingentry_transform(row):
         row["id"] = ratingentry_map[row["id"]]
         row["rating_definition_id"] = ratingdefinition_map[row["rating_definition_id"]]
-        # target_id is a polymorphic string reference, not a real FK: only
-        # "task"/"session" targets held an old integer id worth remapping.
         if row["target_type"] == "task":
-            row["target_id"] = task_map.get(int(row["target_id"]), row["target_id"])
+            try:
+                row["target_id"] = task_map.get(int(row["target_id"]), row["target_id"])
+            except ValueError:
+                pass
         elif row["target_type"] == "session":
-            row["target_id"] = session_map.get(int(row["target_id"]), row["target_id"])
+            try:
+                row["target_id"] = session_map.get(int(row["target_id"]), row["target_id"])
+            except ValueError:
+                pass
 
     _copy_rows(bind, "ratingentry", _ratingentry_transform)
 

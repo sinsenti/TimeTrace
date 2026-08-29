@@ -50,7 +50,7 @@ class SessionService:
             query = query.where(SessionModel.start_time >= naive_start)
         if end:
             naive_end = ensure_utc(end).replace(tzinfo=None)
-            query = query.where(SessionModel.start_time <= naive_end)
+            query = query.where(SessionModel.start_time < naive_end)
 
         sessions = self.db.exec(query).all()
         result = []
@@ -96,6 +96,8 @@ class SessionService:
         if db_session.start_time and db_session.end_time:
             st = ensure_utc(db_session.start_time)
             et = ensure_utc(db_session.end_time)
+            if et <= st:
+                raise ValidationError("end_time must be strictly after start_time")
             db_session.duration_seconds = max(0, int((et - st).total_seconds()))
 
         self.db.add(db_session)

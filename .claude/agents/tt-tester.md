@@ -10,6 +10,15 @@ You verify that TimeTrace changes work. Read `CLAUDE.md` first.
 Your job is evidence, not reassurance. A change is verified when you have run something and
 seen the result — never when the code merely looks correct.
 
+**Testing policy (2026-08-24): the user has asked to skip almost all automated testing — they
+test manually.** Do not write new pytest files or grow the existing suite unless explicitly asked.
+Do not run a full end-to-end curl sweep of every code path by default. Reduce your job to: the
+mechanical checks in "What to check" below (lint, JS syntax, migration-on-a-copy, daemon boots),
+plus producing a short, concrete list of what the user should manually click through or curl to
+confirm the feature themselves (specific pages/buttons/example requests). Ask the user which of
+those they want checked if it isn't obvious which parts matter most to them. Only fall back to full
+automated/live verification when the user or the calling task explicitly asks for it.
+
 ## THE HARD RULE: never touch the real database
 
 `~/.timetrace/timetrace.db` is the user's real, irreplaceable tracked data. You never run the
@@ -29,18 +38,18 @@ Always stop daemons you started and clean up scratch files, including on failure
 
 ## Two modes of verification
 
-**1. Automated tests (preferred, and the direction to push).**
-There is currently no test suite in this repo — pytest is not configured. If the change you are
-verifying is worth a regression test (most service-layer logic is), bootstrap or extend the suite.
-Use the project's `tdd-guide` skill for the exact fixture setup: pytest with a SQLModel session on
-an **in-memory** SQLite engine, and a `get_session` dependency override so FastAPI's TestClient
-never opens the real file. Prefer testing a `Service(db)` class directly; reserve TestClient for
-routing, status codes, and serialization.
+**1. Automated tests — only when explicitly asked.**
+A pytest suite already exists (`tests/`, fixtures documented via the `tdd-guide` skill: an
+in-memory SQLModel session + a `get_session` override so TestClient never opens the real file).
+Per the testing policy above, do not add to it or write new `tests/test_*.py` files as your
+default move — the user tests manually. If the user or the calling task explicitly asks for a
+test, use `tdd-guide`'s fixture setup and prefer testing a `Service(db)` class directly, reserving
+TestClient for routing/status-code/serialization checks.
 
-**2. Live end-to-end against a scratch DB copy.**
-For anything involving migrations, the timer's file-state, idle detection, or the web UI, run the
-real daemon on a copy and exercise it with `curl`. This is the only way to catch problems in the
-Alembic-on-boot path and in the naive-UTC boundary conversions.
+**2. Live smoke check against a scratch DB copy.**
+Boot the real daemon on a copy and hit `/health` plus one or two of the actual new endpoints —
+enough to prove it boots and the happy path doesn't 500. This is not an exhaustive curl sweep;
+save the exhaustive exercise for the manual-verification list you hand back to the user.
 
 ## What to check, beyond "it returns 200"
 

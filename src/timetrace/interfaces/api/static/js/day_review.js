@@ -166,7 +166,7 @@ function renderDayBreakdown() {
         if (dayBreakdownFilter) {
             const label = dayBreakdownFilter.type === 'tag'
                 ? dayBreakdownFilter.value
-                : (dayBreakdownFilter.value === '__none__' ? 'No task' : (currentDaySummary.task_breakdown.find(r => String(r.task_id) === String(dayBreakdownFilter.value)) || {}).title || 'Task');
+                : (dayBreakdownFilter.value === '__none__' ? 'Direct Session Log' : (currentDaySummary.task_breakdown.find(r => String(r.task_id) === String(dayBreakdownFilter.value)) || {}).title || 'Task');
             chip.classList.remove('hidden');
             chip.classList.add('flex');
             chip.innerHTML = `<span>Filtered: ${label}</span><button type="button" onclick="toggleDayBreakdownFilter('${dayBreakdownFilter.type}', '${dayBreakdownFilter.value}')" class="text-purple-300 hover:text-white font-black">&times;</button>`;
@@ -223,19 +223,21 @@ function renderDaySessionsTimeline() {
         const etStr = s.end_time ? new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NOW';
         const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
 
+        const mainHeading = s.task ? s.task.title : (s.notes || 'Direct Session Log');
+        const subDesc = s.task ? (s.task.description || '') : '';
+        const notesBody = s.task ? (s.notes || '') : '';
+
         return `
             <div onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg flex flex-col space-y-1.5 text-xs cursor-pointer transition">
                 <div class="flex justify-between items-center">
                     <span class="font-mono text-purple-300 font-bold">[${stStr} - ${etStr}] (${durMins}m)</span>
                     <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800">${s.tags || '#general'}</span>
                 </div>
-                ${s.task ? `
-                    <div class="space-y-0.5">
-                        <div class="font-black text-sm text-white">${s.task.title}</div>
-                        ${s.task.description ? `<div class="text-xs text-slate-400 line-clamp-1">${s.task.description}</div>` : ''}
-                    </div>
-                ` : ''}
-                ${s.notes ? `<div class="text-slate-200 font-medium">${s.notes}</div>` : ''}
+                <div class="space-y-0.5">
+                    <div class="font-black text-sm text-white">${mainHeading}</div>
+                    ${subDesc ? `<div class="text-xs text-slate-400 line-clamp-1">${subDesc}</div>` : ''}
+                </div>
+                ${notesBody ? `<div class="text-slate-200 font-medium">${notesBody}</div>` : ''}
             </div>
         `;
     }).join('');

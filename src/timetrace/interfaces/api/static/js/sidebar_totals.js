@@ -235,8 +235,12 @@ async function fetchTasks() {
         if (countEl) countEl.innerText = `${activeTasks.length} tasks`;
         
         if (select) {
+            const openTasks = activeTasks.filter(t => {
+                const st = (t.status || '').toLowerCase();
+                return st !== 'done' && st !== 'completed';
+            });
             select.innerHTML = '<option value="">-- Attach Task --</option>' + 
-                activeTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+                openTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
         }
 
         if (cardList) {
@@ -354,7 +358,7 @@ function renderBreakdownFilterChip() {
     let label = breakdownFilter.value;
     if (breakdownFilter.type === 'task') {
         if (breakdownFilter.value === '__none__') {
-            label = 'No task';
+            label = 'Direct Session Log';
         } else {
             const t = typeof allTasksMap !== 'undefined' ? allTasksMap[breakdownFilter.value] : null;
             label = t ? t.title : '(deleted task)';
@@ -399,7 +403,7 @@ function renderBreakdownLists() {
             totalsList.innerHTML = sortedTasks.map(([tid, secs], idx) => {
                 const isNone = tid === '__none__';
                 const task = isNone ? null : (typeof allTasksMap !== 'undefined' ? allTasksMap[tid] : null);
-                const title = isNone ? 'No task' : (task ? task.title : '(deleted task)');
+                const title = isNone ? 'Direct Session Log' : (task ? task.title : '(deleted task)');
                 const color = task ? getTaskColor(task, idx) : '#334155';
                 const isActive = breakdownFilter && breakdownFilter.type === 'task' && String(breakdownFilter.value) === String(tid);
                 const isDimmed = breakdownFilter && !isActive;
@@ -435,10 +439,6 @@ function fetchRangeTotals() {
     const tagSecs = {};
     let grandTotalSecs = 0;
 
-    // Aggregated over the sessions actually visible in the current calendar
-    // range -- NOT the left sidebar's activeTasks list, which is independently
-    // filtered by status tab / custom filter / sort and has no relationship
-    // to what's on screen (that mismatch was the source of the "By Task" bug).
     const visibleSessions = allSessions.filter(s => {
         const start = new Date(s.start_time);
         return start >= viewStart && start < viewEnd;

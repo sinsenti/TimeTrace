@@ -20,7 +20,7 @@ from sqlmodel import Session, select, text
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_compiler import CompiledQuery, QueryContext, compile_query
 from timetrace.core.query_registry import SOURCES
-from timetrace.core.query_spec import AnalyticsQuery, Dimension, RangePreset
+from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, RangePreset
 from timetrace.db.models import Habit, Task
 from timetrace.interfaces.api.schemas import (
     AnalyticsQueryBatchRequest,
@@ -39,13 +39,8 @@ from timetrace.interfaces.api.schemas import (
 
 _WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
-# Measures where "no data in this bucket" is naturally zero (a count/sum with nothing to count
-# is 0). Rate/average measures are left as None on gap-fill instead -- "0% complete" and "no
-# tasks were due" are different facts and conflating them would mislead a filled-in chart.
 _ZERO_FILLABLE_MEASURES = {"sum_duration", "session_count", "task_count", "sum_estimated_duration"}
 
-# Cached at module scope: neither the daemon's own timezone nor its SQLite build's 'localtime'
-# support can change while the process is running.
 _daemon_tz_name_cache: str | None = None
 _localtime_supported_cache: bool | None = None
 
@@ -83,13 +78,6 @@ def _check_localtime_support(db: Session) -> bool:
 
 
 def _resolve_timezone(requested: str | None, warnings: list[str]) -> tuple[ZoneInfo, str]:
-    """SQLite's `localtime` modifier follows the *server process's* zone (via the OS tzdata /
-    `TZ` env var), not an arbitrary client-supplied one -- there is no per-request way to make
-    SQLite compute "local" for a zone other than the process's own without mutating global
-    process state, which isn't safe across concurrent requests. So: use the request's timezone
-    only when it already matches the daemon's; otherwise fall back to the daemon's zone and
-    say so.
-    """
     daemon_tz_name = _daemon_timezone_name()
 
     if requested and requested == daemon_tz_name:
@@ -120,7 +108,7 @@ class _ResolvedRange:
 
 
 def _week_start(d: date, first_day_of_week: int) -> date:
-    sqlite_weekday = (d.weekday() + 1) % 7  # 0=Sun..6=Sat, matches SQLite's %w / 'weekday N'
+    sqlite_weekday = (d.weekday() + 1) % 7
     return d - timedelta(days=(sqlite_weekday - first_day_of_week) % 7)
 
 
@@ -261,9 +249,6 @@ class QueryService:
                 "results may be reported in UTC rather than local time."
             )
 
-        # hour_of_day/weekday have a fixed, always-enumerable domain (24 hours, 7 weekdays) and
-        # don't need a bounded range; day/week/month gap-filling has to fill in every bucket
-        # *between* two concrete dates, which "all_time" doesn't provide.
         fills_calendar_dim = query.group_by and query.group_by[0] in (Dimension.DAY, Dimension.WEEK, Dimension.MONTH)
         if query.fill_gaps and fills_calendar_dim and query.date_range.preset == RangePreset.ALL_TIME:
             raise ValidationError("fill_gaps on day/week/month requires a bounded date_range (not all_time)")
@@ -321,7 +306,7 @@ class QueryService:
                 results[key] = self.run(query, batch)
             except ValidationError as e:
                 errors[key] = str(e)
-            except Exception as e:  # noqa: BLE001 -- one bad widget must not fail the whole batch
+            except Exception as e:  # noqa: BLE001
                 errors[key] = f"Unexpected error: {e}"
         return AnalyticsQueryBatchResponse(results=results, errors=errors)
 
@@ -357,7 +342,6 @@ class QueryService:
     ) -> list[QueryRow]:
         n_dims = len(query.group_by)
 
-        # Resolve id -> title/name for dimensions whose raw key is an opaque foreign key.
         task_titles: dict[str, str] = {}
         habit_names: dict[str, str] = {}
         if Dimension.TASK in query.group_by:
@@ -380,7 +364,11 @@ class QueryService:
             labels = []
             for i, dim in enumerate(query.group_by):
                 if dim == Dimension.TASK:
-                    labels.append(task_titles.get(keys[i], keys[i]))
+                    raw_key = keys[i]
+                    if not raw_key or raw_key == "__none__":
+                        labels.append("Direct Session Log")
+                    else:
+                        labels.append(task_titles.get(raw_key, raw_key))
                 elif dim == Dimension.HABIT:
                     labels.append(habit_names.get(keys[i], keys[i]))
                 else:

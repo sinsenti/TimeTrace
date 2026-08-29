@@ -96,6 +96,9 @@ function filterSessionsReviewList() {
         }
 
         const attachedTask = s.attachedTask;
+        const mainHeading = attachedTask ? attachedTask.title : (s.notes || 'Direct Session Log');
+        const subDesc = attachedTask ? (attachedTask.description || '') : '';
+        const notesBody = attachedTask ? (s.notes || '') : '';
 
         return `
             <div onclick="openSessionReviewModal('${s.id}')" class="rev-card hover:border-purple-500 cursor-pointer space-y-2 text-xs transition">
@@ -110,13 +113,11 @@ function filterSessionsReviewList() {
                         <span class="px-2 py-0.5 rounded bg-purple-900/50 text-purple-300 font-bold border border-purple-800">${s.tags || '#general'}</span>
                     </div>
                 </div>
-                ${attachedTask ? `
-                    <div class="space-y-0.5">
-                        <div class="font-black text-sm text-white">${attachedTask.title}</div>
-                        ${attachedTask.description ? `<div class="text-xs text-slate-400 line-clamp-1">${attachedTask.description}</div>` : ''}
-                    </div>
-                ` : ''}
-                ${s.notes ? `<div class="text-slate-200 font-medium">${s.notes}</div>` : ''}
+                <div class="space-y-0.5">
+                    <div class="font-black text-sm text-white">${mainHeading}</div>
+                    ${subDesc ? `<div class="text-xs text-slate-400 line-clamp-1">${subDesc}</div>` : ''}
+                </div>
+                ${notesBody ? `<div class="text-slate-200 font-medium">${notesBody}</div>` : ''}
             </div>
         `;
     }).join('');

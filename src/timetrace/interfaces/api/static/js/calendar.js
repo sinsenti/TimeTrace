@@ -30,6 +30,42 @@ function updateViewButtons(activeViewType) {
     if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
 }
 
+function navigateCalendarPrev() {
+    if (!calendar) return;
+    const viewType = calendar.view.type;
+    if (viewType === 'timeGridDay' || viewType === 'timeGridThreeDay') {
+        calendar.incrementDate({ days: -1 });
+    } else {
+        calendar.prev();
+    }
+}
+
+function navigateCalendarNext() {
+    if (!calendar) return;
+    const viewType = calendar.view.type;
+    if (viewType === 'timeGridDay' || viewType === 'timeGridThreeDay') {
+        calendar.incrementDate({ days: 1 });
+    } else {
+        calendar.next();
+    }
+}
+
+function openCalendarHeaderDatePicker() {
+    const picker = document.getElementById('calendar_header_datepicker');
+    if (!picker) return;
+    if (typeof picker.showPicker === 'function') {
+        try {
+            picker.showPicker();
+        } catch (e) {
+            picker.focus();
+            picker.click();
+        }
+    } else {
+        picker.focus();
+        picker.click();
+    }
+}
+
 function scrollToCurrentTime() {
     if (!calendar) return;
     calendar.today();
@@ -67,10 +103,6 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
         allSessions = res || [];
 
-        // allSessions itself must stay unfiltered -- fetchRangeTotals() (called
-        // below) needs the full range to compute percentages correctly. Only
-        // the rendered calendar events are narrowed by the active breakdown
-        // filter, and events are hidden entirely rather than dimmed.
         const visibleForCalendar = typeof sessionMatchesBreakdownFilter === 'function'
             ? allSessions.filter(sessionMatchesBreakdownFilter)
             : allSessions;
@@ -81,7 +113,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
 
             return {
                 id: String(s.id),
-                title: s.notes || s.tags || 'Session',
+                title: matchedTask ? matchedTask.title : (s.tags || s.notes || '#general'),
                 start: s.start_time,
                 end: s.end_time || new Date().toISOString(),
                 backgroundColor: color,

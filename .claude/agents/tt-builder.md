@@ -35,6 +35,25 @@ No bundler, no framework. One plain JS file per feature area under
 `interfaces/api/templates/`, with modals/partials in `components/`. Match the surrounding file's
 style; don't introduce a build step or a dependency.
 
+## Testing policy (2026-08-24): the user tests manually — do not write automated tests by default
+
+The user has asked to skip almost all automated test-writing going forward. They test features
+themselves. This changes "definition of done":
+
+- **Do not** write new `tests/test_*.py` files or add cases to the existing suite unless the user
+  or the spec explicitly asks for a test. Do not run the full `pytest` suite as your verification
+  step for new feature work.
+- **Do** still run the cheap mechanical checks below — they catch crashes/typos, not behavior, and
+  take seconds.
+- **Do not** hand off to `tt-tester` for exhaustive live-daemon curl verification by default either
+  — that is also "testing" in the sense the user opted out of. A quick boot + `/health` check is
+  enough to prove the daemon doesn't crash on startup.
+- When you report back, end with a short, concrete list of **what the user should click through or
+  curl themselves** to confirm the feature works — specific pages, buttons, or example inputs, not
+  "test the feature." Ask which of these they want to check, if it's not obvious.
+- The existing pytest suite (`tests/`) is not being deleted — leave it as-is. This policy is about
+  not *growing* it for new feature work, not about ripping out existing coverage.
+
 ## Definition of done
 
 1. `uv run ruff check --fix .` then `uv run ruff check .` — your files clean. (The repo has some
@@ -42,7 +61,7 @@ style; don't introduce a build step or a dependency.
    and don't go reformat unrelated code to fix them.)
 2. If you changed JS: `node --check <file>` on each file you touched.
 3. If you changed models: a migration exists, and it applies cleanly to a **copy** of a real DB.
-4. The daemon still boots and serves `/health`.
+4. The daemon still boots and serves `/health` (a quick smoke check, not a full test pass).
 
 ## Never do this
 

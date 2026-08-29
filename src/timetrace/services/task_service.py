@@ -35,19 +35,6 @@ def parse_title_estimation(title: str) -> tuple[str, int | None]:
 
 
 def apply_quick_task_syntax(task_dict: dict) -> datetime | None:
-    """Extracts `#tag`s, `!priority`, `due:`/`d:`, `target:`/`t:`, and
-    `(description)` text out of a task's title and merges them into task_dict
-    in place. Returns the start time for an auto-scheduled Session if the
-    title gave an hour-precision target (`t:Nh`), else None -- the caller is
-    responsible for actually creating that row (this function only parses;
-    it has no DB access, per this module's core/ layering).
-
-    Title-embedded values win over whatever was already in task_dict, matching
-    the existing precedent for `[15m]` estimate parsing just above: the title
-    is the fast-capture surface, so what you type there is authoritative. Only
-    fields the title actually specifies are touched -- e.g. no `!priority` in
-    the title leaves task_dict["priority"] alone.
-    """
     quick = parse_inline_task(task_dict.get("title") or "")
     if not quick:
         return None
@@ -112,15 +99,6 @@ class TaskService:
         self.db.commit()
 
     def _inherit_parent_tags(self, task_dict: dict) -> None:
-        """A subtask created with no tags of its own inherits the parent's
-        tags -- a blank tags string means "inherit", not "field absent" (the
-        subtask modal JS and the CLI both always send tags:"" explicitly).
-        Title-embedded #tags (parsed earlier by apply_quick_task_syntax) win
-        over this, since that call already populated task_dict["tags"] before
-        this runs. Silently does nothing if parent_id doesn't resolve --
-        matches SessionService.create_session's handling of an unresolvable
-        task_id.
-        """
         parent_id = task_dict.get("parent_id")
         if not parent_id or (task_dict.get("tags") or "").strip():
             return
@@ -145,6 +123,10 @@ class TaskService:
             st = self.db.exec(select(TaskStatus).where(TaskStatus.name == task_dict["status"])).first()
             if st:
                 task_dict["status_id"] = st.id
+        elif task_dict.get("status_id"):
+            st = self.db.get(TaskStatus, task_dict["status_id"])
+            if st:
+                task_dict["status"] = st.name
 
         db_task = Task.model_validate(task_dict)
         if db_task.created_at:
@@ -159,14 +141,6 @@ class TaskService:
         if db_task.is_recurring:
             self.schedule_recurrent_sessions_three_months(db_task)
 
-        # One commit for the task plus every related row added above -- a
-        # second commit anywhere after this expires db_task's attributes
-        # (SQLAlchemy's default expire_on_commit) before the API layer
-        # serializes it, silently returning `{}` instead of the created task.
-        # This exact bug previously existed here for is_recurring tasks (the
-        # old code committed+refreshed, THEN called
-        # schedule_recurrent_sessions_three_months, which committed again) --
-        # fixed by moving that call before this single commit.
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
@@ -175,12 +149,6 @@ class TaskService:
         return db_task
 
     def _create_scheduled_session(self, task: Task, start_at: datetime) -> SessionModel:
-        """Creates a Session for a task whose title gave an hour-precision
-        target (`t:Nh`) -- see apply_quick_task_syntax. assigned_date is a
-        bare date string and can't hold a specific hour, so an actual
-        calendar Session is the only way to represent "work on this at this
-        time". Does not commit -- the caller folds this into its own commit.
-        """
         duration_mins = task.estimated_minutes or 15
         start_utc = ensure_utc(start_at)
         end_utc = start_utc + timedelta(minutes=duration_mins)
@@ -199,23 +167,13 @@ class TaskService:
         if not task.id or not task.is_recurring:
             return []
 
-        # Anchored to the task's own created_at (never "now"), so the generated
-        # 90-day sequence is byte-identical across every call for a given task.
-        # A `now()`-based anchor (even truncated to a fixed hour) drifts by
-        # whatever the gap is between calls: a 1-day-step "daily" rule tolerates
-        # a one-day drift by accident (89 of 90 slots still coincide), but
-        # "weekly" (7-day step) or "monthly" (30-day step) produce a fully
-        # disjoint sequence on the very next call -- duplicating every session
-        # instead of deduping any of them. Anchoring to created_at also means
-        # day zero is never in the past: it's the moment the task actually
-        # came into existence, not "today at 9am" for a task created at 6pm.
         start_base = ensure_utc(task.created_at) if task.created_at else datetime.now(UTC)
         if task.assigned_date:
             try:
                 dt_str = str(task.assigned_date).replace(' ', 'T')
                 if 'T' not in dt_str:
                     dt_str = f"{dt_str}T09:00:00"
-                start_base = datetime.fromisoformat(dt_str).replace(tzinfo=UTC)
+                start_base = ensure_utc(datetime.fromisoformat(dt_str))
             except Exception:
                 pass
 
@@ -260,10 +218,6 @@ class TaskService:
             else:
                 curr_date += timedelta(days=1)
 
-        # No commit here: the existing-session dedup check above relies on
-        # autoflush (not a commit) to see this loop's own pending adds, and
-        # every caller folds these rows into its own single final commit --
-        # see the note in create_task about why a second commit is unsafe.
         return created_sessions
 
     def list_tasks(
@@ -372,10 +326,14 @@ class TaskService:
             else:
                 setattr(db_task, key, value)
 
-        if "status" in update_dict:
+        if "status" in update_dict and update_dict["status"]:
             st = self.db.exec(select(TaskStatus).where(TaskStatus.name == update_dict["status"])).first()
             if st:
                 db_task.status_id = st.id
+        elif "status_id" in update_dict and update_dict["status_id"]:
+            st = self.db.get(TaskStatus, update_dict["status_id"])
+            if st:
+                db_task.status = st.name
 
         if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
             self.handle_task_recurrence(db_task)
@@ -414,13 +372,28 @@ class TaskService:
 
         task.assigned_date = next_date.strftime("%Y-%m-%d")
         task.status = "To Do"
+        st = self.db.exec(select(TaskStatus).where(TaskStatus.name == "To Do")).first()
+        if st:
+            task.status_id = st.id
+
+    def _get_all_descendant_task_ids(self, task_id: str) -> set[str]:
+        """Recursively collects a task ID and all its descendant subtask IDs."""
+        ids = {task_id}
+        subtask_ids = self.db.exec(select(Task.id).where(Task.parent_id == task_id)).all()
+        for sub_id in subtask_ids:
+            ids.update(self._get_all_descendant_task_ids(sub_id))
+        return ids
 
     def delete_task(self, task_id: str) -> None:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
 
-        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task_id)).all()
+        all_target_ids = self._get_all_descendant_task_ids(task_id)
+
+        linked_sessions = self.db.exec(
+            select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))
+        ).all()
         for s in linked_sessions:
             s.task_id = None
             self.db.add(s)
@@ -430,13 +403,24 @@ class TaskService:
 
     def delete_completed_tasks(self) -> int:
         completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
-        count = len(completed_tasks)
+        if not completed_tasks:
+            return 0
+
+        completed_ids = {t.id for t in completed_tasks}
+
+        linked_sessions = self.db.exec(
+            select(SessionModel).where(SessionModel.task_id.in_(completed_ids))
+        ).all()
+        for s in linked_sessions:
+            s.task_id = None
+            self.db.add(s)
+
+        count = 0
         for task in completed_tasks:
-            linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id == task.id)).all()
-            for s in linked_sessions:
-                s.task_id = None
-                self.db.add(s)
-            self.db.delete(task)
+            if task in self.db:
+                self.db.delete(task)
+                count += 1
+
         self.db.commit()
         return count
 

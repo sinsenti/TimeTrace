@@ -32,7 +32,7 @@ class ApiClient {
             }
 
             const contentType = response.headers.get('content-type');
-            if (contentType && contentType.includes('text/plain')) {
+            if (contentType && (contentType.includes('text/plain') || contentType.includes('text/markdown'))) {
                 return await response.text();
             }
 

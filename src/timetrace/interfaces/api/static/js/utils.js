@@ -287,7 +287,7 @@ window.addEventListener('keydown', function(e) {
     }
 }, true);
 
-function promptDeleteSession(sessionId) {
+async function promptDeleteSession(sessionId) {
     if (!sessionId) return;
     pendingDeleteSessionId = sessionId;
 
@@ -307,7 +307,10 @@ function promptDeleteSession(sessionId) {
         }
     }
 
-    confirmRecurringDelete('only_this');
+    const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log?");
+    if (confirmed) {
+        confirmRecurringDelete('only_this');
+    }
 }
 
 function closeRecurringDeleteModal() {
@@ -396,11 +399,6 @@ function roundVal(val, decimals) {
     return Number(Math.round(val + 'e' + decimals) + 'e-' + decimals);
 }
 
-/**
- * Maps a 1-5 (or any min-max) grade/rating score to a fixed red-to-green
- * Tailwind color step. Five discrete steps, not a continuous gradient --
- * this is a settled decision, not something to make configurable/invertible.
- */
 function getGradeColorClasses(score, minScore = 1, maxScore = 5) {
     const neutral = { text: 'text-slate-400', badge: 'bg-slate-800 text-slate-400 border border-slate-700', hex: '#94a3b8' };
 

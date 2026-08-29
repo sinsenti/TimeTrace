@@ -18,7 +18,11 @@ function renderTaskSuggestions(query) {
 
     let q = (query || "").trim().toLowerCase();
     const tasks = Object.values(allTasksMap);
-    let filtered = tasks.filter(t => !q || t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q)));
+    let filtered = tasks.filter(t => {
+        const statusLower = (t.status || '').toLowerCase();
+        if (statusLower === 'done' || statusLower === 'completed') return false;
+        return !q || t.title.toLowerCase().includes(q) || (t.description && t.description.toLowerCase().includes(q));
+    });
 
     if (filtered.length === 0) {
         dropdown.classList.add('hidden');
