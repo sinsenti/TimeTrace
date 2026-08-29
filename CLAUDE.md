@@ -147,10 +147,46 @@ resolution the CLI now uses). Note this is separate from `parse_inline_task` (ta
 quick-add: `#tag`, `!priority`, `due:Nd`/`target:Nd`, `(description)`), which was revived and wired
 into `TaskService.create_task`/`update_task` on 2026-08-21 and never touched a task id at all.
 
+**Resolved (2026-08-24): session/task completion policy.** Marking a task Done, or moving it off a
+`TaskStatus.is_scheduled_trigger` status without completing it, used to silently delete its future
+calendar sessions (`discardFutureSessionsForTask` in `utils.js` — now removed). `PUT /api/tasks/{id}`
+now returns an optional `completion_policy` block (reason, the affected future sessions, a subtree
+count) that the frontend renders as a keep-or-clear modal
+(`static/js/completion_policy.js` + `templates/components/completion_policy_modal.html`); clearing
+goes through `POST /api/tasks/{id}/clear-scheduled-sessions`, which independently handles the task's
+own sessions (`session_ids`, optional subset) and its subtree's (`include_subtasks`, all-or-nothing —
+there's no per-child selection UI for it, so folding both into one intersected scope was an actual bug
+caught in review: unchecking even one of the task's own sessions used to silently defeat the whole
+subtree clear). Recurring tasks never get this prompt — they regenerate their own future sessions in
+the same request. No schema change.
+
+The same work fixed task stats conflating future-scheduled time with actually-logged time (a task
+with pre-generated future sessions could read >100% progress with zero real work done):
+`GET /api/tasks/{id}/stats` gained `logged_hours`/`scheduled_hours`/`remaining_hours`/
+`unscheduled_hours`/`is_unbounded` (logged = `end_time` in the past; scheduled = `start_time` in the
+future; a session straddling `now` counts as neither), and `progress_pct` now reads off logged time
+only. `is_unbounded` is true for Ongoing tasks, tasks with no estimate, **and** recurring tasks — a
+recurring task's estimate is per-occurrence, but its ~90 pre-generated future sessions sum across the
+whole projection window, so subtracting one from the other is meaningless and was producing a
+nonsense "over by Nh" figure before this was caught.
+
+**Resolved (2026-08-24): subtask tag inheritance, day-review breakdown, dashboard "by task" fix,
+grade coloring.** A grab-bag of smaller fixes merged alongside the stats-engine work: subtasks with
+no tags of their own now inherit the parent task's tags at creation time (service-layer, so it works
+from every entry point, and the subtask modal prefills the effective parent tags); the day-review tab
+gained a per-day tag/task time breakdown (local-day bucketing, fan-out tag attribution) with
+click-to-filter handed off to the dashboard calendar via query params; the dashboard "By Task"
+sidebar widget was aggregating over the sidebar's *filtered* task list instead of the sessions
+actually visible in the calendar range (and losing untasked sessions to a stray integer sentinel) —
+fixed, with click-to-filter and a persistent chip; and a 5-step red-to-green grade color helper is
+now wired into the day rating badge, the day-history heatmap, and custom rating sliders.
+
 ## Current focus: statistics & custom dashboards
 
 This is the active feature. The design was settled with the project owner on 2026-08-21; these are
-decisions, not suggestions. Do not silently re-open them.
+decisions, not suggestions. Do not silently re-open them. **Slice 1 shipped 2026-08-24** (merged to
+`dev` via `feat/stats-engine`); slices 2-4 below are not started. See "Ship order" for what that
+means concretely.
 
 **What it is.** The statistics page becomes a dashboard of configurable widgets. A widget is a
 *structured query* — source, measure, group-by, filters, chart type — built through pickers, with a
@@ -170,14 +206,22 @@ count, completion rate, avg rating, habit completion rate, estimation accuracy; 
 day/week/month, hour-of-day, weekday, tag, category, task, status, priority, habit, rating type.
 
 **Ship order** (each slice usable on its own):
-1. **Query engine + `POST /analytics/query` + seeded Overview.** Compile the structured query to
-   real SQL. This is also where the two standing analytics defects get fixed: aggregation stops
-   loading every session and task into Python (`core/analytics.py`), and the UTC-vs-local
-   inconsistency (`daily_trend` buckets by UTC date, `hourly_distribution` by local) is resolved in
-   favour of local.
-2. Builder UI — add/edit/remove/reorder widgets, save named dashboards.
-3. Read-only SQL escape hatch.
-4. Per-widget comparison baselines.
+1. **DONE (2026-08-24).** Query engine + `POST /analytics/query` (+ `/query/batch`) +
+   `GET /analytics/capabilities` + seeded Overview. The structured query compiles to real SQL in
+   `core/query_spec.py` / `core/query_compiler.py` / `services/query_service.py`. Both standing
+   analytics defects are fixed as part of this: aggregation no longer loads every session/task into
+   Python, and day/week bucketing is unified on **local** calendar time throughout (the old
+   UTC-vs-local split between `daily_trend` and `hourly_distribution` is gone). **No schema
+   change** — this slice deliberately has no DB-backed dashboard/widget table; a `Dashboard`/
+   `DashboardWidget` migration was written and then reverted (`db525d5`) for exactly this reason.
+2. **Partially done.** A manual "+ Add Widget" builder exists on `/stats`
+   (`static/js/dashboards.js`) — pick source/measure/group-by/filters from
+   `GET /analytics/capabilities`, run it via `POST /analytics/query` to validate, render alongside
+   the seeded widgets. Specs persist to **localStorage only**. Still missing: a real
+   `Dashboard`/`DashboardWidget` DB table, named/saved dashboards, and add/remove/reorder against
+   persisted state rather than a local array.
+3. **Not started.** Read-only SQL escape hatch.
+4. **Not started.** Per-widget comparison baselines.
 
 Not doing yet: per-user scoping on dashboards. Ids are UUIDv7, so an owner column can be added
 later without a rebuild — don't pre-build it.
@@ -189,9 +233,10 @@ where this project is headed next. None of the following exists in code yet — 
 current architecture, and check before assuming any of it has landed.
 
 **Priority, set by the project owner on 2026-08-21** (highest first):
-statistics/dashboards (above) → recurrence & completion policy → teams/multi-user, *if it proves
-needed* (project tracking closer to Jira, scheduling closer to Morgen) → AI features →
-**external integrations, explicitly deferred** (Google Calendar, Slack, Linear — not being built
+statistics/dashboards (above, slice 1 done / 2-4 open) → recurrence & completion policy
+(**completion policy done 2026-08-24, recurrence engine itself still open**) → teams/multi-user,
+*if it proves needed* (project tracking closer to Jira, scheduling closer to Morgen) → AI features
+→ **external integrations, explicitly deferred** (Google Calendar, Slack, Linear — not being built
 now; don't start groundwork for them).
 
 | Area | Planned direction | Current state | Priority action |
@@ -204,4 +249,4 @@ now; don't start groundwork for them).
 | AI features | Two-tiered intent extraction (fast local parser for simple date/time syntax, LLM only for multi-constraint scheduling requests); render AI scheduling suggestions as non-destructive draft layers the user must accept/reject, never silent mutations; keep an audit log so a whole week of AI-rescheduled tasks can be undone in one action; sanitize titles/attendees before any third-party call | None implemented | Deliberately postponed, but ranked **above** external integrations. Not started. When it starts: settle the UX controls (draft layers + one-tap rollback log) before wiring up a single model call |
 | Calendar grid rendering | Interval-graph overlap clustering for overlapping sessions (group contiguous overlaps, compute max concurrent columns, assign fractional widths e.g. `33.3%`); decouple drag-to-reschedule from state writes — render a lightweight preview at 60fps while dragging, only commit to DB on `drag_end` | Existing FullCalendar-based grid in `static/js/calendar.js` | Worth revisiting if overlap rendering or drag performance becomes a problem |
 | Timezones | Distinguish fixed events (absolute UTC, e.g. a Zoom call) from floating events (local wall-clock time that should follow the user when travelling, e.g. a recurring morning task) by storing an explicit IANA timezone identifier (e.g. `America/New_York`), not just a UTC instant | `session.timezone` column already exists in the live DB (see Known Issue) but isn't in `db/models.py` or used anywhere yet | Formalize once the model/migration reconciliation above happens |
-| Session/task completion policy | When a parent task is marked done, evaluate its still-scheduled future sessions and prompt to keep or clear them; compute "remaining unscheduled balance" as `estimated_duration - sum(logged_session_durations)` dynamically rather than storing a counter | Not implemented | Natural fit for `TaskService`/`SessionService` once the model work above is in |
+| Session/task completion policy | When a parent task is marked done, evaluate its still-scheduled future sessions and prompt to keep or clear them; compute "remaining unscheduled balance" as `estimated_duration - sum(logged_session_durations)` dynamically rather than storing a counter | **Done** (2026-08-24) — see "Resolved" section above | — |
