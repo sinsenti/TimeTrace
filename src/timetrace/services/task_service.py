@@ -202,7 +202,7 @@ class TaskService:
             start_time=start_utc.replace(tzinfo=None),
             end_time=end_utc.replace(tzinfo=None),
             duration_seconds=duration_mins * 60,
-            tags=task.tags or "#general",
+            tags=task.tags or "",
             notes=f"Scheduled: {task.title}",
         )
         self.db.add(session)
@@ -244,7 +244,7 @@ class TaskService:
                     start_time=curr_naive,
                     end_time=curr_naive + timedelta(minutes=duration_mins),
                     duration_seconds=duration_mins * 60,
-                    tags=task.tags or "#general",
+                    tags=task.tags or "",
                     notes=f"Recurring: {task.title}",
                 )
                 self.db.add(sess)

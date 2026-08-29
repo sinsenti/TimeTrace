@@ -33,7 +33,7 @@ class SessionService:
             start_time=start_utc.replace(tzinfo=None),
             end_time=end_utc.replace(tzinfo=None),
             duration_seconds=duration,
-            tags=req.tags or "#general",
+            tags=req.tags or "",
             notes=req.notes or "",
             review_skipped=req.review_skipped,
         )
@@ -123,7 +123,7 @@ class SessionService:
             sessions_to_del = self.db.exec(
                 select(SessionModel).where(
                     SessionModel.task_id == db_session.task_id,
-                    SessionModel.start_time >= db_session.start_time
+                    SessionModel.start_time >= db_session.start_time,
                 )
             ).all()
             for s in sessions_to_del:
@@ -150,7 +150,7 @@ class SessionService:
             start_time=start_utc.replace(tzinfo=None),
             end_time=end_utc.replace(tzinfo=None),
             duration_seconds=duration,
-            tags=req.tags or "#general",
+            tags=req.tags or "",
             notes=req.notes or "",
         )
         self.db.add(db_session)
@@ -174,8 +174,6 @@ class SessionService:
         )
 
     def sum_durations_for_tasks(self, task_ids: list[str]) -> tuple[int, int]:
-        """Returns (logged_seconds, scheduled_seconds) for the given tasks, computed
-        via SQL aggregates rather than pulling every session into Python."""
         if not task_ids:
             return (0, 0)
 
@@ -203,21 +201,12 @@ class SessionService:
 
         if session_ids is not None:
             requested_ids = set(session_ids)
-            # Ownership is checked against every session for task_ids, not just the
-            # still-future ones: a ValidationError here means "this id never
-            # belonged to this task's scope" (a real cross-task/bogus-id error).
-            # An id that belonged but slipped into the past between the prompt
-            # being shown and the clear request (a session starting while the
-            # modal was open) is just skipped rather than failing the whole
-            # batch -- see the exact ownership set below.
             owned_ids = {
                 s.id
                 for s in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))).all()
             }
             if not requested_ids.issubset(owned_ids):
-                raise ValidationError(
-                    "session_ids must belong to the task's scheduled sessions"
-                )
+                raise ValidationError("session_ids must belong to the task's scheduled sessions")
             to_delete = [s for s in future_sessions if s.id in requested_ids]
         else:
             to_delete = future_sessions

@@ -151,7 +151,7 @@ def stop_timer():
 def retro_session(
     start_mins_ago: int = typer.Option(60, "--start-ago", "-s", help="Minutes ago session started"),
     duration_mins: int = typer.Option(30, "--duration", "-d", help="Duration of past session in minutes"),
-    tags: str = typer.Option("#general", "--tags", "-t", help="Tags for session"),
+    tags: str = typer.Option("", "--tags", "-t", help="Tags for session"),
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
 ):
     """Retroactively log a past untracked session."""

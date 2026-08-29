@@ -236,18 +236,16 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
             if (startNowBtn) startNowBtn.classList.add('hidden');
         }
 
-        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
-
         if (taskId) {
             if (typeof attachTaskById === 'function') {
                 attachTaskById(taskId, true);
             }
             if (!attachedTaskObj || !attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
-                if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
+                if (typeof setTagChips === 'function') setTagChips("");
             }
         } else {
             if (typeof detachTask === 'function') detachTask();
-            if (typeof setTagChips === 'function') setTagChips(settings.defaultTag || "#general");
+            if (typeof setTagChips === 'function') setTagChips("");
         }
 
         const notesInput = document.getElementById('session_modal_notes');
@@ -289,8 +287,7 @@ async function saveSessionFromModal() {
         const extraTypedTag = document.getElementById('session_modal_tags_input') ? document.getElementById('session_modal_tags_input').value.trim() : '';
         if (extraTypedTag && typeof addTagChip === 'function') addTagChip(extraTypedTag);
 
-        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
-        const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
+        const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : '';
 
         if (!startVal || !endVal) {
             alert("Start and End times are required.");
@@ -337,8 +334,7 @@ async function startTimerFromModal() {
     const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
     if (extraTypedTag) addTagChip(extraTypedTag);
 
-    const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
-    const tagsVal = currentTagChips.length > 0 ? currentTagChips.join(' ') : (settings.defaultTag || '#general');
+    const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : '';
     const notesVal = document.getElementById('session_modal_notes').value;
 
     await api.post('/timer/start', {

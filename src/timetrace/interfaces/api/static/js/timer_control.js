@@ -152,10 +152,9 @@ async function toggleTimer() {
     } else {
         const select = document.getElementById('timer_task_select');
         const taskId = select ? select.value : null;
-        const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
         await api.post('/timer/start', {
             task_id: taskId ? taskId : null,
-            tags: settings.defaultTag || "#general"
+            tags: ""
         });
     }
     fetchTimerStatus();
@@ -183,7 +182,7 @@ function updateIdleSwitchUI() {
 
 async function resolveIdleGap(option) {
     const retagInput = document.getElementById('idle_retag_input');
-    const newTags = retagInput ? retagInput.value.trim() || '#general' : '#general';
+    const newTags = retagInput ? retagInput.value.trim() : '';
 
     await api.post('/idle/resolve', { option: option, new_tags: newTags });
 

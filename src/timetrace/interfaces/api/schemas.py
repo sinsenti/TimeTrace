@@ -88,7 +88,7 @@ class SessionCreate(BaseModel):
     task_id: str | None = None
     start_time: datetime
     end_time: datetime
-    tags: str = "#general"
+    tags: str = ""
     notes: str = ""
     review_skipped: bool = False
 
@@ -180,7 +180,7 @@ class IdleToggleRequest(BaseModel):
 
 class IdleResolveRequest(BaseModel):
     option: str
-    new_tags: str | None = "#general"
+    new_tags: str | None = ""
     new_notes: str | None = ""
 
 
@@ -217,9 +217,7 @@ class HabitLogRequest(BaseModel):
 
 
 class QueryContextRequest(BaseModel):
-    """Request-scoped context that isn't part of a saved widget definition (see
-    `core/query_spec.AnalyticsQuery`'s docstring for why timezone/first_day_of_week live here
-    instead)."""
+    """Request-scoped context that isn't part of a saved widget definition."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -318,7 +316,7 @@ class ScheduledSessionInfo(BaseModel):
 
 
 class CompletionPolicyPrompt(BaseModel):
-    reason: str  # "completed" | "left_scheduled"
+    reason: str
     task_id: str
     task_title: str
     scheduled_sessions: list[ScheduledSessionInfo]

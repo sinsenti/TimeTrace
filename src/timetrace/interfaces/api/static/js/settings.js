@@ -42,8 +42,7 @@ const DEFAULT_SETTINGS = {
     lastHideLeftSidebar: false,
     hideRightSidebar: 'auto',
     lastHideRightSidebar: false,
-    autoScrollNow: true,
-    defaultTag: '#general'
+    autoScrollNow: true
 };
 
 function getQueryContext() {
@@ -130,9 +129,6 @@ function openSettingsModal() {
     const scrollCheck = document.getElementById('setting_auto_scroll');
     if (scrollCheck) scrollCheck.checked = s.autoScrollNow;
 
-    const tagInput = document.getElementById('setting_default_tag');
-    if (tagInput) tagInput.value = s.defaultTag || '#general';
-
     const modal = document.getElementById('settings_modal');
     if (modal) {
         modal.classList.remove('hidden');
@@ -162,8 +158,7 @@ async function saveSettingsFromModal() {
         idleDetectorEnabled: document.getElementById('setting_idle_detector') ? document.getElementById('setting_idle_detector').checked : true,
         hideLeftSidebar: document.getElementById('setting_hide_left_sidebar') ? document.getElementById('setting_hide_left_sidebar').value : 'auto',
         hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').value : 'auto',
-        autoScrollNow: document.getElementById('setting_auto_scroll') ? document.getElementById('setting_auto_scroll').checked : true,
-        defaultTag: document.getElementById('setting_default_tag') ? document.getElementById('setting_default_tag').value.trim() || '#general' : '#general'
+        autoScrollNow: document.getElementById('setting_auto_scroll') ? document.getElementById('setting_auto_scroll').checked : true
     };
 
     saveUserSettings(newSettings);

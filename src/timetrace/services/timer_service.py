@@ -124,7 +124,7 @@ class TimerService:
                 start_time=ensure_utc(datetime.fromisoformat(saved_data["start_time"])).replace(tzinfo=None),
                 end_time=ensure_utc(datetime.fromisoformat(saved_data["end_time"])).replace(tzinfo=None),
                 duration_seconds=saved_data["duration_seconds"],
-                tags=saved_data.get("tags") or "#general",
+                tags=saved_data.get("tags") or "",
                 notes=saved_data.get("notes") or "",
             )
             self.db.add(db_work)
@@ -152,7 +152,7 @@ class TimerService:
                 start_time=idle_start,
                 end_time=idle_end,
                 duration_seconds=idle_duration,
-                tags=gap.get("tags") or "#general",
+                tags=gap.get("tags") or "",
                 notes=f"Claimed AFK Work: {gap.get('notes', '')}".strip(),
             )
             self.db.add(db_claimed)
@@ -164,7 +164,7 @@ class TimerService:
                 start_time=idle_start,
                 end_time=idle_end,
                 duration_seconds=idle_duration,
-                tags=req.new_tags or "#general",
+                tags=req.new_tags or "",
                 notes=req.new_notes or "Re-tagged AFK time",
             )
             self.db.add(db_retag)

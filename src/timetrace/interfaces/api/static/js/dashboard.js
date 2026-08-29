@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         displayDesc = '';
                         showTags = false;
                     } else {
-                        displayTitle = '#general';
+                        displayTitle = 'Session';
                         displayDesc = '';
                         showTags = false;
                     }
@@ -151,7 +151,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     info.event.remove();
 
                     const targetTask = (taskId && typeof allTasksMap !== 'undefined') ? allTasksMap[taskId] : null;
-                    const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "#general";
+                    const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "";
 
                     const payload = {
                         task_id: taskId ? taskId : null,
