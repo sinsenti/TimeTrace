@@ -20,6 +20,7 @@ from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.recurrence import (
+    MAX_OCCURRENCES_PER_SERIES,
     MAX_WINDOW_DAYS,
     RecurrenceSpec,
     expand,
@@ -40,6 +41,13 @@ from timetrace.core.timezones import (
 from timetrace.db.models import RecurrenceException, Task, TaskStatus
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.utils import ensure_utc
+
+# Fingerprint written only by the removed pre-generator (see migration `0006` and the
+# `tt recurrence-audit` CLI, `interfaces/cli/commands.py:LEGACY_PLACEHOLDER_PREFIX`). Adoption in
+# `reconcile_series` must only ever claim rows carrying this marker -- never an arbitrary real
+# session that happens to sit on a projected occurrence's instant, which could just as easily be
+# the user's own unrelated work coinciding with the series' usual time.
+_LEGACY_PLACEHOLDER_PREFIX = "Recurring: "
 
 _RECURRENCE_REQUEST_FIELDS = (
     "is_recurring",
@@ -221,17 +229,23 @@ class RecurrenceService:
     ) -> list[ProjectedOccurrence]:
         """Virtual occurrences of every active series whose start falls in `[start, end)`.
 
-        The lower bound is clamped to now: past occurrences never project.
+        Future-only, with one exception: an occurrence that has started but not yet ended
+        (`start <= now < end`) is neither a real row nor a "did not happen" gap, so it still
+        projects. The lower bound used for `expand()` is therefore only clamped to `now` minus
+        that series' own duration -- never further back -- and anything whose `end_utc` has
+        already elapsed is filtered back out below.
         """
-        lower = _naive_utc(start)
+        lower_req = _naive_utc(start)
         upper = _naive_utc(end)
-        if lower is None or upper is None:
+        if lower_req is None or upper is None:
             return []
-        if (upper - lower) > timedelta(days=MAX_WINDOW_DAYS):
+        if (upper - lower_req) > timedelta(days=MAX_WINDOW_DAYS):
             raise ValidationError(f"Requested range exceeds the maximum of {MAX_WINDOW_DAYS} days.")
 
-        lower = max(lower, _now_naive())
-        if lower >= upper:
+        now = _now_naive()
+        if upper <= now:
+            # Entirely in the past: no in-progress occurrence can live in a window that ends
+            # before now, and a fully past occurrence with no row simply did not happen.
             return []
 
         tasks = self.list_recurring_tasks()
@@ -242,15 +256,42 @@ class RecurrenceService:
             for task in tasks:
                 self.reconcile_series(task.id)
 
-        exceptions = self._exceptions_in_window([t.id for t in tasks], lower, upper)
-
-        result: list[ProjectedOccurrence] = []
+        specs: dict[str, RecurrenceSpec] = {}
+        task_lowers: dict[str, datetime] = {}
+        window_floor = max(lower_req, now)
         for task in tasks:
             spec = self.spec_for_task(task)
             if not spec:
                 continue
-            for occ in expand(spec, lower, upper, task.id):
-                if (task.id, occ.start_utc) in exceptions:
+            specs[task.id] = spec
+            task_lower = max(lower_req, now - timedelta(minutes=spec.duration_minutes))
+            task_lowers[task.id] = task_lower
+            window_floor = min(window_floor, task_lower)
+
+        if not specs or window_floor >= upper:
+            return []
+
+        exceptions = self._exceptions_in_window(list(specs.keys()), window_floor, upper)
+        session_intervals = self._real_session_intervals(list(specs.keys()), window_floor, upper)
+
+        result: list[ProjectedOccurrence] = []
+        for task_id, spec in specs.items():
+            task_lower = task_lowers[task_id]
+            if task_lower >= upper:
+                continue
+            task = next(t for t in tasks if t.id == task_id)
+            intervals = session_intervals.get(task_id, ())
+            for occ in expand(spec, task_lower, upper, task_id):
+                if occ.end_utc <= now:
+                    continue  # fully elapsed -- a past occurrence with no row did not happen
+                if (task_id, occ.start_utc) in exceptions:
+                    continue
+                if self._occurrence_covered(intervals, occ.start_utc, occ.end_utc):
+                    # A real session of this task already occupies this slot. Suppress the
+                    # ghost at display time only -- no exception is written, so this claims
+                    # nothing and a later scope delete still cannot touch the real row. See
+                    # module docstring / `reconcile_series` for why adoption itself must not
+                    # do this.
                     continue
                 result.append(self._to_projected(task, occ.start_utc, occ.end_utc))
         result.sort(key=lambda o: o.start_utc)
@@ -266,10 +307,12 @@ class RecurrenceService:
         if lower >= upper:
             return []
         exceptions = self._exceptions_in_window([task.id], lower, upper)
+        intervals = self._real_session_intervals([task.id], lower, upper).get(task.id, ())
         return [
             self._to_projected(task, occ.start_utc, occ.end_utc)
             for occ in expand(spec, lower, upper, task.id)
             if (task.id, occ.start_utc) not in exceptions
+            and not self._occurrence_covered(intervals, occ.start_utc, occ.end_utc)
         ]
 
     def next_upcoming(self, within_days: int = 30) -> ProjectedOccurrence | None:
@@ -298,7 +341,11 @@ class RecurrenceService:
                 return None
             exc = self.get_exception(task.id, occ.start_utc)
             if exc is None:
-                return self._to_projected(task, occ.start_utc, occ.end_utc)
+                intervals = self._real_session_intervals([task.id], occ.start_utc, occ.end_utc).get(
+                    task.id, ()
+                )
+                if not self._occurrence_covered(intervals, occ.start_utc, occ.end_utc):
+                    return self._to_projected(task, occ.start_utc, occ.end_utc)
             cursor = occ.start_utc
         return None
 
@@ -326,6 +373,48 @@ class RecurrenceService:
             )
         ).all()
         return {(r.task_id, _naive_utc(r.occurrence_start)): r for r in rows}
+
+    def _real_session_intervals(
+        self, task_ids: list[str], lower: datetime, upper: datetime
+    ) -> dict[str, list[tuple[datetime, datetime]]]:
+        """Real (non-virtual) session rows of `task_ids` whose interval can overlap `[lower,
+        upper)`, keyed by task id. Used only to *suppress* a projected occurrence at display
+        time -- never to adopt/claim the row -- so `reconcile_series`'s narrowed adoption stays
+        the only path that can make a session deletable via the series.
+        """
+        if not task_ids:
+            return {}
+        rows = self.db.exec(
+            select(SessionModel).where(
+                SessionModel.task_id.in_(task_ids),
+                SessionModel.start_time < upper,
+            )
+        ).all()
+        intervals: dict[str, list[tuple[datetime, datetime]]] = {}
+        for row in rows:
+            if not row.start_time or not row.task_id:
+                continue
+            row_start = _naive_utc(row.start_time)
+            row_end = _naive_utc(row.end_time) if row.end_time else row_start
+            if row_end <= row_start:
+                # Zero-duration / still-open row: treat as covering at least an instant so an
+                # occurrence starting exactly there is still suppressed.
+                row_end = row_start + timedelta(seconds=1)
+            if row_end <= lower:
+                continue
+            intervals.setdefault(row.task_id, []).append((row_start, row_end))
+        return intervals
+
+    @staticmethod
+    def _occurrence_covered(
+        intervals: list[tuple[datetime, datetime]] | tuple[()], occ_start: datetime, occ_end: datetime
+    ) -> bool:
+        """True if a real session interval overlaps the occurrence's `[occ_start, occ_end)`.
+
+        Overlap, not exact-start equality: a user's 09:00-11:00 block plainly covers a
+        09:00-09:30 occurrence and would otherwise still render a duplicate ghost inside it.
+        """
+        return any(s < occ_end and occ_start < e for s, e in intervals)
 
     def get_exception(self, task_id: str, occurrence_start: datetime) -> RecurrenceException | None:
         return self.db.exec(
@@ -392,6 +481,12 @@ class RecurrenceService:
             raise EntityNotFoundError("Occurrence", occurrence_id)
 
         duration_minutes = task.recurrence_duration_minutes or 15
+        if occurrence_start + timedelta(minutes=duration_minutes) <= _now_naive():
+            # An in-progress occurrence (start <= now < end) is exactly the "I'm working it
+            # now" case and stays materializable; one that has fully elapsed with no row simply
+            # did not happen, and writing a session for it now would fabricate work never logged.
+            raise ValidationError("This occurrence has already elapsed and cannot be logged retroactively.")
+
         session = SessionModel(
             task_id=task.id,
             start_time=occurrence_start,
@@ -444,6 +539,12 @@ class RecurrenceService:
         Deletes the exceptions at or after that instant and the materialized session rows of
         the `override` ones -- but **only** rows whose `start_time` is in the future. Logged
         past work is never deleted by a scope operation.
+
+        Truncating at or before the series' first occurrence would write a rule with `UNTIL`
+        before `DTSTART` -- zero occurrences, forever -- which `validate_rrule` would reject on
+        every future save. That case (and any other anchor that happens to zero out the rule)
+        means "the series should not exist" and is routed to the same outcome as `end_series`
+        instead of ever being persisted.
         """
         task = self.db.get(Task, task_id)
         if not task:
@@ -453,8 +554,13 @@ class RecurrenceService:
         if task.recurrence_rrule:
             tz = resolve_timezone(task.recurrence_timezone)
             until_local = to_local_naive(anchor - timedelta(seconds=1), tz)
-            task.recurrence_rrule = set_until(task.recurrence_rrule, until_local)
-            task.recurrence_rule = rrule_to_preset(task.recurrence_rrule)
+            candidate_rrule = set_until(task.recurrence_rrule, until_local)
+            try:
+                validate_rrule(candidate_rrule, task.recurrence_dtstart, task.recurrence_timezone)
+            except ValidationError:
+                return self.end_series(task_id)
+            task.recurrence_rrule = candidate_rrule
+            task.recurrence_rule = rrule_to_preset(candidate_rrule)
             self.db.add(task)
 
         deleted = self._drop_exceptions(task_id, at_or_after=anchor)
@@ -521,7 +627,13 @@ class RecurrenceService:
           deleting the exception and **keeping** the session row (real user work, just no
           longer part of the series).
 
-        Past exceptions are never touched. Returns the number of rows changed.
+        Past exceptions are never touched. Nor is an exception whose `occurrence_start` sits
+        beyond the horizon this method actually expanded: `expand()` is bounded by both
+        `MAX_WINDOW_DAYS` and `MAX_OCCURRENCES_PER_SERIES`, and a high-frequency rule can hit
+        the occurrence cap well inside the day window. An exception past whichever boundary was
+        actually hit is not "no longer an occurrence" -- it is simply outside what this call
+        looked at -- and must be left alone rather than judged stale and deleted. Returns the
+        number of rows changed.
         """
         if task_id in self._reconciled:
             return 0
@@ -542,12 +654,21 @@ class RecurrenceService:
         changes = 0
 
         occurrence_starts: set[datetime] = set()
+        expanded_horizon = horizon
         if spec:
-            occurrence_starts = {occ.start_utc for occ in expand(spec, now, horizon, task_id)}
+            expanded = expand(spec, now, horizon, task_id)
+            occurrence_starts = {occ.start_utc for occ in expanded}
+            if len(expanded) >= MAX_OCCURRENCES_PER_SERIES:
+                # Truncated by the occurrence cap, not the day window -- only judge staleness
+                # up to the last occurrence actually expanded.
+                expanded_horizon = expanded[-1].start_utc
 
         for exc in exceptions:
             occ_start = _naive_utc(exc.occurrence_start)
             if occ_start <= now:
+                continue
+            if occ_start > expanded_horizon:
+                # Outside the horizon this call actually expanded -- unknown, not stale.
                 continue
             if occ_start in occurrence_starts:
                 continue
@@ -570,6 +691,11 @@ class RecurrenceService:
         ).all()
         for row in future_rows:
             if row.id in linked_session_ids:
+                continue
+            if not (row.notes or "").startswith(_LEGACY_PLACEHOLDER_PREFIX):
+                # Not a row the old pre-generator wrote -- e.g. the user's own session that
+                # happens to coincide with a projected occurrence's instant. Adoption must never
+                # claim it: a later scope=all/following delete would destroy real user work.
                 continue
             start = _naive_utc(row.start_time)
             if start not in occurrence_starts or start in claimed:

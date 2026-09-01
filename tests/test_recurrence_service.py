@@ -12,10 +12,13 @@ from sqlmodel import Session as DBSession
 from sqlmodel import select
 
 from timetrace.core.exceptions import ValidationError
+from timetrace.core.recurrence import format_occurrence_id
 from timetrace.db.models import RecurrenceException, Task
 from timetrace.db.models import Session as SessionModel
-from timetrace.interfaces.api.schemas import SessionCreate, SessionUpdate, TaskCreate
+from timetrace.interfaces.api.schemas import SessionCreate, SessionUpdate, TaskCreate, TaskUpdate
+from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services import SessionService, TaskService
+from timetrace.services.recurrence_service import RecurrenceService
 
 
 class TestRecurringTaskCreation:
@@ -558,3 +561,316 @@ class TestSeriesDuration:
         second_occ = second_occurrences[0]
         # Duration should be 90 * 60 = 5400 seconds
         assert second_occ["duration_seconds"] == 5400
+
+
+def _mk_task(db: DBSession, dtstart, dur=30, rrule="FREQ=DAILY", tz="UTC", **kw) -> Task:
+    task = Task(
+        title=kw.pop("title", "Standup"),
+        is_recurring=True,
+        recurrence_rrule=rrule,
+        recurrence_dtstart=dtstart,
+        recurrence_duration_minutes=dur,
+        recurrence_timezone=tz,
+        status="To Do",
+        **kw,
+    )
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+class TestReconcileHorizon:
+    """Regression for review defect 1: reconcile_series must never judge an exception stale
+    just because it sits beyond the horizon it actually expanded (day-400 cutoff or the
+    occurrence cap, whichever the rule hits first)."""
+
+    def test_skip_beyond_occurrence_cap_survives_reconcile(self, db: DBSession):
+        """A high-frequency rule can hit MAX_OCCURRENCES_PER_SERIES well inside the 400-day
+        window; a skip past that point must not be treated as stale and undone."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        task = _mk_task(
+            db,
+            dtstart=now + timedelta(minutes=5),
+            dur=15,
+            rrule="FREQ=DAILY;BYHOUR=8,10,12,14,16",
+            title="Micro",
+        )
+        svc = RecurrenceService(db)
+        far_start = datetime.now(UTC) + timedelta(days=300)
+        occ = svc.project_task(task, far_start, far_start + timedelta(days=30))
+        assert occ, "expected occurrences deep into the window"
+        svc.skip(task.id, occ[0].start_utc)
+        assert len(db.exec(select(RecurrenceException)).all()) == 1
+
+        RecurrenceService(db).reconcile_series(task.id)
+
+        remaining = db.exec(select(RecurrenceException)).all()
+        assert len(remaining) == 1, "far-future skip was silently deleted by reconcile"
+
+    def test_skip_beyond_400_day_window_survives_reconcile(self, db: DBSession):
+        """A skip beyond the 400-day expansion window must not be undone by a later reconcile,
+        and the occurrence it cancelled must stay hidden."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        _mk_task(db, dtstart=(now + timedelta(days=1)).replace(hour=9, minute=0))
+        far = datetime.now(UTC) + timedelta(days=500)
+        rows = SessionService(db).list_sessions(far, far + timedelta(days=30))
+        virts = [r for r in rows if r["is_virtual"]]
+        assert virts
+        SessionService(db).delete_session(virts[0]["id"], scope="only_this")
+
+        rows2 = SessionService(db).list_sessions(far, far + timedelta(days=30))
+        assert virts[0]["id"] not in [r["id"] for r in rows2], "skip undone; occurrence reappeared"
+
+    def test_override_beyond_400_days_does_not_double_render(self, db: DBSession):
+        """Materializing an occurrence beyond the 400-day window must not leave both the real
+        row and a ghost virtual rendering at the same instant after reconcile runs again."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        _mk_task(db, dtstart=(now + timedelta(days=1)).replace(hour=9, minute=0))
+        far = datetime.now(UTC) + timedelta(days=500)
+        rows = SessionService(db).list_sessions(far, far + timedelta(days=30))
+        vid = [r for r in rows if r["is_virtual"]][0]["id"]
+        SessionService(db).update_session(vid, SessionUpdate(notes="planned ahead"))
+
+        rows2 = SessionService(db).list_sessions(far, far + timedelta(days=30))
+        at_same_instant = [r for r in rows2 if r["start_time"] == rows[0]["start_time"]]
+        assert len(at_same_instant) == 1, "occurrence rendered twice (real row + ghost virtual)"
+
+
+class TestTruncateAtFirstOccurrence:
+    """Regression for review defect 2: truncating a series at or before its first occurrence
+    must not persist an UNTIL-before-DTSTART rule that bricks every later task update."""
+
+    def test_truncate_at_first_occurrence_ends_series_instead_of_bricking_it(self, db: DBSession):
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        task = _mk_task(db, dtstart=(now + timedelta(days=1)).replace(hour=9, minute=0))
+
+        rows = SessionService(db).list_sessions(datetime.now(UTC), datetime.now(UTC) + timedelta(days=5))
+        first = [r for r in rows if r["is_virtual"]][0]
+
+        SessionService(db).delete_session(first["id"], scope="following")
+
+        db.refresh(task)
+        assert task.is_recurring is False
+        assert task.recurrence_rrule is None
+
+        # A later, unrelated edit must not 400.
+        updated = TaskService(db).update_task(task.id, TaskUpdate(title="Standup renamed"))
+        assert updated.title == "Standup renamed"
+
+
+class TestAdoptionOwnership:
+    """Regression for review defect 3: adoption in reconcile_series must only ever claim rows
+    carrying the old pre-generator's fingerprint, never a user's own session that happens to
+    coincide with a projected occurrence's instant."""
+
+    def test_user_created_row_is_never_adopted_or_destroyed(self, db: DBSession):
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor)
+
+        own = SessionModel(
+            task_id=task.id,
+            start_time=anchor,
+            end_time=anchor + timedelta(hours=2),
+            duration_seconds=7200,
+            tags="",
+            notes="my own deep-work block",
+        )
+        db.add(own)
+        db.commit()
+        db.refresh(own)
+
+        svc = SessionService(db)
+        rows = svc.list_sessions(datetime.now(UTC), datetime.now(UTC) + timedelta(days=3))
+
+        # The user's row must not have been converted into an `override` exception.
+        adopted = db.exec(
+            select(RecurrenceException).where(RecurrenceException.session_id == own.id)
+        ).first()
+        assert adopted is None, "user's own session was adopted into the series"
+
+        # Deleting a *different* occurrence with scope='all' must not destroy the user's row.
+        virt = [r for r in rows if r["is_virtual"] and r["id"] != own.id]
+        assert virt
+        SessionService(db).delete_session(virt[0]["id"], scope="all")
+
+        assert db.get(SessionModel, own.id) is not None, "user's own session was destroyed"
+
+
+class TestInProgressOccurrence:
+    """Regression for review defect 4: an occurrence that has started but not yet ended must
+    still project -- it is neither a real row nor a past gap that "did not happen"."""
+
+    def test_in_progress_occurrence_still_projects(self, db: DBSession):
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        started = now - timedelta(minutes=10)
+        _mk_task(db, dtstart=started, dur=60)
+
+        day_start = now.replace(hour=0, minute=0)
+        rows = SessionService(db).list_sessions(
+            day_start.replace(tzinfo=UTC), (day_start + timedelta(days=1)).replace(tzinfo=UTC)
+        )
+        assert any(r["is_virtual"] for r in rows), "in-progress occurrence dropped from the calendar"
+
+    def test_fully_elapsed_occurrence_still_does_not_project(self, db: DBSession):
+        """The future-only contract otherwise stays intact: an occurrence that has fully ended
+        must not appear just because the in-progress carve-out exists."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        started = now - timedelta(hours=2)
+        _mk_task(db, dtstart=started, dur=30)
+
+        day_start = now.replace(hour=0, minute=0)
+        rows = SessionService(db).list_sessions(
+            day_start.replace(tzinfo=UTC), (day_start + timedelta(days=1)).replace(tzinfo=UTC)
+        )
+        assert not any(r["is_virtual"] for r in rows), "fully elapsed occurrence still projected"
+
+
+class TestMaterializePastOccurrence:
+    """Regression for review defect 5: materializing an already-elapsed occurrence via a
+    crafted `virt:` id must be refused, not silently fabricate a completed session."""
+
+    def test_materialize_past_occurrence_raises(self, db: DBSession):
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now - timedelta(days=10)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor)
+        past_id = format_occurrence_id(task.id, (now - timedelta(days=5)).replace(hour=9, minute=0))
+
+        with pytest.raises(ValidationError):
+            SessionService(db).update_session(past_id, SessionUpdate(notes="x"))
+
+    def test_materialize_in_progress_occurrence_still_works(self, db: DBSession):
+        """The in-progress case must remain materializable -- this is exactly the "I'm working
+        it now" scenario defect 4 protects on the read side."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        started = now - timedelta(minutes=10)
+        task = _mk_task(db, dtstart=started, dur=60)
+        in_progress_id = format_occurrence_id(task.id, started)
+
+        materialized = SessionService(db).update_session(in_progress_id, SessionUpdate(notes="working on it"))
+        assert materialized.task_id == task.id
+        assert materialized.notes == "working on it"
+
+
+class TestGhostSuppressionOnCoveredOccurrence:
+    """Regression: a real session that coincides with (or overlaps) a projected occurrence of
+    the same task must suppress that occurrence's `virt:` ghost at display time -- without
+    writing a `RecurrenceException`, so the real row stays fully deletable and unrelated
+    scope='all' deletes cannot touch it (adoption was narrowed on purpose; see
+    `TestAdoptionOwnership` and the `_LEGACY_PLACEHOLDER_PREFIX` comment in
+    `recurrence_service.py`)."""
+
+    def test_exact_start_match_suppresses_the_ghost(self, db: DBSession):
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor, dur=30)
+
+        own = SessionModel(
+            task_id=task.id,
+            start_time=anchor,
+            end_time=anchor + timedelta(minutes=30),
+            duration_seconds=1800,
+            tags="",
+            notes="my own session at the usual time",
+        )
+        db.add(own)
+        db.commit()
+        db.refresh(own)
+
+        rows = SessionService(db).list_sessions(
+            (anchor - timedelta(hours=1)).replace(tzinfo=UTC), (anchor + timedelta(hours=3)).replace(tzinfo=UTC)
+        )
+        at_anchor = [r for r in rows if r["start_time"] == ensure_utc(anchor).isoformat()]
+        assert len(at_anchor) == 1, "expected exactly one row (the real session) at the occurrence instant"
+        assert at_anchor[0]["is_virtual"] is False
+        assert at_anchor[0]["id"] == own.id
+
+        # No exception/ownership claim was created by the suppression.
+        assert (
+            db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
+        )
+
+    def test_overlapping_block_suppresses_the_ghost_it_covers(self, db: DBSession):
+        """A 09:00-11:00 block plainly covers a 09:00-09:30 occurrence; the ghost must not
+        render inside it even though the real session's start_time is what changed, not an
+        exact instant match against the projected slot."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor, dur=30)
+
+        own = SessionModel(
+            task_id=task.id,
+            start_time=anchor,
+            end_time=anchor + timedelta(hours=2),
+            duration_seconds=7200,
+            tags="",
+            notes="deep work block covering the usual slot",
+        )
+        db.add(own)
+        db.commit()
+
+        rows = SessionService(db).list_sessions(
+            (anchor - timedelta(hours=1)).replace(tzinfo=UTC), (anchor + timedelta(hours=3)).replace(tzinfo=UTC)
+        )
+        virtual_at_anchor = [r for r in rows if r["is_virtual"] and r["start_time"] == ensure_utc(anchor).isoformat()]
+        assert virtual_at_anchor == [], "ghost still rendered inside the user's covering block"
+
+    def test_different_task_at_same_instant_does_not_suppress(self, db: DBSession):
+        """A real session belonging to a *different* task at the same instant must not hide the
+        series' own ghost -- suppression is scoped per task_id."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor, dur=30)
+        other_task = _mk_task(db, dtstart=anchor + timedelta(days=100), dur=30, title="Unrelated")
+
+        other = SessionModel(
+            task_id=other_task.id,
+            start_time=anchor,
+            end_time=anchor + timedelta(minutes=30),
+            duration_seconds=1800,
+            tags="",
+            notes="unrelated work",
+        )
+        db.add(other)
+        db.commit()
+
+        rows = SessionService(db).list_sessions(
+            (anchor - timedelta(hours=1)).replace(tzinfo=UTC), (anchor + timedelta(hours=3)).replace(tzinfo=UTC)
+        )
+        anchor_iso = ensure_utc(anchor).isoformat()
+        virtual_at_anchor = [
+            r for r in rows if r["is_virtual"] and r["task_id"] == task.id and r["start_time"] == anchor_iso
+        ]
+        assert len(virtual_at_anchor) == 1, "unrelated task's session incorrectly suppressed this series' ghost"
+
+    def test_own_row_survives_scope_all_delete_of_a_different_occurrence(self, db: DBSession):
+        """Critical: suppression must not sneak ownership back in. Deleting an unrelated future
+        occurrence with scope='all' must never destroy the user's own covering session."""
+        now = datetime.now(UTC).replace(tzinfo=None, microsecond=0, second=0)
+        anchor = (now + timedelta(days=1)).replace(hour=9, minute=0)
+        task = _mk_task(db, dtstart=anchor, dur=30)
+
+        own = SessionModel(
+            task_id=task.id,
+            start_time=anchor,
+            end_time=anchor + timedelta(minutes=30),
+            duration_seconds=1800,
+            tags="",
+            notes="my own session",
+        )
+        db.add(own)
+        db.commit()
+        db.refresh(own)
+
+        svc = SessionService(db)
+        rows = svc.list_sessions(datetime.now(UTC), datetime.now(UTC) + timedelta(days=3))
+        other_ghosts = [r for r in rows if r["is_virtual"] and r["id"] != own.id]
+        assert other_ghosts, "expected other days' occurrences to still project"
+
+        svc.delete_session(other_ghosts[0]["id"], scope="all")
+
+        assert db.get(SessionModel, own.id) is not None, "user's own covering session was destroyed"
+        assert (
+            db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
+        )
