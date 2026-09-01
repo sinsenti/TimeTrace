@@ -8,11 +8,9 @@ labels, gap-filling, sort tie-breaks (weekday reordering), truncation, and the t
 localtime-capability resolution described in the plan (section 6.8).
 """
 
-import os
 import time as time_module
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select, text
@@ -20,7 +18,8 @@ from sqlmodel import Session, select, text
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_compiler import CompiledQuery, QueryContext, compile_query
 from timetrace.core.query_registry import SOURCES
-from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, RangePreset
+from timetrace.core.query_spec import AnalyticsQuery, Dimension, RangePreset
+from timetrace.core.timezones import daemon_timezone_name
 from timetrace.db.models import Habit, Task
 from timetrace.interfaces.api.schemas import (
     AnalyticsQueryBatchRequest,
@@ -41,28 +40,7 @@ _WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 _ZERO_FILLABLE_MEASURES = {"sum_duration", "session_count", "task_count", "sum_estimated_duration"}
 
-_daemon_tz_name_cache: str | None = None
 _localtime_supported_cache: bool | None = None
-
-
-def _daemon_timezone_name() -> str:
-    global _daemon_tz_name_cache
-    if _daemon_tz_name_cache is not None:
-        return _daemon_tz_name_cache
-
-    tz = os.environ.get("TZ")
-    if not tz:
-        try:
-            resolved = Path("/etc/localtime").resolve()
-            parts = resolved.parts
-            if "zoneinfo" in parts:
-                idx = parts.index("zoneinfo")
-                tz = "/".join(parts[idx + 1 :])
-        except OSError:
-            tz = None
-
-    _daemon_tz_name_cache = tz or "UTC"
-    return _daemon_tz_name_cache
 
 
 def _check_localtime_support(db: Session) -> bool:
@@ -78,7 +56,7 @@ def _check_localtime_support(db: Session) -> bool:
 
 
 def _resolve_timezone(requested: str | None, warnings: list[str]) -> tuple[ZoneInfo, str]:
-    daemon_tz_name = _daemon_timezone_name()
+    daemon_tz_name = daemon_timezone_name()
 
     if requested and requested == daemon_tz_name:
         try:
