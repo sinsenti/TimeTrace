@@ -311,9 +311,25 @@ async function saveSessionFromModal() {
 
         let savedSession;
         if (sessionId) {
-            savedSession = await api.put(`/sessions/${sessionId}`, payload);
+            // A projected recurring occurrence has a synthetic `virt:...` id: PUTting it
+            // materializes it and returns a real row with a different id.
+            savedSession = await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload);
         } else {
             savedSession = await api.post('/sessions', payload);
+        }
+
+        if (savedSession && sessionId && String(savedSession.id) !== String(sessionId)) {
+            const hidden = document.getElementById('edit_session_id');
+            if (hidden) hidden.value = savedSession.id;
+
+            if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+                const staleIdx = allSessions.findIndex(s => String(s.id) === String(sessionId));
+                if (staleIdx !== -1) allSessions.splice(staleIdx, 1);
+            }
+            if (typeof calendar !== 'undefined' && calendar) {
+                const staleEvent = calendar.getEventById(String(sessionId));
+                if (staleEvent) staleEvent.remove();
+            }
         }
 
         if (savedSession) {

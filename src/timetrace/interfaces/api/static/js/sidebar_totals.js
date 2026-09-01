@@ -255,7 +255,9 @@ async function fetchTasks() {
                     const hasAttachments = Boolean(t.attachments && t.attachments.trim());
                     const isRecurring = t.is_recurring === true;
 
-                    const dateBadge = getTaskDateBadge(t.due_date, t.assigned_date);
+                    // Recurring tasks carry the next projected occurrence in next_occurrence_date (derived,
+                    // read-only); everything else falls back to the stored assigned_date.
+                    const dateBadge = getTaskDateBadge(t.due_date, t.next_occurrence_date || t.assigned_date);
                     let dueBadgeHTML = '';
                     if (dateBadge) {
                         dueBadgeHTML = dateBadge.isUrgent

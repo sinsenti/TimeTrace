@@ -39,7 +39,12 @@ class TaskCreate(BaseModel):
     assigned_date: str | None = None
     attachments: str | None = ""
     is_recurring: bool = False
-    recurrence_rule: str | None = "daily"
+    # UI preset label only; `recurrence_rrule` is authoritative for scheduling.
+    recurrence_rule: str | None = None
+    recurrence_rrule: str | None = None
+    recurrence_dtstart: datetime | None = None
+    recurrence_duration_minutes: int | None = None
+    recurrence_timezone: str | None = None
     requires_session_review: bool = True
     created_at: datetime | None = None
 
@@ -60,6 +65,10 @@ class TaskUpdate(BaseModel):
     attachments: str | None = ""
     is_recurring: bool | None = None
     recurrence_rule: str | None = None
+    recurrence_rrule: str | None = None
+    recurrence_dtstart: datetime | None = None
+    recurrence_duration_minutes: int | None = None
+    recurrence_timezone: str | None = None
     requires_session_review: bool | None = None
     created_at: datetime | None = None
 
@@ -79,6 +88,10 @@ class TaskTreeResponse(BaseModel):
     attachments: str | None
     is_recurring: bool
     recurrence_rule: str | None
+    recurrence_rrule: str | None = None
+    recurrence_dtstart: datetime | None = None
+    recurrence_duration_minutes: int | None = None
+    recurrence_timezone: str | None = None
     parent_id: str | None
     created_at: str
     subtasks: list[Any] = []
@@ -100,6 +113,34 @@ class SessionUpdate(BaseModel):
     notes: str | None = None
     task_id: str | None = None
     review_skipped: bool | None = None
+
+
+# Deletion scopes for `DELETE /sessions/{id}`. Typed so a typo 422s instead of silently
+# falling through to "delete just this one".
+RecurrenceScope = Literal["only_this", "following", "all"]
+# Edit scopes for `PUT /sessions/{id}`: "all_future" writes the new occurrence length to the
+# series (`Task.recurrence_duration_minutes`) as well as this occurrence.
+SessionEditScope = Literal["only_this", "all_future"]
+
+
+class ProjectedOccurrenceRead(BaseModel):
+    """A virtual (projected, not yet real) occurrence of a recurring task.
+
+    Documents the projected half of `GET /sessions?start&end`; the route itself keeps
+    `response_model=list[dict]` so real rows and virtuals can share one list.
+    """
+
+    id: str  # "virt:<task_id>:<YYYYMMDDTHHMMSSZ>"
+    task_id: str
+    start_time: datetime
+    end_time: datetime
+    duration_seconds: int
+    tags: str
+    notes: str = ""
+    review_skipped: bool = False
+    is_virtual: Literal[True] = True
+    series_task_id: str
+    occurrence_start: datetime
 
 
 class TimerStartRequest(BaseModel):
@@ -324,7 +365,17 @@ class CompletionPolicyPrompt(BaseModel):
     subtask_scheduled_count: int
 
 
-class TaskWithPolicyResponse(BaseModel):
+class TaskReadResponse(BaseModel):
+    """Read shape for a task, including derived display-only values.
+
+    `next_occurrence_date` is computed from the RRULE for recurring tasks (owner decision Q1:
+    the Target Day badge follows the next projected occurrence). It is never stored, and
+    `assigned_date` now always reports the real DB column -- the old implementation overwrote
+    `assigned_date` in memory, so the API reported a value the database did not hold.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     title: str
     description: str | None = None
@@ -342,10 +393,19 @@ class TaskWithPolicyResponse(BaseModel):
     attachments: str | None = None
     is_recurring: bool
     recurrence_rule: str | None = None
+    recurrence_rrule: str | None = None
+    recurrence_dtstart: datetime | None = None
+    recurrence_duration_minutes: int | None = None
+    recurrence_timezone: str | None = None
 
     requires_session_review: bool
     created_at: datetime
 
+    # Derived, read-only: local YYYY-MM-DD of the next projected occurrence (recurring only).
+    next_occurrence_date: str | None = None
+
+
+class TaskWithPolicyResponse(TaskReadResponse):
     completion_policy: CompletionPolicyPrompt | None = None
 
 

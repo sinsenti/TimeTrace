@@ -153,7 +153,10 @@ async function loadTaskDetailTree() {
         if (recurCheck) recurCheck.checked = isRecur;
 
         const ruleSelect = document.getElementById('inspector_edit_recurrence_rule');
-        if (ruleSelect) ruleSelect.value = tree.recurrence_rule || 'daily';
+        if (ruleSelect) {
+            ruleSelect.value = tree.recurrence_rule || 'daily';
+            if (!ruleSelect.value) ruleSelect.value = 'daily';
+        }
 
         toggleInspectorRecurrenceRule(isRecur);
 
@@ -308,6 +311,11 @@ async function saveInspectorTaskProperties(event) {
         due_date: dueParsed ? dueParsed.isoString : null,
         attachments: document.getElementById('inspector_edit_attachments').value || ''
     };
+
+    // "custom" means the task holds an RRULE the preset picker cannot express; omit the preset
+    // so the backend leaves recurrence_rrule exactly as saved (there is no RRULE builder UI).
+    // A non-recurring task never sends a preset -- that is how "daily" leaked onto every task.
+    if (payload.recurrence_rule === 'custom' || !payload.is_recurring) delete payload.recurrence_rule;
 
     try {
         const updatedTask = await api.put(`/api/tasks/${taskId}`, payload);
