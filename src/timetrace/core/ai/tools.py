@@ -1,3 +1,339 @@
-"""LangChain `@tool`-decorated wrappers around `AIToolGateway` (`core/ai/spec.py`) -- not yet
-implemented. Filled in by a later track (LLM wiring), per spec S5/S6.
+"""LangChain `@tool`-decorated wrappers around `AIToolGateway` (`core/ai/spec.py`), spec S5/S6.
+
+Layering: these functions are built against the `AIToolGateway` **Protocol**, never against
+`services.ai_tool_gateway.DbAIToolGateway` directly -- `core/` must not import `services/` (spec
+S5). The gateway instance itself is injected per-call via LangGraph's `ToolRuntime.context`
+(spec S3), constructed by `create_agent(context_schema=AIAgentContext)` in `core/ai/agent.py` and
+populated by whatever caller invokes the compiled graph (a later chat-service track, which is the
+only place a real `DbAIToolGateway(batch_id=...)` gets constructed). This file never imports
+`timetrace.services` or `timetrace.db` at all.
+
+`AIAgentContext` is the context shape every tool function here reads via `runtime.context`: a
+single dataclass with one attribute, `gateway: AIToolGateway`. `core/ai/agent.py` must pass
+`context_schema=AIAgentContext` to `create_agent`, and whoever invokes the compiled graph must pass
+`context=AIAgentContext(gateway=<a real DbAIToolGateway bound to one draft batch>)`.
+
+No `batch_id` argument appears on any write tool below (spec S6) -- the batch is bound into the
+gateway instance itself, so the model cannot address any batch but the one it was given.
 """
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Any
+
+from langchain.tools import ToolRuntime, tool
+
+from timetrace.core.ai.spec import AIToolGateway
+
+
+@dataclass
+class AIAgentContext:
+    """The `ToolRuntime.context` shape every tool in this module expects.
+
+    Invisible to the model's tool schema (spec S3) -- purely a way to hand each tool call a
+    gateway instance without smuggling it through the LLM-visible arguments.
+    """
+
+    gateway: AIToolGateway
+
+
+# ---------------------------------------------------------------------------------------------
+# Read tools
+# ---------------------------------------------------------------------------------------------
+
+
+@tool
+def list_tasks(
+    runtime: ToolRuntime[AIAgentContext, Any],
+    status: str | None = None,
+    tag: str | None = None,
+    priority: str | None = None,
+    parent_id: str | None = None,
+    include_done: bool = False,
+    limit: int = 50,
+) -> list[dict[str, Any]]:
+    """Lists the user's tasks, most-recently-created first, optionally filtered by status, a
+    single tag, priority, or parent task id. Done/completed tasks are excluded unless
+    `include_done=True` or an explicit `status` is given. Use this to browse the backlog before
+    proposing new sessions or tasks -- it returns real task ids you can reuse in other tool
+    calls (e.g. as `task_id` on `propose_create_session`), but never invent an id yourself; only
+    ever use one that came back from this tool, `get_task`, or `resolve_task_reference`.
+    """
+    return runtime.context.gateway.list_tasks(
+        status=status,
+        tag=tag,
+        priority=priority,
+        parent_id=parent_id,
+        include_done=include_done,
+        limit=limit,
+    )
+
+
+@tool
+def get_task(task_id: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Fetches one task by its exact id. `task_id` must be a real id you already have -- from
+    `list_tasks`, `resolve_task_reference`, or a previous tool result -- never one you guessed or
+    remembered from an earlier conversation.
+    """
+    return runtime.context.gateway.get_task(task_id)
+
+
+@tool
+def resolve_task_reference(
+    query: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    """Resolves a natural-language task reference (a title fragment like "the report task" or
+    "dentist appointment") to candidate real tasks with their ids. Call this whenever the user
+    refers to an existing task by name rather than by id, before using that task in any other
+    tool call. Never invent a task id -- if this returns an empty list, tell the user nothing
+    matched instead of guessing; if it returns more than one candidate, ask the user which one
+    they mean instead of picking for them.
+    """
+    return runtime.context.gateway.resolve_task_reference(query, limit=limit)
+
+
+@tool
+def list_sessions(
+    start: datetime,
+    end: datetime,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    task_id: str | None = None,
+    limit: int = 200,
+) -> list[dict[str, Any]]:
+    """Lists calendar sessions overlapping `[start, end)`, optionally filtered to one task.
+    Includes both real sessions and projected occurrences of recurring tasks. Use this to see
+    what the user's calendar already looks like before proposing changes -- but prefer
+    `find_free_slots` over eyeballing this list when you specifically need open time, since it
+    already does the gap math (including anything you've proposed earlier this turn).
+    """
+    return runtime.context.gateway.list_sessions(start=start, end=end, task_id=task_id, limit=limit)
+
+
+@tool
+def find_free_slots(
+    start: datetime,
+    end: datetime,
+    min_duration_minutes: int,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    working_hours_only: bool = True,
+) -> list[dict[str, Any]]:
+    """Finds open calendar gaps of at least `min_duration_minutes` within `[start, end)`.
+    Automatically accounts for the user's existing sessions AND for every session you've already
+    proposed earlier in this same turn -- so when placing several new sessions in one
+    conversation turn (e.g. a whole-week plan), call this again before each new placement rather
+    than reusing gaps you computed before your last proposal, or you risk it looking free when
+    it's actually already been proposed. `working_hours_only=True` (the default) restricts
+    results to roughly 9am-5pm local time each day; set it `False` to consider the full day.
+    Always call this before `propose_create_session` when you are choosing the placement
+    yourself rather than following an explicit time the user gave you.
+    """
+    return runtime.context.gateway.find_free_slots(
+        start=start,
+        end=end,
+        min_duration_minutes=min_duration_minutes,
+        working_hours_only=working_hours_only,
+    )
+
+
+@tool
+def get_time_stats(query: dict[str, Any], runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Runs an allow-listed statistics query over the user's sessions/tasks, e.g. "how much time
+    on #deepwork last week" or "how many sessions per task this month". `query` is a small
+    structured dict: `source` (`"sessions"` or `"tasks"`), `measure` (one of `"sum_duration"`,
+    `"session_count"`, `"avg_session_length"`, `"task_count"`, `"completion_rate"`), an optional
+    `group_by` list of dimensions (`"day"`, `"week"`, `"month"`, `"tag"`, `"task"`, `"status"`,
+    `"priority"`, `"category"`), an optional `filters` list, and an optional `date_range`. Use
+    this instead of trying to compute totals yourself from `list_sessions` output.
+    """
+    return runtime.context.gateway.get_time_stats(query)
+
+
+# ---------------------------------------------------------------------------------------------
+# Write tools -- every one of these only ever creates a pending draft item. None of them writes
+# a real task/session row; the user must explicitly accept the draft before anything changes.
+# ---------------------------------------------------------------------------------------------
+
+
+@tool
+def propose_create_session(
+    start_time: datetime,
+    end_time: datetime,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    task_id: str | None = None,
+    notes: str = "",
+    tags: str = "",
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes creating a new calendar session as a draft the user must accept -- this does NOT
+    create a real session. Call `find_free_slots` first unless the user gave you an explicit
+    time. `task_id` must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`,
+    or `None` for an untasked session. Put a short human-readable reason in `rationale` (e.g. why
+    you chose this slot) -- it's shown to the user alongside the draft, not sent back to you.
+    """
+    return runtime.context.gateway.propose_create_session(
+        task_id=task_id,
+        start_time=start_time,
+        end_time=end_time,
+        notes=notes,
+        tags=tags,
+        rationale=rationale,
+    )
+
+
+@tool
+def propose_update_session(
+    session_id: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
+    task_id: str | None = None,
+    notes: str | None = None,
+    tags: str | None = None,
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes changing an existing session as a draft the user must accept -- this does NOT
+    change the real session. Covers moving a session (changing its time without changing its
+    duration), resizing it (changing its duration), or just editing its task/notes/tags. Only
+    pass the fields you want to change; omitted fields keep their current value. `session_id`
+    must be a real session id from `list_sessions`. Put a short human-readable reason in
+    `rationale`.
+    """
+    return runtime.context.gateway.propose_update_session(
+        session_id,
+        start_time=start_time,
+        end_time=end_time,
+        task_id=task_id,
+        notes=notes,
+        tags=tags,
+        rationale=rationale,
+    )
+
+
+@tool
+def propose_delete_session(
+    session_id: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes deleting an existing session as a draft the user must accept -- this does NOT
+    delete the real session. `session_id` must be a real session id from `list_sessions`. Put a
+    short human-readable reason in `rationale`.
+    """
+    return runtime.context.gateway.propose_delete_session(session_id, rationale=rationale)
+
+
+@tool
+def propose_split_session(
+    session_id: str,
+    split_points: list[datetime],
+    runtime: ToolRuntime[AIAgentContext, Any],
+    rationale: str = "",
+) -> list[dict[str, Any]]:
+    """Proposes splitting one existing session into multiple pieces at the given
+    `split_points` (each a timestamp strictly between the session's start and end, strictly
+    increasing) -- this does NOT split the real session, it only creates draft items the user
+    must accept together. `session_id` must be a real, already-materialized session id (a
+    virtual recurring occurrence cannot be split directly -- it must be edited once first, which
+    materializes it). Put a short human-readable reason in `rationale`.
+    """
+    return runtime.context.gateway.propose_split_session(session_id, split_points=split_points, rationale=rationale)
+
+
+@tool
+def propose_create_task(
+    title: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    description: str = "",
+    tags: str = "",
+    priority: str = "-",
+    parent_id: str | None = None,
+    due_date: datetime | None = None,
+    estimated_duration_minutes: int | None = None,
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes creating a new task as a draft the user must accept -- this does NOT create a
+    real task. `title` and `description` must be the plain, literal text you intend -- never
+    embed shorthand like `#tag`, `!high`, `(a description)`, `due:3d`, or `[15m]` inside them, the
+    app will silently rewrite the title and overwrite the estimate if you do. Put tags in `tags`
+    (comma or space separated, no `#`), priority in `priority` (e.g. `"high"`, `"medium"`,
+    `"low"`, or `"-"` for none), a due date in `due_date`, and a time estimate in
+    `estimated_duration_minutes` instead. `parent_id` must be a real task id if this is a
+    subtask. Put a short human-readable reason in `rationale`.
+    """
+    return runtime.context.gateway.propose_create_task(
+        title=title,
+        description=description,
+        tags=tags,
+        priority=priority,
+        parent_id=parent_id,
+        due_date=due_date,
+        estimated_duration_minutes=estimated_duration_minutes,
+        rationale=rationale,
+    )
+
+
+@tool
+def propose_update_task(
+    task_id: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    title: str | None = None,
+    description: str | None = None,
+    tags: str | None = None,
+    priority: str | None = None,
+    status: str | None = None,
+    due_date: datetime | None = None,
+    estimated_duration_minutes: int | None = None,
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes changing an existing task as a draft the user must accept -- this does NOT
+    change the real task. Only pass the fields you want to change; omitted fields keep their
+    current value. Same rule as `propose_create_task`: `title`/`description` must be plain
+    literal text, never shorthand syntax like `#tag`/`!high`/`(desc)`/`due:3d`/`[15m]` -- use the
+    dedicated `tags`/`priority`/`due_date`/`estimated_duration_minutes` fields instead. `task_id`
+    must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`. Put a short
+    human-readable reason in `rationale`.
+    """
+    return runtime.context.gateway.propose_update_task(
+        task_id,
+        title=title,
+        description=description,
+        tags=tags,
+        priority=priority,
+        status=status,
+        due_date=due_date,
+        estimated_duration_minutes=estimated_duration_minutes,
+        rationale=rationale,
+    )
+
+
+@tool
+def set_plan_summary(summary: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Sets a short, human-readable one-line summary for everything you've proposed this turn
+    (e.g. "Moved 3 sessions to the afternoon, added 2 new tasks"). Call this once, after all your
+    `propose_*` calls for the turn, when you've proposed more than a single trivial item -- it's
+    what the user sees as the headline of their draft review list.
+    """
+    return runtime.context.gateway.set_plan_summary(summary)
+
+
+ALL_TOOLS = [
+    list_tasks,
+    get_task,
+    resolve_task_reference,
+    list_sessions,
+    find_free_slots,
+    get_time_stats,
+    propose_create_session,
+    propose_update_session,
+    propose_delete_session,
+    propose_split_session,
+    propose_create_task,
+    propose_update_task,
+    set_plan_summary,
+]
+
+__all__ = ["AIAgentContext", "ALL_TOOLS"]
