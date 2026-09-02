@@ -52,6 +52,14 @@
 
         .fc-col-header-cell { background-color: var(--bg-header); padding: 6px 0; border-bottom: 1px solid var(--border-color) !important; }
         .fc-event { border-radius: 6px !important; border: none !important; padding: 2px 4px !important; font-size: 0.75rem !important; cursor: pointer; box-shadow: 0 2px 5px rgba(0,0,0,0.3); }
+        /* Projected (not yet materialized) recurring occurrence: provisional, dashed, faded. */
+        .fc-event.tt-virtual-occurrence {
+            opacity: 0.62 !important;
+            border: 1px dashed rgba(255, 255, 255, 0.65) !important;
+            background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0 6px, rgba(255,255,255,0) 6px 12px) !important;
+            box-shadow: none !important;
+        }
+        .fc-event.tt-virtual-occurrence:hover { opacity: 0.85 !important; }
         .task-card { cursor: grab; }
         .task-card:active { cursor: grabbing; }
         .fc .fc-day-today { background: transparent !important; }

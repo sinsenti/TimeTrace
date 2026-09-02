@@ -11,6 +11,7 @@ from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.query_service import QueryService
+from timetrace.services.session_service import SessionService
 
 # `get_detailed()` (backing the old `/analytics/detailed` route) has been retired, not
 # re-pointed: it only ever had one caller, `static/js/stats.js`'s `loadAnalyticsData()`, and
@@ -258,32 +259,51 @@ class AnalyticsService:
             today_date = now.date()
             tomorrow_date = today_date + timedelta(days=1)
 
+            # Settled owner decision Q3: the agenda's forward-looking sections must go through
+            # the same merge funnel as the calendar, or a recurring series (which no longer has
+            # pre-generated rows) silently disappears from "Later Today / Tomorrow / Upcoming".
+            projected = SessionService(self.db).list_projected_occurrences(now, now + timedelta(days=30))
+
             group_now: list[dict] = []
             group_later: list[dict] = []
             group_tomorrow: list[dict] = []
             group_upcoming: list[dict] = []
 
+            agenda_records: list[tuple[str, str | None, datetime, datetime, str, str]] = []
             for s in sessions:
                 if not s.start_time:
                     continue
-
                 st_utc = ensure_utc(s.start_time)
                 et_utc = ensure_utc(s.end_time) if s.end_time else st_utc + timedelta(minutes=15)
+                agenda_records.append((s.id, s.task_id, st_utc, et_utc, s.tags or "", s.notes or ""))
+            for occ in projected:
+                agenda_records.append(
+                    (
+                        occ.occurrence_id,
+                        occ.task_id,
+                        ensure_utc(occ.start_utc),
+                        ensure_utc(occ.end_utc),
+                        occ.tags or "",
+                        "",
+                    )
+                )
+
+            for rec_id, rec_task_id, st_utc, et_utc, rec_tags, rec_notes in agenda_records:
                 st_local = st_utc.astimezone()
                 et_local = et_utc.astimezone()
                 sess_date = st_local.date()
 
-                task_obj = tasks_map.get(s.task_id)
-                title = task_obj.title if task_obj else (s.notes or s.tags or "Session Log")
+                task_obj = tasks_map.get(rec_task_id)
+                title = task_obj.title if task_obj else (rec_notes or rec_tags or "Session Log")
 
                 item = {
-                    "id": s.id,
+                    "id": rec_id,
                     "title": title,
                     "start_str": st_local.strftime("%H:%M"),
                     "end_str": et_local.strftime("%H:%M"),
                     "date_str": st_local.strftime("%Y-%m-%d"),
-                    "tags": s.tags or "#general",
-                    "notes": s.notes or "",
+                    "tags": rec_tags or "#general",
+                    "notes": rec_notes,
                     "is_running": st_utc <= now <= et_utc,
                 }
 
@@ -300,7 +320,7 @@ class AnalyticsService:
                 "---",
                 "type: session_agenda_briefing",
                 f"generated_at: {now.strftime('%Y-%m-%d %H:%M:%S UTC')}",
-                f"total_sessions: {len(sessions)}",
+                f"total_sessions: {len(agenda_records)}",
                 "---",
                 "",
                 "# TimeTrace Session Agenda",

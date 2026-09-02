@@ -77,6 +77,12 @@ function handleOpenSessionBefore() {
 async function handleDeleteUnderCursor() {
     const s = getSessionUnderCursor();
     if (s && s.id) {
+        const seriesTask = (s.task_id && typeof allTasksMap !== 'undefined') ? allTasksMap[s.task_id] : null;
+        if (s.is_virtual || (seriesTask && seriesTask.is_recurring)) {
+            // Recurring occurrence: needs the scope prompt, not a plain yes/no delete.
+            if (typeof promptDeleteSession === 'function') promptDeleteSession(s.id);
+            return;
+        }
         const label = s.notes || s.tags;
         const message = label
             ? `Delete session "${label}"? Press Enter to confirm.`
@@ -84,7 +90,7 @@ async function handleDeleteUnderCursor() {
         const confirmed = await showCustomConfirm("Delete Session", message);
         if (confirmed) {
             try {
-                await api.delete(`/sessions/${s.id}`);
+                await api.delete(`/sessions/${encodeURIComponent(s.id)}`);
                 if (typeof calendar !== 'undefined' && calendar) {
                     calendar.refetchEvents();
                 }

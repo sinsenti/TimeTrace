@@ -81,6 +81,8 @@ function formatCalEventFromSession(s, idx = 0) {
         ? getTaskColor(matchedTask, idx) 
         : (typeof defaultPalette !== 'undefined' ? defaultPalette[idx % defaultPalette.length] : '#7c3aed');
 
+    const isVirtual = Boolean(s.is_virtual);
+
     return {
         id: String(s.id),
         title: matchedTask ? matchedTask.title : (s.tags || s.notes || 'Session'),
@@ -88,16 +90,40 @@ function formatCalEventFromSession(s, idx = 0) {
         end: s.end_time || new Date().toISOString(),
         backgroundColor: color,
         borderColor: 'transparent',
+        classNames: isVirtual ? ['tt-virtual-occurrence'] : [],
+        editable: true,
         extendedProps: {
             taskId: s.task_id || null,
             taskTitle: matchedTask ? matchedTask.title : '',
             notes: s.notes || '',
-            tags: s.tags || ''
+            tags: s.tags || '',
+            isVirtual: isVirtual,
+            seriesTaskId: s.series_task_id || null
         }
     };
 }
 
-async function handleCalendarEventUpdate(event) {
+function isRecurringCalendarEvent(event) {
+    if (!event) return false;
+    const props = event.extendedProps || {};
+    if (props.isVirtual) return true;
+    const taskId = props.taskId;
+    if (!taskId || typeof allTasksMap === 'undefined' || !allTasksMap[taskId]) return false;
+    return Boolean(allTasksMap[taskId].is_recurring);
+}
+
+/**
+ * Persist a drag (move) or resize of a calendar event.
+ *
+ * A projected recurring occurrence carries a synthetic `virt:<task>:<stamp>` id; PUTting it
+ * materializes it server-side and returns a real row with a NEW id, so the event has to be
+ * swapped out. Resizing an occurrence of a recurring series asks whether the new duration
+ * applies to this occurrence only or to all future occurrences (`scope=all_future`, which the
+ * API rejects for a move). This function deliberately does NOT touch the task's
+ * `estimated_minutes` -- that side effect used to re-trigger session generation and refill the
+ * slot the user had just vacated.
+ */
+async function handleCalendarEventUpdate(event, changeType = 'move', info = null) {
     const startIso = event.start.toISOString();
     const endIso = event.end ? event.end.toISOString() : event.start.toISOString();
 
@@ -106,20 +132,44 @@ async function handleCalendarEventUpdate(event) {
         end_time: endIso
     };
 
-    const updatedSession = await api.put(`/sessions/${event.id}`, payload);
+    const wasVirtual = Boolean(event.extendedProps && event.extendedProps.isVirtual);
+    let scope = 'only_this';
+
+    if (changeType === 'resize' && isRecurringCalendarEvent(event)) {
+        const choice = typeof showRecurringResizeScopePrompt === 'function'
+            ? await showRecurringResizeScopePrompt()
+            : 'only_this';
+        if (!choice) {
+            if (info && typeof info.revert === 'function') info.revert();
+            return;
+        }
+        scope = choice;
+    }
+
+    let updatedSession = null;
+    try {
+        updatedSession = await api.put(
+            `/sessions/${encodeURIComponent(event.id)}?scope=${encodeURIComponent(scope)}`,
+            payload
+        );
+    } catch (err) {
+        console.error("Failed to update session:", err);
+        if (info && typeof info.revert === 'function') info.revert();
+        return;
+    }
+
+    // A materialized occurrence, or a whole-series duration change, alters what the server would
+    // project for this window -- reload the range instead of patching one event locally.
+    if (wasVirtual || scope === 'all_future') {
+        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+        if (typeof fetchTasks === 'function') fetchTasks();
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        return;
+    }
 
     if (updatedSession && typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
         const idx = allSessions.findIndex(s => String(s.id) === String(event.id));
         if (idx !== -1) allSessions[idx] = updatedSession;
-    }
-
-    if (event.extendedProps && event.extendedProps.taskId && event.end) {
-        const newMins = Math.max(15, Math.round((event.end - event.start) / 60000));
-        try {
-            await api.put(`/api/tasks/${event.extendedProps.taskId}`, { estimated_minutes: newMins });
-            if (typeof fetchTasks === 'function') fetchTasks();
-            if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
-        } catch (e) {}
     }
 
     if (typeof fetchRangeTotals === 'function') fetchRangeTotals();

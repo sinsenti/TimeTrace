@@ -72,7 +72,8 @@ function renderKanbanCard(task) {
     const prioLabel = (task.priority || '-').toUpperCase();
     const isRecurring = task.is_recurring === true;
 
-    const dateBadge = getTaskDateBadge(task.due_date, task.assigned_date);
+    // next_occurrence_date is the derived next RRULE occurrence for recurring tasks.
+    const dateBadge = getTaskDateBadge(task.due_date, task.next_occurrence_date || task.assigned_date);
     let dueBadgeHTML = '';
     if (dateBadge) {
         dueBadgeHTML = dateBadge.isUrgent

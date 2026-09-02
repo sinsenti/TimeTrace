@@ -40,21 +40,20 @@ def test_delete_task_returns_204(client):
     assert client.get(f"/api/tasks/{created['id']}").status_code == 404
 
 
-def test_recurring_task_update_does_not_duplicate_sessions(client, db):
-    """An update unrelated to recurrence (e.g. editing the description) still
-    re-runs schedule_recurrent_sessions_three_months for any is_recurring task.
-    Regression: that function anchored on datetime.now(UTC) when the task had
-    no assigned_date, so create and update landed on different day-sequences
-    and the existing-session dedup check never matched, doubling every future
-    session on each unrelated edit."""
+def test_recurring_task_does_not_pre_generate_sessions(client, db):
+    """The recurrence engine projects virtual occurrences on-demand rather than
+    bulk-pre-generating Session rows. Creating or updating a recurring task must
+    create zero Session rows — projected instances are returned by the sessions
+    list endpoint with is_virtual=true and materialized on demand."""
     created = client.post(
         "/api/tasks",
         json={"title": "Daily standup", "is_recurring": True, "recurrence_rule": "daily"},
     ).json()
     sessions_after_create = len(db.exec(select(SessionModel)).all())
+    assert sessions_after_create == 0, "Creating a recurring task must not pre-generate sessions"
 
     response = client.put(f"/api/tasks/{created['id']}", json={"description": "agenda"})
 
     assert response.status_code == 200
     sessions_after_update = len(db.exec(select(SessionModel)).all())
-    assert sessions_after_update == sessions_after_create
+    assert sessions_after_update == 0, "Updating a recurring task must not create sessions"

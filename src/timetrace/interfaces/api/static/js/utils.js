@@ -326,8 +326,9 @@ async function confirmRecurringDelete(scope) {
     if (!sid) return;
 
     try {
-        await api.delete(`/sessions/${sid}?scope=${scope}`);
-        
+        // Ids may be synthetic (`virt:<task>:<stamp>`), so encode before interpolating.
+        await api.delete(`/sessions/${encodeURIComponent(sid)}?scope=${encodeURIComponent(scope || 'only_this')}`);
+
         if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
             allSessions = allSessions.filter(item => String(item.id) !== String(sid));
         }
@@ -335,6 +336,9 @@ async function confirmRecurringDelete(scope) {
         if (typeof calendar !== 'undefined' && calendar) {
             const calEv = calendar.getEventById(String(sid));
             if (calEv) calEv.remove();
+            // "following"/"all" end or truncate the series, so other projected occurrences in
+            // this window disappear too -- only a refetch can show that.
+            if (scope === 'following' || scope === 'all') calendar.refetchEvents();
         }
 
         if (typeof closeSessionModal === 'function') closeSessionModal();
@@ -556,6 +560,59 @@ function adjustDurationMinutes(deltaMins) {
 
     endInput.value = formatIsoLocal(new Date(newEndMs));
     updateSessionModalDurationBadge();
+}
+
+/**
+ * Ask whether a duration change applies to one occurrence or the whole future series.
+ * Resolves to 'only_this', 'all_future', or null when the user cancels.
+ * Degrades to window.confirm on pages that do not include confirm_modal.html (e.g. stats.html).
+ */
+function showRecurringResizeScopePrompt() {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('recurring_resize_modal');
+        if (!modal) {
+            const wantsAll = window.confirm(
+                "Apply this new duration to ALL FUTURE occurrences?\n\nOK: all future occurrences. Cancel: only this occurrence."
+            );
+            resolve(wantsAll ? 'all_future' : 'only_this');
+            return;
+        }
+
+        const onlyBtn = document.getElementById('recurring_resize_only_btn');
+        const allBtn = document.getElementById('recurring_resize_all_btn');
+        const cancelBtn = document.getElementById('recurring_resize_cancel_btn');
+        const closeBtn = document.getElementById('recurring_resize_close_btn');
+
+        modal.classList.remove('hidden');
+
+        const cleanup = () => {
+            modal.classList.add('hidden');
+            onlyBtn.removeEventListener('click', onOnly);
+            allBtn.removeEventListener('click', onAll);
+            cancelBtn.removeEventListener('click', onCancel);
+            if (closeBtn) closeBtn.removeEventListener('click', onCancel);
+            document.removeEventListener('keydown', onKeyDown, true);
+        };
+
+        const finish = (value) => { cleanup(); resolve(value); };
+        const onOnly = () => finish('only_this');
+        const onAll = () => finish('all_future');
+        const onCancel = () => finish(null);
+
+        const onKeyDown = (e) => {
+            if (e.key === 'Escape' || e.key === 'Esc') {
+                e.preventDefault();
+                e.stopPropagation();
+                onCancel();
+            }
+        };
+
+        onlyBtn.addEventListener('click', onOnly);
+        allBtn.addEventListener('click', onAll);
+        cancelBtn.addEventListener('click', onCancel);
+        if (closeBtn) closeBtn.addEventListener('click', onCancel);
+        document.addEventListener('keydown', onKeyDown, true);
+    });
 }
 
 function showCustomConfirm(title, message) {

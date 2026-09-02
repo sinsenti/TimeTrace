@@ -1,5 +1,5 @@
 import re
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import sqlalchemy as sa
@@ -7,6 +7,7 @@ from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError
 from timetrace.core.inline_parser import parse_inline_task
+from timetrace.core.timezones import daemon_tzinfo, to_local_naive
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import (
@@ -15,6 +16,7 @@ from timetrace.interfaces.api.schemas import (
     CompletionPolicyPrompt,
     ScheduledSessionInfo,
     TaskCreate,
+    TaskReadResponse,
     TaskReviewCreate,
     TaskStatusCreate,
     TaskStatusUpdate,
@@ -22,6 +24,7 @@ from timetrace.interfaces.api.schemas import (
     TaskWithPolicyResponse,
 )
 from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.services.recurrence_service import RecurrenceService
 from timetrace.services.session_service import SessionService
 
 
@@ -182,8 +185,10 @@ class TaskService:
 
         if schedule_session_at is not None:
             self._create_scheduled_session(db_task, schedule_session_at)
-        if db_task.is_recurring:
-            self.schedule_recurrent_sessions_three_months(db_task)
+
+        # Recurring tasks pre-generate nothing: one RRULE is stored and occurrences are
+        # projected on read (RecurrenceService).
+        RecurrenceService(self.db).apply_recurrence_fields(db_task, task_dict)
 
         self.db.commit()
         self.db.refresh(db_task)
@@ -208,63 +213,6 @@ class TaskService:
         self.db.add(session)
         return session
 
-    def schedule_recurrent_sessions_three_months(self, task: Task) -> list[SessionModel]:
-        if not task.id or not task.is_recurring:
-            return []
-
-        start_base = ensure_utc(task.created_at) if task.created_at else datetime.now(UTC)
-        if task.assigned_date:
-            try:
-                dt_str = str(task.assigned_date).replace(" ", "T")
-                if "T" not in dt_str:
-                    dt_str = f"{dt_str}T09:00:00"
-                start_base = ensure_utc(datetime.fromisoformat(dt_str))
-            except Exception:
-                pass
-
-        rule = (task.recurrence_rule or "daily").lower()
-        est = task.estimated_minutes or 15
-        duration_mins = 30 if est > 120 else est
-
-        created_sessions = []
-        curr_date = start_base
-        end_boundary = start_base + timedelta(days=90)
-
-        while curr_date <= end_boundary:
-            curr_naive = ensure_utc(curr_date).replace(tzinfo=None)
-            existing = self.db.exec(
-                select(SessionModel).where(
-                    SessionModel.task_id == task.id, SessionModel.start_time == curr_naive
-                )
-            ).first()
-
-            if not existing:
-                sess = SessionModel(
-                    task_id=task.id,
-                    start_time=curr_naive,
-                    end_time=curr_naive + timedelta(minutes=duration_mins),
-                    duration_seconds=duration_mins * 60,
-                    tags=task.tags or "",
-                    notes=f"Recurring: {task.title}",
-                )
-                self.db.add(sess)
-                created_sessions.append(sess)
-
-            if rule == "daily":
-                curr_date += timedelta(days=1)
-            elif rule == "weekdays":
-                curr_date += timedelta(days=1)
-                while curr_date.weekday() >= 5:
-                    curr_date += timedelta(days=1)
-            elif rule == "weekly":
-                curr_date += timedelta(weeks=1)
-            elif rule == "monthly":
-                curr_date += timedelta(days=30)
-            else:
-                curr_date += timedelta(days=1)
-
-        return created_sessions
-
     def list_tasks(
         self,
         status_filter: str | None = None,
@@ -272,7 +220,7 @@ class TaskService:
         category_filter: str | None = None,
         assigned_date: str | None = None,
         due_before: str | None = None,
-    ) -> list[Task]:
+    ) -> list[TaskReadResponse]:
         query = select(Task)
 
         if status_filter and status_filter != "all":
@@ -349,7 +297,27 @@ class TaskService:
         elif sort_by == "title":
             tasks.sort(key=lambda t: (t.title or "").lower())
 
-        return tasks
+        out: list[TaskReadResponse] = []
+        for t in tasks:
+            item = TaskReadResponse.model_validate(t)
+            item.next_occurrence_date = self._next_occurrence_date(t)
+            out.append(item)
+        return out
+
+    def _next_occurrence_date(self, task: Task) -> str | None:
+        """Local `YYYY-MM-DD` of a recurring task's next projected occurrence, else None.
+
+        Settled owner decision Q1: the Target Day badge follows the RRULE instead of a stored
+        date that completion used to bump (the second anchoring scheme that doubled the live
+        series). This is carried in its own read-only response field -- it must never overwrite
+        `task.assigned_date`, which is what the previous implementation did in memory.
+        """
+        if not task.is_recurring or not task.recurrence_rrule:
+            return None
+        occurrence = RecurrenceService(self.db).next_occurrence_for_task(task)
+        if not occurrence:
+            return None
+        return to_local_naive(occurrence.start_utc, daemon_tzinfo()).date().strftime("%Y-%m-%d")
 
     def update_task(self, task_id: str, req: TaskUpdate) -> TaskWithPolicyResponse:
         db_task = self.db.get(Task, task_id)
@@ -383,13 +351,16 @@ class TaskService:
             if st:
                 db_task.status = st.name
 
-        if update_dict.get("status") in ("Done", "completed") and db_task.is_recurring:
-            self.handle_task_recurrence(db_task)
+        recurrence = RecurrenceService(self.db)
+        if db_task.is_recurring:
+            now_completed_status, _ = self._status_flags(db_task.status)
+            if now_completed_status:
+                self._reset_recurring_task_status(db_task)
 
         if schedule_session_at is not None:
             self._create_scheduled_session(db_task, schedule_session_at)
-        if db_task.is_recurring:
-            self.schedule_recurrent_sessions_three_months(db_task)
+
+        recurrence.apply_recurrence_fields(db_task, update_dict)
 
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
@@ -402,6 +373,9 @@ class TaskService:
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
 
+        if RecurrenceService.touches_recurrence(update_dict):
+            recurrence.reconcile_series(db_task.id)
+
         policy = None
         if not db_task.is_recurring:
             was_completed, was_scheduled = self._status_flags(old_status_name)
@@ -411,26 +385,31 @@ class TaskService:
             elif was_scheduled and not now_scheduled and not now_completed:
                 policy = self._build_completion_policy(db_task, "left_scheduled")
 
-        declared_fields = set(TaskWithPolicyResponse.model_fields) - {"completion_policy"}
+        declared_fields = set(TaskWithPolicyResponse.model_fields) - {"completion_policy", "next_occurrence_date"}
         task_data = {k: v for k, v in db_task.model_dump().items() if k in declared_fields}
-        return TaskWithPolicyResponse(**task_data, completion_policy=policy)
+        return TaskWithPolicyResponse(
+            **task_data,
+            completion_policy=policy,
+            next_occurrence_date=self._next_occurrence_date(db_task),
+        )
 
-    def handle_task_recurrence(self, task: Task) -> None:
-        today = date.today()
-        rule = (task.recurrence_rule or "daily").lower()
+    def _reset_recurring_task_status(self, task: Task) -> None:
+        """Completing a recurring task only makes it actionable again.
 
-        if rule == "daily":
-            next_date = today + timedelta(days=1)
-        elif rule == "weekdays":
-            next_date = today + timedelta(days=1)
-            while next_date.weekday() >= 5:
-                next_date += timedelta(days=1)
-        elif rule == "weekly":
-            next_date = today + timedelta(weeks=1)
-        else:
-            next_date = today + timedelta(days=1)
+        It deliberately does **not** advance `assigned_date` (the old `handle_task_recurrence`
+        did, at a hardcoded 09:00) -- that was a second, competing schedule anchor and it is
+        what doubled the live series. `recurrence_dtstart` is immutable; the RRULE alone decides
+        when the next occurrence is, and the Target Day badge is derived from it in `list_tasks`.
+        """
+        statuses = self.db.exec(
+            select(TaskStatus).where(TaskStatus.is_completed == False).order_by(TaskStatus.position)  # noqa: E712
+        ).all()
+        target = statuses[0] if statuses else None
+        if target:
+            task.status = target.name
+            task.status_id = target.id
+            return
 
-        task.assigned_date = next_date.strftime("%Y-%m-%d")
         task.status = "To Do"
         st = self.db.exec(select(TaskStatus).where(TaskStatus.name == "To Do")).first()
         if st:
@@ -539,6 +518,9 @@ class TaskService:
             s.task_id = None
             self.db.add(s)
 
+        # `recurrenceexception` rows have no cascade; their FK would dangle.
+        RecurrenceService(self.db).delete_for_task(list(all_target_ids))
+
         self.db.delete(db_task)
         self.db.commit()
 
@@ -557,6 +539,8 @@ class TaskService:
         for s in linked_sessions:
             s.task_id = None
             self.db.add(s)
+
+        RecurrenceService(self.db).delete_for_task(list(completed_ids))
 
         count = 0
         for task in completed_tasks:
@@ -587,6 +571,12 @@ class TaskService:
                 "attachments": t.attachments,
                 "is_recurring": t.is_recurring,
                 "recurrence_rule": t.recurrence_rule,
+                "recurrence_rrule": t.recurrence_rrule,
+                "recurrence_dtstart": (
+                    ensure_utc(t.recurrence_dtstart).isoformat() if t.recurrence_dtstart else None
+                ),
+                "recurrence_duration_minutes": t.recurrence_duration_minutes,
+                "recurrence_timezone": t.recurrence_timezone,
                 "color": t.color,
                 "tags": t.tags,
                 "parent_id": t.parent_id,

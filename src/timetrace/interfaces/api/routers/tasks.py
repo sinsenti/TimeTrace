@@ -7,6 +7,7 @@ from timetrace.interfaces.api.schemas import (
     ClearScheduledSessionsRequest,
     ClearScheduledSessionsResponse,
     TaskCreate,
+    TaskReadResponse,
     TaskReviewCreate,
     TaskStatusCreate,
     TaskStatusUpdate,
@@ -58,7 +59,7 @@ def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
     return TaskService(db).create_task(task)
 
 
-@router.get("", response_model=list[Task])
+@router.get("", response_model=list[TaskReadResponse])
 def list_tasks(
     status_filter: str | None = Query(None, alias="status"),
     category_filter: str | None = Query(None, alias="category"),

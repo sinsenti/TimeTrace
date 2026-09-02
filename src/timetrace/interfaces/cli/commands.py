@@ -1,11 +1,14 @@
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import typer
 import uvicorn
+from sqlmodel import Session as DBSession
 
 from timetrace.config import settings
 from timetrace.core.ids import short_id
+from timetrace.core.timezones import daemon_timezone_name, daemon_tzinfo, to_local_naive
 from timetrace.interfaces.cli.client import ensure_daemon_running, get_client, resolve_task_id
 
 cli_app = typer.Typer(
@@ -16,6 +19,9 @@ cli_app = typer.Typer(
 
 db_cli = typer.Typer(help="Database migration and maintenance subcommands.")
 cli_app.add_typer(db_cli, name="db")
+
+recurrence_cli = typer.Typer(help="Recurrence maintenance subcommands.")
+cli_app.add_typer(recurrence_cli, name="recurrence")
 
 
 @cli_app.callback(invoke_without_command=True)
@@ -384,3 +390,188 @@ def import_markdown(in_file: Path = typer.Argument(..., help="Path to markdown f
             print(f"Imported {data['imported_sessions']} sessions from '{in_file}'.")
         else:
             print("Failed to import markdown file.")
+
+
+# ---------------------------------------------------------------------------------------------
+# Recurrence maintenance
+# ---------------------------------------------------------------------------------------------
+
+LEGACY_PLACEHOLDER_PREFIX = "Recurring: "
+
+
+def _legacy_derived_duration_seconds(estimated_minutes: int | None) -> int:
+    """Duration the removed pre-generator would have written for a task.
+
+    Mirrors the old `TaskService.schedule_recurrent_sessions_three_months`:
+    `30 if estimated_minutes > 120 else estimated_minutes`, defaulting to 15 like the model.
+    """
+    est = 15 if estimated_minutes is None else estimated_minutes
+    return (30 if est > 120 else est) * 60
+
+
+def _collect_legacy_placeholders(db):
+    """Rows the boot migration deliberately refuses to touch: already-elapsed `Recurring: ` rows.
+
+    Returns a list of dicts, one per candidate, each carrying every signal §7.5 asks for plus an
+    `eligible` verdict for `--delete`. Read-only.
+    """
+    from sqlmodel import select
+
+    from timetrace.db.models import RatingEntry, Task
+    from timetrace.db.models import Session as SessionModel
+
+    # The DB stores naive UTC; compare naive-to-naive, never against an aware datetime.
+    now_naive_utc = datetime.now(UTC).replace(tzinfo=None)
+    tz = daemon_tzinfo()
+
+    rows = db.exec(
+        select(SessionModel, Task)
+        .join(Task, SessionModel.task_id == Task.id, isouter=True)
+        .where(SessionModel.notes.like(f"{LEGACY_PLACEHOLDER_PREFIX}%"))
+        .where(SessionModel.start_time <= now_naive_utc)
+        .order_by(SessionModel.start_time)
+    ).all()
+
+    rated_ids = set(
+        db.exec(select(RatingEntry.target_id).where(RatingEntry.target_type == "session")).all()
+    )
+
+    candidates = []
+    for sess, task in rows:
+        duration = sess.duration_seconds or 0
+        derived = _legacy_derived_duration_seconds(task.estimated_minutes) if task else None
+        stamp_match = bool(task and sess.start_time.time() == task.created_at.time())
+        has_rating = sess.id in rated_ids
+        duration_match = derived is not None and duration == derived
+        expected_notes = f"{LEGACY_PLACEHOLDER_PREFIX}{task.title}" if task else None
+
+        candidates.append(
+            {
+                "session_id": sess.id,
+                "task_id": sess.task_id,
+                "task_title": task.title if task else None,
+                "start_local": to_local_naive(sess.start_time, tz),
+                "end_local": to_local_naive(sess.end_time, tz) if sess.end_time else None,
+                "start_time_utc": sess.start_time.isoformat(),
+                "end_time_utc": sess.end_time.isoformat() if sess.end_time else None,
+                "duration_seconds": duration,
+                "derived_duration_seconds": derived,
+                "notes": sess.notes or "",
+                "tags": sess.tags or "",
+                "task_tags": (task.tags or "") if task else None,
+                "review_skipped": bool(sess.review_skipped),
+                "fingerprint_match": True,
+                "created_at_stamp_match": stamp_match,
+                "duration_matches_derived": duration_match,
+                "has_rating_entry": has_rating,
+                "notes_match_task_default": expected_notes is not None and (sess.notes or "") == expected_notes,
+                "tags_differ_from_task": task is not None and (sess.tags or "") != (task.tags or ""),
+                "counts_as_logged": bool(sess.end_time and sess.end_time <= now_naive_utc),
+                "eligible": bool(
+                    stamp_match and duration_match and not sess.review_skipped and not has_rating
+                ),
+            }
+        )
+    return candidates
+
+
+def _print_placeholder_report(candidates: list[dict]) -> None:
+    yn = {True: "yes", False: "no"}
+    for c in candidates:
+        end_str = c["end_local"].strftime("%H:%M") if c["end_local"] else "(open)"
+        title = c["task_title"] or "(no task)"
+        print(
+            f"#{short_id(c['session_id']):<8} | {c['start_local'].strftime('%Y-%m-%d %H:%M')} -> {end_str} | "
+            f"{c['duration_seconds'] / 60:>5.0f}m | {title}"
+        )
+        derived = c["derived_duration_seconds"]
+        derived_str = f"{derived / 60:.0f}m" if derived is not None else "n/a"
+        print(
+            f"           notes: {c['notes']!r}"
+            f"{'' if c['notes_match_task_default'] else '  (does NOT match task title)'}"
+        )
+        print(
+            f"           fingerprint={yn[c['fingerprint_match']]} "
+            f"created_at-stamp={yn[c['created_at_stamp_match']]} "
+            f"duration-matches-legacy={yn[c['duration_matches_derived']]} (legacy {derived_str})"
+        )
+        print(
+            f"           review_skipped={yn[c['review_skipped']]} "
+            f"rated={yn[c['has_rating_entry']]} "
+            f"tags-differ-from-task={yn[c['tags_differ_from_task']]}"
+        )
+        print(f"           -> {'ELIGIBLE for --delete' if c['eligible'] else 'KEPT (fails a safety check)'}")
+
+
+@recurrence_cli.command("audit")
+def recurrence_audit(
+    delete: bool = typer.Option(
+        False,
+        "--delete",
+        help="Actually delete the eligible rows (requires typed confirmation). Default is report-only.",
+    ),
+):
+    """Report already-elapsed 'Recurring: ' placeholder sessions left by the old pre-generator.
+
+    Read-only by default. These rows are indistinguishable from real logged work to the stats
+    engine (`end_time <= now` counts as logged), which is why they inflate totals. The boot
+    migration never touches a past row, so removing them is this deliberate, human-invoked action.
+    """
+    from timetrace.db.models import Session as SessionModel
+    from timetrace.db.session import engine
+
+    print(f"Database: {settings.db_file}")
+    print(f"Local timezone: {daemon_timezone_name()}")
+
+    with DBSession(engine) as db:
+        candidates = _collect_legacy_placeholders(db)
+
+        if not candidates:
+            print("\nNo elapsed 'Recurring: ' placeholder sessions found. Nothing to do.")
+            return
+
+        eligible = [c for c in candidates if c["eligible"]]
+        logged_seconds = sum(c["duration_seconds"] for c in candidates if c["counts_as_logged"])
+        eligible_logged = sum(c["duration_seconds"] for c in eligible if c["counts_as_logged"])
+
+        print(f"\nFound {len(candidates)} elapsed placeholder session(s) matching 'Recurring: %':")
+        print("-" * 100)
+        _print_placeholder_report(candidates)
+        print("-" * 100)
+        print(f"Counted as logged time by the stats engine : {logged_seconds / 3600:.2f}h")
+        print(f"Eligible for deletion                      : {len(eligible)} row(s), "
+              f"{eligible_logged / 3600:.2f}h of that logged time")
+        print(f"Kept regardless                            : {len(candidates) - len(eligible)} row(s)")
+
+        if not delete:
+            print("\nReport only. Re-run with --delete to remove the eligible rows.")
+            return
+
+        if not eligible:
+            print("\nNothing is eligible for deletion. No rows removed.")
+            return
+
+        print("\nThis will permanently delete the rows marked ELIGIBLE above.")
+        answer = typer.prompt("Type DELETE to confirm")
+        if answer.strip() != "DELETE":
+            print("Aborted. No rows deleted.")
+            raise typer.Exit(1)
+
+        backup_dir = settings.db_file.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+        backup_path = backup_dir / f"recurrence-audit-deleted-{stamp}.json"
+        dump = [
+            {k: (v.isoformat() if isinstance(v, datetime) else v) for k, v in c.items()} for c in eligible
+        ]
+        backup_path.write_text(json.dumps(dump, indent=2), encoding="utf-8")
+        print(f"Wrote a JSON dump of every row about to be deleted to {backup_path}")
+
+        for c in eligible:
+            row = db.get(SessionModel, c["session_id"])
+            if row is not None:
+                db.delete(row)
+        db.commit()
+
+        print(f"Deleted {len(eligible)} placeholder session(s); "
+              f"removed {eligible_logged / 3600:.2f}h of falsely-logged time.")

@@ -169,7 +169,10 @@ async function openEditTaskModal(id) {
     if (recurCheck) recurCheck.checked = isRecur;
 
     const ruleSelect = document.getElementById('modal_input_recurrence_rule');
-    if (ruleSelect) ruleSelect.value = t.recurrence_rule || 'daily';
+    if (ruleSelect) {
+        ruleSelect.value = t.recurrence_rule || 'daily';
+        if (!ruleSelect.value) ruleSelect.value = 'daily';
+    }
 
     toggleRecurrenceRuleSelect(isRecur);
 
@@ -249,6 +252,11 @@ async function saveTask() {
             color: chosenColor,
             requires_session_review: document.getElementById('modal_input_requires_review') ? document.getElementById('modal_input_requires_review').checked : true
         };
+
+        // "custom" means the task holds an RRULE the preset picker cannot express; omit the
+        // preset so the backend leaves recurrence_rrule exactly as saved. Also never send a
+        // preset for a non-recurring task -- that is how "daily" leaked onto every task.
+        if (payload.recurrence_rule === 'custom' || !payload.is_recurring) delete payload.recurrence_rule;
 
         let createdTask = null;
         if (id) {

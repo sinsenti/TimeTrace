@@ -130,10 +130,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                 openCreateSessionModal(selectionInfo.start, selectionInfo.end);
             },
 
-            eventDrop: async function(info) { await handleCalendarEventUpdate(info.event); },
-            
+            eventDrop: async function(info) { await handleCalendarEventUpdate(info.event, 'move', info); },
+
             eventResize: async function(info) {
-                await handleCalendarEventUpdate(info.event);
+                await handleCalendarEventUpdate(info.event, 'resize', info);
             },
             
             eventClick: function(info) {

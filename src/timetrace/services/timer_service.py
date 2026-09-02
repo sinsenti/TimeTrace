@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session
 
 from timetrace.core.exceptions import TimerError, ValidationError
 from timetrace.core.timer import timer_manager
@@ -9,6 +9,7 @@ from timetrace.db.models import Session as SessionModel
 from timetrace.db.models import Task
 from timetrace.interfaces.api.schemas import IdleResolveRequest, IdleToggleRequest, TimerSplitRequest, TimerStartRequest
 from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.services.session_service import SessionService
 
 
 class TimerService:
@@ -24,25 +25,15 @@ class TimerService:
 
         if not status_data.get("is_running"):
             now = datetime.now(UTC)
-            now_naive = now.replace(tzinfo=None)
-            upcoming = self.db.exec(
-                select(SessionModel)
-                .where(SessionModel.start_time > now_naive)
-                .order_by(SessionModel.start_time)
-            ).first()
-
-            if upcoming and upcoming.start_time:
-                up_start = ensure_utc(upcoming.start_time)
-                starts_in = max(1, int((up_start - now).total_seconds() / 60))
-                title = upcoming.notes or upcoming.tags or "Scheduled Session"
-                if upcoming.task_id:
-                    t_obj = self.db.get(Task, upcoming.task_id)
-                    if t_obj:
-                        title = t_obj.title
+            # Merged: the earliest real future row or the next projected occurrence of a
+            # recurring series, whichever is sooner. Response shape is unchanged.
+            upcoming = SessionService(self.db).next_upcoming_occurrence()
+            if upcoming:
+                up_start = ensure_utc(upcoming["start_time"])
                 status_data["next_session"] = {
-                    "title": title,
+                    "title": upcoming["title"],
                     "start_time": up_start.isoformat(),
-                    "starts_in_minutes": starts_in,
+                    "starts_in_minutes": max(1, int((up_start - now).total_seconds() / 60)),
                 }
             else:
                 status_data["next_session"] = None

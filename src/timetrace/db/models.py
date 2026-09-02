@@ -2,6 +2,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Optional
 
+from sqlalchemy import UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -45,7 +46,15 @@ class Task(SQLModel, table=True):
     assigned_date: str | None = Field(default=None)  # YYYY-MM-DD
     attachments: str | None = Field(default="")
     is_recurring: bool = Field(default=False)
-    recurrence_rule: str | None = Field(default="daily")  # daily, weekly, weekdays
+    # UI preset label only ("daily"|"weekdays"|"weekly"|"monthly"|"custom"). NEVER parsed for
+    # scheduling -- recurrence_rrule is authoritative. The default used to be "daily", which
+    # leaked onto every non-recurring task in the live DB (task_modal.js sends it
+    # unconditionally); now None.
+    recurrence_rule: str | None = Field(default=None)
+    recurrence_rrule: str | None = Field(default=None)  # RFC 5545 RRULE body, no "RRULE:" prefix
+    recurrence_dtstart: datetime | None = Field(default=None)  # naive UTC, second precision
+    recurrence_duration_minutes: int | None = Field(default=None)
+    recurrence_timezone: str | None = Field(default=None)  # IANA name captured at write time
 
     requires_session_review: bool = Field(default=True)
     created_at: datetime = Field(default_factory=utc_now)
@@ -81,6 +90,29 @@ class Session(SQLModel, table=True):
     extended_properties_json: str = Field(default="{}")
 
     task: Optional[Task] = Relationship(back_populates="sessions")
+
+
+class RecurrenceException(SQLModel, table=True):
+    """One row per occurrence of a recurring task that deviates from its RRULE.
+
+    `occurrence_start` is RFC 5545's RECURRENCE-ID: the *original* projected instant (naive UTC,
+    second precision), which remains the occurrence's identity even after the materialized session
+    row has been dragged to some other time. That is what makes the key stable -- keying off the
+    session's current `start_time` would lose the link the moment the user moved it.
+
+    Exactly two kinds exist: `kind="override"` always carries `session_id` (the materialized row
+    holding the deviation), `kind="skip"` never does. "moved"/"resized"/"renoted" are all just
+    `override` -- the deviation lives in the session row, not in the exception's kind.
+    """
+
+    __table_args__ = (UniqueConstraint("task_id", "occurrence_start", name="uq_recurrence_exception"),)
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    task_id: str = Field(foreign_key="task.id", index=True)
+    occurrence_start: datetime = Field(index=True)  # naive UTC, RECURRENCE-ID
+    kind: str  # "skip" | "override"
+    session_id: str | None = Field(default=None, foreign_key="session.id")
+    created_at: datetime = Field(default_factory=utc_now)
 
 
 class TaskReview(SQLModel, table=True):
