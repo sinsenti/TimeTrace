@@ -563,6 +563,14 @@ class TestSeriesDuration:
         assert second_occ["duration_seconds"] == 5400
 
 
+def _row_start(row) -> datetime:
+    """Naive-UTC start of a merged row, whether it came back as a model or a dict."""
+    value = row["start_time"] if isinstance(row, dict) else row.start_time
+    if isinstance(value, str):
+        value = datetime.fromisoformat(value)
+    return value.replace(tzinfo=None) if value.tzinfo else value
+
+
 def _mk_task(db: DBSession, dtstart, dur=30, rrule="FREQ=DAILY", tz="UTC", **kw) -> Task:
     task = Task(
         title=kw.pop("title", "Standup"),
@@ -707,11 +715,19 @@ class TestInProgressOccurrence:
         started = now - timedelta(minutes=10)
         _mk_task(db, dtstart=started, dur=60)
 
-        day_start = now.replace(hour=0, minute=0)
+        # Anchor the window on the occurrence itself, not on the calendar day: at 00:07 UTC an
+        # occurrence starting 10 minutes ago began *yesterday*, so a today-shaped window would
+        # exclude it by construction and the test would pass or fail depending on the hour.
         rows = SessionService(db).list_sessions(
-            day_start.replace(tzinfo=UTC), (day_start + timedelta(days=1)).replace(tzinfo=UTC)
+            (started - timedelta(hours=1)).replace(tzinfo=UTC),
+            (started + timedelta(hours=3)).replace(tzinfo=UTC),
         )
-        assert any(r["is_virtual"] for r in rows), "in-progress occurrence dropped from the calendar"
+        # Assert the *in-progress* occurrence specifically. A bare `any(is_virtual)` would also
+        # be satisfied by a later occurrence of the same daily rule, and would still pass with
+        # the carve-out removed entirely.
+        assert any(
+            r["is_virtual"] and _row_start(r) == started for r in rows
+        ), "in-progress occurrence dropped from the calendar"
 
     def test_fully_elapsed_occurrence_still_does_not_project(self, db: DBSession):
         """The future-only contract otherwise stays intact: an occurrence that has fully ended
@@ -720,11 +736,17 @@ class TestInProgressOccurrence:
         started = now - timedelta(hours=2)
         _mk_task(db, dtstart=started, dur=30)
 
-        day_start = now.replace(hour=0, minute=0)
         rows = SessionService(db).list_sessions(
-            day_start.replace(tzinfo=UTC), (day_start + timedelta(days=1)).replace(tzinfo=UTC)
+            (started - timedelta(hours=1)).replace(tzinfo=UTC),
+            (started + timedelta(hours=3)).replace(tzinfo=UTC),
         )
-        assert not any(r["is_virtual"] for r in rows), "fully elapsed occurrence still projected"
+        # Only the elapsed instant must be absent. Asserting "no virtual rows at all" is
+        # clock-dependent: a daily rule anchored 2h ago also has an occurrence later in this
+        # same UTC-day window whenever `now` is before 02:00 UTC, and that one is legitimately
+        # in the future.
+        assert not any(
+            r["is_virtual"] and _row_start(r) == started for r in rows
+        ), "fully elapsed occurrence still projected"
 
 
 class TestMaterializePastOccurrence:
