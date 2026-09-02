@@ -25,6 +25,12 @@ dependencies = [
     "httpx>=0.28.1",
     "jinja2>=3.1.5",
     "python-dateutil>=2.9.0",
+    "langchain>=1.3.18,<2",
+    "langgraph>=1.2.11,<2",
+    "langchain-anthropic>=1.7.0,<2",
+    "langchain-openai>=1.6.0,<2",
+    "langchain-ollama>=1.1.0,<2",
+    "cryptography>=46",
 ]
 
 [dependency-groups]
@@ -47,6 +53,11 @@ target-version = "py314"
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = ["B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# SQLModel Relationship() annotations are resolved as strings by SQLAlchemy's mapper; UP045/UP037's
+# `X | None` / `list[X]` rewrite breaks that resolution at runtime (see the header comment in this file).
+"src/timetrace/db/models.py" = ["UP045", "UP037"]
 
 [tool.ruff.lint.flake8-bugbear]
 extend-immutable-calls = [
