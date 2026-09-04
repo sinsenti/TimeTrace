@@ -153,13 +153,19 @@ class TaskService:
         if parent and parent.tags:
             task_dict["tags"] = parent.tags
 
-    def create_task(self, req: TaskCreate) -> Task:
+    def create_task(self, req: TaskCreate, parse_title_syntax: bool = True) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
-        schedule_session_at = apply_quick_task_syntax(task_dict)
-        clean_title, parsed_est = parse_title_estimation(task_dict["title"])
-        task_dict["title"] = clean_title
-        if parsed_est is not None:
-            task_dict["estimated_minutes"] = parsed_est
+        schedule_session_at = None
+        # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
+        # snapshot (recreating a task an undo is reversing a delete of) -- a human-authored
+        # title that happens to contain `#tag`/`!high`/`(desc)`/`due:3d`/`[15m]` syntax must
+        # come back exactly as it was, not get silently re-mangled by this parser a second time.
+        if parse_title_syntax:
+            schedule_session_at = apply_quick_task_syntax(task_dict)
+            clean_title, parsed_est = parse_title_estimation(task_dict["title"])
+            task_dict["title"] = clean_title
+            if parsed_est is not None:
+                task_dict["estimated_minutes"] = parsed_est
 
         self._inherit_parent_tags(task_dict)
 
@@ -319,7 +325,7 @@ class TaskService:
             return None
         return to_local_naive(occurrence.start_utc, daemon_tzinfo()).date().strftime("%Y-%m-%d")
 
-    def update_task(self, task_id: str, req: TaskUpdate) -> TaskWithPolicyResponse:
+    def update_task(self, task_id: str, req: TaskUpdate, parse_title_syntax: bool = True) -> TaskWithPolicyResponse:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
@@ -329,7 +335,15 @@ class TaskService:
         update_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
 
-        if "title" in update_dict and update_dict["title"]:
+        # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
+        # snapshot (undoing an AI-accepted change) -- confirmed live: undo sends the FULL
+        # applied_before_json snapshot back through this method, including a human-authored
+        # title. Re-running the quick-add parser on it a second time silently rewrote the title
+        # and overwrote description/tags/estimated_minutes with whatever `#tag`/`(desc)`/`[15m]`
+        # syntax the title coincidentally contained -- restoring something other than what was
+        # actually there before, exactly the failure mode this feature's whole draft-layer design
+        # exists to prevent.
+        if parse_title_syntax and "title" in update_dict and update_dict["title"]:
             schedule_session_at = apply_quick_task_syntax(update_dict)
             clean_title, parsed_est = parse_title_estimation(update_dict["title"])
             update_dict["title"] = clean_title
@@ -455,9 +469,7 @@ class TaskService:
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
         sessions = session_service.list_future_sessions([task.id])
-        subtask_scheduled_count = len(
-            session_service.list_future_sessions(self._collect_subtree_ids(task.id))
-        )
+        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
         if not sessions and not subtask_scheduled_count:
             return None
 
@@ -500,9 +512,7 @@ class TaskService:
             if subtree_ids:
                 deleted_ids.extend(session_service.clear_future_sessions(subtree_ids))
 
-        return ClearScheduledSessionsResponse(
-            deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids
-        )
+        return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
     def delete_task(self, task_id: str) -> None:
         db_task = self.db.get(Task, task_id)
@@ -511,9 +521,7 @@ class TaskService:
 
         all_target_ids = self._get_all_descendant_task_ids(task_id)
 
-        linked_sessions = self.db.exec(
-            select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))
-        ).all()
+        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))).all()
         for s in linked_sessions:
             s.task_id = None
             self.db.add(s)
@@ -525,17 +533,13 @@ class TaskService:
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
-        completed_tasks = self.db.exec(
-            select(Task).where(Task.status.in_(["Done", "completed", "done"]))
-        ).all()
+        completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         if not completed_tasks:
             return 0
 
         completed_ids = {t.id for t in completed_tasks}
 
-        linked_sessions = self.db.exec(
-            select(SessionModel).where(SessionModel.task_id.in_(completed_ids))
-        ).all()
+        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(completed_ids))).all()
         for s in linked_sessions:
             s.task_id = None
             self.db.add(s)
@@ -572,9 +576,7 @@ class TaskService:
                 "is_recurring": t.is_recurring,
                 "recurrence_rule": t.recurrence_rule,
                 "recurrence_rrule": t.recurrence_rrule,
-                "recurrence_dtstart": (
-                    ensure_utc(t.recurrence_dtstart).isoformat() if t.recurrence_dtstart else None
-                ),
+                "recurrence_dtstart": (ensure_utc(t.recurrence_dtstart).isoformat() if t.recurrence_dtstart else None),
                 "recurrence_duration_minutes": t.recurrence_duration_minutes,
                 "recurrence_timezone": t.recurrence_timezone,
                 "color": t.color,

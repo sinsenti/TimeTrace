@@ -622,6 +622,16 @@ class AIChatService:
         self.db.refresh(item)
         return _draft_item_response(item, AIDraftService(self.db))
 
+    def reject_draft_item(self, item_id: str, reason: str | None = None) -> AIDraftItemResponse:
+        """`AIDraftService.reject_item` returns the raw ORM row -- confirmed live to 500 through
+        `response_model=AIDraftItemResponse`, which needs computed fields (`is_stale`) and parsed
+        JSON (`proposed`/`baseline`) the row doesn't carry. Wrap it the same way
+        `update_draft_item` above already does, rather than handing the router a shape it can't
+        serialize."""
+        draft_service = AIDraftService(self.db)
+        item = draft_service.reject_item(item_id, reason=reason)
+        return _draft_item_response(item, draft_service)
+
     def undo_batches(self, batch_ids: list[str] | None, since: datetime | None) -> list[dict[str, Any]]:
         """The one-action week undo (spec S7 `POST /drafts/undo`)."""
         draft_service = AIDraftService(self.db)
@@ -693,7 +703,15 @@ class AIChatService:
     # -- internal helpers --------------------------------------------------------------------
 
     def _sanitize_for_provider(self, text: str, provider_config: AIProviderConfig) -> str:
+        # Confirmed live (adversarial review): `AISettings.redact_before_send` was persisted and
+        # shown as a working checkbox on /settings/ai but nothing ever read it -- redaction was
+        # gated solely on the per-provider `sanitization_level`, so turning this toggle off did
+        # nothing (still redacted) and turning it on with a provider set to `sanitization_level=
+        # "off"` also did nothing (never redacted) -- a privacy control reporting the opposite of
+        # reality either way. Both must now agree to skip sanitization.
         if provider_config.sanitization_level == "off":
+            return text
+        if not AISettingsService(self.db).get_settings().redact_before_send:
             return text
         return sanitize_text(text) or ""
 
@@ -773,6 +791,15 @@ class AIChatService:
             .limit(_HISTORY_LIMIT)
         ).all()
         rows = list(reversed(rows))
+        # Confirmed by review: a flat row-count window can start mid-turn -- a tool-using turn
+        # mints user + assistant(tool_calls) + N tool + assistant rows, so after ~4-5 such turns
+        # the window's oldest surviving rows can be a ToolMessage (or the assistant reply after
+        # one) whose parent tool-calling AIMessage already fell off the front. Anthropic/OpenAI
+        # both reject a tool result with no matching tool call, which would otherwise turn every
+        # later turn in a long-lived conversation into a hard failure. Trim to the nearest real
+        # turn boundary (a `user` row) instead of an arbitrary row count.
+        first_user_idx = next((i for i, r in enumerate(rows) if r.role == "user"), None)
+        rows = rows[first_user_idx:] if first_user_idx is not None else []
         if exclude_message_id:
             rows = [r for r in rows if r.id != exclude_message_id]
         return rows

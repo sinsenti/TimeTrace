@@ -222,7 +222,7 @@ def patch_draft_item(item_id: str, req: AIDraftItemPatchRequest, db: DBSession =
 
 @router.post("/drafts/items/{item_id}/reject", response_model=AIDraftItemResponse)
 def reject_draft_item(item_id: str, req: AIDraftItemRejectRequest, db: DBSession = Depends(get_session)):
-    return AIDraftService(db).reject_item(item_id, reason=req.reason)
+    return AIChatService(db).reject_draft_item(item_id, reason=req.reason)
 
 
 @router.post("/drafts/batches/{batch_id}/accept", response_model=AIApplyResult)

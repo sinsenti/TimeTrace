@@ -146,22 +146,22 @@
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Preview on calendar</div>
-                    <div class="ai-toggle-row-hint">Show pending AI draft proposals as ghost events on the calendar</div>
+                    <div class="ai-toggle-row-label">Preview on calendar (not yet enforced)</div>
+                    <div class="ai-toggle-row-hint">Show pending AI draft proposals as ghost events on the calendar -- currently always on regardless of this setting</div>
                 </div>
                 <input type="checkbox" id="ai_setting_preview_on_calendar" class="w-4 h-4 accent-purple-600 rounded">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Scheduling window (days)</div>
-                    <div class="ai-toggle-row-hint">How far ahead the whole-week auto-scheduler is allowed to place sessions</div>
+                    <div class="ai-toggle-row-label">Scheduling window, days (not yet enforced)</div>
+                    <div class="ai-toggle-row-hint">How far ahead the whole-week auto-scheduler is allowed to place sessions -- saved, but nothing reads it yet</div>
                 </div>
                 <input type="number" id="ai_setting_scheduling_window_days" min="1" max="90" style="width: 80px;">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Batch undo retention (days)</div>
-                    <div class="ai-toggle-row-hint">How long an applied draft batch stays undoable</div>
+                    <div class="ai-toggle-row-label">Batch undo retention, days (not yet enforced)</div>
+                    <div class="ai-toggle-row-hint">How long an applied draft batch stays undoable -- saved, but nothing reads it yet; every batch stays undoable indefinitely for now</div>
                 </div>
                 <input type="number" id="ai_setting_batch_undo_retention_days" min="1" max="365" style="width: 80px;">
             </div>

@@ -20,6 +20,7 @@ gateway instance itself, so the model cannot address any batch but the one it wa
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any
@@ -53,6 +54,17 @@ def _blank_to_none(value: Any) -> Any:
     return None if value == "" else value
 
 
+# Confirmed live (adversarial review): `dateutil.parser.parse` is far more permissive than the
+# "bare time like 8 PM" motivation below needs -- it happily turns a bare number or an ambiguous
+# range into a full DATE at midnight ('9-5' -> Sep 5th, '12' -> Sep 12th, '5' -> Sep 5th), which
+# `propose_create_session` would then silently accept as a real placement on a day the user never
+# mentioned. Gate the fallback to inputs that actually look like a time-of-day -- an HH:MM/H:MM
+# clock time, or a number followed by am/pm -- so a genuinely ambiguous fragment reaches
+# pydantic's own validation error (loud, recoverable by the retry loop) instead of being silently
+# reinterpreted as a plausible-looking but wrong date.
+_TIME_OF_DAY_RE = re.compile(r"\d{1,2}:\d{2}|\d{1,2}\s*[ap]\.?m\.?\b", re.IGNORECASE)
+
+
 def _lenient_datetime(value: Any) -> Any:
     """Confirmed live against a real local model (qwen2.5:3b): even with the current date/time
     and an explicit "always include the date, full ISO 8601, UTC" instruction in both the system
@@ -62,10 +74,11 @@ def _lenient_datetime(value: Any) -> Any:
     the same validation error doesn't reliably fix (the model just re-describes the same mistake
     in prose and repeats it). Rather than depend entirely on prompt compliance, accept a wider
     range of formats: `datetime.fromisoformat` first (the fast, correct path), falling back to
-    `dateutil`'s much more permissive parser (already a project dependency), which fills in
-    whatever date/time component is missing from today's real date. Any input this still can't
-    parse is passed through unchanged so pydantic's own error message (better than swallowing it
-    here) is what reaches the retry loop."""
+    `dateutil`'s much more permissive parser (already a project dependency, but only for inputs
+    that actually look like a time-of-day, per `_TIME_OF_DAY_RE` above), which fills in whatever
+    date/time component is missing from today's real date. Any input this still can't parse, or
+    doesn't look like a time-of-day to begin with, is passed through unchanged so pydantic's own
+    error message (better than swallowing it here) is what reaches the retry loop."""
     if value is None or isinstance(value, datetime):
         return value
     if isinstance(value, str):
@@ -76,12 +89,13 @@ def _lenient_datetime(value: Any) -> Any:
             return datetime.fromisoformat(stripped)
         except ValueError:
             pass
-        try:
-            from dateutil import parser as _dateutil_parser
+        if _TIME_OF_DAY_RE.search(stripped):
+            try:
+                from dateutil import parser as _dateutil_parser
 
-            return _dateutil_parser.parse(stripped)
-        except ValueError, OverflowError:
-            pass
+                return _dateutil_parser.parse(stripped)
+            except ValueError, OverflowError:
+                pass
     return value
 
 

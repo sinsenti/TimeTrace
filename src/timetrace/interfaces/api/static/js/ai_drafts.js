@@ -197,18 +197,38 @@ function aiToggleInlineEdit(row, item, batch) {
     fieldsWrap.className = 'ai-edit-fields';
     const collectors = [];
 
+    // Confirmed live (adversarial review): PATCH /drafts/items/{id} MERGES `proposed` into the
+    // existing snapshot, so unconditionally sending every field -- including ones the model
+    // never proposed -- either silently wipes a field that WAS proposed alongside it (e.g. a
+    // move-only proposal has no `notes`/`tags` key; sending `notes: ''` erases real notes on
+    // accept) or violates a NOT NULL column (a tags-only proposal has no `start_time`/`end_time`;
+    // sending them as null 500s the accept). A field not part of the original proposal is
+    // disabled here rather than silently ignored on save, so the user isn't left wondering why
+    // an edit they typed didn't take -- add it directly on the task/session after accepting.
+    const hasField = (key) => Object.prototype.hasOwnProperty.call(proposed, key);
+    const addCollector = (key, getter) => {
+        if (hasField(key)) collectors.push(() => [key, getter()]);
+    };
+    const markUneditable = (el, key) => {
+        if (hasField(key)) return;
+        el.disabled = true;
+        el.title = 'Not part of the original proposal -- edit this after accepting instead.';
+    };
+
     if (item.entity_type === 'session') {
         const startInput = document.createElement('input');
         startInput.type = 'datetime-local';
         startInput.value = aiIsoToDatetimeLocalValue(proposed.start_time);
+        markUneditable(startInput, 'start_time');
         aiAddEditField(fieldsWrap, 'Start', startInput);
-        collectors.push(() => ['start_time', aiDatetimeLocalValueToIso(startInput.value)]);
+        addCollector('start_time', () => aiDatetimeLocalValueToIso(startInput.value));
 
         const endInput = document.createElement('input');
         endInput.type = 'datetime-local';
         endInput.value = aiIsoToDatetimeLocalValue(proposed.end_time);
+        markUneditable(endInput, 'end_time');
         aiAddEditField(fieldsWrap, 'End', endInput);
-        collectors.push(() => ['end_time', aiDatetimeLocalValueToIso(endInput.value)]);
+        addCollector('end_time', () => aiDatetimeLocalValueToIso(endInput.value));
 
         const taskSelect = document.createElement('select');
         taskSelect.disabled = true;
@@ -217,7 +237,7 @@ function aiToggleInlineEdit(row, item, batch) {
         noneOpt.textContent = 'Loading tasks...';
         taskSelect.appendChild(noneOpt);
         aiAddEditField(fieldsWrap, 'Task', taskSelect);
-        collectors.push(() => ['task_id', taskSelect.value || null]);
+        addCollector('task_id', () => taskSelect.value || null);
         api.get('/api/tasks').then((tasks) => {
             taskSelect.textContent = '';
             const emptyOpt = document.createElement('option');
@@ -231,7 +251,7 @@ function aiToggleInlineEdit(row, item, batch) {
                 if (t.id === proposed.task_id) opt.selected = true;
                 taskSelect.appendChild(opt);
             });
-            taskSelect.disabled = false;
+            if (hasField('task_id')) taskSelect.disabled = false;
         }).catch((err) => {
             console.error('Failed to load tasks for the draft-item edit form:', err);
             taskSelect.textContent = '';
@@ -240,30 +260,35 @@ function aiToggleInlineEdit(row, item, batch) {
             errOpt.textContent = proposed.task_id ? `(task ${proposed.task_id})` : '(no task)';
             taskSelect.appendChild(errOpt);
         });
+        markUneditable(taskSelect, 'task_id');
 
         const notesInput = document.createElement('input');
         notesInput.type = 'text';
         notesInput.value = proposed.notes || '';
+        markUneditable(notesInput, 'notes');
         aiAddEditField(fieldsWrap, 'Notes', notesInput);
-        collectors.push(() => ['notes', notesInput.value]);
+        addCollector('notes', () => notesInput.value);
 
         const tagsInput = document.createElement('input');
         tagsInput.type = 'text';
         tagsInput.value = proposed.tags || '';
+        markUneditable(tagsInput, 'tags');
         aiAddEditField(fieldsWrap, 'Tags', tagsInput);
-        collectors.push(() => ['tags', tagsInput.value]);
+        addCollector('tags', () => tagsInput.value);
     } else if (item.entity_type === 'task') {
         const titleInput = document.createElement('input');
         titleInput.type = 'text';
         titleInput.value = proposed.title || '';
+        markUneditable(titleInput, 'title');
         aiAddEditField(fieldsWrap, 'Title', titleInput);
-        collectors.push(() => ['title', titleInput.value]);
+        addCollector('title', () => titleInput.value);
 
         const tagsInput = document.createElement('input');
         tagsInput.type = 'text';
         tagsInput.value = proposed.tags || '';
+        markUneditable(tagsInput, 'tags');
         aiAddEditField(fieldsWrap, 'Tags', tagsInput);
-        collectors.push(() => ['tags', tagsInput.value]);
+        addCollector('tags', () => tagsInput.value);
 
         const prioritySelect = document.createElement('select');
         ['-', 'low', 'medium', 'high'].forEach((p) => {
@@ -273,8 +298,9 @@ function aiToggleInlineEdit(row, item, batch) {
             if (p === (proposed.priority || '-')) opt.selected = true;
             prioritySelect.appendChild(opt);
         });
+        markUneditable(prioritySelect, 'priority');
         aiAddEditField(fieldsWrap, 'Priority', prioritySelect);
-        collectors.push(() => ['priority', prioritySelect.value]);
+        addCollector('priority', () => prioritySelect.value);
 
         const dueInput = document.createElement('input');
         dueInput.type = 'date';
@@ -285,15 +311,17 @@ function aiToggleInlineEdit(row, item, batch) {
             const pad = (n) => String(n).padStart(2, '0');
             dueInput.value = `${dueDt.getFullYear()}-${pad(dueDt.getMonth() + 1)}-${pad(dueDt.getDate())}`;
         }
+        markUneditable(dueInput, 'due_date');
         aiAddEditField(fieldsWrap, 'Due date', dueInput);
-        collectors.push(() => ['due_date', dueInput.value ? new Date(dueInput.value).toISOString() : null]);
+        addCollector('due_date', () => (dueInput.value ? new Date(dueInput.value).toISOString() : null));
 
         const estInput = document.createElement('input');
         estInput.type = 'number';
         estInput.min = '0';
         estInput.value = proposed.estimated_minutes != null ? proposed.estimated_minutes : '';
+        markUneditable(estInput, 'estimated_minutes');
         aiAddEditField(fieldsWrap, 'Estimate (minutes)', estInput);
-        collectors.push(() => ['estimated_minutes', estInput.value ? parseInt(estInput.value, 10) : null]);
+        addCollector('estimated_minutes', () => (estInput.value ? parseInt(estInput.value, 10) : null));
     }
     editBox.appendChild(fieldsWrap);
 

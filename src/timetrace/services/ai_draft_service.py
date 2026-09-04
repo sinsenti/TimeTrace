@@ -85,7 +85,13 @@ class AIDraftService:
         "description",
         "priority",
         "status",
-        "status_id",
+        # `status_id` deliberately excluded: `TaskService.update_task` always re-derives it from
+        # `status`'s name (see its own `elif "status_id" in update_dict` branch, which only ever
+        # runs when `status` is absent) -- confirmed live: this made a task-update batch's
+        # reapply-after-undo deterministically report a spurious conflict, since the restored
+        # live row's re-derived `status_id` differed from whatever the pre-AI-change snapshot
+        # happened to hold. `status` (the name) is the field that's actually meaningful here;
+        # `status_id` is a fully-determined sync column, not independent state to compare.
         "parent_id",
         "category",
         "color",
@@ -273,7 +279,14 @@ class AIDraftService:
 
         try:
             after, real_id, completion_policy = self._execute(entity_type, op, target_id, proposed)
-        except (ValidationError, EntityNotFoundError) as exc:
+        except Exception as exc:
+            # Confirmed live (adversarial review): a real IntegrityError (e.g. the edit-form
+            # NOT-NULL-violation bug, now separately fixed) escaped this narrower catch as a bare
+            # 500 -- with the batch stuck `pending` and `_recompute_batch_status` never reached,
+            # even though earlier items in the same batch were already committed as `applied`.
+            # `db.rollback()` first: a raw DB exception leaves the session in a failed-transaction
+            # state that would make `_fail_item`'s own commit raise again otherwise.
+            self.db.rollback()
             return self._fail_item(item, str(exc), actor=actor)
 
         item.status = "applied"
@@ -431,14 +444,15 @@ class AIDraftService:
                 self._execute(entity_type, "delete", live_id, {})
                 new_after = None
             elif item.op == "update":
-                new_after, _, _ = self._execute(entity_type, "update", live_id, before or {})
+                new_after, _, _ = self._execute(entity_type, "update", live_id, before or {}, restore=True)
             elif item.op == "delete":
-                new_after, new_id, _ = self._execute(entity_type, "create", None, before or {})
+                new_after, new_id, _ = self._execute(entity_type, "create", None, before or {}, restore=True)
                 # Recreated with a NEW id -- write it back so the trail stays honest.
                 item.applied_entity_id = new_id
             else:
                 raise ValidationError(f"unsupported op '{item.op}' for undo")
-        except (ValidationError, EntityNotFoundError) as exc:
+        except Exception as exc:
+            self.db.rollback()
             item.status = "failed"
             item.error = f"undo failed: {exc}"
             item.updated_at = utc_now()
@@ -538,7 +552,8 @@ class AIDraftService:
 
         try:
             after, real_id, completion_policy = self._execute(entity_type, op_for_execute, target_for_op, proposed)
-        except (ValidationError, EntityNotFoundError) as exc:
+        except Exception as exc:
+            self.db.rollback()
             return self._reapply_fail(item, str(exc), actor, live_id)
 
         item.status = "applied"
@@ -603,13 +618,18 @@ class AIDraftService:
         return None
 
     def _execute(
-        self, entity_type: str, op: str, target_id: str | None, payload: dict[str, Any]
+        self, entity_type: str, op: str, target_id: str | None, payload: dict[str, Any], *, restore: bool = False
     ) -> tuple[dict[str, Any] | None, str | None, CompletionPolicyPrompt | None]:
         """Runs one CRUD dispatch against the real service and returns
         `(normalized_after, real_entity_id, completion_policy)`. `normalized_after` is None for
         deletes. `real_entity_id` is what a caller must store as `applied_entity_id` -- for a
         session update against a synthetic `virt:`-prefixed occurrence id, this is the REAL id
-        `SessionService.update_session` materializes it into."""
+        `SessionService.update_session` materializes it into.
+
+        `restore=True` is for `_undo_one` only: it's re-applying an exact prior snapshot
+        (`applied_before_json`), not a new semantic edit, so `TaskService`'s quick-add title
+        parser must not run a second time on a human-authored title (spec S8's "worst possible
+        failure" -- see task_service.py's `parse_title_syntax` docstring)."""
         if entity_type == "session":
             svc = SessionService(self.db)
             if op == "create":
@@ -633,13 +653,13 @@ class AIDraftService:
             tsvc = TaskService(self.db)
             if op == "create":
                 req = TaskCreate(**self._filter_fields(payload, TaskCreate))
-                result = tsvc.create_task(req)
+                result = tsvc.create_task(req, parse_title_syntax=not restore)
                 return self.normalize_task(result), result.id, None
             if op == "update":
                 if not target_id:
                     raise ValidationError("task update requires a target_id")
                 req = TaskUpdate(**self._filter_fields(payload, TaskUpdate))
-                result = tsvc.update_task(target_id, req)
+                result = tsvc.update_task(target_id, req, parse_title_syntax=not restore)
                 return self.normalize_task(result), result.id, result.completion_policy
             if op == "delete":
                 if not target_id:

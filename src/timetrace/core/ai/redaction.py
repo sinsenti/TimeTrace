@@ -16,6 +16,16 @@ import re
 
 _UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
 
+# Confirmed live by adversarial review: an ISO date (2026-09-04) or a dot/slash date
+# (12.09.2026) is exactly a dash/dot-separated run of 2-4-digit groups -- precisely what
+# `_PHONE_RE` below matches. A scheduling assistant's requests are full of dates
+# ("reschedule 2026-09-04 09:00 meeting"), and _PHONE_RE was eating them by default
+# (sanitization_level="standard"), silently stripping the date the model needed to ground its
+# own reply -- carved out here the same way `_UUID_RE` already is, before phone-matching runs.
+_DATE_RE = re.compile(r"\b\d{4}-\d{1,2}-\d{1,2}\b|\b\d{1,2}[./]\d{1,2}[./]\d{2,4}\b")
+
+_PROTECTED_RE = re.compile(f"(?:{_UUID_RE.pattern})|(?:{_DATE_RE.pattern})")
+
 _EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[A-Za-z]{2,}")
 
 # Phone numbers, not bare digit runs: requires human-typed grouping punctuation (space, dot,
@@ -42,15 +52,16 @@ def _redact_segment(segment: str) -> str:
 def sanitize_text(text: str | None) -> str | None:
     """Redacts emails and phone-number-shaped substrings from `text`.
 
-    UUID-shaped substrings are carved out first and passed through untouched, so a task/session
-    id embedded in free text (rare, but e.g. a pasted link) always survives round-tripping intact.
+    UUID-shaped and date-shaped substrings are carved out first and passed through untouched, so
+    a task/session id embedded in free text (rare, but e.g. a pasted link) always survives
+    round-tripping intact, and a plain date the user typed never gets mistaken for a phone number.
     """
     if not text:
         return text
 
     pieces: list[str] = []
     last_end = 0
-    for match in _UUID_RE.finditer(text):
+    for match in _PROTECTED_RE.finditer(text):
         pieces.append(_redact_segment(text[last_end : match.start()]))
         pieces.append(match.group(0))
         last_end = match.end()
