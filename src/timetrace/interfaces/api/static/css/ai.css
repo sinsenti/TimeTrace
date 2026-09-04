@@ -347,7 +347,12 @@
     padding: 7px 9px;
     font-size: 12px;
     font-family: inherit;
-    max-height: 96px;
+    line-height: 1.4;
+    /* JS (aiAutoGrowComposer) grows the inline `height` to fit typed content up to this cap;
+       beyond it the textarea scrolls internally rather than growing further. */
+    min-height: 30px;
+    max-height: 168px;
+    overflow-y: auto;
 }
 
 #ai_composer_input:focus {

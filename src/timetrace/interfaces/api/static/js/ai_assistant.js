@@ -183,6 +183,7 @@ async function aiSendMessage() {
     if (!conversationId) return;
 
     input.value = '';
+    aiAutoGrowComposer(input);
     const emptyHint = document.querySelector('#ai_thread .ai-thread-empty');
     if (emptyHint) emptyHint.remove();
     aiAppendMessageBubble('user', text);
@@ -353,6 +354,15 @@ function aiSetupDrawerResize() {
     window.addEventListener('resize', () => aiApplyDrawerWidth(drawer.getBoundingClientRect().width));
 }
 
+function aiAutoGrowComposer(el) {
+    // Grow the textarea to fit its content as the user types multiline text, up to the
+    // `max-height` set in ai.css -- the browser itself enforces that cap and switches to an
+    // internal scrollbar once `scrollHeight` exceeds it, so this only needs to ask for
+    // "as tall as the content wants to be" each time, not compute the limit itself.
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+}
+
 function aiSetupDrawer() {
     aiRestoreDrawerWidth();
     aiSetupDrawerResize();
@@ -377,6 +387,8 @@ function aiSetupDrawer() {
                 aiSendMessage();
             }
         });
+        input.addEventListener('input', () => aiAutoGrowComposer(input));
+        aiAutoGrowComposer(input);
     }
 
     const draftsToggleBtn = document.getElementById('ai_drafts_toggle_btn');
