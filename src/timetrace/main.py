@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from timetrace import __version__
 from timetrace.config import settings
-from timetrace.core.exceptions import EntityNotFoundError, TimerError, ValidationError
+from timetrace.core.exceptions import AIProviderError, EntityNotFoundError, TimerError, ValidationError
 from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.core.timer import timer_manager
 from timetrace.db.session import init_db
@@ -25,11 +25,7 @@ async def idle_checker_loop():
     while True:
         await asyncio.sleep(10)
         try:
-            if (
-                settings.idle_detection_enabled
-                and timer_manager.idle_detection_enabled
-                and timer_manager.is_running
-            ):
+            if settings.idle_detection_enabled and timer_manager.idle_detection_enabled and timer_manager.is_running:
                 idle_secs = get_idle_seconds()
                 if idle_secs >= timer_manager.idle_threshold_seconds:
                     timer_manager.freeze_for_idle(idle_secs)
@@ -67,6 +63,10 @@ def create_daemon_app() -> FastAPI:
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError):
         return JSONResponse(status_code=400, content={"detail": str(exc)})
+
+    @app.exception_handler(AIProviderError)
+    async def ai_provider_error_handler(request: Request, exc: AIProviderError):
+        return JSONResponse(status_code=502, content={"detail": str(exc)})
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):

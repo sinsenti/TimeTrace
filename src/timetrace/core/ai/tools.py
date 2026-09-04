@@ -21,11 +21,24 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any
 
 from langchain.tools import ToolRuntime, tool
+from pydantic import BeforeValidator
 
 from timetrace.core.ai.spec import AIToolGateway
+
+
+def _blank_to_none(value: Any) -> Any:
+    """Smaller/weaker tool-calling models routinely pass `""` for an unset optional argument
+    instead of omitting it, which a plain `datetime | None`/`int | None` annotation rejects as
+    an invalid datetime/int -- causing a `ToolRetryMiddleware` retry loop on every such call.
+    Treat a blank string as "not provided" the same way `None` is."""
+    return None if value == "" else value
+
+
+OptionalDateTime = Annotated[datetime | None, BeforeValidator(_blank_to_none)]
+OptionalInt = Annotated[int | None, BeforeValidator(_blank_to_none)]
 
 
 @dataclass
@@ -188,8 +201,8 @@ def propose_create_session(
 def propose_update_session(
     session_id: str,
     runtime: ToolRuntime[AIAgentContext, Any],
-    start_time: datetime | None = None,
-    end_time: datetime | None = None,
+    start_time: OptionalDateTime = None,
+    end_time: OptionalDateTime = None,
     task_id: str | None = None,
     notes: str | None = None,
     tags: str | None = None,
@@ -251,8 +264,8 @@ def propose_create_task(
     tags: str = "",
     priority: str = "-",
     parent_id: str | None = None,
-    due_date: datetime | None = None,
-    estimated_duration_minutes: int | None = None,
+    due_date: OptionalDateTime = None,
+    estimated_duration_minutes: OptionalInt = None,
     rationale: str = "",
 ) -> dict[str, Any]:
     """Proposes creating a new task as a draft the user must accept -- this does NOT create a
@@ -285,8 +298,8 @@ def propose_update_task(
     tags: str | None = None,
     priority: str | None = None,
     status: str | None = None,
-    due_date: datetime | None = None,
-    estimated_duration_minutes: int | None = None,
+    due_date: OptionalDateTime = None,
+    estimated_duration_minutes: OptionalInt = None,
     rationale: str = "",
 ) -> dict[str, Any]:
     """Proposes changing an existing task as a draft the user must accept -- this does NOT

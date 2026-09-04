@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
+    <link rel="stylesheet" href="/static/css/ai.css">
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #161824; --bg-sidebar: #12131d;
@@ -240,6 +241,7 @@
     {% include "components/task_modal.html" %}
     {% include "components/session_modal.html" %}
     {% include "components/custom_filter_modal.html" %}
+    {% include "components/ai_drawer.html" %}
 
     <div id="sidebar_tab_config_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
         <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-sm max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
@@ -273,5 +275,9 @@
     <script src="/static/js/calendar.js"></script>
     <script src="/static/js/sidebar_totals.js"></script>
     <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/ai_assistant.js"></script>
+    <script src="/static/js/ai_drafts.js"></script>
+    <script src="/static/js/ai_draft_overlay.js"></script>
+    <script src="/static/js/ai_quickadd.js"></script>
 </body>
 </html>

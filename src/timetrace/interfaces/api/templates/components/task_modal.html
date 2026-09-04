@@ -6,6 +6,16 @@
             <button onclick="closeTaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
         <input type="hidden" id="edit_task_id">
+
+        <div id="ai_quickadd_strip" class="ai-quickadd-strip">
+            <label class="text-xs text-purple-300 font-semibold block mb-1">AI Quick Add (optional) -- free text, e.g. "lunch with Sarah next Tue 1-2pm"</label>
+            <div class="ai-quickadd-row">
+                <input id="ai_quickadd_input" type="text" placeholder="Describe the task/session in plain English..." class="w-full bg-[#181a28] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
+                <button type="button" id="ai_quickadd_parse_btn" class="ai-btn ai-btn-accept whitespace-nowrap">Parse</button>
+            </div>
+            <div id="ai_quickadd_hint" class="ai-quickadd-hint"></div>
+        </div>
+
         <div>
             <label class="text-xs text-slate-400 block mb-1">Task Title / Code (Use [30min] or [1h] for estimation)</label>
             <input id="modal_input_title" type="text" placeholder="e.g. Refactor API [45min]" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">

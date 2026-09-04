@@ -1,0 +1,33 @@
+<!-- Persistent AI Assistant drawer (docs/ai-assistant-spec.md S5). Included on all six page
+     templates. Toggled by the navbar launcher button and Ctrl+Shift+A (NOT Ctrl+K -- that
+     collides with vim_engine.js's case 'k'). All model-generated text is rendered via
+     textContent in ai_assistant.js/ai_drafts.js -- never innerHTML, never Markdown-parsed
+     (spec S9.5). -->
+<div id="ai_drawer" class="text-white">
+    <div class="ai-drawer-header">
+        <span class="ai-drawer-title">Assistant</span>
+        <select id="ai_conversation_select" class="ai-conversation-select"></select>
+        <div class="ai-drawer-header-actions">
+            <button type="button" id="ai_new_conversation_btn" class="ai-icon-btn" title="New conversation">+ New</button>
+            <button type="button" id="ai_drafts_toggle_btn" class="ai-icon-btn" title="Show pending drafts / undo history">Drafts</button>
+            <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" title="Close (Esc)">&times;</button>
+        </div>
+    </div>
+
+    <div id="ai_drawer_body" class="ai-drawer-body">
+        <div id="ai_thread" class="flex flex-col gap-2" style="display: contents;"></div>
+    </div>
+
+    <div id="ai_drafts_panel" class="ai-drawer-body hidden" style="flex-direction: column;">
+        <div class="flex items-center justify-between mb-1">
+            <span class="ai-drawer-title" style="font-size: 11px;">Draft batches</span>
+            <button type="button" id="ai_undo_all_btn" class="ai-icon-btn" title="Undo every undoable batch">Undo all</button>
+        </div>
+        <div id="ai_batches_list" class="flex flex-col gap-2"></div>
+    </div>
+
+    <div class="ai-drawer-composer">
+        <textarea id="ai_composer_input" rows="1" placeholder="Ask the assistant... (e.g. 'I'm behind, replan this week')"></textarea>
+        <button type="button" id="ai_composer_send" title="Send (Enter)">Send</button>
+    </div>
+</div>

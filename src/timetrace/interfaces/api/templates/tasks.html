@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/ai.css">
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
@@ -67,6 +68,7 @@
     {% include "components/completion_policy_modal.html" %}
     {% include "components/task_modal.html" %}
     {% include "components/custom_filter_modal.html" %}
+    {% include "components/ai_drawer.html" %}
 
     <!-- Zoom-Safe Statuses Manager Modal -->
     <div id="status_manager_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
@@ -127,5 +129,8 @@
     <script src="/static/js/task_modal.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/kanban.js"></script>
+    <script src="/static/js/ai_assistant.js"></script>
+    <script src="/static/js/ai_drafts.js"></script>
+    <script src="/static/js/ai_quickadd.js"></script>
 </body>
 </html>

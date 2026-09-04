@@ -247,6 +247,10 @@ window.addEventListener('keydown', function(e) {
         let closedAny = false;
 
         const modalOrder = [
+            // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
+            // 'hidden' class every other entry here uses, hence `openClass` instead of the
+            // default hidden-class check below.
+            { id: 'ai_drawer', closeFn: typeof closeAiDrawer === 'function' ? closeAiDrawer : null, openClass: 'ai-drawer-open' },
             { id: 'completion_policy_modal', closeFn: typeof closeCompletionPolicyModal === 'function' ? closeCompletionPolicyModal : null },
             { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
@@ -268,7 +272,8 @@ window.addEventListener('keydown', function(e) {
 
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
-            if (el && !el.classList.contains('hidden')) {
+            const isOpen = el && (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden'));
+            if (isOpen) {
                 e.preventDefault();
                 e.stopPropagation();
                 if (item.closeFn) {

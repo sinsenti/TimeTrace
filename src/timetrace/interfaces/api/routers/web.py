@@ -69,6 +69,15 @@ def get_revision_dashboard(request: Request):
     )
 
 
+@router.get("/settings/ai")
+def get_ai_settings_page(request: Request):
+    return templates.TemplateResponse(
+        request=request,
+        name="ai_settings.html",
+        context={"active_page": "settings_ai"}
+    )
+
+
 @router.get("/static/{file_path:path}")
 def get_static_file(file_path: str):
     full_path = os.path.join(STATIC_DIR, file_path)
