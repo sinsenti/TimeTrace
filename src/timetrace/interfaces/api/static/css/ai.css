@@ -21,10 +21,14 @@
     border-left: 1px solid #262938;
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
     z-index: 200;
+    /* Row, not column: normally `.ai-drawer-calendar-pane` is empty+hidden and
+       `.ai-drawer-chat-column` (header/body/composer, was directly on #ai_drawer before) is the
+       only visible child, filling the width via flex:1 below -- so this looks identical to the
+       old column layout until full-screen mode actually puts something in the calendar pane. */
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     transform: translateX(100%);
-    transition: transform 0.18s ease-out;
+    transition: transform 0.18s ease-out, width 0.15s ease-out, left 0.15s ease-out;
     font-family: system-ui, -apple-system, sans-serif;
     color: #e2e8f0;
 }
@@ -38,6 +42,20 @@
    drag doesn't fight it every frame. */
 #ai_drawer.ai-drawer-resizing {
     transition: none;
+}
+
+/* Full screen: the whole viewport, not just a right-hand strip. The calendar pane (if a calendar
+   exists on this page) takes the freed-up space via flex:1 on `.ai-drawer-calendar-pane`; the
+   chat column keeps a comfortable fixed width rather than stretching edge-to-edge. */
+#ai_drawer.ai-drawer-fullscreen {
+    left: 0;
+    width: 100vw !important;
+    max-width: 100vw;
+}
+
+#ai_drawer.ai-drawer-fullscreen .ai-drawer-chat-column {
+    flex: 0 0 420px;
+    border-left: 1px solid #262938;
 }
 
 .ai-drawer-resize-handle {
@@ -54,6 +72,34 @@
 .ai-drawer-resize-handle:hover,
 .ai-drawer-resize-handle.ai-drawer-resize-active {
     background: rgba(168, 85, 247, 0.35);
+}
+
+/* Resizing the drawer's own width doesn't mean anything in full screen (it's always 100vw) --
+   ai_assistant.js hides the handle via this class rather than fighting drag math against !important. */
+#ai_drawer.ai-drawer-fullscreen .ai-drawer-resize-handle {
+    display: none;
+}
+
+.ai-drawer-calendar-pane {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    overflow: auto;
+    background: #0b0c10;
+}
+
+.ai-drawer-calendar-pane.hidden {
+    display: none;
+}
+
+.ai-drawer-chat-column {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    /* Normal (non-full-screen) mode: fill the whole (resizable) drawer width, same as before this
+       was split out into its own element. */
+    flex: 1;
+    min-width: 0;
 }
 
 .ai-drawer-header {

@@ -5,31 +5,41 @@
      (spec S9.5). -->
 <div id="ai_drawer" class="text-white">
     <div id="ai_drawer_resize_handle" class="ai-drawer-resize-handle" title="Drag to resize"></div>
-    <div class="ai-drawer-header">
-        <span class="ai-drawer-title">Assistant</span>
-        <select id="ai_conversation_select" class="ai-conversation-select"></select>
-        <div class="ai-drawer-header-actions">
-            <button type="button" id="ai_rename_conversation_btn" class="ai-icon-btn" title="Rename conversation">Rename</button>
-            <button type="button" id="ai_new_conversation_btn" class="ai-icon-btn" title="New conversation">+ New</button>
-            <button type="button" id="ai_drafts_toggle_btn" class="ai-icon-btn" title="Show pending drafts / undo history">Drafts</button>
-            <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" title="Close (Esc)">&times;</button>
+
+    <!-- Only populated/shown in full-screen mode, and only on a page that has a calendar (the
+         dashboard's #calendar/`calendar` FullCalendar instance is physically MOVED in here --
+         see aiEnterFullscreen in ai_assistant.js -- rather than building a second calendar
+         instance). Empty and hidden the rest of the time. -->
+    <div id="ai_drawer_calendar_pane" class="ai-drawer-calendar-pane hidden"></div>
+
+    <div id="ai_drawer_chat_column" class="ai-drawer-chat-column">
+        <div class="ai-drawer-header">
+            <span class="ai-drawer-title">Assistant</span>
+            <select id="ai_conversation_select" class="ai-conversation-select"></select>
+            <div class="ai-drawer-header-actions">
+                <button type="button" id="ai_rename_conversation_btn" class="ai-icon-btn" title="Rename conversation">Rename</button>
+                <button type="button" id="ai_new_conversation_btn" class="ai-icon-btn" title="New conversation">+ New</button>
+                <button type="button" id="ai_drafts_toggle_btn" class="ai-icon-btn" title="Show pending drafts / undo history">Drafts</button>
+                <button type="button" id="ai_fullscreen_toggle_btn" class="ai-icon-btn" title="Toggle full screen">Fullscreen</button>
+                <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" title="Close (Esc)">&times;</button>
+            </div>
         </div>
-    </div>
 
-    <div id="ai_drawer_body" class="ai-drawer-body">
-        <div id="ai_thread" class="flex flex-col gap-2" style="display: contents;"></div>
-    </div>
-
-    <div id="ai_drafts_panel" class="ai-drawer-body hidden" style="flex-direction: column;">
-        <div class="flex items-center justify-between mb-1">
-            <span class="ai-drawer-title" style="font-size: 11px;">Draft batches</span>
-            <button type="button" id="ai_undo_all_btn" class="ai-icon-btn" title="Undo every undoable batch">Undo all</button>
+        <div id="ai_drawer_body" class="ai-drawer-body">
+            <div id="ai_thread" class="flex flex-col gap-2" style="display: contents;"></div>
         </div>
-        <div id="ai_batches_list" class="flex flex-col gap-2"></div>
-    </div>
 
-    <div class="ai-drawer-composer">
-        <textarea id="ai_composer_input" rows="1" placeholder="Ask the assistant... (e.g. 'I'm behind, replan this week')"></textarea>
-        <button type="button" id="ai_composer_send" title="Send (Enter)">Send</button>
+        <div id="ai_drafts_panel" class="ai-drawer-body hidden" style="flex-direction: column;">
+            <div class="flex items-center justify-between mb-1">
+                <span class="ai-drawer-title" style="font-size: 11px;">Draft batches</span>
+                <button type="button" id="ai_undo_all_btn" class="ai-icon-btn" title="Undo every undoable batch">Undo all</button>
+            </div>
+            <div id="ai_batches_list" class="flex flex-col gap-2"></div>
+        </div>
+
+        <div class="ai-drawer-composer">
+            <textarea id="ai_composer_input" rows="1" placeholder="Ask the assistant... (e.g. 'I'm behind, replan this week')"></textarea>
+            <button type="button" id="ai_composer_send" title="Send (Enter)">Send</button>
+        </div>
     </div>
 </div>

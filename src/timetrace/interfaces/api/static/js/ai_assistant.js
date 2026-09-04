@@ -28,6 +28,7 @@ function openAiDrawer() {
 }
 
 function closeAiDrawer() {
+    if (isAiFullscreenActive()) aiExitFullscreen(); // never leave the calendar stranded in a hidden drawer
     const el = document.getElementById('ai_drawer');
     if (el) el.classList.remove('ai-drawer-open');
 }
@@ -38,6 +39,74 @@ function toggleAiDrawer() {
 }
 window.closeAiDrawer = closeAiDrawer;
 window.openAiDrawer = openAiDrawer;
+
+// -- Full screen (calendar + chat side by side) --------------------------------------------
+
+// Where the page's own #calendar element normally lives, so aiExitFullscreen can put it back
+// exactly where it came from instead of guessing.
+let aiCalendarHomeParent = null;
+let aiCalendarHomeNextSibling = null;
+
+function isAiFullscreenActive() {
+    const el = document.getElementById('ai_drawer');
+    return Boolean(el && el.classList.contains('ai-drawer-fullscreen'));
+}
+
+function aiPageHasCalendar() {
+    // `calendar` is dashboard.js's top-level FullCalendar instance -- only defined (and only a
+    // real object, not just `undefined`) on the dashboard page. Checking both the JS variable
+    // and the DOM element it's bound to guards against a page that has one but not the other.
+    return typeof calendar !== 'undefined' && calendar && Boolean(document.getElementById('calendar'));
+}
+
+function aiEnterFullscreen() {
+    const drawer = document.getElementById('ai_drawer');
+    const pane = document.getElementById('ai_drawer_calendar_pane');
+    if (!drawer || !pane) return;
+    if (!isAiDrawerOpen()) openAiDrawer();
+    drawer.classList.add('ai-drawer-fullscreen');
+
+    if (aiPageHasCalendar()) {
+        const calendarEl = document.getElementById('calendar');
+        aiCalendarHomeParent = calendarEl.parentElement;
+        aiCalendarHomeNextSibling = calendarEl.nextSibling;
+        pane.appendChild(calendarEl);
+        pane.classList.remove('hidden');
+        // FullCalendar sizes itself off its container's rendered dimensions at the moment of the
+        // move; ask it to recompute once the new layout has actually painted rather than in the
+        // same frame as the reparent.
+        requestAnimationFrame(() => { if (calendar) calendar.updateSize(); });
+    }
+
+    const btn = document.getElementById('ai_fullscreen_toggle_btn');
+    if (btn) { btn.textContent = 'Exit Fullscreen'; btn.title = 'Exit full screen'; }
+}
+
+function aiExitFullscreen() {
+    const drawer = document.getElementById('ai_drawer');
+    const pane = document.getElementById('ai_drawer_calendar_pane');
+    if (!drawer) return;
+    drawer.classList.remove('ai-drawer-fullscreen');
+
+    if (aiCalendarHomeParent) {
+        const calendarEl = document.getElementById('calendar');
+        if (calendarEl) {
+            aiCalendarHomeParent.insertBefore(calendarEl, aiCalendarHomeNextSibling);
+            requestAnimationFrame(() => { if (typeof calendar !== 'undefined' && calendar) calendar.updateSize(); });
+        }
+        aiCalendarHomeParent = null;
+        aiCalendarHomeNextSibling = null;
+    }
+    if (pane) pane.classList.add('hidden');
+
+    const btn = document.getElementById('ai_fullscreen_toggle_btn');
+    if (btn) { btn.textContent = 'Fullscreen'; btn.title = 'Toggle full screen'; }
+}
+
+function aiToggleFullscreen() {
+    if (isAiFullscreenActive()) aiExitFullscreen();
+    else aiEnterFullscreen();
+}
 window.toggleAiDrawer = toggleAiDrawer;
 
 function aiAppendThreadNode(node) {
@@ -398,6 +467,9 @@ function aiSetupDrawer() {
 
     const renameConvBtn = document.getElementById('ai_rename_conversation_btn');
     if (renameConvBtn) renameConvBtn.addEventListener('click', aiRenameCurrentConversation);
+
+    const fullscreenBtn = document.getElementById('ai_fullscreen_toggle_btn');
+    if (fullscreenBtn) fullscreenBtn.addEventListener('click', aiToggleFullscreen);
 
     const select = document.getElementById('ai_conversation_select');
     if (select) select.addEventListener('change', (e) => aiSelectConversation(e.target.value));
