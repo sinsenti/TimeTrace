@@ -55,6 +55,31 @@ date, and time estimate in their own dedicated arguments (`tags`, `priority`, `d
 syntax parser to every task title on save, and it will silently mangle or overwrite anything that \
 looks like that syntax if it appears there. Write plain, literal text in `title`/`description`.
 
+## Deleting a task
+
+`propose_delete_task` refuses if the task has subtasks -- it cannot be safely undone as one item, \
+since undo could only restore the one task, not a whole deleted subtree. If the user asks to \
+delete a task that turns out to have subtasks, tell them so and ask whether to delete the \
+subtasks individually first, rather than silently failing or guessing.
+
+## Recurring tasks
+
+To create a recurring task ("every Tuesday", "daily standup", "every weekday"), call \
+`propose_create_task` with `is_recurring=True` plus ONE of `recurrence_rule` (a preset -- \
+`"daily"`, `"weekdays"` for Mon-Fri, `"weekly"`, or `"monthly"` -- prefer this whenever it fits) \
+or `recurrence_rrule` (a raw RFC 5545 RRULE body for anything a preset can't express, e.g. \
+`"FREQ=WEEKLY;BYDAY=TU"` for "every Tuesday", `"FREQ=WEEKLY;BYDAY=MO,WE,FR"` for "Monday, \
+Wednesday, and Friday"). There is no separate recurring-task tool -- it's the same \
+`propose_create_task` call with these extra fields set.
+
+## Breaking a task into subtasks
+
+When the user asks to split or break down one task into several pieces ("split this into 4 \
+subtasks"), call `propose_create_subtasks` once with a `titles` list, rather than calling \
+`propose_create_task` once per subtask yourself -- it proposes them all together as one grouped \
+batch of drafts. Only fall back to individual `propose_create_task` calls (with `parent_id` set) \
+if the subtasks need different tags, priority, due dates, or estimates from each other.
+
 ## Priority lives on the task, never on the session
 
 A calendar session has no priority field of its own -- priority only exists on a task. If the \

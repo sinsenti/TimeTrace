@@ -174,10 +174,7 @@ class DbAIToolGateway:
         limit = max(1, min(limit, 20))
         with Session(engine) as db:
             stmt = (
-                select(Task)
-                .where(func.lower(Task.title).like(f"%{q}%"))
-                .order_by(Task.created_at.desc())
-                .limit(limit)
+                select(Task).where(func.lower(Task.title).like(f"%{q}%")).order_by(Task.created_at.desc()).limit(limit)
             )
             tasks = db.exec(stmt).all()
             return [{"id": t.id, "title": t.title, "status": t.status} for t in tasks]
@@ -337,8 +334,7 @@ class DbAIToolGateway:
             field = f.get("field") if isinstance(f, dict) else None
             if field not in _ALLOWED_STATS_FILTER_FIELDS:
                 raise ValidationError(
-                    f"get_time_stats: filter field must be one of "
-                    f"{sorted(_ALLOWED_STATS_FILTER_FIELDS)}, got {field!r}"
+                    f"get_time_stats: filter field must be one of {sorted(_ALLOWED_STATS_FILTER_FIELDS)}, got {field!r}"
                 )
 
         limit = min(int(query.get("limit", 50) or 50), _STATS_MAX_LIMIT)
@@ -580,6 +576,11 @@ class DbAIToolGateway:
         parent_id: str | None = None,
         due_date: datetime | None = None,
         estimated_duration_minutes: int | None = None,
+        is_recurring: bool = False,
+        recurrence_rule: str | None = None,
+        recurrence_rrule: str | None = None,
+        recurrence_dtstart: datetime | None = None,
+        recurrence_duration_minutes: int | None = None,
         rationale: str = "",
     ) -> dict[str, Any]:
         """Proposes a new task.
@@ -591,6 +592,10 @@ class DbAIToolGateway:
         silently rewrite the title and overwrite the estimate. Put tags in `tags`, priority in
         `priority`, due date in `due_date`, and the estimate in
         `estimated_duration_minutes` instead.
+
+        Recurrence fields are passed straight through to `TaskCreate`/`RecurrenceService`
+        unvalidated here (accept-time construction validates the RRULE); `recurrence_rrule`, if
+        given, wins over `recurrence_rule`.
         """
         if not title or not title.strip():
             raise ValidationError("title must not be empty")
@@ -607,6 +612,11 @@ class DbAIToolGateway:
                 "parent_id": parent_id,
                 "due_date": _dt_iso(due_date) if due_date else None,
                 "estimated_minutes": estimated_duration_minutes,
+                "is_recurring": is_recurring,
+                "recurrence_rule": recurrence_rule,
+                "recurrence_rrule": recurrence_rrule,
+                "recurrence_dtstart": _dt_iso(recurrence_dtstart) if recurrence_dtstart else None,
+                "recurrence_duration_minutes": recurrence_duration_minutes,
                 "ui_kind": "add",
             }
             item = self._add_item(
@@ -674,6 +684,89 @@ class DbAIToolGateway:
                 rationale=rationale,
             )
         return item
+
+    def propose_delete_task(self, task_id: str, *, rationale: str = "") -> dict[str, Any]:
+        """Proposes deleting an existing task. `ui_kind` is computed as `remove`. Any session
+        still linked to this task is unlinked (`task_id` set to null), not deleted -- that's
+        `TaskService.delete_task`'s existing behavior, unchanged here.
+
+        Refuses (raises `ValidationError`) if the task has subtasks: `TaskService.delete_task`
+        cascades to the whole subtree, but this draft item can only snapshot the ONE task's
+        before-state, so undo could never faithfully restore deleted children. Delete each
+        subtask individually first, or tell the user to confirm a whole-subtree delete from the
+        task page instead.
+        """
+        # Local import: see the module docstring's "Dependency note".
+        from timetrace.services.ai_draft_service import AIDraftService
+
+        with Session(engine) as db:
+            task = db.get(Task, task_id)
+            if not task:
+                raise EntityNotFoundError("Task", task_id)
+            has_children = db.exec(select(Task.id).where(Task.parent_id == task_id).limit(1)).first() is not None
+            if has_children:
+                raise ValidationError(
+                    f"task {task_id} has subtasks; propose_delete_task cannot safely undo a "
+                    "cascading subtree delete -- delete each subtask individually first"
+                )
+            baseline = AIDraftService.normalize_task(task)
+            item = self._add_item(
+                db,
+                op="delete",
+                entity_type="task",
+                target_id=task_id,
+                proposed={"ui_kind": "remove"},
+                baseline=baseline,
+                rationale=rationale,
+            )
+        return item
+
+    def propose_create_subtasks(
+        self,
+        parent_task_id: str,
+        *,
+        titles: list[str],
+        rationale: str = "",
+    ) -> list[dict[str, Any]]:
+        """Proposes breaking `parent_task_id` down into one new subtask per entry in `titles`
+        (in order). Expands to `len(titles)` `propose_create_task`-shaped items (spec S6 --
+        deliberately no compound op), all sharing one `group_key`. Same title trap as
+        `propose_create_task` -- plain literal titles, never quick-add shorthand.
+        """
+        if not titles:
+            raise ValidationError("titles must be non-empty")
+        clean_titles = [t.strip() for t in titles if t and t.strip()]
+        if not clean_titles:
+            raise ValidationError("titles must contain at least one non-empty title")
+
+        with Session(engine) as db:
+            if not db.get(Task, parent_task_id):
+                raise EntityNotFoundError("Task", parent_task_id)
+
+            group_key = generate_uuid7()
+            results: list[dict[str, Any]] = []
+            for title in clean_titles:
+                proposed = {
+                    "title": title,
+                    "description": "",
+                    "tags": "",
+                    "priority": "-",
+                    "parent_id": parent_task_id,
+                    "ui_kind": "add",
+                    "group_key": group_key,
+                }
+                results.append(
+                    self._add_item(
+                        db,
+                        op="create",
+                        entity_type="task",
+                        target_id=None,
+                        proposed=proposed,
+                        baseline=None,
+                        rationale=rationale,
+                    )
+                )
+        return results
 
     def set_plan_summary(self, summary: str) -> dict[str, Any]:
         """Sets `aidraftbatch.summary` for this turn's batch. Not itself a CRUD op against
@@ -825,9 +918,7 @@ class DbAIToolGateway:
 
         return add_windows, remove_windows
 
-    def _clip_to_working_hours(
-        self, gaps: list[tuple[datetime, datetime]]
-    ) -> list[tuple[datetime, datetime]]:
+    def _clip_to_working_hours(self, gaps: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
         """Intersects each UTC gap with `09:00`-`17:00` local time, per local calendar day."""
         tz = daemon_tzinfo()
         result: list[tuple[datetime, datetime]] = []

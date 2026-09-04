@@ -379,6 +379,11 @@ def propose_create_task(
     parent_id: str | None = None,
     due_date: OptionalDateTime = None,
     estimated_duration_minutes: OptionalInt = None,
+    is_recurring: bool = False,
+    recurrence_rule: str | None = None,
+    recurrence_rrule: str | None = None,
+    recurrence_dtstart: OptionalDateTime = None,
+    recurrence_duration_minutes: OptionalInt = None,
     rationale: str = "",
 ) -> dict[str, Any]:
     """Proposes creating a new task as a draft the user must accept -- this does NOT create a
@@ -389,6 +394,14 @@ def propose_create_task(
     `"low"`, or `"-"` for none), a due date in `due_date`, and a time estimate in
     `estimated_duration_minutes` instead. `parent_id` must be a real task id if this is a
     subtask. Put a short human-readable reason in `rationale`.
+
+    For a recurring task ("every Tuesday", "daily", "every weekday"): set `is_recurring=True`
+    plus ONE of `recurrence_rule` (a preset: `"daily"`, `"weekdays"` (Mon-Fri), `"weekly"`, or
+    `"monthly"` -- use this whenever it fits) or `recurrence_rrule` (a raw RFC 5545 RRULE body for
+    anything a preset can't express, e.g. `"FREQ=WEEKLY;BYDAY=TU"` for "every Tuesday",
+    `"FREQ=WEEKLY;BYDAY=MO,WE,FR"` for "Monday/Wednesday/Friday"). Leave
+    `recurrence_dtstart`/`recurrence_duration_minutes` unset unless the user gave you a specific
+    start date or session length -- both default sensibly.
     """
     _log_call(
         "propose_create_task",
@@ -398,6 +411,9 @@ def propose_create_task(
         parent_id=parent_id,
         due_date=due_date,
         estimated_duration_minutes=estimated_duration_minutes,
+        is_recurring=is_recurring,
+        recurrence_rule=recurrence_rule,
+        recurrence_rrule=recurrence_rrule,
         rationale=rationale,
     )
     return _log_result(
@@ -410,6 +426,11 @@ def propose_create_task(
             parent_id=parent_id,
             due_date=due_date,
             estimated_duration_minutes=estimated_duration_minutes,
+            is_recurring=is_recurring,
+            recurrence_rule=recurrence_rule,
+            recurrence_rrule=recurrence_rrule,
+            recurrence_dtstart=recurrence_dtstart,
+            recurrence_duration_minutes=recurrence_duration_minutes,
             rationale=rationale,
         ),
     )
@@ -464,6 +485,51 @@ def propose_update_task(
 
 
 @tool
+def propose_delete_task(
+    task_id: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes deleting an existing task as a draft the user must accept -- this does NOT
+    delete the real task. Any session still linked to this task is unlinked, not deleted.
+    `task_id` must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`.
+
+    This call FAILS if the task has subtasks -- it cannot be safely undone as one item, since
+    undo could only restore the one task, not a whole deleted subtree. Delete the subtasks first
+    (one `propose_delete_task` call each), or tell the user it has subtasks and ask them to
+    confirm a whole-subtree delete from the task page instead. Put a short human-readable reason
+    in `rationale`.
+    """
+    _log_call("propose_delete_task", task_id=task_id, rationale=rationale)
+    return _log_result("propose_delete_task", runtime.context.gateway.propose_delete_task(task_id, rationale=rationale))
+
+
+@tool
+def propose_create_subtasks(
+    parent_task_id: str,
+    titles: list[str],
+    runtime: ToolRuntime[AIAgentContext, Any],
+    rationale: str = "",
+) -> list[dict[str, Any]]:
+    """Proposes breaking `parent_task_id` down into multiple new subtasks in one call, as drafts
+    the user must accept -- this does NOT create any real tasks. One subtask is proposed per
+    entry in `titles`, in order; each title must be plain literal text (same trap as
+    `propose_create_task` -- never `#tag`/`!high`/`(desc)`/`due:3d`/`[15m]` shorthand).
+    `parent_task_id` must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`.
+
+    Use this for the common case of "just split this into N titled pieces." If the subtasks need
+    different tags, priority, due dates, or estimates from each other, call `propose_create_task`
+    separately for each one instead (with `parent_id=parent_task_id`), since this tool only takes
+    titles. Put a short human-readable reason in `rationale`.
+    """
+    _log_call("propose_create_subtasks", parent_task_id=parent_task_id, titles=titles, rationale=rationale)
+    return _log_result(
+        "propose_create_subtasks",
+        runtime.context.gateway.propose_create_subtasks(parent_task_id, titles=titles, rationale=rationale),
+    )
+
+
+@tool
 def set_plan_summary(summary: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
     """Sets a short, human-readable one-line summary for everything you've proposed this turn
     (e.g. "Moved 3 sessions to the afternoon, added 2 new tasks"). Call this once, after all your
@@ -487,6 +553,8 @@ ALL_TOOLS = [
     propose_split_session,
     propose_create_task,
     propose_update_task,
+    propose_delete_task,
+    propose_create_subtasks,
     set_plan_summary,
 ]
 

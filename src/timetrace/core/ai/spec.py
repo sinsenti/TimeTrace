@@ -155,6 +155,11 @@ class AIToolGateway(Protocol):
         parent_id: str | None = None,
         due_date: datetime | None = None,
         estimated_duration_minutes: int | None = None,
+        is_recurring: bool = False,
+        recurrence_rule: str | None = None,
+        recurrence_rrule: str | None = None,
+        recurrence_dtstart: datetime | None = None,
+        recurrence_duration_minutes: int | None = None,
         rationale: str = "",
     ) -> dict[str, Any]:
         """Proposes a new task.
@@ -164,6 +169,12 @@ class AIToolGateway(Protocol):
         `TaskService.create_task` runs `apply_quick_task_syntax` + `parse_title_estimation` on
         every create and will silently rewrite/overwrite them. Put tags/priority/due/estimate in
         their own fields instead.
+
+        Recurrence: set `is_recurring=True` plus either `recurrence_rule` (one of the presets
+        `"daily"`, `"weekdays"`, `"weekly"`, `"monthly"`) or `recurrence_rrule` (a raw RFC 5545
+        RRULE body, e.g. `"FREQ=WEEKLY;BYDAY=TU"` for "every Tuesday") -- `recurrence_rrule` wins
+        if both are given. `recurrence_dtstart`/`recurrence_duration_minutes` default sensibly
+        (today/now, and the task's own estimate) if omitted.
         """
         ...
 
@@ -182,6 +193,35 @@ class AIToolGateway(Protocol):
     ) -> dict[str, Any]:
         """Proposes a change to an existing task. Same title/description trap as
         `propose_create_task` applies to updates run through `TaskService.update_task`."""
+        ...
+
+    def propose_delete_task(self, task_id: str, *, rationale: str = "") -> dict[str, Any]:
+        """Proposes deleting an existing task. `ui_kind` is computed as `remove`. Any session
+        still linked to this task is unlinked (`task_id` set to null), not deleted.
+
+        Refuses (raises `ValidationError`) if the task has subtasks -- a cascading subtree delete
+        can only ever be captured as a single draft item's before/after snapshot, so undo could
+        not faithfully restore the children. Delete each subtask individually first, or tell the
+        user to confirm a whole-subtree delete from the task page instead.
+        """
+        ...
+
+    def propose_create_subtasks(
+        self,
+        parent_task_id: str,
+        *,
+        titles: list[str],
+        rationale: str = "",
+    ) -> list[dict[str, Any]]:
+        """Proposes breaking `parent_task_id` down into multiple subtasks in one call, one per
+        title in `titles` (in order). Expands to `len(titles)` `propose_create_task`-shaped items
+        (spec S6 -- deliberately no compound op, keeping apply/undo per-row trivial), each with
+        `parent_id=parent_task_id`, all sharing one `group_key` so the frontend can render them as
+        one group. Same title trap as `propose_create_task` -- plain literal titles, no quick-add
+        shorthand. Use `propose_create_task` directly (with `parent_id` set) instead if the
+        subtasks need different tags/priority/due dates/estimates from each other; this tool is
+        for the common case of "just split this into N titled pieces."
+        """
         ...
 
     def set_plan_summary(self, summary: str) -> dict[str, Any]:
