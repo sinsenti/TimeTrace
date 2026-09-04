@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TimeTrace Revision Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/ai.css">
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
@@ -353,6 +354,7 @@
 
     {% include "components/settings_modal.html" %}
     {% include "components/confirm_modal.html" %}
+    {% include "components/ai_drawer.html" %}
 
     <script src="/static/js/api_client.js"></script>
     <script src="/static/js/utils.js"></script>
@@ -364,5 +366,7 @@
     <script src="/static/js/day_history.js"></script>
     <script src="/static/js/session_review.js"></script>
     <script src="/static/js/task_inspector.js"></script>
+    <script src="/static/js/ai_assistant.js"></script>
+    <script src="/static/js/ai_drafts.js"></script>
 </body>
 </html>

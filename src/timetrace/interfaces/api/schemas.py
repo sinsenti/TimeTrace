@@ -417,3 +417,335 @@ class ClearScheduledSessionsRequest(BaseModel):
 class ClearScheduledSessionsResponse(BaseModel):
     deleted_count: int
     deleted_session_ids: list[str]
+
+
+# ================================================================================================
+# AI assistant (docs/ai-assistant-spec.md S4/S7). AI-prefixed DTOs only -- everything above this
+# line belongs to earlier features and is untouched.
+# ================================================================================================
+
+
+class AIProviderConfigResponse(BaseModel):
+    """Never exposes `api_key_encrypted`; only whether one is set and its last 4 chars
+    (spec S4 "API keys at rest")."""
+
+    id: str
+    name: str
+    provider: str
+    model: str
+    base_url: str | None = None
+    api_key_set: bool
+    api_key_last4: str | None = None
+    temperature: float
+    max_output_tokens: int
+    request_timeout_seconds: int
+    sanitization_level: str
+    use_native_openrouter: bool
+    extra_params: dict[str, Any] = Field(default_factory=dict)
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIProviderCreateRequest(BaseModel):
+    name: str
+    provider: str
+    model: str
+    base_url: str | None = None
+    api_key: str | None = None
+    temperature: float = 0.0
+    max_output_tokens: int = 4096
+    request_timeout_seconds: int = 120
+    sanitization_level: str = "standard"
+    use_native_openrouter: bool = False
+    extra_params: dict[str, Any] | None = None
+
+
+class AIProviderUpdateRequest(BaseModel):
+    """Every field is optional and the router calls `model_dump(exclude_unset=True)` before
+    forwarding to `AIProviderService.update_provider` -- an OMITTED `api_key` keeps the stored
+    key, an explicit `""` clears it (spec S9.4)."""
+
+    name: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    base_url: str | None = None
+    api_key: str | None = None
+    temperature: float | None = None
+    max_output_tokens: int | None = None
+    request_timeout_seconds: int | None = None
+    sanitization_level: str | None = None
+    use_native_openrouter: bool | None = None
+    extra_params: dict[str, Any] | None = None
+
+
+class AIProviderInlineConfig(BaseModel):
+    """Unsaved provider config, for `POST /providers/test` without storing anything first."""
+
+    provider: str
+    model: str
+    base_url: str | None = None
+    api_key: str | None = None
+    temperature: float = 0.0
+    max_output_tokens: int = 4096
+    request_timeout_seconds: int = 120
+    use_native_openrouter: bool = False
+    extra_params: dict[str, Any] | None = None
+
+
+class AIProviderTestRequest(BaseModel):
+    """Exactly one of `config_id` / `inline_config` -- validated in the service."""
+
+    config_id: str | None = None
+    inline_config: AIProviderInlineConfig | None = None
+
+
+class AIProviderTestResult(BaseModel):
+    success: bool
+    error: str | None = None
+
+
+class AISettingsResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    quickadd_fallback_enabled: bool
+    redact_before_send: bool
+    preview_on_calendar: bool
+    scheduling_window_days: int
+    batch_undo_retention_days: int
+    created_at: datetime
+    updated_at: datetime
+
+
+class AISettingsUpdateRequest(BaseModel):
+    quickadd_fallback_enabled: bool | None = None
+    redact_before_send: bool | None = None
+    preview_on_calendar: bool | None = None
+    scheduling_window_days: int | None = None
+    batch_undo_retention_days: int | None = None
+
+
+class AIConversationResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    title: str
+    intent: str | None = None
+    provider_config_id: str | None = None
+    is_archived: bool
+    message_count: int
+    total_input_tokens: int
+    total_output_tokens: int
+    last_message_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIConversationCreateRequest(BaseModel):
+    title: str | None = None
+    intent: str | None = None
+    provider_config_id: str | None = None
+
+
+class AIConversationUpdateRequest(BaseModel):
+    title: str | None = None
+    is_archived: bool | None = None
+
+
+class AIChatMessageResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    conversation_id: str
+    position: int
+    role: str
+    content: str
+    tool_calls_json: str | None = None
+    tool_call_id: str | None = None
+    tool_name: str | None = None
+    draft_batch_id: str | None = None
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    latency_ms: int | None = None
+    error: str | None = None
+    created_at: datetime
+
+
+class AIConversationDetailResponse(AIConversationResponse):
+    messages: list[AIChatMessageResponse] = Field(default_factory=list)
+
+
+class AIChatMessageRequest(BaseModel):
+    """Body for `POST /conversations/{id}/messages`. `stream=True` switches the response to
+    `text/event-stream` (spec S7) -- the response shape returned by the router differs, this
+    schema does not."""
+
+    text: str
+    stream: bool = False
+
+
+class AIDraftItemResponse(BaseModel):
+    """`proposed`/`baseline`/`applied_before`/`applied_after` are the parsed JSON snapshots
+    (spec S4 item 6); `ui_kind`/`group_key` are read back out of `proposed` for badge display
+    (spec S6) rather than re-derived by the frontend. `is_stale` is computed at read time,
+    never stored (spec S4)."""
+
+    id: str
+    batch_id: str
+    position: int
+    op: str
+    entity_type: str
+    target_id: str | None = None
+    proposed: dict[str, Any] = Field(default_factory=dict)
+    baseline: dict[str, Any] | None = None
+    applied_before: dict[str, Any] | None = None
+    applied_after: dict[str, Any] | None = None
+    applied_entity_id: str | None = None
+    status: str
+    rationale: str | None = None
+    error: str | None = None
+    is_stale: bool
+    ui_kind: str | None = None
+    group_key: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AIDraftOverlayItemResponse(AIDraftItemResponse):
+    """The calendar draft layer (spec S7 `GET /drafts/overlay`). `display.*_local` and `day_key`
+    are server-computed local-day values -- the frontend must never slice `start_time[:10]`
+    (that buckets by UTC)."""
+
+    display: dict[str, Any]
+    day_key: str
+
+
+class AIDraftBatchResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    conversation_id: str | None = None
+    source_message_id: str | None = None
+    intent: str | None = None
+    request_text: str | None = None
+    summary: str | None = None
+    status: str
+    provider: str | None = None
+    model: str | None = None
+    item_count: int
+    created_at: datetime
+    decided_at: datetime | None = None
+    undone_at: datetime | None = None
+
+
+class AIDraftBatchDetailResponse(AIDraftBatchResponse):
+    items: list[AIDraftItemResponse] = Field(default_factory=list)
+
+
+class AIChatTurnResponse(BaseModel):
+    """Return shape of a non-streaming chat turn (spec S7). `draft_batch` is populated only when
+    the turn's tool calls produced at least one draft item."""
+
+    conversation: AIConversationResponse
+    message: AIChatMessageResponse
+    draft_batch: AIDraftBatchDetailResponse | None = None
+
+
+class AIDraftItemResult(BaseModel):
+    item_id: str
+    status: str
+    error: str | None = None
+    applied_entity_id: str | None = None
+
+
+class AIDraftBatchActionResult(BaseModel):
+    """Shape of `AIDraftService.reject_batch`/`undo_batch` (spec S7/S8)."""
+
+    batch_id: str
+    batch_status: str
+    items: list[AIDraftItemResult]
+
+
+class AIApplyResult(AIDraftBatchActionResult):
+    """Shape of `AIDraftService.accept_items`/`reapply_batch`. Always 200 with per-item results
+    (spec S7 "apply always returns 200") -- `completion_policies` reuses the EXISTING
+    `CompletionPolicyPrompt` schema from the 2026-08-24 completion-policy feature, never
+    reinvented (spec S7 explicit)."""
+
+    completion_policies: list[CompletionPolicyPrompt] = Field(default_factory=list)
+
+
+class AIDraftItemPatchRequest(BaseModel):
+    """Body for `PATCH /drafts/items/{id}` -- a partial update merged into the still-pending
+    item's `proposed_json` (spec S7 "edit before accept")."""
+
+    proposed: dict[str, Any]
+
+
+class AIDraftItemRejectRequest(BaseModel):
+    reason: str | None = None
+
+
+class AIDraftBatchItemsRequest(BaseModel):
+    """Body for accept/undo/reapply -- omit `item_ids` to act on every item in the batch."""
+
+    item_ids: list[str] | None = None
+
+
+class AIDraftBatchRejectRequest(BaseModel):
+    item_ids: list[str] | None = None
+    reason: str | None = None
+
+
+class AIDraftUndoRequest(BaseModel):
+    """Body for `POST /drafts/undo` -- the one-action week undo (spec S7). Omit both fields to
+    undo every currently-undoable batch."""
+
+    batch_ids: list[str] | None = None
+    since: datetime | None = None
+
+
+class AIStatusResponse(BaseModel):
+    """Cheap navbar-badge call (spec S7)."""
+
+    configured: bool
+    default_provider: str | None = None
+    quickadd_fallback_enabled: bool
+    pending_draft_count: int
+    undoable_batch_count: int
+    latest_batch: AIDraftBatchResponse | None = None
+
+
+class AIQuickAddClassifyRequest(BaseModel):
+    text: str
+    force_tier: int | None = None
+
+
+class AIQuickAddClassifyResponse(BaseModel):
+    """No LLM call (spec S7) -- just `route_quick_add`'s tier decision."""
+
+    tier: int
+    reason: str
+    signals: list[str] = Field(default_factory=list)
+    remaining_text: str = ""
+    remaining_word_count: int = 0
+
+
+class AIQuickAddParseRequest(BaseModel):
+    text: str
+    force_tier: int | None = None
+
+
+class AIQuickAddParseResponse(BaseModel):
+    """Read-only -- creates nothing (spec S7). `fields` is a best-effort extraction the quick-add
+    modal strip prefills from; `tier=1` when escalation wasn't needed (or a provider isn't
+    configured and fallback is enabled), in which case `fields` is empty and the caller should
+    fall back to the existing tier-1 regex parser."""
+
+    tier: int
+    reason: str
+    fields: dict[str, Any] = Field(default_factory=dict)
+    raw_text: str

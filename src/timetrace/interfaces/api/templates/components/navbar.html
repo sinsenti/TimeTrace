@@ -10,6 +10,10 @@
     <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
         Settings
     </button>
+    <button type="button" id="ai_launcher_btn" title="AI Assistant (Ctrl+Shift+A)" class="ai-launcher-btn h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
+        Assistant
+        <span id="ai_launcher_badge" class="ai-launcher-badge hidden">0</span>
+    </button>
     {% if active_page == 'dashboard' %}
     <span id="vim_mode_indicator" class="h-8 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
         -- NORMAL --

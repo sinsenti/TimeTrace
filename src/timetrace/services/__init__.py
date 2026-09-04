@@ -1,3 +1,8 @@
+from timetrace.services.ai_audit_service import AIAuditService
+from timetrace.services.ai_chat_service import AIChatService
+from timetrace.services.ai_draft_service import AIDraftService
+from timetrace.services.ai_provider_service import AIProviderService, AISettingsService
+from timetrace.services.ai_tool_gateway import DbAIToolGateway
 from timetrace.services.analytics_service import AnalyticsService
 from timetrace.services.habit_service import HabitService
 from timetrace.services.query_service import QueryService
@@ -18,4 +23,10 @@ __all__ = [
     "RecurrenceService",
     "AnalyticsService",
     "QueryService",
+    "AIProviderService",
+    "AISettingsService",
+    "AIAuditService",
+    "AIDraftService",
+    "AIChatService",
+    "DbAIToolGateway",
 ]

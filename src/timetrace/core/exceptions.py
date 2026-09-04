@@ -23,3 +23,10 @@ class ValidationError(TimeTraceError):
     """Raised when business logic validation fails."""
 
     pass
+
+
+class AIProviderError(TimeTraceError):
+    """Raised when a configured LLM provider call fails (auth, timeout, rate limit, bad
+    response, etc). Mapped to HTTP 502 by a handler in the root `main.py`."""
+
+    pass

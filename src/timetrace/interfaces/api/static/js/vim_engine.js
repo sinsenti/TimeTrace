@@ -119,6 +119,18 @@ function setupVimKeyboardListeners() {
             return;
         }
 
+        // AI drawer guard (spec S9.4): the drawer floats over the calendar, and reading a draft
+        // card with the mouse then pressing a bare key (e.g. 'x') must not fall through to
+        // vim's bare-e.key switch below and delete a calendar session. Bail out whenever the
+        // drawer is open OR focus is anywhere inside it, matching the existing "focus in an
+        // input" escape hatch above rather than a parallel mechanism.
+        const drawerEl = document.getElementById('ai_drawer');
+        const drawerOpen = drawerEl && drawerEl.classList.contains('ai-drawer-open');
+        const focusInDrawer = drawerEl && activeEl && drawerEl.contains(activeEl);
+        if (drawerOpen || focusInDrawer) {
+            return;
+        }
+
         if (!cursorStart) {
             initVimCursor();
         }
