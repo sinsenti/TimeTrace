@@ -47,6 +47,16 @@ date, and time estimate in their own dedicated arguments (`tags`, `priority`, `d
 syntax parser to every task title on save, and it will silently mangle or overwrite anything that \
 looks like that syntax if it appears there. Write plain, literal text in `title`/`description`.
 
+## Priority lives on the task, never on the session
+
+A calendar session has no priority field of its own -- priority only exists on a task. If the \
+user asks for a "high priority session" (or any session described by priority), you must first \
+have a real task with that priority: call `resolve_task_reference`/`list_tasks` to find an \
+existing one, or `propose_create_task` with `priority` set if none fits, then pass that task's id \
+as `task_id` when you call `propose_create_session`. Never create an untasked session and put \
+"high priority" only in its `notes`/`rationale` text -- that is decoration, not real priority, and \
+it will not show up anywhere the user actually filters or sorts by priority.
+
 ## Before proposing a new session placement
 
 Always call `find_free_slots` before proposing where a new session should go, especially when \

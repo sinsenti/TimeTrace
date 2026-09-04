@@ -17,7 +17,11 @@ from timetrace.db.session import init_db
 from timetrace.interfaces.api.routers import api_router
 from timetrace.interfaces.api.routers.web import router as web_router
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 logger = logging.getLogger("timetrace")
 
 
@@ -36,6 +40,20 @@ async def idle_checker_loop():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # init_db() -> run_migrations() -> alembic's env.py calls logging.config.fileConfig() against
+    # alembic.ini, which sets the ROOT logger to level=WARN with its own handler+formatter
+    # (alembic.ini's [logger_root]/[handler_console] sections) -- silently overriding the INFO
+    # level and asctime format set up above, for the rest of the process's life. Confirmed live:
+    # every app-level logger.info() call (including the full AI step-by-step trace) went missing
+    # after the first daemon startup, while a bare print() still worked, since it's genuinely
+    # below the new WARN threshold rather than a stdio/redirection problem. Reassert our config
+    # after init_db() runs so this survives every daemon start.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        datefmt="%Y-%m-%d %H:%M:%S",
+        force=True,
+    )
     idle_task = asyncio.create_task(idle_checker_loop())
     yield
     idle_task.cancel()

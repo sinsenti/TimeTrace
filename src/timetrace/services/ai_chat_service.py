@@ -22,6 +22,7 @@ zero items and no `summary` -- no empty-batch clutter in the undo history, and n
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from collections.abc import AsyncIterator
@@ -63,6 +64,8 @@ from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.ai_draft_service import AIDraftService
 from timetrace.services.ai_provider_service import AIProviderService, AISettingsService
 from timetrace.services.ai_tool_gateway import DbAIToolGateway
+
+logger = logging.getLogger("timetrace.ai")
 
 # Recent-history window replayed into the agent on every turn. Not specced -- a judgment call.
 # 20 rows is generous multi-turn context (a "turn" mints several rows: user + assistant + n tool
@@ -292,9 +295,11 @@ class AIChatService:
     # -- chat turns ------------------------------------------------------------------------
 
     async def run_turn(self, conversation_id: str, user_text: str) -> AIChatTurnResponse:
+        logger.info("AI turn start: conversation=%s text=%r", conversation_id, user_text[:200])
         conv = self.get_conversation(conversation_id)
         provider_config = self._resolve_provider_config(conv)
         sanitized_text = self._sanitize_for_provider(user_text, provider_config)
+        logger.info("AI turn provider: %s/%s", provider_config.provider, provider_config.model)
 
         user_msg = self.add_message(conversation_id, role="user", content=sanitized_text)
 
@@ -307,6 +312,7 @@ class AIChatService:
             provider=provider_config.provider,
             model=provider_config.model,
         )
+        logger.info("AI turn batch created: batch=%s", batch.id)
         gateway = DbAIToolGateway(batch_id=batch.id)
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
@@ -319,7 +325,8 @@ class AIChatService:
                 sanitization_level=provider_config.sanitization_level,
                 extra_system_context=self._turn_context(),
             )
-        except AIProviderError:
+        except AIProviderError as exc:
+            logger.warning("AI turn failed building agent: conversation=%s error=%s", conversation_id, exc)
             self._finalize_batch(batch.id, None)
             raise
 
@@ -328,6 +335,13 @@ class AIChatService:
             result = await agent.ainvoke({"messages": input_messages}, context=AIAgentContext(gateway=gateway))
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
+            logger.warning(
+                "AI turn failed: conversation=%s batch=%s latency_ms=%d error=%s",
+                conversation_id,
+                batch.id,
+                latency_ms,
+                exc,
+            )
             self.add_message(
                 conversation_id,
                 role="assistant",
@@ -357,6 +371,13 @@ class AIChatService:
         finalized_batch = self._finalize_batch(batch.id, final_msg)
         conv = self.get_conversation(conversation_id)
         draft_batch_resp = self.get_draft_batch_detail(finalized_batch.id) if finalized_batch else None
+        logger.info(
+            "AI turn done: conversation=%s batch=%s latency_ms=%d draft_items=%d",
+            conversation_id,
+            finalized_batch.id if finalized_batch else None,
+            latency_ms,
+            finalized_batch.item_count if finalized_batch else 0,
+        )
 
         return AIChatTurnResponse(
             conversation=AIConversationResponse.model_validate(conv),
@@ -382,7 +403,9 @@ class AIChatService:
             yield _sse("error", {"message": str(exc)})
             return
 
+        logger.info("AI turn start (stream): conversation=%s text=%r", conversation_id, user_text[:200])
         sanitized_text = self._sanitize_for_provider(user_text, provider_config)
+        logger.info("AI turn provider: %s/%s", provider_config.provider, provider_config.model)
         user_msg = self.add_message(conversation_id, role="user", content=sanitized_text)
         yield _sse("message_start", {"conversation_id": conversation_id, "user_message_id": user_msg.id})
 
@@ -395,6 +418,7 @@ class AIChatService:
             provider=provider_config.provider,
             model=provider_config.model,
         )
+        logger.info("AI turn batch created: batch=%s", batch.id)
         gateway = DbAIToolGateway(batch_id=batch.id)
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
@@ -440,6 +464,7 @@ class AIChatService:
                         yield _sse("token", {"text": text})
                 elif mode == "updates":
                     for node_name, node_update in (data or {}).items():
+                        logger.info("AI turn step: conversation=%s node=%s", conversation_id, node_name)
                         yield _sse("status", {"message": "running tools" if node_name == "tools" else "thinking"})
                         if isinstance(node_update, dict):
                             msgs = node_update.get("messages")
@@ -447,6 +472,13 @@ class AIChatService:
                                 new_messages.extend(msgs)
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
+            logger.warning(
+                "AI turn failed (stream): conversation=%s batch=%s latency_ms=%d error=%s",
+                conversation_id,
+                batch.id,
+                latency_ms,
+                exc,
+            )
             self.add_message(
                 conversation_id,
                 role="assistant",
@@ -478,6 +510,13 @@ class AIChatService:
             draft_resp = self.get_draft_batch_detail(finalized_batch.id)
             yield _sse("draft", json.loads(draft_resp.model_dump_json()))
 
+        logger.info(
+            "AI turn done (stream): conversation=%s batch=%s latency_ms=%d draft_items=%d",
+            conversation_id,
+            finalized_batch.id if finalized_batch else None,
+            latency_ms,
+            finalized_batch.item_count if finalized_batch else 0,
+        )
         yield _sse("message_end", json.loads(AIChatMessageResponse.model_validate(final_msg).model_dump_json()))
 
     # -- draft-adjacent reads (kept here; see module docstring) -----------------------------
@@ -706,15 +745,24 @@ class AIChatService:
         offset = now_local - now_utc
         offset_hours = offset.total_seconds() / 3600
         sign = "+" if offset_hours >= 0 else "-"
+        # A concrete worked example beats a verbal rule -- confirmed live: telling the model to
+        # "convert using the offset above" left the arithmetic direction ambiguous and it added
+        # the offset instead of subtracting it (local 21:40 -> stored as 23:40 UTC, +2h too late,
+        # for a UTC+2 local zone). Showing the actual subtraction with today's real numbers is
+        # unambiguous and directly copyable.
+        example_local = now_local.replace(hour=21, minute=40, second=0, microsecond=0)
+        example_utc = example_local - offset
         return (
             f"Current UTC datetime: {now_utc.isoformat()}. "
             f"Current local datetime: {now_local.isoformat()} ({daemon_timezone_name()}, "
             f"UTC{sign}{abs(offset_hours):g}). "
             "Every tool argument that takes a datetime is naive UTC with no timezone suffix, "
             "in ISO 8601 format (e.g. 2026-09-04T22:00:00) -- always include the date, never a "
-            "bare time like '22:00'. Convert any local/relative time the user gives you "
-            "('until 10pm', 'tomorrow morning') into UTC using the offset above before calling a "
-            "tool."
+            "bare time like '22:00'. The user always speaks in LOCAL time; every datetime tool "
+            "argument must be UTC. To convert, SUBTRACT the local offset from the local time "
+            f"(never add it): local time minus UTC{sign}{abs(offset_hours):g} equals UTC time. "
+            f"Worked example using today's date: local {example_local.isoformat()} "
+            f"-> UTC {example_utc.isoformat()}."
         )
 
     def _recent_history(self, conversation_id: str, exclude_message_id: str | None = None) -> list[AIChatMessage]:

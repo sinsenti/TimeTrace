@@ -13,6 +13,7 @@ persisted). `is_stale` is deliberately computed at read time and never stored.
 """
 
 import json
+import logging
 from datetime import datetime
 from typing import Any
 
@@ -31,6 +32,8 @@ from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.ai_audit_service import AIAuditService
 from timetrace.services.session_service import SessionService
 from timetrace.services.task_service import TaskService
+
+logger = logging.getLogger("timetrace.ai")
 
 # AIDraftItem.op
 CREATE_OPS = ("create",)
@@ -225,6 +228,7 @@ class AIDraftService:
         """Per spec: process pending items in `position` order. Always returns 200-shaped
         per-item results -- a blanket failure on one stale item must never block the rest of
         the batch."""
+        logger.info("AI accept_items: batch=%s item_ids=%s actor=%s", batch_id, item_ids, actor)
         batch = self._get_batch(batch_id)
         items = self._items_for_batch(batch_id, item_ids, descending=False)
 
@@ -237,10 +241,12 @@ class AIDraftService:
                 continue
             result = self._accept_one(item, actor=actor)
             results.append(result)
+            logger.info("AI accept item: batch=%s item=%s -> %s", batch_id, item.id, result.get("status"))
             if result.get("completion_policy") is not None:
                 completion_policies.append(result["completion_policy"])
 
         self._recompute_batch_status(batch)
+        logger.info("AI accept_items done: batch=%s status=%s items=%d", batch_id, batch.status, len(results))
         return {
             "batch_id": batch.id,
             "batch_status": batch.status,
@@ -382,6 +388,7 @@ class AIDraftService:
         against `applied_after_json`; a mismatch means the user edited it since accept, and the
         item is reported as a conflict and left alone -- silently reverting a later manual edit
         is the worst possible failure mode for this feature."""
+        logger.info("AI undo_batch: batch=%s item_ids=%s actor=%s", batch_id, item_ids, actor)
         batch = self._get_batch(batch_id)
         items = self._items_for_batch(batch_id, item_ids, descending=True)
 
@@ -390,13 +397,16 @@ class AIDraftService:
             if item.status != "applied":
                 results.append({"item_id": item.id, "status": item.status, "error": "not applied; skipped"})
                 continue
-            results.append(self._undo_one(item, actor=actor, reason=reason))
+            result = self._undo_one(item, actor=actor, reason=reason)
+            results.append(result)
+            logger.info("AI undo item: batch=%s item=%s -> %s", batch_id, item.id, result.get("status"))
 
         self._recompute_batch_status(batch)
         if batch.status == "undone":
             batch.undone_at = utc_now()
             self.db.add(batch)
             self.db.commit()
+        logger.info("AI undo_batch done: batch=%s status=%s items=%d", batch_id, batch.status, len(results))
         return {"batch_id": batch.id, "batch_status": batch.status, "items": results}
 
     def _undo_one(self, item: AIDraftItem, actor: str, reason: str | None) -> dict[str, Any]:
@@ -474,6 +484,7 @@ class AIDraftService:
         """`undone` is not terminal: an undone batch may be re-applied. Re-runs the original
         `proposed_json` against whatever `undo_batch` left live (ascending position order, like
         the original accept)."""
+        logger.info("AI reapply_batch: batch=%s item_ids=%s actor=%s", batch_id, item_ids, actor)
         batch = self._get_batch(batch_id)
         items = self._items_for_batch(batch_id, item_ids, descending=False)
 
@@ -485,10 +496,12 @@ class AIDraftService:
                 continue
             result = self._reapply_one(item, actor=actor)
             results.append(result)
+            logger.info("AI reapply item: batch=%s item=%s -> %s", batch_id, item.id, result.get("status"))
             if result.get("completion_policy") is not None:
                 completion_policies.append(result["completion_policy"])
 
         self._recompute_batch_status(batch)
+        logger.info("AI reapply_batch done: batch=%s status=%s items=%d", batch_id, batch.status, len(results))
         return {
             "batch_id": batch.id,
             "batch_status": batch.status,

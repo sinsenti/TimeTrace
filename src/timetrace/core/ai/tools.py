@@ -19,6 +19,7 @@ gateway instance itself, so the model cannot address any batch but the one it wa
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Annotated, Any
@@ -27,6 +28,21 @@ from langchain.tools import ToolRuntime, tool
 from pydantic import BeforeValidator
 
 from timetrace.core.ai.spec import AIToolGateway
+
+logger = logging.getLogger("timetrace.ai")
+
+
+def _log_call(name: str, **kwargs: Any) -> None:
+    """Full step-by-step visibility into what the agent is doing: every tool call it makes,
+    logged before the gateway call runs. Omits arguments left at their default `None`/empty so
+    the log line stays readable for the common case of a mostly-omitted call."""
+    shown = {k: v for k, v in kwargs.items() if v not in (None, "")}
+    logger.info("AI tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in shown.items()))
+
+
+def _log_result(name: str, result: Any) -> Any:
+    logger.info("AI tool result: %s -> %s", name, result)
+    return result
 
 
 def _blank_to_none(value: Any) -> Any:
@@ -107,6 +123,7 @@ def list_tasks(
     calls (e.g. as `task_id` on `propose_create_session`), but never invent an id yourself; only
     ever use one that came back from this tool, `get_task`, or `resolve_task_reference`.
     """
+    _log_call("list_tasks", status=status, tag=tag, priority=priority, parent_id=parent_id, include_done=include_done)
     return runtime.context.gateway.list_tasks(
         status=status,
         tag=tag,
@@ -123,6 +140,7 @@ def get_task(task_id: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[st
     `list_tasks`, `resolve_task_reference`, or a previous tool result -- never one you guessed or
     remembered from an earlier conversation.
     """
+    _log_call("get_task", task_id=task_id)
     return runtime.context.gateway.get_task(task_id)
 
 
@@ -139,6 +157,7 @@ def resolve_task_reference(
     matched instead of guessing; if it returns more than one candidate, ask the user which one
     they mean instead of picking for them.
     """
+    _log_call("resolve_task_reference", query=query)
     return runtime.context.gateway.resolve_task_reference(query, limit=limit)
 
 
@@ -156,6 +175,7 @@ def list_sessions(
     `find_free_slots` over eyeballing this list when you specifically need open time, since it
     already does the gap math (including anything you've proposed earlier this turn).
     """
+    _log_call("list_sessions", start=start, end=end, task_id=task_id)
     return runtime.context.gateway.list_sessions(start=start, end=end, task_id=task_id, limit=limit)
 
 
@@ -177,6 +197,13 @@ def find_free_slots(
     Always call this before `propose_create_session` when you are choosing the placement
     yourself rather than following an explicit time the user gave you.
     """
+    _log_call(
+        "find_free_slots",
+        start=start,
+        end=end,
+        min_duration_minutes=min_duration_minutes,
+        working_hours_only=working_hours_only,
+    )
     return runtime.context.gateway.find_free_slots(
         start=start,
         end=end,
@@ -195,6 +222,7 @@ def get_time_stats(query: dict[str, Any], runtime: ToolRuntime[AIAgentContext, A
     `"priority"`, `"category"`), an optional `filters` list, and an optional `date_range`. Use
     this instead of trying to compute totals yourself from `list_sessions` output.
     """
+    _log_call("get_time_stats", query=query)
     return runtime.context.gateway.get_time_stats(query)
 
 
@@ -220,18 +248,28 @@ def propose_create_session(
     or `None` for an untasked session. Put a short human-readable reason in `rationale` (e.g. why
     you chose this slot) -- it's shown to the user alongside the draft, not sent back to you.
 
+    A session has NO priority field of its own -- priority lives only on a task. If the user wants
+    a "high priority" (or any-priority) session, `task_id` must point at a real task that already
+    has that priority (create one with `propose_create_task(priority=...)` first if none fits).
+    Writing "high priority" only in `notes`/`rationale` on an untasked session is decorative, not
+    real priority.
+
     `start_time`/`end_time` must be a full ISO 8601 datetime WITH a date, in UTC (e.g.
     `2026-09-04T22:00:00`) -- never a bare time like `"22:00"`. Use the current UTC/local
     datetime given in the system context to pick the right date and convert any local/relative
     time the user gave you into UTC.
     """
-    return runtime.context.gateway.propose_create_session(
-        task_id=task_id,
-        start_time=start_time,
-        end_time=end_time,
-        notes=notes,
-        tags=tags,
-        rationale=rationale,
+    _log_call("propose_create_session", task_id=task_id, start_time=start_time, end_time=end_time, rationale=rationale)
+    return _log_result(
+        "propose_create_session",
+        runtime.context.gateway.propose_create_session(
+            task_id=task_id,
+            start_time=start_time,
+            end_time=end_time,
+            notes=notes,
+            tags=tags,
+            rationale=rationale,
+        ),
     )
 
 
@@ -258,14 +296,25 @@ def propose_update_session(
     datetime given in the system context to pick the right date and convert any local/relative
     time the user gave you into UTC.
     """
-    return runtime.context.gateway.propose_update_session(
-        session_id,
+    _log_call(
+        "propose_update_session",
+        session_id=session_id,
         start_time=start_time,
         end_time=end_time,
         task_id=task_id,
-        notes=notes,
-        tags=tags,
         rationale=rationale,
+    )
+    return _log_result(
+        "propose_update_session",
+        runtime.context.gateway.propose_update_session(
+            session_id,
+            start_time=start_time,
+            end_time=end_time,
+            task_id=task_id,
+            notes=notes,
+            tags=tags,
+            rationale=rationale,
+        ),
     )
 
 
@@ -279,7 +328,10 @@ def propose_delete_session(
     delete the real session. `session_id` must be a real session id from `list_sessions`. Put a
     short human-readable reason in `rationale`.
     """
-    return runtime.context.gateway.propose_delete_session(session_id, rationale=rationale)
+    _log_call("propose_delete_session", session_id=session_id, rationale=rationale)
+    return _log_result(
+        "propose_delete_session", runtime.context.gateway.propose_delete_session(session_id, rationale=rationale)
+    )
 
 
 @tool
@@ -296,7 +348,11 @@ def propose_split_session(
     virtual recurring occurrence cannot be split directly -- it must be edited once first, which
     materializes it). Put a short human-readable reason in `rationale`.
     """
-    return runtime.context.gateway.propose_split_session(session_id, split_points=split_points, rationale=rationale)
+    _log_call("propose_split_session", session_id=session_id, split_points=split_points, rationale=rationale)
+    return _log_result(
+        "propose_split_session",
+        runtime.context.gateway.propose_split_session(session_id, split_points=split_points, rationale=rationale),
+    )
 
 
 @tool
@@ -320,15 +376,28 @@ def propose_create_task(
     `estimated_duration_minutes` instead. `parent_id` must be a real task id if this is a
     subtask. Put a short human-readable reason in `rationale`.
     """
-    return runtime.context.gateway.propose_create_task(
+    _log_call(
+        "propose_create_task",
         title=title,
-        description=description,
         tags=tags,
         priority=priority,
         parent_id=parent_id,
         due_date=due_date,
         estimated_duration_minutes=estimated_duration_minutes,
         rationale=rationale,
+    )
+    return _log_result(
+        "propose_create_task",
+        runtime.context.gateway.propose_create_task(
+            title=title,
+            description=description,
+            tags=tags,
+            priority=priority,
+            parent_id=parent_id,
+            due_date=due_date,
+            estimated_duration_minutes=estimated_duration_minutes,
+            rationale=rationale,
+        ),
     )
 
 
@@ -353,16 +422,30 @@ def propose_update_task(
     must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`. Put a short
     human-readable reason in `rationale`.
     """
-    return runtime.context.gateway.propose_update_task(
-        task_id,
+    _log_call(
+        "propose_update_task",
+        task_id=task_id,
         title=title,
-        description=description,
         tags=tags,
         priority=priority,
         status=status,
         due_date=due_date,
         estimated_duration_minutes=estimated_duration_minutes,
         rationale=rationale,
+    )
+    return _log_result(
+        "propose_update_task",
+        runtime.context.gateway.propose_update_task(
+            task_id,
+            title=title,
+            description=description,
+            tags=tags,
+            priority=priority,
+            status=status,
+            due_date=due_date,
+            estimated_duration_minutes=estimated_duration_minutes,
+            rationale=rationale,
+        ),
     )
 
 
@@ -373,7 +456,8 @@ def set_plan_summary(summary: str, runtime: ToolRuntime[AIAgentContext, Any]) ->
     `propose_*` calls for the turn, when you've proposed more than a single trivial item -- it's
     what the user sees as the headline of their draft review list.
     """
-    return runtime.context.gateway.set_plan_summary(summary)
+    _log_call("set_plan_summary", summary=summary)
+    return _log_result("set_plan_summary", runtime.context.gateway.set_plan_summary(summary))
 
 
 ALL_TOOLS = [
