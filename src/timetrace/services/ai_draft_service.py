@@ -358,7 +358,19 @@ class AIDraftService:
             self.reject_item(item.id, reason=reason, actor=actor)
             results.append({"item_id": item.id, "status": "rejected"})
 
-        self._recompute_batch_status(batch)
+        if not self._items_for_batch(batch.id):
+            # A zero-item batch (a turn that never reached _finalize_batch's delete-if-empty
+            # cleanup, e.g. the connection dropped mid-stream) has nothing for
+            # _recompute_batch_status to summarize from -- it bails out and leaves the batch
+            # `pending` forever, with no other way to clear it. Rejecting an empty batch is
+            # explicitly rejecting "nothing happened here," so it goes straight to `rejected`.
+            batch.status = "rejected"
+            batch.decided_at = utc_now()
+            self.db.add(batch)
+            self.db.commit()
+            self.audit.record(batch_id=batch.id, transition="rejected", actor=actor, reason=reason)
+        else:
+            self._recompute_batch_status(batch)
         return {"batch_id": batch.id, "batch_status": batch.status, "items": results}
 
     # --- undo -----------------------------------------------------------------------------

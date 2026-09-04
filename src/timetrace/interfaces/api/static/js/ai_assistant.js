@@ -281,7 +281,82 @@ async function refreshAiStatusBadge() {
     }
 }
 
+const AI_DRAWER_WIDTH_STORAGE_KEY = 'tt_ai_drawer_width_px';
+const AI_DRAWER_MIN_WIDTH = 320;
+
+function aiDrawerMaxWidth() {
+    // Leave at least ~280px of calendar/content visible rather than letting the drawer
+    // swallow the whole viewport on a narrow window.
+    return Math.max(AI_DRAWER_MIN_WIDTH, window.innerWidth - 280);
+}
+
+function aiApplyDrawerWidth(widthPx) {
+    const el = document.getElementById('ai_drawer');
+    if (!el) return;
+    const clamped = Math.min(Math.max(widthPx, AI_DRAWER_MIN_WIDTH), aiDrawerMaxWidth());
+    el.style.width = `${clamped}px`;
+    return clamped;
+}
+
+function aiRestoreDrawerWidth() {
+    const stored = window.localStorage ? window.localStorage.getItem(AI_DRAWER_WIDTH_STORAGE_KEY) : null;
+    if (!stored) return;
+    const widthPx = parseInt(stored, 10);
+    if (Number.isFinite(widthPx) && widthPx > 0) aiApplyDrawerWidth(widthPx);
+}
+
+function aiSetupDrawerResize() {
+    const handle = document.getElementById('ai_drawer_resize_handle');
+    const drawer = document.getElementById('ai_drawer');
+    if (!handle || !drawer) return;
+
+    let dragging = false;
+
+    const onMove = (e) => {
+        if (!dragging) return;
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        aiApplyDrawerWidth(window.innerWidth - clientX);
+    };
+
+    const onUp = () => {
+        if (!dragging) return;
+        dragging = false;
+        handle.classList.remove('ai-drawer-resize-active');
+        drawer.classList.remove('ai-drawer-resizing');
+        document.body.style.userSelect = '';
+        try {
+            window.localStorage.setItem(AI_DRAWER_WIDTH_STORAGE_KEY, String(parseInt(drawer.style.width, 10)));
+        } catch (_err) {
+            // localStorage can throw in a private/blocked context -- resizing still works this session.
+        }
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('touchend', onUp);
+    };
+
+    const onDown = (e) => {
+        dragging = true;
+        handle.classList.add('ai-drawer-resize-active');
+        drawer.classList.add('ai-drawer-resizing');
+        document.body.style.userSelect = 'none';
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+        e.preventDefault();
+    };
+
+    handle.addEventListener('mousedown', onDown);
+    handle.addEventListener('touchstart', onDown, { passive: false });
+
+    window.addEventListener('resize', () => aiApplyDrawerWidth(drawer.getBoundingClientRect().width));
+}
+
 function aiSetupDrawer() {
+    aiRestoreDrawerWidth();
+    aiSetupDrawerResize();
+
     const closeBtn = document.getElementById('ai_drawer_close_btn');
     if (closeBtn) closeBtn.addEventListener('click', closeAiDrawer);
 

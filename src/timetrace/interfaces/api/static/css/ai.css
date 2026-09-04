@@ -33,6 +33,29 @@
     transform: translateX(0);
 }
 
+/* JS sets an inline `width` (restored from localStorage / while dragging) which naturally wins
+   over this default; `ai-drawer-resizing` just turns off the open/close slide transition so a
+   drag doesn't fight it every frame. */
+#ai_drawer.ai-drawer-resizing {
+    transition: none;
+}
+
+.ai-drawer-resize-handle {
+    position: absolute;
+    top: 0;
+    left: -4px;
+    width: 8px;
+    height: 100%;
+    cursor: ew-resize;
+    z-index: 5;
+    background: transparent;
+}
+
+.ai-drawer-resize-handle:hover,
+.ai-drawer-resize-handle.ai-drawer-resize-active {
+    background: rgba(168, 85, 247, 0.35);
+}
+
 .ai-drawer-header {
     display: flex;
     align-items: center;
