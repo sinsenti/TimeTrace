@@ -38,7 +38,7 @@ from timetrace.core.ai.redaction import sanitize_text
 from timetrace.core.ai.secrets import decrypt_secret
 from timetrace.core.ai.tools import AIAgentContext
 from timetrace.core.exceptions import AIProviderError, EntityNotFoundError, TimeTraceError, ValidationError
-from timetrace.core.timezones import daemon_tzinfo, to_local_naive
+from timetrace.core.timezones import daemon_timezone_name, daemon_tzinfo, to_local_naive
 from timetrace.db.models import (
     AIChatMessage,
     AIConversation,
@@ -314,7 +314,11 @@ class AIChatService:
 
         try:
             model = self._build_model(provider_config)
-            agent = build_agent(model, sanitization_level=provider_config.sanitization_level)
+            agent = build_agent(
+                model,
+                sanitization_level=provider_config.sanitization_level,
+                extra_system_context=self._turn_context(),
+            )
         except AIProviderError:
             self._finalize_batch(batch.id, None)
             raise
@@ -398,7 +402,11 @@ class AIChatService:
 
         try:
             model = self._build_model(provider_config)
-            agent = build_agent(model, sanitization_level=provider_config.sanitization_level)
+            agent = build_agent(
+                model,
+                sanitization_level=provider_config.sanitization_level,
+                extra_system_context=self._turn_context(),
+            )
         except AIProviderError as exc:
             self._finalize_batch(batch.id, None)
             yield _sse("error", {"message": str(exc)})
@@ -678,6 +686,36 @@ class AIChatService:
             )
         except Exception as exc:
             raise AIProviderError(f"Failed to initialize provider '{config.provider}': {exc}") from exc
+
+    def _turn_context(self) -> str:
+        """Grounding info injected into the system prompt every turn (spec's `build_system_prompt
+        extra_context` hook). Without this the model has no way to know today's actual date --
+        confirmed live: asked for "sessions until 10pm" with no date anchor, a small model has to
+        guess a date out of thin air, gets a validation error back with no way to self-correct
+        (it doesn't know what "today" is either), and just repeats the same broken attempt.
+        Also states the naive-UTC-vs-local-wall-clock conversion explicitly, since every tool's
+        datetime arguments are naive UTC (this app's DB convention) while the user always speaks
+        in local wall-clock time."""
+        tz = daemon_tzinfo()
+        # utc_now() returns an AWARE datetime (datetime.now(UTC)); to_local_naive() returns naive
+        # local wall-clock -- strip tzinfo here so the subtraction below isn't naive-vs-aware, and
+        # so the ISO string shown to the model has no "+00:00" suffix contradicting the "naive
+        # UTC, no timezone suffix" instruction we give it.
+        now_utc = utc_now().replace(tzinfo=None)
+        now_local = to_local_naive(now_utc, tz)
+        offset = now_local - now_utc
+        offset_hours = offset.total_seconds() / 3600
+        sign = "+" if offset_hours >= 0 else "-"
+        return (
+            f"Current UTC datetime: {now_utc.isoformat()}. "
+            f"Current local datetime: {now_local.isoformat()} ({daemon_timezone_name()}, "
+            f"UTC{sign}{abs(offset_hours):g}). "
+            "Every tool argument that takes a datetime is naive UTC with no timezone suffix, "
+            "in ISO 8601 format (e.g. 2026-09-04T22:00:00) -- always include the date, never a "
+            "bare time like '22:00'. Convert any local/relative time the user gives you "
+            "('until 10pm', 'tomorrow morning') into UTC using the offset above before calling a "
+            "tool."
+        )
 
     def _recent_history(self, conversation_id: str, exclude_message_id: str | None = None) -> list[AIChatMessage]:
         rows = self.db.exec(

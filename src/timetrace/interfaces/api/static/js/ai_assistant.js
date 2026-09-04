@@ -166,6 +166,29 @@ async function aiCreateConversation() {
     }
 }
 
+async function aiRenameCurrentConversation() {
+    if (!aiCurrentConversationId) return;
+    const current = aiConversationsCache.find((c) => c.id === aiCurrentConversationId);
+    const nextTitle = prompt('Rename conversation', (current && current.title) || '');
+    if (nextTitle === null) return; // cancelled
+    const trimmed = nextTitle.trim();
+    if (!trimmed) return;
+
+    try {
+        const updated = await api.request(`/api/ai/conversations/${encodeURIComponent(aiCurrentConversationId)}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ title: trimmed }),
+        });
+        if (current) current.title = updated.title;
+        const select = document.getElementById('ai_conversation_select');
+        const opt = select && select.querySelector(`option[value="${CSS.escape(aiCurrentConversationId)}"]`);
+        if (opt) opt.textContent = updated.title || '(untitled conversation)';
+    } catch (err) {
+        console.error('Failed to rename AI conversation:', err);
+        alert('Failed to rename conversation: ' + (err.message || err));
+    }
+}
+
 async function aiEnsureConversation() {
     if (aiCurrentConversationId) return aiCurrentConversationId;
     await aiCreateConversation();
@@ -372,6 +395,9 @@ function aiSetupDrawer() {
 
     const newConvBtn = document.getElementById('ai_new_conversation_btn');
     if (newConvBtn) newConvBtn.addEventListener('click', aiCreateConversation);
+
+    const renameConvBtn = document.getElementById('ai_rename_conversation_btn');
+    if (renameConvBtn) renameConvBtn.addEventListener('click', aiRenameCurrentConversation);
 
     const select = document.getElementById('ai_conversation_select');
     if (select) select.addEventListener('change', (e) => aiSelectConversation(e.target.value));

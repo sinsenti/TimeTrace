@@ -37,8 +37,41 @@ def _blank_to_none(value: Any) -> Any:
     return None if value == "" else value
 
 
-OptionalDateTime = Annotated[datetime | None, BeforeValidator(_blank_to_none)]
+def _lenient_datetime(value: Any) -> Any:
+    """Confirmed live against a real local model (qwen2.5:3b): even with the current date/time
+    and an explicit "always include the date, full ISO 8601, UTC" instruction in both the system
+    prompt (`ai_chat_service._turn_context`) and this tool's own docstring, a small model still
+    sometimes sends a bare, non-ISO time like `"8 PM"` or `"20:00"` for a REQUIRED datetime arg --
+    which a plain `datetime` annotation rejects outright, and `ToolRetryMiddleware` retrying with
+    the same validation error doesn't reliably fix (the model just re-describes the same mistake
+    in prose and repeats it). Rather than depend entirely on prompt compliance, accept a wider
+    range of formats: `datetime.fromisoformat` first (the fast, correct path), falling back to
+    `dateutil`'s much more permissive parser (already a project dependency), which fills in
+    whatever date/time component is missing from today's real date. Any input this still can't
+    parse is passed through unchanged so pydantic's own error message (better than swallowing it
+    here) is what reaches the retry loop."""
+    if value is None or isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return datetime.fromisoformat(stripped)
+        except ValueError:
+            pass
+        try:
+            from dateutil import parser as _dateutil_parser
+
+            return _dateutil_parser.parse(stripped)
+        except ValueError, OverflowError:
+            pass
+    return value
+
+
+OptionalDateTime = Annotated[datetime | None, BeforeValidator(_blank_to_none), BeforeValidator(_lenient_datetime)]
 OptionalInt = Annotated[int | None, BeforeValidator(_blank_to_none)]
+RequiredDateTime = Annotated[datetime, BeforeValidator(_lenient_datetime)]
 
 
 @dataclass
@@ -111,8 +144,8 @@ def resolve_task_reference(
 
 @tool
 def list_sessions(
-    start: datetime,
-    end: datetime,
+    start: RequiredDateTime,
+    end: RequiredDateTime,
     runtime: ToolRuntime[AIAgentContext, Any],
     task_id: str | None = None,
     limit: int = 200,
@@ -128,8 +161,8 @@ def list_sessions(
 
 @tool
 def find_free_slots(
-    start: datetime,
-    end: datetime,
+    start: RequiredDateTime,
+    end: RequiredDateTime,
     min_duration_minutes: int,
     runtime: ToolRuntime[AIAgentContext, Any],
     working_hours_only: bool = True,
@@ -173,8 +206,8 @@ def get_time_stats(query: dict[str, Any], runtime: ToolRuntime[AIAgentContext, A
 
 @tool
 def propose_create_session(
-    start_time: datetime,
-    end_time: datetime,
+    start_time: RequiredDateTime,
+    end_time: RequiredDateTime,
     runtime: ToolRuntime[AIAgentContext, Any],
     task_id: str | None = None,
     notes: str = "",
@@ -186,6 +219,11 @@ def propose_create_session(
     time. `task_id` must be a real task id from `list_tasks`/`resolve_task_reference`/`get_task`,
     or `None` for an untasked session. Put a short human-readable reason in `rationale` (e.g. why
     you chose this slot) -- it's shown to the user alongside the draft, not sent back to you.
+
+    `start_time`/`end_time` must be a full ISO 8601 datetime WITH a date, in UTC (e.g.
+    `2026-09-04T22:00:00`) -- never a bare time like `"22:00"`. Use the current UTC/local
+    datetime given in the system context to pick the right date and convert any local/relative
+    time the user gave you into UTC.
     """
     return runtime.context.gateway.propose_create_session(
         task_id=task_id,
@@ -214,6 +252,11 @@ def propose_update_session(
     pass the fields you want to change; omitted fields keep their current value. `session_id`
     must be a real session id from `list_sessions`. Put a short human-readable reason in
     `rationale`.
+
+    If given, `start_time`/`end_time` must be a full ISO 8601 datetime WITH a date, in UTC (e.g.
+    `2026-09-04T22:00:00`) -- never a bare time like `"22:00"`. Use the current UTC/local
+    datetime given in the system context to pick the right date and convert any local/relative
+    time the user gave you into UTC.
     """
     return runtime.context.gateway.propose_update_session(
         session_id,
