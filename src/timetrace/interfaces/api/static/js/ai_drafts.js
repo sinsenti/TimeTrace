@@ -151,6 +151,38 @@ function aiBuildDraftItemNode(item, batch, options) {
     return row;
 }
 
+/** ISO datetime (possibly with a +00:00/Z suffix) -> the local-time string a `datetime-local`
+ * input expects (`YYYY-MM-DDTHH:MM`, no timezone -- the browser treats that as local wall-clock,
+ * matching how the rest of this app displays times, e.g. `aiFormatLocalDt`). */
+function aiIsoToDatetimeLocalValue(iso) {
+    if (!iso) return '';
+    const dt = typeof parseApiDateTime === 'function' ? parseApiDateTime(iso) : new Date(iso);
+    if (!dt || isNaN(dt.getTime())) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+}
+
+/** The reverse: a `datetime-local` input's local-time value -> a UTC ISO string for the API. */
+function aiDatetimeLocalValueToIso(value) {
+    if (!value) return null;
+    const dt = new Date(value); // no timezone suffix -> the browser parses this as local time
+    return isNaN(dt.getTime()) ? null : dt.toISOString();
+}
+
+function aiAddEditField(container, label, inputEl) {
+    const field = document.createElement('label');
+    field.className = 'ai-edit-field';
+    const span = document.createElement('span');
+    span.textContent = label;
+    field.appendChild(span);
+    field.appendChild(inputEl);
+    container.appendChild(field);
+}
+
+/** Structured edit form for a pending draft item -- session and task proposals get their real
+ * fields (datetime pickers, a task dropdown, a priority select), never a raw JSON textarea.
+ * `PATCH /drafts/items/{id}` MERGES `proposed` into the existing snapshot (never replaces it
+ * wholesale), so this only needs to send the fields the form actually edits. */
 function aiToggleInlineEdit(row, item, batch) {
     let editBox = row.querySelector('.ai-inline-edit-box');
     if (editBox) {
@@ -159,24 +191,115 @@ function aiToggleInlineEdit(row, item, batch) {
     }
     editBox = document.createElement('div');
     editBox.className = 'ai-inline-edit-box mt-1.5 pt-1.5';
-    editBox.style.borderTop = '1px dashed #262938';
 
-    const textarea = document.createElement('textarea');
-    textarea.rows = 4;
-    textarea.style.width = '100%';
-    textarea.style.background = '#0b0c10';
-    textarea.style.border = '1px solid #262938';
-    textarea.style.color = '#e2e8f0';
-    textarea.style.fontSize = '10px';
-    textarea.style.fontFamily = 'ui-monospace, monospace';
-    textarea.style.borderRadius = '6px';
-    textarea.style.padding = '5px';
-    textarea.value = JSON.stringify(item.proposed || {}, null, 2);
-    editBox.appendChild(textarea);
+    const proposed = item.proposed || {};
+    const fieldsWrap = document.createElement('div');
+    fieldsWrap.className = 'ai-edit-fields';
+    const collectors = [];
+
+    if (item.entity_type === 'session') {
+        const startInput = document.createElement('input');
+        startInput.type = 'datetime-local';
+        startInput.value = aiIsoToDatetimeLocalValue(proposed.start_time);
+        aiAddEditField(fieldsWrap, 'Start', startInput);
+        collectors.push(() => ['start_time', aiDatetimeLocalValueToIso(startInput.value)]);
+
+        const endInput = document.createElement('input');
+        endInput.type = 'datetime-local';
+        endInput.value = aiIsoToDatetimeLocalValue(proposed.end_time);
+        aiAddEditField(fieldsWrap, 'End', endInput);
+        collectors.push(() => ['end_time', aiDatetimeLocalValueToIso(endInput.value)]);
+
+        const taskSelect = document.createElement('select');
+        taskSelect.disabled = true;
+        const noneOpt = document.createElement('option');
+        noneOpt.value = '';
+        noneOpt.textContent = 'Loading tasks...';
+        taskSelect.appendChild(noneOpt);
+        aiAddEditField(fieldsWrap, 'Task', taskSelect);
+        collectors.push(() => ['task_id', taskSelect.value || null]);
+        api.get('/api/tasks').then((tasks) => {
+            taskSelect.textContent = '';
+            const emptyOpt = document.createElement('option');
+            emptyOpt.value = '';
+            emptyOpt.textContent = '(no task)';
+            taskSelect.appendChild(emptyOpt);
+            (tasks || []).forEach((t) => {
+                const opt = document.createElement('option');
+                opt.value = t.id;
+                opt.textContent = t.title;
+                if (t.id === proposed.task_id) opt.selected = true;
+                taskSelect.appendChild(opt);
+            });
+            taskSelect.disabled = false;
+        }).catch((err) => {
+            console.error('Failed to load tasks for the draft-item edit form:', err);
+            taskSelect.textContent = '';
+            const errOpt = document.createElement('option');
+            errOpt.value = proposed.task_id || '';
+            errOpt.textContent = proposed.task_id ? `(task ${proposed.task_id})` : '(no task)';
+            taskSelect.appendChild(errOpt);
+        });
+
+        const notesInput = document.createElement('input');
+        notesInput.type = 'text';
+        notesInput.value = proposed.notes || '';
+        aiAddEditField(fieldsWrap, 'Notes', notesInput);
+        collectors.push(() => ['notes', notesInput.value]);
+
+        const tagsInput = document.createElement('input');
+        tagsInput.type = 'text';
+        tagsInput.value = proposed.tags || '';
+        aiAddEditField(fieldsWrap, 'Tags', tagsInput);
+        collectors.push(() => ['tags', tagsInput.value]);
+    } else if (item.entity_type === 'task') {
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.value = proposed.title || '';
+        aiAddEditField(fieldsWrap, 'Title', titleInput);
+        collectors.push(() => ['title', titleInput.value]);
+
+        const tagsInput = document.createElement('input');
+        tagsInput.type = 'text';
+        tagsInput.value = proposed.tags || '';
+        aiAddEditField(fieldsWrap, 'Tags', tagsInput);
+        collectors.push(() => ['tags', tagsInput.value]);
+
+        const prioritySelect = document.createElement('select');
+        ['-', 'low', 'medium', 'high'].forEach((p) => {
+            const opt = document.createElement('option');
+            opt.value = p;
+            opt.textContent = p === '-' ? '(none)' : p;
+            if (p === (proposed.priority || '-')) opt.selected = true;
+            prioritySelect.appendChild(opt);
+        });
+        aiAddEditField(fieldsWrap, 'Priority', prioritySelect);
+        collectors.push(() => ['priority', prioritySelect.value]);
+
+        const dueInput = document.createElement('input');
+        dueInput.type = 'date';
+        const dueDt = proposed.due_date
+            ? (typeof parseApiDateTime === 'function' ? parseApiDateTime(proposed.due_date) : new Date(proposed.due_date))
+            : null;
+        if (dueDt && !isNaN(dueDt.getTime())) {
+            const pad = (n) => String(n).padStart(2, '0');
+            dueInput.value = `${dueDt.getFullYear()}-${pad(dueDt.getMonth() + 1)}-${pad(dueDt.getDate())}`;
+        }
+        aiAddEditField(fieldsWrap, 'Due date', dueInput);
+        collectors.push(() => ['due_date', dueInput.value ? new Date(dueInput.value).toISOString() : null]);
+
+        const estInput = document.createElement('input');
+        estInput.type = 'number';
+        estInput.min = '0';
+        estInput.value = proposed.estimated_minutes != null ? proposed.estimated_minutes : '';
+        aiAddEditField(fieldsWrap, 'Estimate (minutes)', estInput);
+        collectors.push(() => ['estimated_minutes', estInput.value ? parseInt(estInput.value, 10) : null]);
+    }
+    editBox.appendChild(fieldsWrap);
 
     const hint = document.createElement('div');
     hint.className = 'ai-quickadd-hint';
-    hint.textContent = 'Edit the proposed fields as JSON, then Save.';
+    hint.textContent = 'Edit the proposed fields, then Save.';
     editBox.appendChild(hint);
 
     const btnRow = document.createElement('div');
@@ -186,20 +309,22 @@ function aiToggleInlineEdit(row, item, batch) {
     saveBtn.className = 'ai-btn-item';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', async () => {
-        let parsed;
-        try {
-            parsed = JSON.parse(textarea.value);
-        } catch (e) {
-            hint.textContent = 'Invalid JSON -- not saved.';
+        const updates = {};
+        collectors.forEach((collect) => {
+            const [key, value] = collect();
+            updates[key] = value;
+        });
+        if (updates.start_time && updates.end_time && new Date(updates.end_time) <= new Date(updates.start_time)) {
+            hint.textContent = 'End must be after start -- not saved.';
             hint.style.color = '#f87171';
             return;
         }
         try {
             await api.request(`/api/ai/drafts/items/${encodeURIComponent(item.id)}`, {
                 method: 'PATCH',
-                body: JSON.stringify({ proposed: parsed })
+                body: JSON.stringify({ proposed: updates })
             });
-            if (typeof window.aiRefreshCurrentBatchView === 'function') window.aiRefreshCurrentBatchView(batch.id);
+            if (typeof aiRefreshCurrentBatchView === 'function') aiRefreshCurrentBatchView(batch.id);
         } catch (err) {
             hint.textContent = 'Save failed: ' + (err.message || err);
             hint.style.color = '#f87171';
@@ -273,6 +398,13 @@ function aiBuildDraftBatchNode(batch, options) {
     const runAction = async (fn) => {
         try {
             await fn();
+            // Always re-fetch and re-render THIS card in place -- confirmed live: without this,
+            // clicking Accept/Reject/Undo/Reapply succeeds on the backend (status genuinely
+            // changes) but the card built here is a static snapshot from render time, so it kept
+            // showing "pending" with the Accept/Reject buttons until a full page reload.
+            // `opts.onChanged` still fires too, for context-specific extra work (the drafts
+            // panel reloading its whole list, the chat thread refreshing its status badge).
+            await aiRefreshCurrentBatchView(batch.id);
             if (typeof opts.onChanged === 'function') opts.onChanged();
         } catch (err) {
             console.error('AI draft action failed:', err);

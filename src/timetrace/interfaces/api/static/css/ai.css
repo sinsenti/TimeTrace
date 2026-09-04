@@ -559,3 +559,36 @@
     margin-top: 5px;
     min-height: 13px;
 }
+
+/* ---------------------------------------------------------------------------------------------
+ * Draft item edit form (structured fields, never raw JSON)
+ * ------------------------------------------------------------------------------------------- */
+
+.ai-inline-edit-box {
+    border-top: 1px dashed #262938;
+}
+
+.ai-edit-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.ai-edit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    font-size: 10px;
+    color: #94a3b8;
+}
+
+.ai-edit-field input,
+.ai-edit-field select {
+    background: #0b0c10;
+    border: 1px solid #262938;
+    color: #e2e8f0;
+    font-size: 11px;
+    border-radius: 6px;
+    padding: 5px 6px;
+    font-family: inherit;
+}

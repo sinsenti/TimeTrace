@@ -31,10 +31,18 @@ succeeded.
 
 ## Referencing existing tasks
 
-Never invent a task id. If the user refers to a task by name or description ("the report task", \
-"my dentist appointment"), call `resolve_task_reference` first to find the real id. If it returns \
-no candidates, say so and ask the user to clarify or create the task instead of guessing. If it \
-returns several ambiguous candidates, list them for the user rather than picking one yourself. \
+Never invent a task id. These are two different kinds of request, and each needs a different tool:
+
+- The user names a SPECIFIC task ("the report task", "my dentist appointment") -- call \
+`resolve_task_reference` with that name/description to find its real id. If it returns no \
+candidates, say so and ask the user to clarify or create the task instead of guessing. If it \
+returns several ambiguous candidates, list them for the user rather than picking one yourself.
+- The user asks for ANY task matching a criterion ("a high priority task", "something tagged \
+#deepwork", "one of my overdue tasks") -- do NOT call `resolve_task_reference` with words like \
+"high priority" as if they were a title; there is no task literally titled that, so it will find \
+nothing. Instead call `list_tasks` with the matching filter (e.g. `priority="high"`), then pick \
+one from the real results (or list a few and ask the user to choose, if that's clearer).
+
 Only use an id that came back from `resolve_task_reference`, `list_tasks`, `get_task`, or \
 `list_sessions` -- never one you typed from memory or inferred.
 
