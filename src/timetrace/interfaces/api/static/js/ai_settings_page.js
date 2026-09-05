@@ -99,6 +99,13 @@ const AI_PROVIDER_HELP = {
         label: 'aistudio.google.com',
         keyRequired: true,
     },
+    groq: {
+        text: 'Very fast inference for open models (Llama, GPT-OSS, ...) via Groq\'s free-tier-friendly, '
+            + 'OpenAI-compatible API. Get an API key at',
+        url: 'https://console.groq.com/keys',
+        label: 'console.groq.com',
+        keyRequired: true,
+    },
     openrouter: {
         text: 'Routes to many providers (Claude, GPT, Gemini, Llama, ...) under one key. Get an API key at',
         url: 'https://openrouter.ai/keys',
