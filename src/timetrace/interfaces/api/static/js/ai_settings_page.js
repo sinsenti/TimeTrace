@@ -74,6 +74,73 @@ function aiRefreshModelSelectOptions() {
         opt.textContent = m.label || m.id;
         modelSelect.appendChild(opt);
     });
+    aiRefreshProviderHelp();
+}
+
+// One-line setup guidance per provider -- where to get a key (or that none is needed), shown
+// under the Provider select so a new provider isn't just a blank form with no hint where to
+// start. `keyRequired: false` also relaxes the API key field's label for Ollama.
+const AI_PROVIDER_HELP = {
+    anthropic: {
+        text: 'Claude models. Get an API key at',
+        url: 'https://console.anthropic.com/settings/keys',
+        label: 'console.anthropic.com',
+        keyRequired: true,
+    },
+    openai: {
+        text: 'GPT models. Get an API key at',
+        url: 'https://platform.openai.com/api-keys',
+        label: 'platform.openai.com',
+        keyRequired: true,
+    },
+    google: {
+        text: 'Gemini models, direct from Google AI Studio (not routed through OpenRouter). Get a free API key at',
+        url: 'https://aistudio.google.com/apikey',
+        label: 'aistudio.google.com',
+        keyRequired: true,
+    },
+    groq: {
+        text: 'Very fast inference for open models (Llama, GPT-OSS, ...) via Groq\'s free-tier-friendly, '
+            + 'OpenAI-compatible API. Get an API key at',
+        url: 'https://console.groq.com/keys',
+        label: 'console.groq.com',
+        keyRequired: true,
+    },
+    openrouter: {
+        text: 'Routes to many providers (Claude, GPT, Gemini, Llama, ...) under one key. Get an API key at',
+        url: 'https://openrouter.ai/keys',
+        label: 'openrouter.ai',
+        keyRequired: true,
+    },
+    ollama: {
+        text: 'A local Ollama server -- no API key, nothing leaves this machine. Set Base URL to your server '
+            + '(default http://localhost:11434) and make sure the model is already pulled (ollama pull <model>).',
+        url: null,
+        label: null,
+        keyRequired: false,
+    },
+};
+
+function aiRefreshProviderHelp() {
+    const providerSelect = document.getElementById('ai_provider_form_provider');
+    const helpBox = document.getElementById('ai_provider_form_help');
+    const keyLabel = document.getElementById('ai_provider_form_api_key_label');
+    if (!providerSelect || !helpBox) return;
+
+    const info = AI_PROVIDER_HELP[providerSelect.value];
+    helpBox.textContent = '';
+    if (info) {
+        helpBox.appendChild(document.createTextNode(info.text + ' '));
+        if (info.url) {
+            const link = document.createElement('a');
+            link.href = info.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = info.label;
+            helpBox.appendChild(link);
+        }
+    }
+    if (keyLabel) keyLabel.textContent = info && !info.keyRequired ? 'API Key (not needed for Ollama)' : 'API Key';
 }
 
 async function aiLoadProviders() {
@@ -85,7 +152,8 @@ async function aiLoadProviders() {
         if (providers.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'ai-settings-hint';
-            empty.textContent = 'No providers configured yet.';
+            empty.textContent = 'No providers configured yet -- click "+ Add Provider" below to get started. '
+                + 'Google AI Studio has a free tier; a local Ollama server needs no API key at all.';
             list.appendChild(empty);
             return;
         }

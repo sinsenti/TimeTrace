@@ -30,6 +30,7 @@ dependencies = [
     "langchain-anthropic>=1.7.0,<2",
     "langchain-openai>=1.6.0,<2",
     "langchain-ollama>=1.1.0,<2",
+    "langchain-google-genai>=2,<3",
     "cryptography>=46",
 ]
 

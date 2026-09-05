@@ -19,8 +19,13 @@ from timetrace.core.ai.secrets import decrypt_secret, encrypt_secret, key_last4
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama")
+KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq")
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
+
+# See core/ai/providers.py's twin constant for why this translation exists: `init_chat_model`'s
+# registry key for direct Google AI Studio access is "google_genai", not this app's shorter
+# user-facing "google".
+_MODEL_PROVIDER_OVERRIDES = {"google": "google_genai"}
 
 # Sentinel distinguishing "argument omitted" (keep existing value) from an explicit value,
 # including an explicit `None`/`""`. Needed for `update_provider`'s `api_key` semantics (S7):
@@ -57,14 +62,21 @@ def build_chat_model(
     routed through `model_provider="openai"` with OpenRouter's base URL (spec S3); the native
     `langchain-openrouter` provider is opt-in and pre-1.0, and isn't a pinned dependency, so
     selecting it without the package installed surfaces as a normal `test_config` failure.
+
+    Groq needs no extra package at all -- its API is fully OpenAI-compatible
+    (`https://api.groq.com/openai/v1`, exactly as Groq's own docs recommend), so it's always
+    routed through `model_provider="openai"` with no native-package opt-in.
     """
     _validate_provider(provider)
 
-    model_provider = provider
+    model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
     resolved_base_url = base_url
     if provider == "openrouter" and not use_native_openrouter:
         model_provider = "openai"
         resolved_base_url = base_url or "https://openrouter.ai/api/v1"
+    elif provider == "groq":
+        model_provider = "openai"
+        resolved_base_url = base_url or "https://api.groq.com/openai/v1"
 
     kwargs: dict[str, Any] = dict(extra_params or {})
     if resolved_base_url:
@@ -342,6 +354,17 @@ class AIProviderService:
                 {"id": "mistral", "label": "Mistral"},
                 {"id": "deepseek-r1", "label": "DeepSeek R1"},
             ],
+            "google": [
+                {"id": "gemini-3-pro", "label": "Gemini 3 Pro"},
+                {"id": "gemini-3-flash", "label": "Gemini 3 Flash"},
+                {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash-Lite"},
+            ],
+            "groq": [
+                {"id": "openai/gpt-oss-120b", "label": "GPT-OSS 120B (Groq)"},
+                {"id": "openai/gpt-oss-20b", "label": "GPT-OSS 20B (Groq)"},
+                {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile (Groq)"},
+                {"id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant (Groq)"},
+            ],
         }
 
     def list_models(self, config_id: str) -> list[dict[str, str]]:
@@ -360,6 +383,16 @@ class AIProviderService:
 
             if config.provider == "openai":
                 url = (config.base_url or "https://api.openai.com/v1").rstrip("/") + "/models"
+                headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+                resp = httpx.get(url, headers=headers, timeout=5.0)
+                resp.raise_for_status()
+                data = resp.json().get("data", [])
+                return [{"id": m["id"], "label": m["id"]} for m in data if "id" in m]
+
+            if config.provider == "groq":
+                # Same OpenAI-compatible /models shape as the branch above -- Groq's whole API
+                # surface mirrors it, including this endpoint.
+                url = (config.base_url or "https://api.groq.com/openai/v1").rstrip("/") + "/models"
                 headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
                 resp = httpx.get(url, headers=headers, timeout=5.0)
                 resp.raise_for_status()
@@ -392,6 +425,22 @@ class AIProviderService:
                 resp.raise_for_status()
                 data = resp.json().get("data", [])
                 return [{"id": m["id"], "label": m.get("display_name", m["id"])} for m in data if "id" in m]
+
+            if config.provider == "google" and api_key:
+                resp = httpx.get(
+                    "https://generativelanguage.googleapis.com/v1beta/models",
+                    params={"key": api_key},
+                    timeout=5.0,
+                )
+                resp.raise_for_status()
+                models = resp.json().get("models", [])
+                # The API returns names prefixed "models/gemini-..."; strip it to match the bare
+                # ids used everywhere else here (list_catalog, init_chat_model's `model=` arg).
+                return [
+                    {"id": m["name"].removeprefix("models/"), "label": m.get("displayName", m["name"])}
+                    for m in models
+                    if "name" in m and "generateContent" in (m.get("supportedGenerationMethods") or [])
+                ]
         except Exception:
             return None
         return None
