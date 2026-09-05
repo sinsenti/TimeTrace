@@ -154,6 +154,8 @@ class SqlQueryService:
         Not from `sqlite_master`: the authorizer denies reading it (and it is not on the
         table allowlist), and the ORM metadata is the same schema by definition.
         """
+        if not settings.sql_widgets_enabled:
+            raise ValidationError("SQL widgets are disabled. Set TIMETRACE_SQL_WIDGETS_ENABLED=true to enable them.")
         tables = []
         for name in sorted(ALLOWED_TABLES):
             table = SQLModel.metadata.tables.get(name)

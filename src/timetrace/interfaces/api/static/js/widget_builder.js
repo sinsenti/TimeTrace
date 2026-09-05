@@ -249,14 +249,17 @@ function wbOnComparisonChange() {
     document.getElementById('wb_comparison_custom').classList.toggle('hidden', mode !== 'custom');
 
     const note = document.getElementById('wb_comparison_note');
-    const groupBy = _wbValue('wb_group_by_1');
-    const isCalendar = ['day', 'week', 'month'].includes(groupBy);
+    const groupBy1 = _wbValue('wb_group_by_1');
+    const hasSecondGroupBy = !!_wbValue('wb_group_by_2');
+    const isCalendar = ['day', 'week', 'month'].includes(groupBy1);
     const messages = [];
 
     if (mode !== 'none' && _wbValue('wb_date_range') === 'all_time') {
         messages.push('Pick a bounded date range: "all time" has no previous period.');
     }
-    if (mode !== 'none' && isCalendar) {
+    if (mode !== 'none' && isCalendar && hasSecondGroupBy) {
+        messages.push('Comparison isn\'t supported with a second group-by alongside day/week/month - remove it or turn comparison off.');
+    } else if (mode !== 'none' && isCalendar) {
         messages.push('Sorted by date with empty buckets filled, so the two periods line up.');
     }
 
@@ -384,7 +387,14 @@ function _wbStructuredQuery() {
 
     const groupBy = [_wbValue('wb_group_by_1'), _wbValue('wb_group_by_2')].filter(Boolean);
     const comparisonMode = _wbValue('wb_comparison');
-    const isCalendar = ['day', 'week', 'month'].includes(groupBy[0]);
+    // fill_gaps keys rows by the first group-by only, so with a second dimension it collapses
+    // every (bucket, dimension2) row down to one row per bucket -- only meaningful with a
+    // single calendar dimension. See wbOnComparisonChange() for the matching UI guard.
+    const isCalendar = groupBy.length === 1 && ['day', 'week', 'month'].includes(groupBy[0]);
+    if (comparisonMode !== 'none' && groupBy.length > 1 && ['day', 'week', 'month'].includes(groupBy[0])) {
+        _wbShowError('Comparison isn\'t supported with a second group-by alongside day/week/month.');
+        return null;
+    }
 
     const query = {
         source,

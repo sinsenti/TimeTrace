@@ -190,8 +190,11 @@ def _resolve_comparison_range(primary: _ResolvedRange, spec: ComparisonSpec) -> 
     if spec.mode == ComparisonMode.CUSTOM:
         if not spec.start_date or not spec.end_date:
             raise ValidationError("comparison.mode=custom requires both start_date and end_date")
-        start = date.fromisoformat(spec.start_date)
-        end = date.fromisoformat(spec.end_date)
+        try:
+            start = date.fromisoformat(spec.start_date)
+            end = date.fromisoformat(spec.end_date)
+        except ValueError as e:
+            raise ValidationError(f"comparison start_date/end_date must be YYYY-MM-DD: {e}") from e
         if end < start:
             raise ValidationError("comparison.end_date must not be before start_date")
         return start, end
@@ -332,8 +335,14 @@ class QueryService:
         `LIMIT` semantics defined for each period independently.
         """
         fills_calendar_dim = query.group_by and query.group_by[0] in _CALENDAR_DIMS
+        if query.fill_gaps and not query.group_by:
+            raise ValidationError("fill_gaps requires a group_by dimension")
         if query.fill_gaps and fills_calendar_dim and query.date_range.preset == RangePreset.ALL_TIME:
             raise ValidationError("fill_gaps on day/week/month requires a bounded date_range (not all_time)")
+        if query.fill_gaps and fills_calendar_dim and len(query.group_by) > 1:
+            # _fill_gaps keys rows by group_by[0] alone, so a second dimension would collapse
+            # every (bucket, dim2) row down to one arbitrary survivor per bucket.
+            raise ValidationError("fill_gaps on day/week/month doesn't support a second group_by dimension")
 
         resolved_range = _resolve_date_range(query, tz, first_day_of_week)
 

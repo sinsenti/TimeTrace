@@ -21,6 +21,7 @@ from datetime import UTC, datetime
 
 from pydantic import TypeAdapter
 from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, func, select
 
 from timetrace.core.dashboard_seeds import OVERVIEW_NAME, OVERVIEW_SEED, OVERVIEW_SLUG
@@ -64,7 +65,10 @@ class DashboardService:
         """Create the Overview dashboard iff the dashboard table is completely empty.
 
         Called from `list_dashboards()` rather than a lifespan hook, so a fresh database
-        self-heals on the first `/stats` visit and the daemon has no boot-time DB write.
+        self-heals on the first `/stats` visit and the daemon has no boot-time DB write. Two
+        concurrent first-loads can both see a zero count before either commits; the loser's
+        `ix_dashboard_slug` UNIQUE insert then fails, which is fine -- the winner already
+        seeded it, so this just rolls back and moves on rather than surfacing a 500.
         """
         count = self.db.exec(select(func.count()).select_from(Dashboard)).one()
         if count:
@@ -72,9 +76,12 @@ class DashboardService:
 
         dashboard = Dashboard(name=OVERVIEW_NAME, slug=OVERVIEW_SLUG, is_seeded=True, position=0)
         self.db.add(dashboard)
-        self.db.flush()
-        self._add_seed_widgets(dashboard)
-        self.db.commit()
+        try:
+            self.db.flush()
+            self._add_seed_widgets(dashboard)
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
 
     def _add_seed_widgets(self, dashboard: Dashboard) -> None:
         for i, seed in enumerate(OVERVIEW_SEED):

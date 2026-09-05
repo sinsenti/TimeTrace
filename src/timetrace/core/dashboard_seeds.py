@@ -1,6 +1,6 @@
 """The seeded "Overview" dashboard, as data.
 
-These are the eight charts the hardcoded `/stats` page used to draw, transcribed out of
+These are the nine charts the hardcoded `/stats` page used to draw, transcribed out of
 `static/js/dashboards.js`'s former `OVERVIEW_SEED` array into real `AnalyticsQuery` objects.
 Transcribing them here rather than leaving them in JS is free validation: a typo in a measure
 or dimension name is now a Pydantic error at import time instead of a widget that silently

@@ -129,7 +129,8 @@ def make_authorizer(real_object_names: frozenset[str]):
     Permitted:
       * `SQLITE_SELECT` -- permission to run a SELECT at all; carries no arguments.
       * `SQLITE_READ` -- reading `arg1`.`arg2` (table.column). Allowed iff `arg1` is an
-        allowlisted table, OR `arg1` does not name anything stored in the database file.
+        allowlisted table, OR (`arg1` does not name anything stored in the database file AND
+        `arg2` is empty) -- see below for why the second condition is required.
       * `SQLITE_FUNCTION` -- calling function `arg2` (arg1 is None for this action), allowed
         only from `ALLOWED_FUNCTIONS`.
       * `SQLITE_RECURSIVE` -- a recursive CTE.
@@ -138,17 +139,31 @@ def make_authorizer(real_object_names: frozenset[str]):
     CREATE/DROP/ALTER of anything, transactions, REINDEX, ANALYZE, COPY, and any action code
     a future SQLite version introduces.
 
-    **Why SQLITE_READ needs the "not a real object" escape hatch.** SQLite authorizes reads
-    of a recursive CTE's own columns under the *CTE's* name (`SQLITE_READ, 'c', ''`), not
-    under any real table, so a strict `arg1 in ALLOWED_TABLES` check made every recursive
-    CTE fail -- while `WITH`/`RECURSIVE` are explicitly supported here. Reads that come from
-    a real table are always reported against that real table's name (verified against
-    SQLite 3.45: a CTE or subquery over `session` still raises
-    `SQLITE_READ, 'session', 'tags'`), so permitting a name that isn't stored in the file
-    only ever permits re-reading rows some already-authorized read produced.
+    **Why SQLITE_READ needs a "not a real object" escape hatch, and why it must also check
+    `arg2`.** SQLite authorizes reads of a recursive CTE's own columns under the *CTE's* name
+    with an empty column argument (`SQLITE_READ, 'c', ''`), not under any real table, so a
+    strict `arg1 in ALLOWED_TABLES` check made every recursive CTE fail -- while
+    `WITH`/`RECURSIVE` are explicitly supported here.
 
-    Checking against *stored object names* rather than parsing the CTE names out of the SQL
-    text is what closes the shadowing hole: `WITH aiproviderconfig AS (SELECT
+    An earlier version of this function allowed *any* name absent from
+    `real_object_names`, reasoning that a name not stored in the file could only be a CTE or
+    derived-table alias. That reasoning was wrong: eponymous virtual tables (e.g. `json_each`,
+    `dbstat`, and -- on SQLite builds compiled with `SQLITE_ENABLE_DBPAGE_VTAB` --
+    `sqlite_dbpage`, which reads raw database pages straight through the pager) are also
+    absent from `sqlite_master`/`real_object_names` and would have been let through by that
+    rule, `sqlite_dbpage` in particular bypassing `ALLOWED_TABLES` entirely on a build that
+    has it compiled in. A genuine CTE-column read always carries an **empty** `arg2`
+    (SQLite has no column name to report for a query-local relation); a virtual-table read
+    always carries the real column name being read. Requiring `not arg2` alongside "not a
+    real object" closes that hole while still permitting every recursive-CTE, subquery, and
+    derived-table pattern this sandbox needs to support (verified directly against this
+    project's bundled SQLite: recursive CTEs, CTEs wrapping real tables, and derived tables
+    all emit `SQLITE_READ` against the real table name with a real column name -- never
+    against the CTE's own name -- so this branch is only ever reached for the CTE's-own-
+    columns case it exists for).
+
+    Checking against *stored object names* (rather than parsing CTE names out of the SQL
+    text) is what closes the shadowing hole: `WITH aiproviderconfig AS (SELECT
     api_key_encrypted FROM aiproviderconfig) SELECT * FROM aiproviderconfig` uses the real
     table inside its own (non-recursive) CTE body, so a text-derived "these names are CTEs,
     let them through" list would have handed over exactly the encrypted-secrets table this
@@ -172,8 +187,15 @@ def make_authorizer(real_object_names: frozenset[str]):
                 return sqlite3.SQLITE_OK
             if name in real_object_names:
                 return sqlite3.SQLITE_DENY
-            # Not stored in this database: a CTE or derived-table alias.
-            return sqlite3.SQLITE_OK
+            # Not stored in this database, so it can only legitimately be a query-local
+            # relation (CTE/derived table) -- but only when there is also no column name to
+            # report, which is how SQLite marks that case. A real column name here means an
+            # eponymous virtual table (json_each, dbstat, and on some builds sqlite_dbpage,
+            # which reads raw pages and would otherwise bypass ALLOWED_TABLES entirely) --
+            # deny those.
+            if not arg2:
+                return sqlite3.SQLITE_OK
+            return sqlite3.SQLITE_DENY
 
         if action == sqlite3.SQLITE_FUNCTION:
             func = (arg2 or "").lower()
@@ -298,5 +320,12 @@ def wrap_with_limit(sql: str, limit: int) -> str:
 
     `limit + 1` is fetched so the caller can tell "exactly n rows" from "n rows and there
     were more", and report `truncated`.
+
+    `validate_sql` explicitly allows a single trailing semicolon (only a *second*,
+    `;`-separated statement is rejected) -- so it must be stripped here, or wrapping
+    `SELECT 1;` produces the syntactically invalid `SELECT * FROM (\\nSELECT 1;\\n) LIMIT n`.
     """
-    return f"SELECT * FROM (\n{sql}\n) LIMIT {int(limit) + 1}"
+    body = sql.rstrip()
+    if body.endswith(";"):
+        body = body[:-1]
+    return f"SELECT * FROM (\n{body}\n) LIMIT {int(limit) + 1}"
