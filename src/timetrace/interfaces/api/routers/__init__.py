@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from timetrace.interfaces.api.routers.ai import router as ai_router
 from timetrace.interfaces.api.routers.analytics import router as analytics_router
+from timetrace.interfaces.api.routers.dashboards import router as dashboards_router
 from timetrace.interfaces.api.routers.habits import router as habits_router
 from timetrace.interfaces.api.routers.ratings import router as ratings_router
 from timetrace.interfaces.api.routers.revision import router as revision_router
@@ -23,4 +24,5 @@ api_router.include_router(revision_router)
 api_router.include_router(ratings_router)
 api_router.include_router(habits_router)
 api_router.include_router(analytics_router)
+api_router.include_router(dashboards_router)
 api_router.include_router(ai_router)

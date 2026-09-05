@@ -9,8 +9,11 @@ from timetrace.interfaces.api.schemas import (
     AnalyticsQueryRequest,
     AnalyticsQueryResponse,
     QueryCapabilitiesResponse,
+    SqlQueryResponse,
+    SqlSchemaResponse,
+    SqlWidgetQuery,
 )
-from timetrace.services import AnalyticsService, QueryService
+from timetrace.services import AnalyticsService, QueryService, SqlQueryService
 
 router = APIRouter(tags=["Analytics & Markdown Agenda"])
 
@@ -33,6 +36,21 @@ def run_analytics_query_batch(request: AnalyticsQueryBatchRequest, db: DBSession
 @router.get("/analytics/capabilities", response_model=QueryCapabilitiesResponse)
 def get_analytics_capabilities(db: DBSession = Depends(get_session)):
     return QueryService(db).capabilities()
+
+
+@router.post("/analytics/sql", response_model=SqlQueryResponse)
+def run_analytics_sql(spec: SqlWidgetQuery, db: DBSession = Depends(get_session)):
+    """Run a read-only SQL widget query. Sandbox: see `core/sql_guard.py`.
+
+    Disabled unless `TIMETRACE_SQL_WIDGETS_ENABLED` is set; the service raises
+    `ValidationError` (HTTP 400) when it is off.
+    """
+    return SqlQueryService(db).run(spec)
+
+
+@router.get("/analytics/sql/schema", response_model=SqlSchemaResponse)
+def get_analytics_sql_schema(db: DBSession = Depends(get_session)):
+    return SqlQueryService(db).schema_snapshot()
 
 
 @router.get("/markdown/export", response_class=PlainTextResponse)

@@ -1,9 +1,18 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, QuerySource, TagAttribution
+from timetrace.config import settings
+from timetrace.core.query_spec import (
+    AnalyticsQuery,
+    ChartType,
+    ComparisonMode,
+    Dimension,
+    Measure,
+    QuerySource,
+    TagAttribution,
+)
 
 
 class TaskStatusCreate(BaseModel):
@@ -288,6 +297,24 @@ class QueryRow(BaseModel):
     labels: list[str]
     value: float | None
     count: int
+    # Comparison baseline (slice 4). All three stay None unless the widget's query carries a
+    # `comparison` spec, so the shape is unchanged for every pre-slice-4 caller.
+    comparison_value: float | None = None
+    delta: float | None = None
+    # None for percent/score measures, where a percentage change of a percentage is
+    # meaningless -- those get a delta in points and no delta_pct at all.
+    delta_pct: float | None = None
+
+
+class ComparisonMeta(BaseModel):
+    mode: ComparisonMode
+    range_start_utc: datetime | None
+    range_end_utc: datetime | None
+    label: str
+    # "scalar" (no group-by tile) | "by_key" (categorical dimension) |
+    # "positional" (day/week/month ghost series, keys cannot match across shifted ranges)
+    alignment: Literal["scalar", "by_key", "positional"]
+    dropped_keys: int = 0
 
 
 class QueryMeta(BaseModel):
@@ -308,6 +335,8 @@ class AnalyticsQueryResponse(BaseModel):
     total: float | None
     row_count: int
     meta: QueryMeta
+    comparison_total: float | None = None
+    comparison: ComparisonMeta | None = None
 
 
 class AnalyticsQueryBatchResponse(BaseModel):
@@ -340,6 +369,145 @@ class SourceCapabilities(BaseModel):
 
 class QueryCapabilitiesResponse(BaseModel):
     sources: list[SourceCapabilities]
+    # Mirrors settings.sql_widgets_enabled so the builder can hide the SQL tab entirely when
+    # the escape hatch is switched off, rather than offering a control that 400s.
+    sql_enabled: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Read-only SQL widgets (statistics dashboards, slice 3)
+# ---------------------------------------------------------------------------
+
+
+class SqlWidgetQuery(BaseModel):
+    """A SQL-mode widget's saved definition. See `core/sql_guard.py` for the sandbox."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sql: str = Field(min_length=1, max_length=settings.sql_max_length)
+    limit: int = Field(default=200, ge=1, le=10000)  # clamped again to settings.sql_max_rows
+    chart: ChartType = ChartType.TABLE
+    # Which result column supplies chart labels / values, when rendering the tabular result
+    # as a bar/line/doughnut instead of a table. Both None => render a table.
+    label_column: str | None = None
+    value_column: str | None = None
+
+
+class SqlQueryResponse(BaseModel):
+    columns: list[str]
+    rows: list[list[Any]]
+    row_count: int
+    truncated: bool
+    elapsed_ms: int
+    warnings: list[str] = []
+
+
+class SqlSchemaColumn(BaseModel):
+    name: str
+    type: str
+
+
+class SqlSchemaTable(BaseModel):
+    name: str
+    columns: list[SqlSchemaColumn]
+
+
+class SqlSchemaResponse(BaseModel):
+    tables: list[SqlSchemaTable]
+
+
+# ---------------------------------------------------------------------------
+# Persisted dashboards and widgets (statistics dashboards, slice 2)
+# ---------------------------------------------------------------------------
+
+
+class StructuredWidgetSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["structured"] = "structured"
+    query: AnalyticsQuery
+
+
+class SqlWidgetSpec(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    mode: Literal["sql"] = "sql"
+    sql: SqlWidgetQuery
+
+
+# What a DashboardWidget.spec_json holds. The service converts in both directions with
+# TypeAdapter(WidgetSpec); the router never touches spec_json.
+WidgetSpec = Annotated[StructuredWidgetSpec | SqlWidgetSpec, Field(discriminator="mode")]
+
+
+class WidgetRead(BaseModel):
+    id: str
+    dashboard_id: str
+    title: str
+    width: Literal["half", "full"]
+    position: int
+    seed_key: str | None = None
+    # None when the stored spec_json no longer validates (e.g. written by a newer version).
+    # The dashboard /data response reports the reason in errors[widget_id]; a widget the
+    # server cannot parse must never turn into a 500.
+    spec: WidgetSpec | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WidgetCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    width: Literal["half", "full"] = "half"
+    spec: WidgetSpec
+
+
+class WidgetUpdate(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=200)
+    width: Literal["half", "full"] | None = None
+    spec: WidgetSpec | None = None
+
+
+class WidgetReorderRequest(BaseModel):
+    widget_ids: list[str] = Field(max_length=200)
+
+
+class DashboardRead(BaseModel):
+    id: str
+    name: str
+    slug: str
+    is_seeded: bool
+    position: int
+    widget_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class DashboardDetailRead(DashboardRead):
+    widgets: list[WidgetRead] = []
+
+
+class DashboardCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+
+
+class DashboardUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    position: int | None = None
+
+
+class DashboardDataResponse(BaseModel):
+    """One round trip renders a whole dashboard.
+
+    Per-widget error isolation, mirroring `AnalyticsQueryBatchResponse`: a widget whose query
+    fails (or whose stored spec no longer validates) lands in `errors[widget_id]` and every
+    other widget still renders.
+    """
+
+    dashboard: DashboardRead
+    widgets: list[WidgetRead]
+    results: dict[str, AnalyticsQueryResponse] = {}
+    sql_results: dict[str, SqlQueryResponse] = {}
+    errors: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------

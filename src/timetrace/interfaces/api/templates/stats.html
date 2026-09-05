@@ -45,24 +45,29 @@
             <button onclick="openWidgetBuilder()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition">
                 + Add Widget
             </button>
-            <button onclick="loadOverviewDashboard()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
+            <button onclick="renameDashboard()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition">
+                Rename
+            </button>
+            <button id="reset_dashboard_btn" onclick="resetDashboard()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition hidden">
+                Reset to defaults
+            </button>
+            <button onclick="deleteDashboard()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-red-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition">
+                Delete
+            </button>
+            <button onclick="reloadCurrentDashboard()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition">
                 Refresh
             </button>
         </div>
     </header>
 
     <main class="flex-1 p-6 space-y-6 max-w-7xl mx-auto w-full">
-        <!-- Seeded "Overview" dashboard: populated entirely by dashboards.js via
-             POST /analytics/query/batch. See OVERVIEW_SEED in dashboards.js. -->
-        <div id="widget_grid"></div>
+        <!-- Dashboard tabs, from GET /api/dashboards. The seeded "Overview" dashboard is
+             created on the first visit to a fresh database (DashboardService.ensure_seeded). -->
+        <div id="dashboard_tabs" class="flex items-center gap-2 flex-wrap"></div>
 
-        <!-- User-built widgets (created via the "+ Add Widget" button). Specs are saved to
-             localStorage only -- there is no dashboard/widget persistence table yet, so these
-             are per-browser, not synced anywhere. See CUSTOM_WIDGETS_KEY in dashboards.js. -->
-        <div id="custom_widget_section" class="space-y-3 hidden">
-            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wide">Your Widgets</h3>
-            <div id="custom_widget_grid" class="grid grid-cols-1 md:grid-cols-2 gap-6"></div>
-        </div>
+        <!-- One unified widget grid per dashboard, rendered by dashboards.js from a single
+             POST /api/dashboards/{id}/data call. -->
+        <div id="widget_grid" class="grid grid-cols-1 md:grid-cols-4 gap-4"></div>
 
         <!-- Interactive Statistics Item Inspector List -->
         <div id="stats_drilldown_inspector" class="widget-card space-y-4 hidden">
@@ -77,124 +82,7 @@
         </div>
     </main>
 
-    <!-- Manual widget builder: source x measure x group-by x filter x chart, run through the
-         same /analytics/query engine as the seeded widgets. -->
-    <div id="widget_builder_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[480px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-                <h3 class="font-bold text-base text-white">Add Custom Widget</h3>
-                <button type="button" onclick="closeWidgetBuilder()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Title</label>
-                    <input id="wb_title" type="text" placeholder="e.g. Focus time by category"
-                           class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Source</label>
-                        <select id="wb_source" onchange="_onWidgetBuilderSourceChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Measure</label>
-                        <select id="wb_measure"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Group by</label>
-                        <select id="wb_group_by_1"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Then by (optional)</label>
-                        <select id="wb_group_by_2"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Chart</label>
-                        <select id="wb_chart"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="tile">Tile (single number)</option>
-                            <option value="bar" selected>Bar</option>
-                            <option value="line">Line</option>
-                            <option value="doughnut">Doughnut</option>
-                            <option value="table">Table</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Date range</label>
-                        <select id="wb_date_range"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="all_time" selected>All time</option>
-                            <option value="today">Today</option>
-                            <option value="yesterday">Yesterday</option>
-                            <option value="last_7_days">Last 7 days</option>
-                            <option value="last_14_days">Last 14 days</option>
-                            <option value="last_30_days">Last 30 days</option>
-                            <option value="this_week">This week</option>
-                            <option value="this_month">This month</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Tag attribution <span class="text-slate-500 font-normal">(only matters when grouping by tag)</span></label>
-                    <select id="wb_tag_attribution"
-                            class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                        <option value="fan_out" selected>Fan-out (full duration credited to each tag)</option>
-                        <option value="split_evenly">Split evenly (reconciles pie totals)</option>
-                    </select>
-                </div>
-
-                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-2">
-                    <label class="font-bold text-slate-300 block">Filter (optional)</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <select id="wb_filter_field"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                        <select id="wb_filter_op"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="eq" selected>=</option>
-                            <option value="neq">!=</option>
-                            <option value="gt">&gt;</option>
-                            <option value="gte">&gt;=</option>
-                            <option value="lt">&lt;</option>
-                            <option value="lte">&lt;=</option>
-                            <option value="contains">contains</option>
-                            <option value="in">in (comma-separated)</option>
-                            <option value="not_in">not in (comma-separated)</option>
-                            <option value="is_null">is empty</option>
-                            <option value="is_not_null">is not empty</option>
-                        </select>
-                        <input id="wb_filter_value" type="text" placeholder="value"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                    </div>
-                </div>
-
-                <div id="wb_error" class="text-red-400 font-semibold hidden"></div>
-            </div>
-
-            <div class="flex justify-end space-x-2 border-t border-[var(--border-muted)] pt-3">
-                <button type="button" onclick="closeWidgetBuilder()"
-                        class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition text-xs">
-                    Cancel
-                </button>
-                <button type="button" onclick="submitWidgetBuilder()"
-                        class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition text-xs">
-                    Add Widget
-                </button>
-            </div>
-        </div>
-    </div>
+    {% include "components/widget_builder_modal.html" %}
 
     {% include "components/settings_modal.html" %}
     {% include "components/ai_drawer.html" %}
@@ -205,6 +93,7 @@
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/dashboards.js"></script>
+    <script src="/static/js/widget_builder.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_drafts.js"></script>
 </body>

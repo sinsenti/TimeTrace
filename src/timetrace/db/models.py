@@ -449,3 +449,65 @@ class AIAudit(SQLModel, table=True):
     actor: str = Field(default="user")  # "ai" | "user"
     reason: str | None = Field(default=None)
     created_at: datetime = Field(default_factory=utc_now, index=True)
+
+
+class Dashboard(SQLModel, table=True):
+    """A named, ordered collection of statistics widgets.
+
+    The old hardcoded `/stats` page becomes one of these -- seeded with slug "overview" at
+    application boot by the service layer, never by a migration (see revision 0008's
+    docstring for why migration-time seeding is banned here) -- and stays editable like any
+    user-created dashboard.
+
+    No owner/user column: ids are UUIDv7, so per-user scoping can be added later without a
+    table rebuild, and pre-building it was explicitly ruled out.
+    """
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    name: str
+    slug: str = Field(index=True, unique=True)  # e.g. "overview"
+    is_seeded: bool = Field(default=False)
+    position: int = Field(default=0)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    widgets: list["DashboardWidget"] = Relationship(  # noqa: UP037
+        back_populates="dashboard",
+        sa_relationship_kwargs={"cascade": "all, delete-orphan"},
+    )
+
+
+class DashboardWidget(SQLModel, table=True):
+    """One widget on a dashboard: a structured analytics query plus how to draw it.
+
+    `spec_json` is a JSON-serialized query spec (or, later, a read-only SQL spec) held as a
+    plain string column on purpose -- the Pydantic schema on the API side is the sole
+    authority on its shape, so the DB stores it opaquely rather than as a JSON column type.
+
+    There is deliberately NO `chart_type` column: the chart type is a key inside
+    `spec_json`. Storing it in both places would be two authorities for one fact, the same
+    trap as `Task.status` vs `Task.status_id` (which this codebase already has to describe
+    as only "loosely in sync").
+
+    `seed_key` identifies which seeded Overview widget a row was created from, so re-seeding
+    can be idempotent instead of duplicating widgets on every boot; it is NULL for anything
+    the user built themselves.
+
+    ORDER BY `position`, never by `id` -- a seeding pass mints every widget of a dashboard
+    inside the same millisecond, and uuid7 is only coarsely monotonic at that resolution.
+    """
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    dashboard_id: str = Field(foreign_key="dashboard.id", index=True)
+    title: str
+    width: str = Field(default="half")  # half | full
+    position: int = Field(default=0)
+    spec_json: str = Field(default="{}")
+    seed_key: str | None = Field(default=None)
+    created_at: datetime = Field(default_factory=utc_now)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+    # Optional[X] rather than X | None to match every other relationship in this file --
+    # see the note at the top of the module; this annotation is handed to SQLAlchemy as a
+    # string and `Dashboard | None` cannot be resolved by its class registry.
+    dashboard: Optional[Dashboard] = Relationship(back_populates="widgets")  # noqa: UP045

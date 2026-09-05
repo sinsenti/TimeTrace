@@ -1,11 +1,17 @@
 /**
- * TimeTrace "Overview" statistics dashboard.
+ * TimeTrace statistics dashboards.
  *
- * The `/stats` page used to be a hardcoded set of four KPI cards + four Chart.js charts backed
- * by `GET /analytics/detailed`. It is now a seeded dashboard: a fixed list of widget specs, each
- * a real `AnalyticsQuery`, sent together as one `POST /analytics/query/batch` call and rendered
- * generically by chart type. `stats.js` keeps only the drilldown-inspector functions that a
- * widget click opens.
+ * Widgets are DB rows now (slice 2). The page loads the dashboard list from
+ * GET /api/dashboards, then renders one dashboard per tab with a single
+ * POST /api/dashboards/{id}/data call that returns the widget list plus each widget's result
+ * (or its own error, so one broken widget never blanks the page). The old localStorage-only
+ * widget list is gone -- see _importLegacyWidgets() for the one-time hand-off.
+ *
+ * This file renders; it does not build. The builder/editor modal lives in widget_builder.js.
+ *
+ * All cell/label text goes in through textContent, never innerHTML interpolation: widget
+ * titles and SQL result values are user-authored strings, and SQL widgets make that an
+ * injection surface rather than a theoretical one.
  */
 
 const ACCENT_CLASSES = {
@@ -15,69 +21,43 @@ const ACCENT_CLASSES = {
     blue: { badge: 'bg-blue-900/40 border-blue-700/50', text: 'text-blue-400' }
 };
 
-const OVERVIEW_SEED = [
-    {
-        key: 'total_time', kind: 'tile', accent: 'purple', badge: 'LOGGED', title: 'Total Time Logged',
-        query: { source: 'sessions', measure: 'sum_duration', chart: 'tile' },
-        format: (v) => `${_fmtNum(v || 0, 1)}h`
-    },
-    {
-        key: 'total_sessions', kind: 'tile', accent: 'emerald', badge: 'SESSIONS', title: 'Logged Sessions',
-        query: { source: 'sessions', measure: 'session_count', chart: 'tile' },
-        format: (v) => `${Math.round(v || 0)}`
-    },
-    {
-        key: 'total_tasks', kind: 'tile', accent: 'amber', badge: 'TASKS', title: 'Total Tasks',
-        query: { source: 'tasks', measure: 'task_count', chart: 'tile' },
-        format: (v) => `${Math.round(v || 0)}`
-    },
-    {
-        key: 'estimation_score', kind: 'tile', accent: 'blue', badge: 'ACCURACY', title: 'Estimation Score',
-        query: { source: 'tasks', measure: 'estimation_accuracy', chart: 'tile' },
-        format: (v) => (v === null || v === undefined) ? 'n/a' : `${_fmtNum(v, 1)}%`
-    },
-    {
-        key: 'estimation_breakdown', kind: 'doughnut', clickable: true,
-        title: 'Estimation Accuracy Breakdown',
-        query: {
-            source: 'tasks', measure: 'task_count', group_by: ['estimation_bucket'],
-            chart: 'doughnut', sort: 'dimension_asc'
-        }
-    },
-    {
-        key: 'daily_trend', kind: 'bar', clickable: true,
-        title: 'Daily Focus Trend (last 14 days)',
-        query: {
-            source: 'sessions', measure: 'sum_duration', group_by: ['day'],
-            chart: 'bar', sort: 'dimension_asc', fill_gaps: true,
-            date_range: { preset: 'last_14_days' }
-        }
-    },
-    {
-        key: 'peak_hours', kind: 'bar', clickable: false,
-        title: 'Peak Focus Hours (24h distribution)',
-        query: {
-            source: 'sessions', measure: 'sum_duration', group_by: ['hour_of_day'],
-            chart: 'bar', sort: 'dimension_asc', fill_gaps: true
-        }
-    },
-    {
-        key: 'tags_breakdown', kind: 'doughnut', clickable: true,
-        title: 'Activity Breakdown (#tags)',
-        query: {
-            source: 'sessions', measure: 'sum_duration', group_by: ['tag'],
-            chart: 'doughnut', sort: 'value_desc', tag_attribution: 'fan_out'
-        }
-    }
-];
+/**
+ * Presentation extras for the seeded Overview widgets only, keyed by `seed_key`.
+ *
+ * Deliberately not stored in the DB: accent colours, badge text and which drilldown a click
+ * opens are how *these specific* charts have always looked, not properties of a widget spec.
+ * A user-built widget gets a generic presentation derived from its result's column unit.
+ */
+const SEED_PRESENTATION = {
+    total_time: { accent: 'purple', badge: 'LOGGED' },
+    total_sessions: { accent: 'emerald', badge: 'SESSIONS' },
+    total_tasks: { accent: 'amber', badge: 'TASKS' },
+    estimation_score: { accent: 'blue', badge: 'ACCURACY', subtitle: 'estimation_ratio' },
+    est_total_hours: { accent: 'blue', badge: 'ESTIMATE' },
+    estimation_breakdown: { clickable: true },
+    daily_trend: { clickable: true },
+    peak_hours: {},
+    tags_breakdown: { clickable: true }
+};
+
+// UI preference only (which tab was open last), never data.
+const LAST_DASHBOARD_KEY = 'tt_last_dashboard_id';
+// Pre-slice-2 widget specs, imported once into the Overview dashboard then renamed.
+const LEGACY_WIDGETS_KEY = 'tt_custom_widgets_v1';
 
 let dashboardCharts = {};
+let dashboardList = [];
+let currentDashboardId = null;
+let currentDashboardData = null;
 
-// User-built widgets, created via the "+ Add Widget" button. Persisted only in this browser's
-// localStorage -- there is no dashboard/widget table (that's slice 2's builder UI, deliberately
-// not built yet), so a custom widget doesn't follow the user across devices/browsers.
-const CUSTOM_WIDGETS_KEY = 'tt_custom_widgets_v1';
-let capabilitiesBySource = null; // GET /analytics/capabilities, cached for the builder modal's lifetime
+function getCurrentDashboardId() {
+    return currentDashboardId;
+}
+
+function getWidgetById(widgetId) {
+    if (!currentDashboardData) return null;
+    return currentDashboardData.widgets.find(w => w.id === widgetId) || null;
+}
 
 function _fmtNum(val, decimals) {
     const factor = Math.pow(10, decimals);
@@ -94,328 +74,460 @@ function _unitFormatter(unit) {
     }
 }
 
-function _loadCustomWidgetSpecs() {
-    try {
-        const raw = localStorage.getItem(CUSTOM_WIDGETS_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch (e) {
-        console.error('Failed to read saved widgets from localStorage:', e);
-        return [];
-    }
+function _measureUnit(result) {
+    if (!result || !result.columns || !result.columns.length) return null;
+    return result.columns[result.columns.length - 1].unit || null;
 }
 
-function _saveCustomWidgetSpecs(specs) {
-    try {
-        localStorage.setItem(CUSTOM_WIDGETS_KEY, JSON.stringify(specs));
-    } catch (e) {
-        console.error('Failed to save widgets to localStorage:', e);
-    }
+function _el(tag, className, text) {
+    const el = document.createElement(tag);
+    if (className) el.className = className;
+    if (text !== undefined && text !== null) el.textContent = text;
+    return el;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    loadOverviewDashboard();
+    loadDashboards();
 });
 
-async function loadOverviewDashboard() {
+// ---- Dashboard list / tabs ----
+
+async function loadDashboards() {
     const grid = document.getElementById('widget_grid');
     if (!grid) return;
 
-    const queryCtx = getQueryContext();
-    const queries = {};
-    OVERVIEW_SEED.forEach(w => { queries[w.key] = w.query; });
-    // Widget 4's subtitle ("Tracked: Xh / Est: Yh") reuses widget 1's total for "Tracked" and
-    // needs exactly one extra query for "Est".
-    queries['est_total_hours'] = { source: 'tasks', measure: 'sum_estimated_duration', chart: 'tile' };
-
-    const customSpecs = _loadCustomWidgetSpecs();
-    customSpecs.forEach(spec => { queries[spec.key] = spec.query; });
-
-    let batchResult;
     try {
-        batchResult = await api.post('/analytics/query/batch', { ...queryCtx, queries });
+        dashboardList = await api.get('/api/dashboards');
     } catch (err) {
-        console.error('Failed to load Overview dashboard:', err);
-        grid.innerHTML = '<div class="text-xs text-slate-500 py-6 text-center">Failed to load statistics.</div>';
+        console.error('Failed to load dashboards:', err);
+        grid.innerHTML = '';
+        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'Failed to load dashboards.'));
         return;
     }
 
-    grid.innerHTML = '';
+    if (await _importLegacyWidgets()) {
+        dashboardList = await api.get('/api/dashboards');
+    }
 
-    const kpiRow = document.createElement('div');
-    kpiRow.className = 'grid grid-cols-1 md:grid-cols-4 gap-4';
-    grid.appendChild(kpiRow);
+    if (!dashboardList.length) {
+        renderDashboardTabs();
+        grid.innerHTML = '';
+        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'No dashboards yet.'));
+        return;
+    }
 
-    const chartRow = document.createElement('div');
-    chartRow.className = 'grid grid-cols-1 md:grid-cols-2 gap-6 mt-6';
-    grid.appendChild(chartRow);
+    const remembered = localStorage.getItem(LAST_DASHBOARD_KEY);
+    const exists = dashboardList.some(d => d.id === remembered);
+    currentDashboardId = exists ? remembered : dashboardList[0].id;
 
-    OVERVIEW_SEED.forEach(widget => {
-        const result = batchResult.results[widget.key];
-        if (!result) {
-            console.error(`Widget '${widget.key}' failed:`, batchResult.errors[widget.key]);
-            return;
-        }
-        if (widget.kind === 'tile') {
-            kpiRow.appendChild(renderTileWidget(widget, result, batchResult));
-        } else {
-            chartRow.appendChild(renderChartWidget(widget, result));
-        }
-    });
-
-    renderCustomWidgets(customSpecs, batchResult);
+    renderDashboardTabs();
+    await loadDashboard(currentDashboardId);
 }
 
-function renderCustomWidgets(specs, batchResult) {
-    const section = document.getElementById('custom_widget_section');
-    const grid = document.getElementById('custom_widget_grid');
-    if (!section || !grid) return;
+/**
+ * One-time hand-off of the pre-slice-2 localStorage widgets into the Overview dashboard.
+ *
+ * Skipping this would silently delete every widget an existing user had saved. The key is
+ * renamed rather than deleted, so a failed run can still be recovered by hand, and so this
+ * cannot run twice.
+ */
+async function _importLegacyWidgets() {
+    let raw;
+    try {
+        raw = localStorage.getItem(LEGACY_WIDGETS_KEY);
+    } catch (e) {
+        return false;
+    }
+    if (!raw) return false;
+
+    let specs;
+    try {
+        specs = JSON.parse(raw);
+    } catch (e) {
+        console.error('Could not parse saved widgets; leaving them untouched:', e);
+        return false;
+    }
+
+    const target = dashboardList.find(d => d.slug === 'overview') || dashboardList[0];
+    if (!target || !Array.isArray(specs) || !specs.length) {
+        localStorage.setItem(LEGACY_WIDGETS_KEY + '_migrated', raw);
+        localStorage.removeItem(LEGACY_WIDGETS_KEY);
+        return false;
+    }
+
+    let imported = 0;
+    for (const spec of specs) {
+        if (!spec || !spec.query) continue;
+        try {
+            await api.post(`/api/dashboards/${target.id}/widgets`, {
+                title: spec.title || 'Custom Widget',
+                width: 'half',
+                spec: { mode: 'structured', query: spec.query }
+            });
+            imported += 1;
+        } catch (err) {
+            console.error(`Could not import saved widget '${spec.title}':`, err.message);
+        }
+    }
+
+    localStorage.setItem(LEGACY_WIDGETS_KEY + '_migrated', raw);
+    localStorage.removeItem(LEGACY_WIDGETS_KEY);
+    console.info(`Imported ${imported} saved widget(s) into the '${target.name}' dashboard.`);
+    return imported > 0;
+}
+
+function renderDashboardTabs() {
+    const bar = document.getElementById('dashboard_tabs');
+    if (!bar) return;
+    bar.innerHTML = '';
+
+    dashboardList.forEach(d => {
+        const isActive = d.id === currentDashboardId;
+        const tab = _el(
+            'button',
+            'h-8 px-3 rounded-lg border text-xs font-bold transition ' + (isActive
+                ? 'bg-purple-600 border-purple-500 text-white'
+                : 'bg-[#181a28] border-[var(--border-muted)] text-slate-300 hover:text-white'),
+            d.name
+        );
+        tab.onclick = () => switchDashboard(d.id);
+        bar.appendChild(tab);
+    });
+
+    const addTab = _el('button',
+        'h-8 px-3 rounded-lg border border-dashed border-[var(--border-muted)] text-xs font-bold text-slate-400 hover:text-white transition',
+        '+ Dashboard');
+    addTab.onclick = () => createDashboard();
+    bar.appendChild(addTab);
+}
+
+async function switchDashboard(dashboardId) {
+    currentDashboardId = dashboardId;
+    localStorage.setItem(LAST_DASHBOARD_KEY, dashboardId);
+    renderDashboardTabs();
+    await loadDashboard(dashboardId);
+}
+
+async function createDashboard() {
+    const name = prompt('Name for the new dashboard:');
+    if (!name || !name.trim()) return;
+    try {
+        const created = await api.post('/api/dashboards', { name: name.trim() });
+        dashboardList = await api.get('/api/dashboards');
+        await switchDashboard(created.id);
+    } catch (err) {
+        alert(err.message || 'Could not create that dashboard.');
+    }
+}
+
+async function renameDashboard() {
+    const current = dashboardList.find(d => d.id === currentDashboardId);
+    if (!current) return;
+    const name = prompt('Rename dashboard:', current.name);
+    if (!name || !name.trim() || name.trim() === current.name) return;
+    try {
+        await api.put(`/api/dashboards/${currentDashboardId}`, { name: name.trim() });
+        dashboardList = await api.get('/api/dashboards');
+        renderDashboardTabs();
+    } catch (err) {
+        alert(err.message || 'Could not rename that dashboard.');
+    }
+}
+
+async function deleteDashboard() {
+    const current = dashboardList.find(d => d.id === currentDashboardId);
+    if (!current) return;
+    if (!confirm(`Delete the dashboard "${current.name}" and all of its widgets?`)) return;
+    try {
+        await api.delete(`/api/dashboards/${currentDashboardId}`);
+        localStorage.removeItem(LAST_DASHBOARD_KEY);
+        await loadDashboards();
+    } catch (err) {
+        alert(err.message || 'Could not delete that dashboard.');
+    }
+}
+
+async function resetDashboard() {
+    const current = dashboardList.find(d => d.id === currentDashboardId);
+    if (!current) return;
+    if (!current.is_seeded) {
+        alert('Only the seeded Overview dashboard can be reset to its default widgets.');
+        return;
+    }
+    if (!confirm('Replace this dashboard\'s widgets with the default Overview set?')) return;
+    try {
+        await api.post(`/api/dashboards/${currentDashboardId}/reset`);
+        await loadDashboard(currentDashboardId);
+    } catch (err) {
+        alert(err.message || 'Could not reset that dashboard.');
+    }
+}
+
+// ---- Rendering one dashboard ----
+
+function reloadCurrentDashboard() {
+    if (currentDashboardId) loadDashboard(currentDashboardId);
+}
+
+async function loadDashboard(dashboardId) {
+    const grid = document.getElementById('widget_grid');
+    if (!grid) return;
+
+    let data;
+    try {
+        data = await api.post(`/api/dashboards/${dashboardId}/data`, getQueryContext());
+    } catch (err) {
+        console.error('Failed to load dashboard:', err);
+        grid.innerHTML = '';
+        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'Failed to load this dashboard.'));
+        return;
+    }
+
+    currentDashboardData = data;
+    localStorage.setItem(LAST_DASHBOARD_KEY, dashboardId);
+
+    Object.values(dashboardCharts).forEach(chart => chart.destroy());
+    dashboardCharts = {};
 
     grid.innerHTML = '';
-    section.classList.toggle('hidden', specs.length === 0);
+    grid.className = 'grid grid-cols-1 md:grid-cols-4 gap-4';
 
-    specs.forEach(spec => {
-        const result = batchResult.results[spec.key];
-        if (!result) {
-            console.error(`Custom widget '${spec.key}' failed:`, batchResult.errors[spec.key]);
-            const errCard = document.createElement('div');
-            errCard.className = 'widget-card text-xs text-red-400';
-            errCard.innerHTML = `<div class="flex justify-between"><span>${spec.title} failed to load</span>` +
-                `<button onclick="removeCustomWidget('${spec.key}')" class="text-slate-400 hover:text-white font-bold">&times;</button></div>`;
-            grid.appendChild(errCard);
-            return;
-        }
+    const resetBtn = document.getElementById('reset_dashboard_btn');
+    if (resetBtn) resetBtn.classList.toggle('hidden', !data.dashboard.is_seeded);
 
-        let card;
-        if (spec.query.chart === 'tile') {
-            card = renderTileWidget(
-                { title: spec.title, badge: 'CUSTOM', accent: 'blue', format: _unitFormatter(spec.unit) },
-                result
-            );
-        } else if (spec.query.chart === 'table') {
-            card = renderTableWidget(spec, result);
-        } else {
-            card = renderChartWidget(
-                { key: spec.key, kind: spec.query.chart, title: spec.title, clickable: false },
-                result
-            );
-        }
+    if (!data.widgets.length) {
+        grid.appendChild(_el('div', 'md:col-span-4 text-xs text-slate-500 py-6 text-center',
+            'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
+        return;
+    }
 
-        const removeBtn = document.createElement('button');
-        removeBtn.className = 'absolute top-3 right-3 text-slate-500 hover:text-red-400 font-bold text-sm';
-        removeBtn.innerText = '×';
-        removeBtn.title = 'Remove this widget';
-        removeBtn.onclick = () => removeCustomWidget(spec.key);
-        card.classList.add('relative');
-        card.appendChild(removeBtn);
-
+    data.widgets.forEach((widget, index) => {
+        const card = renderWidget(widget, data, index);
         grid.appendChild(card);
     });
 }
 
-function renderTableWidget(spec, result) {
-    const card = document.createElement('div');
-    card.className = 'widget-card space-y-2';
-    const rowsHtml = result.rows.map(r =>
-        `<tr class="border-t border-[var(--border-color)]"><td class="py-1 pr-3">${r.labels.join(' / ')}</td><td class="py-1 text-right font-bold">${r.value === null ? 'n/a' : _fmtNum(r.value, 2)}</td></tr>`
-    ).join('');
-    card.innerHTML = `
-        <h3 class="font-bold text-sm text-slate-200">${spec.title}</h3>
-        <table class="w-full text-xs text-slate-300">
-            <tbody>${rowsHtml || '<tr><td class="py-2 text-slate-500">No data</td></tr>'}</tbody>
-        </table>
-    `;
+function renderWidget(widget, data, index) {
+    const seed = widget.seed_key ? (SEED_PRESENTATION[widget.seed_key] || {}) : null;
+    const error = data.errors[widget.id];
+    const result = data.results[widget.id];
+    const sqlResult = data.sql_results[widget.id];
+
+    let card;
+    if (error || (!result && !sqlResult)) {
+        card = _el('div', 'widget-card space-y-2');
+        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+        card.appendChild(_el('div', 'text-xs text-red-400', error || 'This widget produced no result.'));
+    } else if (sqlResult) {
+        card = renderSqlWidget(widget, sqlResult);
+    } else if (result.columns && result.columns.length && _isTile(widget, result)) {
+        card = renderTileWidget(widget, result, data, seed);
+    } else if (_widgetChart(widget) === 'table') {
+        card = renderTableWidget(widget, result);
+    } else {
+        card = renderChartWidget(widget, result, seed);
+    }
+
+    card.classList.add('relative');
+    card.classList.add(_widgetSpanClass(widget, result));
+    _addWidgetControls(card, widget, data, index);
     return card;
 }
 
-function removeCustomWidget(key) {
-    const specs = _loadCustomWidgetSpecs().filter(s => s.key !== key);
-    _saveCustomWidgetSpecs(specs);
-    if (dashboardCharts[key]) {
-        dashboardCharts[key].destroy();
-        delete dashboardCharts[key];
-    }
-    loadOverviewDashboard();
+function _widgetChart(widget) {
+    const spec = widget.spec;
+    if (!spec) return 'table';
+    return spec.mode === 'sql' ? (spec.sql.chart || 'table') : (spec.query.chart || 'bar');
 }
 
-// ---- Manual widget builder ----
-
-async function _ensureCapabilitiesLoaded() {
-    if (capabilitiesBySource) return capabilitiesBySource;
-    const resp = await api.get('/analytics/capabilities');
-    capabilitiesBySource = {};
-    resp.sources.forEach(s => { capabilitiesBySource[s.source] = s; });
-    return capabilitiesBySource;
+function _isTile(widget, result) {
+    return _widgetChart(widget) === 'tile';
 }
 
-function _fillSelect(select, options, placeholder) {
-    select.innerHTML = '';
-    if (placeholder) {
-        const opt = document.createElement('option');
-        opt.value = '';
-        opt.innerText = placeholder;
-        select.appendChild(opt);
-    }
-    options.forEach(o => {
-        const opt = document.createElement('option');
-        opt.value = o.value;
-        opt.innerText = o.label;
-        select.appendChild(opt);
-    });
+function _widgetSpanClass(widget, result) {
+    if (widget.width === 'full') return 'md:col-span-4';
+    if (_widgetChart(widget) === 'tile') return 'md:col-span-1';
+    return 'md:col-span-2';
 }
 
-async function openWidgetBuilder() {
-    const modal = document.getElementById('widget_builder_modal');
-    if (!modal) return;
+function _addWidgetControls(card, widget, data, index) {
+    const bar = _el('div', 'absolute top-2 right-2 flex items-center gap-1 opacity-60 hover:opacity-100');
 
-    document.getElementById('wb_title').value = '';
-    document.getElementById('wb_filter_value').value = '';
-    document.getElementById('wb_error').classList.add('hidden');
-    document.getElementById('wb_chart').value = 'bar';
-    document.getElementById('wb_date_range').value = 'all_time';
-    document.getElementById('wb_tag_attribution').value = 'fan_out';
-    document.getElementById('wb_filter_op').value = 'eq';
-
-    const caps = await _ensureCapabilitiesLoaded();
-    const sourceSelect = document.getElementById('wb_source');
-    _fillSelect(sourceSelect, Object.keys(caps).map(src => ({ value: src, label: src.replace('_', ' ') })));
-    _onWidgetBuilderSourceChange();
-
-    modal.classList.remove('hidden');
-}
-
-function closeWidgetBuilder() {
-    document.getElementById('widget_builder_modal').classList.add('hidden');
-}
-
-function _onWidgetBuilderSourceChange() {
-    const source = document.getElementById('wb_source').value;
-    const spec = capabilitiesBySource[source];
-    if (!spec) return;
-
-    _fillSelect(document.getElementById('wb_measure'), spec.measures.map(m => ({ value: m.value, label: m.label })));
-
-    const dimOptions = spec.dimensions.map(d => ({ value: d.value, label: d.label }));
-    _fillSelect(document.getElementById('wb_group_by_1'), dimOptions, 'None');
-    _fillSelect(document.getElementById('wb_group_by_2'), dimOptions, 'None');
-
-    _fillSelect(document.getElementById('wb_filter_field'), spec.filter_fields.map(f => ({ value: f.value, label: f.label })), 'No filter');
-}
-
-function _genWidgetKey() {
-    return 'custom_' + Math.random().toString(36).slice(2, 10);
-}
-
-async function submitWidgetBuilder() {
-    const errorBox = document.getElementById('wb_error');
-    errorBox.classList.add('hidden');
-
-    const title = document.getElementById('wb_title').value.trim() || 'Custom Widget';
-    const source = document.getElementById('wb_source').value;
-    const measure = document.getElementById('wb_measure').value;
-    const groupBy1 = document.getElementById('wb_group_by_1').value;
-    const groupBy2 = document.getElementById('wb_group_by_2').value;
-    const chart = document.getElementById('wb_chart').value;
-    const dateRangePreset = document.getElementById('wb_date_range').value;
-    const tagAttribution = document.getElementById('wb_tag_attribution').value;
-    const filterField = document.getElementById('wb_filter_field').value;
-    const filterOp = document.getElementById('wb_filter_op').value;
-    const filterValueRaw = document.getElementById('wb_filter_value').value.trim();
-
-    if (!source || !measure) {
-        errorBox.innerText = 'Pick a source and a measure.';
-        errorBox.classList.remove('hidden');
-        return;
-    }
-
-    const query = {
-        source, measure,
-        group_by: [groupBy1, groupBy2].filter(Boolean),
-        chart,
-        tag_attribution: tagAttribution,
-        sort: 'value_desc',
-        date_range: { preset: dateRangePreset }
+    const mkBtn = (label, title, handler, disabled) => {
+        const btn = _el('button', 'px-1 text-slate-400 hover:text-white text-xs font-bold', label);
+        btn.title = title;
+        if (disabled) {
+            btn.disabled = true;
+            btn.className += ' opacity-30 cursor-default';
+        } else {
+            btn.onclick = (evt) => { evt.stopPropagation(); handler(); };
+        }
+        return btn;
     };
 
-    if (filterField) {
-        let values = [];
-        if (filterOp !== 'is_null' && filterOp !== 'is_not_null') {
-            values = filterValueRaw.split(',').map(v => v.trim()).filter(v => v.length > 0).map(v => {
-                const n = Number(v);
-                return (v !== '' && !Number.isNaN(n)) ? n : v;
-            });
-        }
-        query.filters = [{ field: filterField, op: filterOp, values }];
-    }
+    bar.appendChild(mkBtn('‹', 'Move left', () => moveWidget(widget.id, -1), index === 0));
+    bar.appendChild(mkBtn('›', 'Move right', () => moveWidget(widget.id, 1),
+        index === data.widgets.length - 1));
+    bar.appendChild(mkBtn('Edit', 'Edit this widget', () => openWidgetEditor(widget.dashboard_id, widget.id)));
+    const del = mkBtn('×', 'Remove this widget', () => deleteWidget(widget.id));
+    del.className = 'px-1 text-slate-400 hover:text-red-400 text-sm font-bold';
+    bar.appendChild(del);
 
-    const measureSpec = (capabilitiesBySource[source].measures || []).find(m => m.value === measure);
-    const key = _genWidgetKey();
-    const spec = { key, title, unit: measureSpec ? measureSpec.unit : null, query };
-
-    // Run it once here so a bad combination (e.g. hour_of_day on a date-only source) surfaces
-    // immediately in the modal instead of silently failing in the dashboard batch call later.
-    try {
-        await api.post('/analytics/query', { ...getQueryContext(), query });
-    } catch (err) {
-        errorBox.innerText = err.message || 'That combination is not supported.';
-        errorBox.classList.remove('hidden');
-        return;
-    }
-
-    const specs = _loadCustomWidgetSpecs();
-    specs.push(spec);
-    _saveCustomWidgetSpecs(specs);
-
-    closeWidgetBuilder();
-    loadOverviewDashboard();
+    card.appendChild(bar);
 }
 
-function renderTileWidget(widget, result, batchResult) {
-    const accent = ACCENT_CLASSES[widget.accent] || ACCENT_CLASSES.purple;
-    const displayValue = widget.format(result.total);
+async function deleteWidget(widgetId) {
+    const widget = getWidgetById(widgetId);
+    if (!widget) return;
+    if (!confirm(`Remove the widget "${widget.title}" from this dashboard?`)) return;
+    try {
+        await api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`);
+    } catch (err) {
+        alert(err.message || 'Could not remove that widget.');
+        return;
+    }
+    reloadCurrentDashboard();
+}
 
-    let subtitleHtml = '';
-    if (widget.key === 'estimation_score') {
-        const trackedResult = batchResult.results['total_time'];
-        const estResult = batchResult.results['est_total_hours'];
-        const trackedH = trackedResult ? _fmtNum(trackedResult.total || 0, 1) : 0;
-        const estH = estResult ? _fmtNum(estResult.total || 0, 1) : 0;
-        subtitleHtml = `<span class="text-[11px] text-blue-400 font-semibold block mt-0.5">Tracked: ${trackedH}h / Est: ${estH}h</span>`;
+/**
+ * Move a widget one slot left/right by POSTing the whole reordered id list.
+ *
+ * The endpoint takes a full ordered replacement, not a swap: it rejects an id set that
+ * doesn't exactly match the dashboard's widgets, so a stale page can't write a half-order.
+ */
+async function moveWidget(widgetId, delta) {
+    if (!currentDashboardData) return;
+    const ids = currentDashboardData.widgets.map(w => w.id);
+    const from = ids.indexOf(widgetId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    try {
+        await api.post(`/api/dashboards/${currentDashboardId}/widgets/reorder`, { widget_ids: ids });
+    } catch (err) {
+        alert(err.message || 'Could not reorder the widgets.');
+        return;
+    }
+    reloadCurrentDashboard();
+}
+
+// ---- Widget renderers ----
+
+function renderTileWidget(widget, result, data, seed) {
+    const accent = ACCENT_CLASSES[(seed && seed.accent) || 'blue'] || ACCENT_CLASSES.blue;
+    const format = _unitFormatter(_measureUnit(result));
+    const badgeText = (seed && seed.badge) || _tileBadge(result);
+
+    const card = _el('div', 'widget-card flex items-center space-x-4');
+    card.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
+
+    const body = _el('div', 'min-w-0');
+    body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', widget.title));
+    body.appendChild(_el('span', `text-2xl font-black ${accent.text}`, format(result.total)));
+
+    if (seed && seed.subtitle === 'estimation_ratio') {
+        const tracked = _seedTotal(data, 'total_time');
+        const estimated = _seedTotal(data, 'est_total_hours');
+        if (tracked !== null || estimated !== null) {
+            body.appendChild(_el('span', 'text-[11px] text-blue-400 font-semibold block mt-0.5',
+                `Tracked: ${_fmtNum(tracked || 0, 1)}h / Est: ${_fmtNum(estimated || 0, 1)}h`));
+        }
     }
 
-    const card = document.createElement('div');
-    card.className = 'widget-card flex items-center space-x-4';
-    card.innerHTML = `
-        <div class="p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold">${widget.badge}</div>
-        <div>
-            <span class="text-xs text-slate-400 font-semibold block">${widget.title}</span>
-            <span class="text-2xl font-black ${accent.text}">${displayValue}</span>
-            ${subtitleHtml}
-        </div>
-    `;
+    if (result.comparison) {
+        body.appendChild(_deltaLine(result, _measureUnit(result)));
+    }
+
+    card.appendChild(body);
     return card;
 }
 
-function renderChartWidget(widget, result) {
-    const card = document.createElement('div');
-    card.id = `widget_${widget.key}`;
-    card.className = 'widget-card flex flex-col space-y-3' + (widget.clickable ? ' cursor-pointer' : '');
+function _tileBadge(result) {
+    const unit = _measureUnit(result);
+    switch (unit) {
+        case 'hours': return 'HOURS';
+        case 'minutes': return 'MINUTES';
+        case 'percent': return 'PERCENT';
+        case 'count': return 'COUNT';
+        default: return 'VALUE';
+    }
+}
 
-    const header = document.createElement('div');
-    header.className = 'flex justify-between items-center';
-    const titleSuffix = widget.clickable ? ' (Click to inspect)' : '';
-    header.innerHTML = `<h3 class="font-bold text-sm text-slate-200">${widget.title}${titleSuffix}</h3>`;
+function _seedTotal(data, seedKey) {
+    const widget = data.widgets.find(w => w.seed_key === seedKey);
+    if (!widget) return null;
+    const result = data.results[widget.id];
+    return result ? result.total : null;
+}
+
+/**
+ * "+1.3h vs previous period" -- delta in the measure's own unit.
+ *
+ * Percent/score measures get points only: the API leaves delta_pct null for them, since a
+ * percentage change of a percentage would read as something it is not.
+ */
+function _deltaLine(result, unit) {
+    const row = result.rows && result.rows.length ? result.rows[0] : null;
+    const delta = row ? row.delta : null;
+    const label = result.comparison ? result.comparison.label : 'baseline';
+
+    if (delta === null || delta === undefined) {
+        return _el('span', 'text-[11px] text-slate-500 font-semibold block mt-0.5', `No baseline for ${label}`);
+    }
+
+    const format = _unitFormatter(unit);
+    const sign = delta > 0 ? '+' : (delta < 0 ? '-' : '');
+    const magnitude = format(Math.abs(delta));
+    const pct = (row.delta_pct === null || row.delta_pct === undefined)
+        ? '' : ` (${delta > 0 ? '+' : '-'}${_fmtNum(Math.abs(row.delta_pct), 1)}%)`;
+    const tone = delta > 0 ? 'text-emerald-400' : (delta < 0 ? 'text-red-400' : 'text-slate-400');
+
+    return _el('span', `text-[11px] ${tone} font-semibold block mt-0.5`,
+        `${sign}${magnitude}${pct} vs ${label}`);
+}
+
+function renderTableWidget(widget, result) {
+    const card = _el('div', 'widget-card space-y-2');
+    card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+
+    const table = _el('table', 'w-full text-xs text-slate-300');
+    const tbody = _el('tbody');
+    if (!result.rows.length) {
+        const tr = _el('tr');
+        tr.appendChild(_el('td', 'py-2 text-slate-500', 'No data'));
+        tbody.appendChild(tr);
+    }
+    result.rows.forEach(r => {
+        const tr = _el('tr', 'border-t border-[var(--border-color)]');
+        tr.appendChild(_el('td', 'py-1 pr-3', r.labels.join(' / ')));
+        tr.appendChild(_el('td', 'py-1 text-right font-bold', r.value === null ? 'n/a' : String(_fmtNum(r.value, 2))));
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    card.appendChild(table);
+    return card;
+}
+
+function renderChartWidget(widget, result, seed) {
+    const clickable = !!(seed && seed.clickable);
+    const kind = _widgetChart(widget);
+
+    const card = _el('div', 'widget-card flex flex-col space-y-3' + (clickable ? ' cursor-pointer' : ''));
+    card.id = `widget_${widget.id}`;
+
+    const header = _el('div', 'flex justify-between items-center pr-24');
+    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200',
+        widget.title + (clickable ? ' (Click to inspect)' : '')));
 
     if (result.meta.totals_overlap) {
-        const note = document.createElement('span');
-        note.className = 'text-[10px] text-amber-400 font-semibold';
+        const note = _el('span', 'text-[10px] text-amber-400 font-semibold', 'Totals overlap');
         note.title = 'A session tagged with multiple tags is counted in full under each tag; totals across slices will exceed 100%.';
-        note.innerText = 'Totals overlap';
         header.appendChild(note);
     }
     card.appendChild(header);
 
-    const chartWrap = document.createElement('div');
-    chartWrap.className = 'h-64 relative' + (widget.kind === 'doughnut' ? ' flex items-center justify-center' : '');
+    const chartWrap = _el('div', 'h-64 relative' + (kind === 'doughnut' ? ' flex items-center justify-center' : ''));
     const canvas = document.createElement('canvas');
     chartWrap.appendChild(canvas);
     card.appendChild(chartWrap);
@@ -426,43 +538,58 @@ function renderChartWidget(widget, result) {
         ? defaultPalette
         : ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
-    if (dashboardCharts[widget.key]) {
-        dashboardCharts[widget.key].destroy();
+    const chartType = kind === 'doughnut' ? 'doughnut' : (kind === 'line' ? 'line' : 'bar');
+
+    const datasets = [{
+        label: widget.title,
+        data: values,
+        backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
+        borderColor: chartType === 'line' ? (palette[0] || '#8b5cf6') : undefined,
+        fill: chartType === 'line' ? false : undefined,
+        tension: chartType === 'line' ? 0.3 : undefined,
+        borderRadius: chartType === 'bar' ? 6 : 0,
+        borderWidth: chartType === 'doughnut' ? 0 : undefined
+    }];
+
+    // Ghost baseline series. Never on a doughnut: two overlaid rings do not read as a
+    // comparison, they read as one wrong chart.
+    const hasComparison = !!result.comparison && chartType !== 'doughnut';
+    if (hasComparison) {
+        datasets.push({
+            label: result.comparison.label,
+            data: result.rows.map(r => (r.comparison_value === null || r.comparison_value === undefined)
+                ? null : r.comparison_value),
+            backgroundColor: 'rgba(148, 163, 184, 0.25)',
+            borderColor: '#94a3b8',
+            borderDash: [4, 3],
+            fill: false,
+            tension: chartType === 'line' ? 0.3 : undefined,
+            borderRadius: chartType === 'bar' ? 6 : 0,
+            borderWidth: 1.5
+        });
     }
 
-    const chartType = widget.kind === 'doughnut' ? 'doughnut' : (widget.kind === 'line' ? 'line' : 'bar');
+    if (dashboardCharts[widget.id]) dashboardCharts[widget.id].destroy();
 
-    dashboardCharts[widget.key] = new Chart(canvas.getContext('2d'), {
+    dashboardCharts[widget.id] = new Chart(canvas.getContext('2d'), {
         type: chartType,
-        data: {
-            labels,
-            datasets: [{
-                label: widget.title,
-                data: values,
-                backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
-                borderColor: chartType === 'line' ? (palette[0] || '#8b5cf6') : undefined,
-                fill: chartType === 'line' ? false : undefined,
-                tension: chartType === 'line' ? 0.3 : undefined,
-                borderRadius: chartType === 'bar' ? 6 : 0,
-                borderWidth: chartType === 'doughnut' ? 0 : undefined
-            }]
-        },
+        data: { labels, datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
-                legend: chartType === 'doughnut'
+                legend: (chartType === 'doughnut')
                     ? { position: 'right', labels: { color: '#94a3b8', boxWidth: 12 } }
-                    : { display: false }
+                    : { display: hasComparison, labels: { color: '#94a3b8', boxWidth: 12 } }
             },
             scales: chartType !== 'doughnut' ? {
                 x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
                 y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
             } : undefined,
-            onClick: widget.clickable ? (evt, elements) => {
+            onClick: clickable ? (evt, elements) => {
                 if (!elements.length) return;
                 const row = result.rows[elements[0].index];
-                handleWidgetClick(widget.key, row);
+                handleWidgetClick(widget.seed_key, row);
             } : undefined
         }
     });
@@ -470,14 +597,93 @@ function renderChartWidget(widget, result) {
     return card;
 }
 
-function handleWidgetClick(widgetKey, row) {
-    if (!row) return;
-    if (widgetKey === 'daily_trend') {
+/**
+ * SQL-mode widget: a table by default, or a chart when the spec names a label and a value
+ * column. Every cell goes in via textContent -- the values come from a user-authored query
+ * and self-XSS is still XSS.
+ */
+function renderSqlWidget(widget, sqlResult) {
+    const spec = widget.spec && widget.spec.mode === 'sql' ? widget.spec.sql : null;
+    const chart = spec ? (spec.chart || 'table') : 'table';
+    const labelColumn = spec ? spec.label_column : null;
+    const valueColumn = spec ? spec.value_column : null;
+
+    if (chart !== 'table' && labelColumn && valueColumn) {
+        const labelIdx = sqlResult.columns.indexOf(labelColumn);
+        const valueIdx = sqlResult.columns.indexOf(valueColumn);
+        if (labelIdx >= 0 && valueIdx >= 0) {
+            // Re-shape into the structured renderer's row format and reuse it wholesale.
+            const pseudoResult = {
+                columns: [{ key: 'k0', label: labelColumn, kind: 'dimension' },
+                          { key: 'value', label: valueColumn, kind: 'measure', unit: null }],
+                rows: sqlResult.rows.map(r => ({
+                    keys: [String(r[labelIdx])],
+                    labels: [r[labelIdx] === null || r[labelIdx] === undefined ? '' : String(r[labelIdx])],
+                    value: Number(r[valueIdx]) || 0,
+                    count: 0
+                })),
+                total: null,
+                row_count: sqlResult.row_count,
+                meta: { totals_overlap: false },
+                comparison: null
+            };
+            return renderChartWidget(widget, pseudoResult, null);
+        }
+    }
+
+    const card = _el('div', 'widget-card space-y-2');
+    const header = _el('div', 'flex justify-between items-center pr-24');
+    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+    header.appendChild(_el('span', 'text-[10px] text-slate-500 font-semibold', 'SQL'));
+    card.appendChild(header);
+
+    const wrap = _el('div', 'max-h-64 overflow-auto');
+    const table = _el('table', 'w-full text-xs text-slate-300');
+
+    const thead = _el('thead');
+    const headRow = _el('tr', 'text-slate-400 font-bold');
+    sqlResult.columns.forEach(col => {
+        const th = _el('th', 'text-left py-1 pr-3', col);
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = _el('tbody');
+    if (!sqlResult.rows.length) {
+        const tr = _el('tr');
+        const td = _el('td', 'py-2 text-slate-500', 'No rows');
+        td.colSpan = Math.max(1, sqlResult.columns.length);
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+    sqlResult.rows.forEach(row => {
+        const tr = _el('tr', 'border-t border-[var(--border-color)]');
+        row.forEach(cell => {
+            tr.appendChild(_el('td', 'py-1 pr-3', cell === null || cell === undefined ? '' : String(cell)));
+        });
+        tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    wrap.appendChild(table);
+    card.appendChild(wrap);
+
+    const notes = [];
+    if (sqlResult.truncated) notes.push(`Showing the first ${sqlResult.row_count} rows.`);
+    (sqlResult.warnings || []).forEach(w => notes.push(w));
+    if (notes.length) card.appendChild(_el('div', 'text-[10px] text-amber-400', notes.join(' ')));
+
+    return card;
+}
+
+function handleWidgetClick(seedKey, row) {
+    if (!row || !seedKey) return;
+    if (seedKey === 'daily_trend') {
         // row.keys[0] is the local YYYY-MM-DD bucket key produced by the query engine.
         inspectDaySessions(row.keys[0]);
-    } else if (widgetKey === 'tags_breakdown') {
+    } else if (seedKey === 'tags_breakdown') {
         inspectTagSessions(row.labels[0]);
-    } else if (widgetKey === 'estimation_breakdown') {
+    } else if (seedKey === 'estimation_breakdown') {
         inspectEstimationCategory(row.keys[0]);
     }
 }
