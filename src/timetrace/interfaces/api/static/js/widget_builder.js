@@ -174,6 +174,33 @@ function closeWidgetBuilder() {
     document.getElementById('widget_builder_modal').classList.add('hidden');
 }
 
+/**
+ * Escape always closes, even while typing in the SQL textarea (which would otherwise swallow
+ * it as a no-op keystroke). Ctrl+Enter submits, except from inside the SQL textarea where it
+ * runs the preview instead - a bare Enter there must stay a newline, never a submit.
+ */
+function setupWidgetBuilderKeyboard() {
+    const modal = document.getElementById('widget_builder_modal');
+    if (!modal) return;
+    modal.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' || e.key === 'Esc') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeWidgetBuilder();
+        } else if (e.ctrlKey && e.key === 'Enter') {
+            e.preventDefault();
+            const active = document.activeElement;
+            if (wbMode === 'sql' && active && active.id === 'wb_sql') {
+                wbRunSqlPreview();
+            } else {
+                submitWidgetBuilder();
+            }
+        }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', setupWidgetBuilderKeyboard);
+
 function wbSwitchMode(mode) {
     wbMode = (mode === 'sql' && sqlWidgetsEnabled) ? 'sql' : 'structured';
     document.getElementById('wb_pane_structured').classList.toggle('hidden', wbMode !== 'structured');
