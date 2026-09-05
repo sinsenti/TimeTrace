@@ -583,6 +583,30 @@
     line-height: 1.4;
 }
 
+.ai-provider-help {
+    font-size: 11px;
+    color: #94a3b8;
+    line-height: 1.5;
+    background: #0f1016;
+    border: 1px solid #262938;
+    border-radius: 6px;
+    padding: 7px 9px;
+    margin: 2px 0 8px;
+}
+
+.ai-provider-help:empty {
+    display: none;
+}
+
+.ai-provider-help a {
+    color: #a78bfa;
+    text-decoration: underline;
+}
+
+.ai-provider-help a:hover {
+    color: #c4b5fd;
+}
+
 /* ---------------------------------------------------------------------------------------------
  * Quick-add strip (task modal)
  * ------------------------------------------------------------------------------------------- */

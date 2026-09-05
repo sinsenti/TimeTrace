@@ -19,8 +19,13 @@ from timetrace.core.ai.secrets import decrypt_secret, encrypt_secret, key_last4
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama")
+KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google")
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
+
+# See core/ai/providers.py's twin constant for why this translation exists: `init_chat_model`'s
+# registry key for direct Google AI Studio access is "google_genai", not this app's shorter
+# user-facing "google".
+_MODEL_PROVIDER_OVERRIDES = {"google": "google_genai"}
 
 # Sentinel distinguishing "argument omitted" (keep existing value) from an explicit value,
 # including an explicit `None`/`""`. Needed for `update_provider`'s `api_key` semantics (S7):
@@ -60,7 +65,7 @@ def build_chat_model(
     """
     _validate_provider(provider)
 
-    model_provider = provider
+    model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
     resolved_base_url = base_url
     if provider == "openrouter" and not use_native_openrouter:
         model_provider = "openai"
@@ -342,6 +347,11 @@ class AIProviderService:
                 {"id": "mistral", "label": "Mistral"},
                 {"id": "deepseek-r1", "label": "DeepSeek R1"},
             ],
+            "google": [
+                {"id": "gemini-3-pro", "label": "Gemini 3 Pro"},
+                {"id": "gemini-3-flash", "label": "Gemini 3 Flash"},
+                {"id": "gemini-2.5-flash-lite", "label": "Gemini 2.5 Flash-Lite"},
+            ],
         }
 
     def list_models(self, config_id: str) -> list[dict[str, str]]:
@@ -392,6 +402,22 @@ class AIProviderService:
                 resp.raise_for_status()
                 data = resp.json().get("data", [])
                 return [{"id": m["id"], "label": m.get("display_name", m["id"])} for m in data if "id" in m]
+
+            if config.provider == "google" and api_key:
+                resp = httpx.get(
+                    "https://generativelanguage.googleapis.com/v1beta/models",
+                    params={"key": api_key},
+                    timeout=5.0,
+                )
+                resp.raise_for_status()
+                models = resp.json().get("models", [])
+                # The API returns names prefixed "models/gemini-..."; strip it to match the bare
+                # ids used everywhere else here (list_catalog, init_chat_model's `model=` arg).
+                return [
+                    {"id": m["name"].removeprefix("models/"), "label": m.get("displayName", m["name"])}
+                    for m in models
+                    if "name" in m and "generateContent" in (m.get("supportedGenerationMethods") or [])
+                ]
         except Exception:
             return None
         return None

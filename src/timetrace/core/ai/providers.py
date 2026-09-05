@@ -1,4 +1,4 @@
-"""Provider abstraction (`init_chat_model` wiring for Anthropic/OpenAI/OpenRouter/Ollama).
+"""Provider abstraction (`init_chat_model` wiring for Anthropic/OpenAI/OpenRouter/Ollama/Google).
 
 Layering (spec S5: "core/ free of FastAPI and SQLModel"): `services/ai_provider_service.py`
 already has a `build_chat_model` helper, but it can't be imported here -- `services/` imports
@@ -20,7 +20,14 @@ inventing for four lines.
 
 from typing import Any
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama")
+KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google")
+
+# `init_chat_model`'s provider registry key for direct Google AI Studio access is "google_genai"
+# (-> `langchain_google_genai.ChatGoogleGenerativeAI`), not "google" -- "google_vertexai"/
+# "google_anthropic_vertex" are the separate Vertex AI routes we deliberately don't offer here.
+# "google" is this app's own, shorter, user-facing provider name; this is the one place that
+# translates it.
+_MODEL_PROVIDER_OVERRIDES = {"google": "google_genai"}
 
 
 def get_chat_model(
@@ -51,7 +58,7 @@ def get_chat_model(
     if provider not in KNOWN_PROVIDERS:
         raise ValueError(f"Unknown provider '{provider}'. Expected one of {KNOWN_PROVIDERS}.")
 
-    model_provider = provider
+    model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
     resolved_base_url = base_url
     if provider == "openrouter" and not use_native_openrouter:
         model_provider = "openai"

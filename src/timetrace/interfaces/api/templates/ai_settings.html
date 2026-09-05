@@ -39,8 +39,8 @@
     <main class="ai-settings-page flex-1 w-full">
         <div class="ai-settings-section">
             <h2>Providers</h2>
-            <p class="ai-settings-hint">Anthropic, OpenAI, OpenRouter, or a local Ollama server. Exactly one provider
-                is active at a time; switching is instant, no daemon restart required.</p>
+            <p class="ai-settings-hint">Anthropic, OpenAI, Google AI Studio, OpenRouter, or a local Ollama server.
+                Exactly one provider is active at a time; switching is instant, no daemon restart required.</p>
             <div id="ai_providers_list"></div>
             <button type="button" id="ai_provider_new_btn" class="ai-btn ai-btn-accept mt-2">+ Add Provider</button>
         </div>
@@ -59,11 +59,14 @@
                     <select id="ai_provider_form_provider">
                         <option value="anthropic">Anthropic</option>
                         <option value="openai">OpenAI</option>
+                        <option value="google">Google AI Studio</option>
                         <option value="openrouter">OpenRouter</option>
                         <option value="ollama">Ollama</option>
                     </select>
                 </div>
             </div>
+
+            <div id="ai_provider_form_help" class="ai-provider-help"></div>
 
             <div class="ai-form-row">
                 <div>
@@ -82,7 +85,7 @@
                     <input type="text" id="ai_provider_form_base_url" placeholder="http://localhost:11434">
                 </div>
                 <div>
-                    <label>API Key</label>
+                    <label id="ai_provider_form_api_key_label">API Key</label>
                     <input type="password" id="ai_provider_form_api_key" placeholder="leave blank to keep existing key" autocomplete="new-password">
                 </div>
             </div>
