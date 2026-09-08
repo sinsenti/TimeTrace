@@ -20,7 +20,7 @@
     background: #12131d;
     border-left: 1px solid #262938;
     box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
-    z-index: 200;
+    z-index: 45;
     /* Row, not column: normally `.ai-drawer-calendar-pane` is empty+hidden and
        `.ai-drawer-chat-column` (header/body/composer, was directly on #ai_drawer before) is the
        only visible child, filling the width via flex:1 below -- so this looks identical to the
@@ -51,11 +51,21 @@
     left: 0;
     width: 100vw !important;
     max-width: 100vw;
+    top: var(--ai-fullscreen-top, 48px);
+    height: calc(100vh - var(--ai-fullscreen-top, 48px));
+}
+
+#ai_drawer.ai-drawer-no-transition {
+    transition: none;
 }
 
 #ai_drawer.ai-drawer-fullscreen .ai-drawer-chat-column {
-    flex: 0 0 420px;
+    flex: 0 0 var(--ai-chat-width, 420px);
     border-left: 1px solid #262938;
+}
+
+#ai_drawer.ai-drawer-fullscreen .ai-drawer-calendar-pane.hidden + .ai-drawer-chat-column {
+    flex: 1;
 }
 
 .ai-drawer-resize-handle {
@@ -72,12 +82,6 @@
 .ai-drawer-resize-handle:hover,
 .ai-drawer-resize-handle.ai-drawer-resize-active {
     background: rgba(168, 85, 247, 0.35);
-}
-
-/* Resizing the drawer's own width doesn't mean anything in full screen (it's always 100vw) --
-   ai_assistant.js hides the handle via this class rather than fighting drag math against !important. */
-#ai_drawer.ai-drawer-fullscreen .ai-drawer-resize-handle {
-    display: none;
 }
 
 .ai-drawer-calendar-pane {
@@ -100,6 +104,12 @@
        was split out into its own element. */
     flex: 1;
     min-width: 0;
+    /* Positions `.ai-drawer-resize-handle` (now this element's first child) relative to this
+       column instead of #ai_drawer: in normal mode the column fills the whole drawer, so its
+       left edge coincides with the drawer's own left edge (unchanged behavior); in full-screen
+       mode the column's left edge IS the calendar/chat boundary, which is exactly where the
+       handle needs to sit. */
+    position: relative;
 }
 
 .ai-drawer-header {

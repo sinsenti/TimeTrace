@@ -288,6 +288,10 @@ class AISettings(SQLModel, table=True):
     preview_on_calendar: bool = Field(default=True)
     scheduling_window_days: int = Field(default=14)
     batch_undo_retention_days: int = Field(default=30)
+    # Non-nullable with "" as the "unset" sentinel, deliberately not `str | None`:
+    # AISettingsService.update_settings skips any field whose incoming value is None, so a
+    # nullable column could never be cleared back to empty through the existing update path.
+    custom_instructions: str = Field(default="")
     created_at: datetime = Field(default_factory=utc_now)
     updated_at: datetime = Field(default_factory=utc_now)
 

@@ -35,7 +35,11 @@ function aiDraftOverlayEventSourceFn(fetchInfo, successCallback, failureCallback
                 const endDt = aiParseNaiveLocal(item.display && item.display.end_time_local);
                 if (!startDt || !endDt) return null;
 
-                const label = proposed.notes || proposed.tags || baseline.notes || baseline.tags
+                // Prefer the server-computed display_title (resolves the session's real task
+                // title); fall back to the old tag/notes chain (tags before notes, matching the
+                // real calendar's convention in static/js/calendar.js: `s.tags || s.notes ||
+                // 'Session'`) if absent.
+                const label = item.display_title || proposed.tags || proposed.notes || baseline.tags || baseline.notes
                     || (isRemove ? 'AI: remove' : 'AI proposal');
 
                 return {

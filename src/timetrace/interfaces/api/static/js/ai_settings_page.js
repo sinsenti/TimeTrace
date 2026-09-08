@@ -362,6 +362,7 @@ async function aiLoadBehaviorSettings() {
         document.getElementById('ai_setting_preview_on_calendar').checked = Boolean(s.preview_on_calendar);
         document.getElementById('ai_setting_scheduling_window_days').value = s.scheduling_window_days;
         document.getElementById('ai_setting_batch_undo_retention_days').value = s.batch_undo_retention_days;
+        document.getElementById('ai_setting_custom_instructions').value = s.custom_instructions || '';
     } catch (err) {
         console.error('Failed to load AI behavior settings:', err);
     }
@@ -374,7 +375,8 @@ async function aiSaveBehaviorSettings() {
         redact_before_send: document.getElementById('ai_setting_redact_before_send').checked,
         preview_on_calendar: document.getElementById('ai_setting_preview_on_calendar').checked,
         scheduling_window_days: parseInt(document.getElementById('ai_setting_scheduling_window_days').value, 10),
-        batch_undo_retention_days: parseInt(document.getElementById('ai_setting_batch_undo_retention_days').value, 10)
+        batch_undo_retention_days: parseInt(document.getElementById('ai_setting_batch_undo_retention_days').value, 10),
+        custom_instructions: document.getElementById('ai_setting_custom_instructions').value
     };
     try {
         await api.put('/api/ai/settings', payload);

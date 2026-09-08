@@ -457,6 +457,7 @@ class AISettingsService:
         "preview_on_calendar",
         "scheduling_window_days",
         "batch_undo_retention_days",
+        "custom_instructions",
     )
 
     def __init__(self, db: Session):
@@ -476,6 +477,10 @@ class AISettingsService:
         unknown = set(fields) - set(self._UPDATABLE_FIELDS)
         if unknown:
             raise ValidationError(f"Unknown AI settings field(s): {', '.join(sorted(unknown))}")
+
+        custom_instructions = fields.get("custom_instructions")
+        if custom_instructions is not None and len(custom_instructions) > 4000:
+            raise ValidationError("custom_instructions must be 4000 characters or fewer.")
 
         row = self.get_settings()
         for key, value in fields.items():
