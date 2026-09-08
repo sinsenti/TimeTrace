@@ -4,7 +4,6 @@
      textContent in ai_assistant.js/ai_drafts.js -- never innerHTML, never Markdown-parsed
      (spec S9.5). -->
 <div id="ai_drawer" class="text-white">
-    <div id="ai_drawer_resize_handle" class="ai-drawer-resize-handle" title="Drag to resize"></div>
 
     <!-- Only populated/shown in full-screen mode, and only on a page that has a calendar (the
          dashboard's #calendar/`calendar` FullCalendar instance is physically MOVED in here --
@@ -13,6 +12,10 @@
     <div id="ai_drawer_calendar_pane" class="ai-drawer-calendar-pane hidden"></div>
 
     <div id="ai_drawer_chat_column" class="ai-drawer-chat-column">
+        <!-- In normal mode this sits at the drawer's own left edge (the chat column fills the
+             whole drawer); in full-screen mode this same edge IS the calendar/chat boundary --
+             see ai.css .ai-drawer-chat-column { position: relative } and aiSetupDrawerResize. -->
+        <div id="ai_drawer_resize_handle" class="ai-drawer-resize-handle" title="Drag to resize"></div>
         <div class="ai-drawer-header">
             <span class="ai-drawer-title">Assistant</span>
             <select id="ai_conversation_select" class="ai-conversation-select"></select>

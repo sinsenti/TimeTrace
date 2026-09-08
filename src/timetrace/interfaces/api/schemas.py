@@ -514,6 +514,7 @@ class AISettingsResponse(BaseModel):
     preview_on_calendar: bool
     scheduling_window_days: int
     batch_undo_retention_days: int
+    custom_instructions: str
     created_at: datetime
     updated_at: datetime
 
@@ -524,6 +525,7 @@ class AISettingsUpdateRequest(BaseModel):
     preview_on_calendar: bool | None = None
     scheduling_window_days: int | None = None
     batch_undo_retention_days: int | None = None
+    custom_instructions: str | None = None
 
 
 class AIConversationResponse(BaseModel):
@@ -610,6 +612,7 @@ class AIDraftItemResponse(BaseModel):
     is_stale: bool
     ui_kind: str | None = None
     group_key: str | None = None
+    display_title: str = ""
     created_at: datetime
     updated_at: datetime
 

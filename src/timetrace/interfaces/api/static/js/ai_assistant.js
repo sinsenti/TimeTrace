@@ -56,14 +56,36 @@ function aiPageHasCalendar() {
     // `calendar` is dashboard.js's top-level FullCalendar instance -- only defined (and only a
     // real object, not just `undefined`) on the dashboard page. Checking both the JS variable
     // and the DOM element it's bound to guards against a page that has one but not the other.
+    // NOTE: only safe to call from user-triggered handlers after dashboard.js has run -- never
+    // from early/module-top-level/DOMContentLoaded-race code (the `calendar` `let` binding may
+    // not exist yet, which throws a ReferenceError rather than evaluating falsy).
     return typeof calendar !== 'undefined' && calendar && Boolean(document.getElementById('calendar'));
 }
+
+// Reads the page header's rendered height (0 if there's no `body > header`) and publishes it as
+// a CSS variable so the fullscreen drawer can sit below page chrome instead of covering it.
+function aiMeasureFullscreenTop() {
+    const header = document.querySelector('body > header');
+    const h = header ? header.getBoundingClientRect().height : 0;
+    document.documentElement.style.setProperty('--ai-fullscreen-top', `${h}px`);
+}
+
+function aiHandleFullscreenResize() {
+    if (!isAiFullscreenActive()) return;
+    aiMeasureFullscreenTop();
+}
+
+window.addEventListener('resize', aiHandleFullscreenResize);
 
 function aiEnterFullscreen() {
     const drawer = document.getElementById('ai_drawer');
     const pane = document.getElementById('ai_drawer_calendar_pane');
     if (!drawer || !pane) return;
+    aiMeasureFullscreenTop();
+    aiRestoreFullscreenChatWidth();
     if (!isAiDrawerOpen()) openAiDrawer();
+
+    drawer.classList.add('ai-drawer-no-transition');
     drawer.classList.add('ai-drawer-fullscreen');
 
     if (aiPageHasCalendar()) {
@@ -72,11 +94,15 @@ function aiEnterFullscreen() {
         aiCalendarHomeNextSibling = calendarEl.nextSibling;
         pane.appendChild(calendarEl);
         pane.classList.remove('hidden');
-        // FullCalendar sizes itself off its container's rendered dimensions at the moment of the
-        // move; ask it to recompute once the new layout has actually painted rather than in the
-        // same frame as the reparent.
-        requestAnimationFrame(() => { if (calendar) calendar.updateSize(); });
     }
+
+    // FullCalendar sizes itself off its container's rendered dimensions at the moment of the
+    // move; ask it to recompute once the new layout has actually painted rather than in the
+    // same frame as the reparent/class toggle (which may still be mid-CSS-transition).
+    requestAnimationFrame(() => {
+        if (aiPageHasCalendar()) calendar.updateSize();
+        drawer.classList.remove('ai-drawer-no-transition');
+    });
 
     const btn = document.getElementById('ai_fullscreen_toggle_btn');
     if (btn) { btn.textContent = 'Exit Fullscreen'; btn.title = 'Exit full screen'; }
@@ -86,18 +112,24 @@ function aiExitFullscreen() {
     const drawer = document.getElementById('ai_drawer');
     const pane = document.getElementById('ai_drawer_calendar_pane');
     if (!drawer) return;
+
+    drawer.classList.add('ai-drawer-no-transition');
     drawer.classList.remove('ai-drawer-fullscreen');
 
     if (aiCalendarHomeParent) {
         const calendarEl = document.getElementById('calendar');
         if (calendarEl) {
             aiCalendarHomeParent.insertBefore(calendarEl, aiCalendarHomeNextSibling);
-            requestAnimationFrame(() => { if (typeof calendar !== 'undefined' && calendar) calendar.updateSize(); });
         }
         aiCalendarHomeParent = null;
         aiCalendarHomeNextSibling = null;
     }
     if (pane) pane.classList.add('hidden');
+
+    requestAnimationFrame(() => {
+        if (typeof calendar !== 'undefined' && calendar) calendar.updateSize();
+        drawer.classList.remove('ai-drawer-no-transition');
+    });
 
     const btn = document.getElementById('ai_fullscreen_toggle_btn');
     if (btn) { btn.textContent = 'Fullscreen'; btn.title = 'Toggle full screen'; }
@@ -376,6 +408,7 @@ async function refreshAiStatusBadge() {
 
 const AI_DRAWER_WIDTH_STORAGE_KEY = 'tt_ai_drawer_width_px';
 const AI_DRAWER_MIN_WIDTH = 320;
+const AI_FULLSCREEN_CHAT_WIDTH_STORAGE_KEY = 'tt_ai_fullscreen_chat_width_px';
 
 function aiDrawerMaxWidth() {
     // Leave at least ~280px of calendar/content visible rather than letting the drawer
@@ -398,6 +431,29 @@ function aiRestoreDrawerWidth() {
     if (Number.isFinite(widthPx) && widthPx > 0) aiApplyDrawerWidth(widthPx);
 }
 
+// -- Full-screen chat/calendar split width (separate from the normal-mode drawer width above) --
+
+function aiFullscreenChatMaxWidth() {
+    // Mirror aiDrawerMaxWidth's reasoning: never let the chat column swallow the whole viewport
+    // and leave the calendar pane with nothing.
+    return Math.max(AI_DRAWER_MIN_WIDTH, window.innerWidth - 320);
+}
+
+function aiApplyFullscreenChatWidth(widthPx) {
+    const clamped = Math.min(Math.max(widthPx, AI_DRAWER_MIN_WIDTH), aiFullscreenChatMaxWidth());
+    document.documentElement.style.setProperty('--ai-chat-width', `${clamped}px`);
+    return clamped;
+}
+
+function aiRestoreFullscreenChatWidth() {
+    const stored = window.localStorage
+        ? window.localStorage.getItem(AI_FULLSCREEN_CHAT_WIDTH_STORAGE_KEY)
+        : null;
+    if (!stored) return;
+    const widthPx = parseInt(stored, 10);
+    if (Number.isFinite(widthPx) && widthPx > 0) aiApplyFullscreenChatWidth(widthPx);
+}
+
 function aiSetupDrawerResize() {
     const handle = document.getElementById('ai_drawer_resize_handle');
     const drawer = document.getElementById('ai_drawer');
@@ -408,7 +464,11 @@ function aiSetupDrawerResize() {
     const onMove = (e) => {
         if (!dragging) return;
         const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-        aiApplyDrawerWidth(window.innerWidth - clientX);
+        if (isAiFullscreenActive()) {
+            aiApplyFullscreenChatWidth(window.innerWidth - clientX);
+        } else {
+            aiApplyDrawerWidth(window.innerWidth - clientX);
+        }
     };
 
     const onUp = () => {
@@ -418,7 +478,15 @@ function aiSetupDrawerResize() {
         drawer.classList.remove('ai-drawer-resizing');
         document.body.style.userSelect = '';
         try {
-            window.localStorage.setItem(AI_DRAWER_WIDTH_STORAGE_KEY, String(parseInt(drawer.style.width, 10)));
+            if (isAiFullscreenActive()) {
+                const chatWidth = getComputedStyle(document.documentElement).getPropertyValue('--ai-chat-width');
+                const widthPx = parseInt(chatWidth, 10);
+                if (Number.isFinite(widthPx) && widthPx > 0) {
+                    window.localStorage.setItem(AI_FULLSCREEN_CHAT_WIDTH_STORAGE_KEY, String(widthPx));
+                }
+            } else {
+                window.localStorage.setItem(AI_DRAWER_WIDTH_STORAGE_KEY, String(parseInt(drawer.style.width, 10)));
+            }
         } catch (_err) {
             // localStorage can throw in a private/blocked context -- resizing still works this session.
         }
@@ -469,7 +537,25 @@ function aiSetupDrawer() {
     if (renameConvBtn) renameConvBtn.addEventListener('click', aiRenameCurrentConversation);
 
     const fullscreenBtn = document.getElementById('ai_fullscreen_toggle_btn');
-    if (fullscreenBtn) fullscreenBtn.addEventListener('click', aiToggleFullscreen);
+    if (fullscreenBtn) {
+        fullscreenBtn.addEventListener('click', aiToggleFullscreen);
+        // Safe here (user-triggered setup after page load), unlike inside aiPageHasCalendar's
+        // own early-call guard -- a plain DOM check is enough to decide whether this page can
+        // ever go fullscreen with a calendar pane.
+        if (!document.getElementById('calendar')) fullscreenBtn.classList.add('hidden');
+    }
+
+    const calendarPaneEl = document.getElementById('ai_drawer_calendar_pane');
+    if (calendarPaneEl && typeof ResizeObserver !== 'undefined') {
+        let resizeDebounce = null;
+        const observer = new ResizeObserver(() => {
+            if (resizeDebounce) clearTimeout(resizeDebounce);
+            resizeDebounce = setTimeout(() => {
+                if (aiPageHasCalendar()) calendar.updateSize();
+            }, 50);
+        });
+        observer.observe(calendarPaneEl);
+    }
 
     const select = document.getElementById('ai_conversation_select');
     if (select) select.addEventListener('change', (e) => aiSelectConversation(e.target.value));

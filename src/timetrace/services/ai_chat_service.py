@@ -46,6 +46,7 @@ from timetrace.db.models import (
     AIDraftBatch,
     AIDraftItem,
     AIProviderConfig,
+    Task,
     utc_now,
 )
 from timetrace.interfaces.api.schemas import (
@@ -79,8 +80,42 @@ def _parse_json_field(value: str | None) -> dict[str, Any] | None:
     return json.loads(value)
 
 
+def _draft_display_title(
+    item: AIDraftItem,
+    proposed: dict[str, Any],
+    baseline: dict[str, Any] | None,
+    applied_after: dict[str, Any] | None,
+    db: Session,
+) -> str:
+    """Human-readable label for a draft item -- never "untitled session" (spec: sessions have no
+    title field of their own, so the naive fallback showed nothing useful). Must not raise if a
+    referenced task id is stale/deleted; falls through to the tag/notes chain instead."""
+    baseline = baseline or {}
+    if item.entity_type == "task":
+        return proposed.get("title") or baseline.get("title") or "(untitled task)"
+
+    if item.entity_type == "session":
+        task_id = proposed.get("task_id") or baseline.get("task_id") or (applied_after or {}).get("task_id")
+        if task_id:
+            try:
+                task = db.get(Task, task_id)
+            except Exception:
+                task = None
+            if task is not None and task.title:
+                return task.title
+        # Matches the real calendar's convention (static/js/calendar.js: `s.tags || s.notes ||
+        # 'Session'`) -- tags before notes, not the other way around.
+        return (
+            proposed.get("tags") or proposed.get("notes") or baseline.get("tags") or baseline.get("notes") or "Session"
+        )
+
+    return ""
+
+
 def _draft_item_response(item: AIDraftItem, draft_service: AIDraftService) -> AIDraftItemResponse:
     proposed = json.loads(item.proposed_json or "{}")
+    baseline = _parse_json_field(item.baseline_json)
+    applied_after = _parse_json_field(item.applied_after_json)
     return AIDraftItemResponse(
         id=item.id,
         batch_id=item.batch_id,
@@ -89,9 +124,9 @@ def _draft_item_response(item: AIDraftItem, draft_service: AIDraftService) -> AI
         entity_type=item.entity_type,
         target_id=item.target_id,
         proposed=proposed,
-        baseline=_parse_json_field(item.baseline_json),
+        baseline=baseline,
         applied_before=_parse_json_field(item.applied_before_json),
-        applied_after=_parse_json_field(item.applied_after_json),
+        applied_after=applied_after,
         applied_entity_id=item.applied_entity_id,
         status=item.status,
         rationale=item.rationale,
@@ -99,6 +134,7 @@ def _draft_item_response(item: AIDraftItem, draft_service: AIDraftService) -> AI
         is_stale=draft_service.is_stale(item),
         ui_kind=proposed.get("ui_kind"),
         group_key=proposed.get("group_key"),
+        display_title=_draft_display_title(item, proposed, baseline, applied_after, draft_service.db),
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -324,6 +360,7 @@ class AIChatService:
                 model,
                 sanitization_level=provider_config.sanitization_level,
                 extra_system_context=self._turn_context(),
+                custom_instructions=AISettingsService(self.db).get_settings().custom_instructions,
             )
         except AIProviderError as exc:
             logger.warning("AI turn failed building agent: conversation=%s error=%s", conversation_id, exc)
@@ -430,6 +467,7 @@ class AIChatService:
                 model,
                 sanitization_level=provider_config.sanitization_level,
                 extra_system_context=self._turn_context(),
+                custom_instructions=AISettingsService(self.db).get_settings().custom_instructions,
             )
         except AIProviderError as exc:
             self._finalize_batch(batch.id, None)

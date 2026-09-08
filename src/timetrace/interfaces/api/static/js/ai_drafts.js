@@ -33,7 +33,10 @@ function aiDescribeDraftItem(item) {
     const parts = [];
 
     if (item.entity_type === 'session') {
-        const title = proposed.notes || proposed.tags || baseline.notes || baseline.tags || '(untitled session)';
+        // Prefer the server-computed display_title (resolves the session's real task title);
+        // fall back to the old tag/notes chain (tags before notes, matching the real calendar's
+        // convention in static/js/calendar.js: `s.tags || s.notes || 'Session'`) if absent.
+        const title = item.display_title || proposed.tags || proposed.notes || baseline.tags || baseline.notes || '(untitled session)';
         parts.push(title);
         const start = proposed.start_time || baseline.start_time;
         const end = proposed.end_time || baseline.end_time;
@@ -41,7 +44,7 @@ function aiDescribeDraftItem(item) {
             parts.push(`${aiFormatLocalDt(start)}${end ? ' -> ' + aiFormatLocalDt(end) : ''}`);
         }
     } else if (item.entity_type === 'task') {
-        parts.push(proposed.title || baseline.title || '(untitled task)');
+        parts.push(item.display_title || proposed.title || baseline.title || '(untitled task)');
     } else {
         parts.push(item.entity_type || 'item');
     }

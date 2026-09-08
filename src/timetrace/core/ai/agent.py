@@ -47,6 +47,7 @@ def build_agent(
     model_call_limit: int = _DEFAULT_MODEL_CALL_LIMIT,
     tool_call_limit: int = _DEFAULT_TOOL_CALL_LIMIT,
     extra_system_context: str | None = None,
+    custom_instructions: str | None = None,
 ) -> Any:
     """Builds the compiled LangGraph agent for the AI assistant.
 
@@ -89,7 +90,7 @@ def build_agent(
     return create_agent(
         model,
         tools=ALL_TOOLS,
-        system_prompt=build_system_prompt(extra_context=extra_system_context),
+        system_prompt=build_system_prompt(extra_context=extra_system_context, custom_instructions=custom_instructions),
         middleware=middleware,
         context_schema=AIAgentContext,
     )
