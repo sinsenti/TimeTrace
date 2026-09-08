@@ -104,10 +104,15 @@ def _draft_display_title(
             if task is not None and task.title:
                 return task.title
         # Matches the real calendar's convention (static/js/calendar.js: `s.tags || s.notes ||
-        # 'Session'`) -- tags before notes, not the other way around.
-        return (
-            proposed.get("tags") or proposed.get("notes") or baseline.get("tags") or baseline.get("notes") or "Session"
-        )
+        # 'Session'`) -- tags before notes, not the other way around. `proposed_json`/
+        # `baseline_json` are user/tool-editable via PATCH (schemas.py's `proposed: dict[str, Any]`
+        # is unvalidated), so coerce to str rather than trusting these are strings -- a non-string
+        # value here would otherwise fail AIDraftItemResponse's `display_title: str` validation and
+        # 500 every read of this batch/overlay, not just the request that wrote it.
+        for candidate in (proposed.get("tags"), proposed.get("notes"), baseline.get("tags"), baseline.get("notes")):
+            if isinstance(candidate, str) and candidate:
+                return candidate
+        return "Session"
 
     return ""
 

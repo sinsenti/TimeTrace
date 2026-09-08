@@ -73,6 +73,11 @@ function aiMeasureFullscreenTop() {
 function aiHandleFullscreenResize() {
     if (!isAiFullscreenActive()) return;
     aiMeasureFullscreenTop();
+    // Window narrowed since the chat width was set/dragged/restored -- re-clamp against the new
+    // viewport so the (flex-shrink:0) chat column can't overflow past the drawer's right edge
+    // while the calendar pane collapses to nothing.
+    const current = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ai-chat-width'));
+    aiApplyFullscreenChatWidth(Number.isFinite(current) ? current : 420);
 }
 
 window.addEventListener('resize', aiHandleFullscreenResize);
