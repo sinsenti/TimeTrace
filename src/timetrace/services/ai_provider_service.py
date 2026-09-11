@@ -377,9 +377,10 @@ class AIProviderService:
                 {"id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant (Groq)"},
             ],
             "pi": [
-                {"id": "openai-codex/gpt-5.1-codex", "label": "OpenAI Codex / GPT-5.1 Codex"},
-                {"id": "anthropic/claude-sonnet-4-5", "label": "Anthropic / Claude Sonnet 4.5"},
-                {"id": "google/gemini-2.5-pro", "label": "Google / Gemini 2.5 Pro"},
+                {"id": "openai-codex/gpt-5.6-luna", "label": "GPT-5.6 Luna (OpenAI Codex)"},
+                {"id": "openai-codex/gpt-5.6-sol", "label": "GPT-5.6 Sol (OpenAI Codex)"},
+                {"id": "openai-codex/gpt-5.6-terra", "label": "GPT-5.6 Terra (OpenAI Codex)"},
+                {"id": "openai-codex/gpt-6-astra", "label": "GPT-6 Astra (OpenAI Codex)"},
             ],
         }
 

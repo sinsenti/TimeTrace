@@ -53,8 +53,10 @@ try {
         name: tool.name, description: tool.description || "", parameters: tool.parameters,
       })),
     };
+    // Codex models reject temperature even when it is the default 0. TimeTrace exposes a
+    // common temperature setting for other providers, but Pi/Codex owns sampling controls and
+    // must not receive that field.
     const response = await runtime.complete(model, context, {
-      temperature: input.temperature,
       maxTokens: input.maxTokens || undefined,
       signal: AbortSignal.timeout(input.timeoutMs || 120000),
     });
