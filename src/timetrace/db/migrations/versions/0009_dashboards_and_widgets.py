@@ -1,6 +1,6 @@
 """Add Dashboard and DashboardWidget tables
 
-Revision ID: 0008_dashboards_and_widgets
+Revision ID: 0009_dashboards_and_widgets
 Revises: 0007_ai_assistant_tables
 Create Date: 2026-09-05 00:00:00.000000
 
@@ -46,8 +46,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = '0008_dashboards_and_widgets'
-down_revision: str | None = '0007_ai_assistant_tables'
+revision: str = '0009_dashboards_and_widgets'
+down_revision: str | None = '0008_ai_custom_instructions'
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 

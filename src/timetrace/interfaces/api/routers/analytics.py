@@ -68,7 +68,10 @@ async def import_markdown(request: Request, db: DBSession = Depends(get_session)
 
 @router.get("/api/agenda/export")
 def export_agenda_briefing(
-    mode: str = Query("sessions", description="Export mode: 'sessions', 'tasks_short', 'tasks_full', 'habits', 'all', 'all_date_range'"),
+    mode: str = Query(
+        "sessions",
+        description="Export mode: 'sessions', 'tasks_short', 'tasks_full', 'habits', 'all', 'all_date_range'",
+    ),
     start_date: str | None = Query(None, description="Optional YYYY-MM-DD start filter"),
     end_date: str | None = Query(None, description="Optional YYYY-MM-DD end filter"),
     db: DBSession = Depends(get_session)

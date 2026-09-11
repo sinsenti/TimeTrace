@@ -482,8 +482,8 @@ class TestSeriesDuration:
         session_service = SessionService(db)
         task_service = TaskService(db)
 
-        # Create a recurring task with 30-minute duration at a fixed future time
-        dtstart = datetime(2026, 9, 10, 8, 0, 0, tzinfo=UTC)
+        # Keep this relative to the clock so the projection remains future-visible.
+        dtstart = datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)
         task = task_service.create_task(
             TaskCreate(
                 title="Daily standup",
@@ -519,7 +519,7 @@ class TestSeriesDuration:
         session_service = SessionService(db)
         task_service = TaskService(db)
 
-        dtstart = datetime(2026, 9, 10, 8, 0, 0, tzinfo=UTC)
+        dtstart = datetime.now(UTC).replace(microsecond=0) + timedelta(days=2)
         task = task_service.create_task(
             TaskCreate(
                 title="Daily task",

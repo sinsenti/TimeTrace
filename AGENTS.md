@@ -99,8 +99,9 @@ in [docs/development.md](docs/development.md#isolated-development).
 
 ## Scope guard
 
-Statistics/custom dashboards remain the current focus: query engine and localStorage widget builder
-exist; DB-backed named dashboards, read-only SQL mode, and comparison baselines remain open.
-Recurrence and the AI assistant have shipped. External integrations are explicitly deferred: do not
-add Redis, queues, Postgres, OAuth, or sync groundwork. Multi-user scoping and native clients are not
-implicit follow-up work. See `CLAUDE.md` for the detailed agreed ship order.
+Statistics/custom dashboards remain the current focus and now include the query engine, persisted
+named dashboards/widgets, optional read-only SQL widgets, and comparison baselines. Review the
+sandbox and migration carefully when touching that slice. Recurrence and the AI assistant have
+shipped. External integrations are explicitly deferred: do not add Redis, queues, Postgres, OAuth,
+or sync groundwork. Multi-user scoping and native clients are not implicit follow-up work. See
+`CLAUDE.md` for the detailed agreed ship order.

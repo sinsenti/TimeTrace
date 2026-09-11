@@ -77,11 +77,12 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 
 ### Current implementation versus older notes
 
-- **Statistics:** `/stats` renders a seeded Overview plus custom widgets saved in localStorage.
-  There are no `Dashboard`/`DashboardWidget` tables, saved named dashboards, SQL escape hatch, or
-  per-widget comparisons yet. Structured queries execute real SQL. `AnalyticsService.get_summary`
-  delegates to `QueryService`; `core/analytics.py` retains legacy aggregation behavior/tests, not
-  the current dashboard execution path. Query capabilities come from `core/query_registry.py`.
+- **Statistics:** `/stats` renders a seeded Overview plus persisted named dashboards and widgets.
+  Structured widgets execute through `QueryService`; optional SQL widgets are disabled by default and
+  use the isolated read-only `SqlQueryService` sandbox when enabled. Per-widget comparisons support
+  previous period, same period last year, and custom ranges. `AnalyticsService.get_summary` delegates
+  to `QueryService`; `core/analytics.py` retains legacy aggregation behavior/tests, not the current
+  dashboard execution path. Query capabilities come from `core/query_registry.py`.
 - **Local time:** `settings.js` sends timezone/week-start query context. SQLite bucketing follows
   the daemon's local timezone; `QueryService` warns and uses that zone if a requested zone differs.
   Arbitrary per-query IANA timezone bucketing is not implemented. `Session.timezone` is modeled,
@@ -147,7 +148,7 @@ Do not use live AI providers as automated test fixtures or expose personal data 
 
 ## Migration verification
 
-The source tree currently ends at `0008_ai_custom_instructions`; inspect revision ids and
+The source tree currently ends at `0009_dashboards_and_widgets`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
