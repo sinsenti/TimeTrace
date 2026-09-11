@@ -1,13 +1,13 @@
 # TimeTrace
 
-**TimeTrace** is an open-source, local-first time management and productivity engine built for developers. It unifies **CLI/TUI terminal workflows**, a **visual calendar dashboard**, **revision retrospectives**, **habit tracking**, **custom evaluation ratings**, and **plain-text Markdown syncing** through a single local background daemon running at `http://127.0.0.1:8002`.
+**TimeTrace** is an open-source, local-first time management and productivity engine built for developers. It unifies **CLI terminal workflows**, a **visual calendar dashboard**, **revision retrospectives**, **habit tracking**, **custom evaluation ratings**, and **plain-text Markdown syncing** through a single local background daemon running at `http://127.0.0.1:8002`.
 
 ---
 
 ## Features
 
-- **Local-First Daemon**: Single FastAPI background service (port **8002**) powering CLI, TUI, Web UI, and Tmux integration.
-- **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`) and a Textual-powered interactive TUI.
+- **Local-First Daemon**: Single FastAPI background service (port **8002**) powering CLI, Web UI, and Tmux integration.
+- **Terminal-First Workflow**: Fast CLI subcommands (`timetrace start`, `split`, `retro`, `summary`); running `timetrace` without a subcommand shows timer status.
 - **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with view-switching (**Day**, **3-Day**, **Week**, **Month**), auto-scrolling, and range totals.
 - **Revision & Retrospective Engine**: Review past days with structured **Highlights** and **Daily Friction** reflections, task post-mortems, and session timeline inspections.
 - **Per-Item & Per-Rating Dismissal**: Option to dismiss entire day/session reviews or individually dismiss custom rating metrics.
@@ -16,6 +16,9 @@
 - **AFK / Idle Detection**: Automatically freezes running timers during 10 minutes of inactivity and provides an AFK resolution modal (Discard, Log as Break, Claim Work, or Re-tag).
 - **Vim Navigation & Clean UI**: Navigation shortcuts (`h`/`j`/`k`/`l`, `v`, `i`, `o`, `x`), compact single-line modal controls with micro shortcut badges (`Ctrl+↵`, `Esc`), and toggleable UI sidebars.
 - **Markdown Sync Engine**: Bidirectional import and export of structured `.md` log files with YAML frontmatter.
+- **Recurring Schedules**: RRULE-based virtual calendar occurrences with per-occurrence edits and skips, without bulk pre-generation.
+- **Custom Statistics**: Structured-query Overview and a widget builder; custom widget specs currently persist in browser localStorage.
+- **AI Assistant**: Global chat drawer for scheduling proposals, with explicit draft approval, conflict-aware undo/reapply, and configurable providers at `/settings/ai`.
 
 ---
 
@@ -26,7 +29,6 @@
 | **Language** | Python 3.14+ |
 | **Daemon Engine** | FastAPI + Uvicorn (Port 8002) |
 | **Database** | SQLite (`~/.timetrace/timetrace.db`) + SQLModel |
-| **Terminal UI (TUI)** | Textual |
 | **CLI Framework** | Typer + HTTPX |
 | **Web UI** | FullCalendar.js + Tailwind CSS + Chart.js |
 | **Frontend API Layer** | Centralized `ApiClient` |
@@ -38,8 +40,8 @@
 ### 1. Installation
 
 ```bash
-git clone [https://github.com/your-username/timetrace.git](https://github.com/your-username/timetrace.git)
-cd timetrace
+git clone https://github.com/sinsenti/TimeTrace.git
+cd TimeTrace
 
 uv sync
 
@@ -52,12 +54,13 @@ uv run timetrace daemon
 
 ```
 
-*Runs locally at `http://127.0.0.1:8002/*`
+Runs locally at `http://127.0.0.1:8002/`. Startup applies pending database migrations; for experiments,
+use the [isolated development setup](docs/development.md#isolated-development) instead of your personal DB.
 
 ### 3. Usage Modes
 
 * **Web Dashboard**: Open `http://127.0.0.1:8002/` in your browser.
-* **Interactive TUI**: Run `uv run timetrace` in a new terminal tab.
+* **Timer Status**: Run `uv run timetrace` in a new terminal tab.
 * **CLI Commands**: Use subcommands like `uv run timetrace start -t "#programming"` or `uv run timetrace summary`.
 
 ---
@@ -67,7 +70,7 @@ uv run timetrace daemon
 | Command | Usage | Description |
 | --- | --- | --- |
 | `timetrace daemon` | `timetrace daemon` | Start the local background service on port 8002 |
-| `timetrace` | `timetrace` | Launch the interactive Terminal UI (TUI) |
+| `timetrace` | `timetrace` | Show timer status |
 | `timetrace start` | `timetrace start -t "#tags" -n "notes"` | Start active timer |
 | `timetrace split` | `timetrace split -t "#newtag" -n "notes"` | Save active session and start new one immediately |
 | `timetrace stop` | `timetrace stop` | Stop active timer and save session |
@@ -100,6 +103,13 @@ total_sessions: 2
 
 ---
 
+## Development documentation
+
+- [AGENTS.md](AGENTS.md): shared instructions for coding assistants.
+- [Development reference](docs/development.md): code map, safe scratch setup, tests, and migrations.
+- [CLAUDE.md](CLAUDE.md): detailed project decisions and history.
+- [AI assistant spec](docs/ai-assistant-spec.md) and [recurrence engine plan](docs/recurrence-engine-plan.md): design records; distinguish historical proposals from shipped behavior.
+
 ## License
 
-Distributed under the [MIT License](https://www.google.com/search?q=LICENSE).
+Distributed under the [MIT License](LICENSE).
