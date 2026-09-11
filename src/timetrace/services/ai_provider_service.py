@@ -1,12 +1,9 @@
 """Provider config CRUD, exactly-one-active enforcement, model catalog/listing, and provider
 connectivity testing for the AI assistant feature (spec S4 item 1 / S7 "Providers").
 
-Layering note: the "build a runnable LangChain chat model from a provider config" helper
-(`build_chat_model`) lives here, not in `core/ai/providers.py`. That module is still a stub owned
-by a different track (the agent/tool-calling build), and this service needs a working model
-builder *now* for `test_config` to be more than a no-op. `build_chat_model` is a narrow,
-standalone function with no dependency on this class -- a later integration pass should have
-`core/ai/providers.py` call it (or an equivalent) rather than reimplementing model construction.
+The service-level builder handles DB-backed LangChain providers. Pi is handled by the DB-free
+`core.ai.pi_model` adapter, which delegates model authentication and inference to Pi's own
+ModelRuntime without passing Pi credentials through this service.
 """
 
 import json
@@ -15,11 +12,12 @@ from typing import Any
 import httpx
 from sqlmodel import Session, select
 
+from timetrace.core.ai.pi_model import list_pi_models
 from timetrace.core.ai.secrets import decrypt_secret, encrypt_secret, key_last4
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq")
+KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq", "pi")
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
 
 # See core/ai/providers.py's twin constant for why this translation exists: `init_chat_model`'s
@@ -68,6 +66,19 @@ def build_chat_model(
     routed through `model_provider="openai"` with no native-package opt-in.
     """
     _validate_provider(provider)
+    if provider == "pi":
+        from timetrace.core.ai.pi_model import build_pi_model
+
+        return build_pi_model(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            request_timeout_seconds=request_timeout_seconds or 120,
+            use_native_openrouter=use_native_openrouter,
+            extra_params=extra_params,
+        )
 
     model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
     resolved_base_url = base_url
@@ -365,6 +376,11 @@ class AIProviderService:
                 {"id": "llama-3.3-70b-versatile", "label": "Llama 3.3 70B Versatile (Groq)"},
                 {"id": "llama-3.1-8b-instant", "label": "Llama 3.1 8B Instant (Groq)"},
             ],
+            "pi": [
+                {"id": "openai-codex/gpt-5.1-codex", "label": "OpenAI Codex / GPT-5.1 Codex"},
+                {"id": "anthropic/claude-sonnet-4-5", "label": "Anthropic / Claude Sonnet 4.5"},
+                {"id": "google/gemini-2.5-pro", "label": "Google / Gemini 2.5 Pro"},
+            ],
         }
 
     def list_models(self, config_id: str) -> list[dict[str, str]]:
@@ -380,6 +396,9 @@ class AIProviderService:
     def _fetch_live_models(self, config: AIProviderConfig) -> list[dict[str, str]] | None:
         try:
             api_key = decrypt_secret(config.api_key_encrypted) if config.api_key_encrypted else None
+
+            if config.provider == "pi":
+                return list_pi_models()
 
             if config.provider == "openai":
                 url = (config.base_url or "https://api.openai.com/v1").rstrip("/") + "/models"

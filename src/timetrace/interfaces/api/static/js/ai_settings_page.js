@@ -119,6 +119,14 @@ const AI_PROVIDER_HELP = {
         label: null,
         keyRequired: false,
     },
+    pi: {
+        text: 'Uses your installed Pi coding agent and its existing login (for example '
+            + 'openai-codex/gpt-5.1-codex). Configure credentials with Pi, then enter the exact '
+            + 'provider/model ID. TimeTrace does not receive or store the Pi API key.',
+        url: 'https://pi.dev',
+        label: 'pi.dev',
+        keyRequired: false,
+    },
 };
 
 function aiRefreshProviderHelp() {
@@ -140,7 +148,11 @@ function aiRefreshProviderHelp() {
             helpBox.appendChild(link);
         }
     }
-    if (keyLabel) keyLabel.textContent = info && !info.keyRequired ? 'API Key (not needed for Ollama)' : 'API Key';
+    if (keyLabel) {
+        keyLabel.textContent = info && !info.keyRequired
+            ? `API Key (not needed for ${providerSelect.value === 'pi' ? 'Pi' : 'Ollama'})`
+            : 'API Key';
+    }
 }
 
 async function aiLoadProviders() {

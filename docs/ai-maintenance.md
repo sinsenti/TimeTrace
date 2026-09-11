@@ -57,7 +57,15 @@ Use fake models and gateways. Run the focused AI tests, `uv run pytest -q`, `uv 
 ## Scope decisions
 
 The assistant currently supports quick-add, rescheduling, whole-week scheduling, task/session draft
-writes, provider configuration, chat, calendar overlays, audit, undo, and reapply. It does not
+writes, provider configuration, chat, calendar overlays, audit, undo, and reapply. Provider configuration
+supports the built-in LangChain providers plus **Pi**: Pi uses the locally installed
+`@earendil-works/pi-coding-agent` ModelRuntime and its existing `~/.pi/agent` credentials. Configure
+Pi authentication with `/login`, then select an exact `provider/model` ID (such as
+`openai-codex/gpt-6-astra`) in `/settings/ai`. The daemon must be able to find the `pi` executable;
+for a non-standard install, set `TIMETRACE_PI_PACKAGE_DIR` to the Pi package root. TimeTrace does
+not store or receive the Pi API key;
+Pi is used only for model inference, while TimeTrace retains ownership of all tools and draft approval.
+It does not
 support timer/habit/rating/review writes, embeddings/RAG, cross-conversation semantic memory,
 external integrations, multi-user ownership, or a CLI AI command. Do not add groundwork for those
 features without an explicit owner decision.

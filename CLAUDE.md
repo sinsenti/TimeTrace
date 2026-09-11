@@ -208,8 +208,10 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
   alive.
 - 7 new tables (migration `0007_ai_assistant_tables`): provider config (DB-backed, `/settings/ai`,
   Fernet-encrypted keys), settings, conversations, chat messages, draft batches/items, and an append-only
-  audit log. Providers now include Anthropic/OpenAI/OpenRouter/Ollama/Google/Groq; Google uses
-  `langchain-google-genai`, while Groq uses the existing OpenAI-compatible client. Follow-up migration
+  audit log. Providers now include Anthropic/OpenAI/OpenRouter/Ollama/Google/Groq/Pi; Google uses
+  `langchain-google-genai`, while Groq uses the existing OpenAI-compatible client. Pi uses the
+  locally installed Pi ModelRuntime and its own credentials through an isolated Node bridge;
+  TimeTrace's tools and draft-only approval remain authoritative. Follow-up migration
   `0008_ai_custom_instructions` adds DB-backed custom instructions. An item can go
   `proposed → applied → undone → reapplied → undone → ...` — `undone` is deliberately not terminal.
 - LangChain + LangGraph (`core/ai/agent.py`), but **not** a LangGraph checkpointer or

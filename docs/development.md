@@ -95,8 +95,10 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   The [recurrence plan](recurrence-engine-plan.md) is a design record, not a list of missing files;
   read its final settled decisions before relying on earlier scope tables.
 - **AI:** draft/accept/undo/reapply, the global drawer, and calendar overlays are implemented.
-  Providers now include Anthropic, OpenAI, OpenRouter, Ollama, Google, and Groq. Google uses
-  `langchain-google-genai`; Groq uses the OpenAI-compatible client. Migration
+  Providers now include Anthropic, OpenAI, OpenRouter, Ollama, Google, Groq, and Pi. Google uses
+  `langchain-google-genai`; Groq uses the OpenAI-compatible client. Pi uses a small Node bridge to
+  the locally installed `@earendil-works/pi-coding-agent` ModelRuntime, reusing Pi's credentials
+  and model catalog without loading Pi coding tools or extensions. Migration
   `0008_ai_custom_instructions` adds DB-backed custom instructions after the seven AI tables in
   `0007_ai_assistant_tables`. See the [AI spec](ai-assistant-spec.md) for the approval/privacy
   contract; its original provider/dependency lists and proposed migration numbers are historical.

@@ -1,4 +1,4 @@
-"""Provider abstraction (`init_chat_model` wiring for Anthropic/OpenAI/OpenRouter/Ollama/Google/Groq).
+"""Provider abstraction (`init_chat_model` wiring plus the Pi ModelRuntime adapter).
 
 Layering (spec S5: "core/ free of FastAPI and SQLModel"): `services/ai_provider_service.py`
 already has a `build_chat_model` helper, but it can't be imported here -- `services/` imports
@@ -20,7 +20,9 @@ inventing for four lines.
 
 from typing import Any
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq")
+from timetrace.core.ai.pi_model import build_pi_model
+
+KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq", "pi")
 
 # `init_chat_model`'s provider registry key for direct Google AI Studio access is "google_genai"
 # (-> `langchain_google_genai.ChatGoogleGenerativeAI`), not "google" -- "google_vertexai"/
@@ -63,6 +65,17 @@ def get_chat_model(
     """
     if provider not in KNOWN_PROVIDERS:
         raise ValueError(f"Unknown provider '{provider}'. Expected one of {KNOWN_PROVIDERS}.")
+    if provider == "pi":
+        return build_pi_model(
+            model=model,
+            base_url=base_url,
+            api_key=api_key,
+            temperature=temperature,
+            max_output_tokens=max_output_tokens,
+            request_timeout_seconds=request_timeout_seconds or 120,
+            use_native_openrouter=use_native_openrouter,
+            extra_params=extra_params,
+        )
 
     model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
     resolved_base_url = base_url
