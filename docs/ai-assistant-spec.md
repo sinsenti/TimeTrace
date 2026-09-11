@@ -1,26 +1,30 @@
 # AI Assistant — design spec
 
-Status: **designed, not started. Blocked on the recurrence engine** (see §0).
-Decisions settled with the project owner on 2026-09-01. These are decisions, not suggestions —
-do not silently re-open them.
+Status: **shipped 2026-09-05** — merged to `dev` via `feat/ai-assistant`. See CLAUDE.md's
+"Resolved (2026-09-05): AI assistant" note for what actually landed. This document remains the
+design record; decisions below were settled with the project owner on 2026-09-01 and should not
+be silently re-opened just because the feature is now live.
 
 ---
 
 ## 0. Sequencing / blocker
 
-The owner chose **"fix recurrence first, then AI"** on 2026-09-01. The AI feature does not begin
-until the recurrence engine is replaced.
+The owner chose **"fix recurrence first, then AI"** on 2026-09-01. That prerequisite was
+satisfied when the RRULE projection engine merged to `dev` on 2026-09-02 (`fa1dbcf`), replacing
+bulk pre-generation. The AI feature subsequently shipped on 2026-09-05.
 
-Why this is a hard prerequisite, not caution: `TaskService.update_task` calls
-`schedule_recurrent_sessions_three_months` on **every** update of an `is_recurring` task
-(`services/task_service.py:391-392`), regenerating ~90 future sessions. Any AI-proposed move of a
-recurring session that the user accepts would be silently resurrected on the next task edit —
-producing exactly the "the AI undid my change" distrust that this feature's whole draft-layer design
-exists to prevent. Excluding recurring items from AI writes was the alternative and was rejected in
-favour of fixing the root cause.
+This was a hard prerequisite because the old implementation regenerated future rows on recurring
+task edits, which could silently resurrect an accepted AI move. The current implementation uses
+virtual projections and exceptions instead; the old `TaskService` call and line references are
+historical rationale, not current code.
 
-Consequence: once RRULE projection lands, recurring sessions become safe AI write targets and the
-"exclude recurring" carve-out described in earlier drafts is **not** needed.
+Consequence, now in force: recurring sessions **are** safe AI write targets. The "exclude
+recurring from AI writes" carve-out described in earlier drafts is **not** needed and must not
+be built. `TaskService.update_task` no longer regenerates ~90 sessions on every edit, so an
+accepted AI move of a recurring occurrence stays put. A per-occurrence AI change should be
+expressed the same way the UI expresses one: a `recurrenceexception` (`skip`/`override`) via
+`SessionService`, never a direct write. Note occurrences may carry synthetic `virt:` ids, which
+materialize on write -- AI draft items targeting one must record the materialized id.
 
 ## 1. What it is
 
@@ -38,12 +42,15 @@ accepts/rejects — the agent's mutating tools physically cannot write `task`/`s
 draft rows. A full **audit log** supports undoing a whole week of AI changes in one action. Task
 text is sanitized before leaving the machine.
 
-## 2. Locked stack decisions
+## 2. Original locked stack decisions
+
+The following records the decisions used to ship the feature. For current implementation facts,
+see `docs/ai-maintenance.md`, `docs/development.md`, and `pyproject.toml`.
 
 | Decision | Choice |
 | --- | --- |
 | Orchestration | **LangChain + LangGraph** (`create_agent` tool-calling agent) |
-| Providers | **Anthropic, OpenAI, OpenRouter, Ollama**, swappable at runtime |
+| Providers | **Anthropic, OpenAI, OpenRouter, Ollama, Google, Groq**, swappable at runtime |
 | Provider config | **DB-backed**, edited on a new `/settings/ai` page — no restart to switch |
 | Primary surface | **Persistent right-side AI drawer**, global on all pages. Multi-turn chat, not a command palette |
 | Audit/undo | **Separate append-only audit table with full transition history** — an item may go applied → undone → re-applied → undone; an undone batch can be re-applied |
@@ -77,6 +84,7 @@ forced major upgrades (only incidental patch bumps: `sqlmodel 0.0.39→0.0.42`, 
 "langchain-anthropic>=1.7.0,<2",
 "langchain-openai>=1.6.0,<2",
 "langchain-ollama>=1.1.0,<2",
+"langchain-google-genai>=2,<3",
 "cryptography>=46",              # Fernet, for api_key_encrypted
 ```
 
@@ -97,8 +105,9 @@ forced major upgrades (only incidental patch bumps: `sqlmodel 0.0.39→0.0.42`, 
 - `from langchain.tools import tool, ToolRuntime` — `ToolRuntime` carries `.context`/`.state` and is
   **invisible to the model's tool schema**. Inject via `create_agent(context_schema=...)`, read as
   `runtime.context`.
-- `from langchain.chat_models import init_chat_model` — its provider registry natively contains all
-  four targets (`anthropic`, `openai`, `ollama`, `openrouter`).
+- `from langchain.chat_models import init_chat_model` — the original provider check covered
+  `anthropic`, `openai`, `ollama`, and `openrouter`; the shipped implementation additionally maps
+  Google to `google_genai` and Groq through the OpenAI-compatible client.
 - `agent.astream(input, stream_mode=["messages","updates"], version="v2")`
 - `PIIMiddleware(pii_type, *, strategy="redact", apply_to_input=True, apply_to_tool_results=False)`
   — `apply_to_tool_results=True` is the important one here: the leak surface is DB content flowing
@@ -107,9 +116,10 @@ forced major upgrades (only incidental patch bumps: `sqlmodel 0.0.39→0.0.42`, 
 ## 4. Schema — 7 new tables
 
 All ids UUIDv7 strings via the existing `generate_uuid7`; all datetimes **naive UTC** via `utc_now`.
-Append after `ExternalSyncState` in `db/models.py`. Migration `0006_ai_assistant_tables`,
-`down_revision = '0005_habit_goal_history'` — but note the recurrence engine (§0) lands first and
-will consume `0006`, so renumber accordingly.
+Append after `ExternalSyncState` in `db/models.py`. The shipped schema uses migration
+`0007_ai_assistant_tables`, `down_revision = '0006_recurrence_rrule'`; it is followed by
+`0008_ai_custom_instructions`.
+Inspect the migration chain rather than reusing historical design numbers.
 
 **Naming:** the chat-message class is `AIChatMessage`, never `AIMessage` —
 `langchain_core.messages.AIMessage` is imported in the same codebase.
@@ -206,7 +216,7 @@ Write tools, each of which only ever inserts an `aidraftitem`: `propose_create_s
 `propose_update_session` (covers move **and** resize — this *is* reschedule),
 `propose_delete_session`, `propose_split_session` (expands to 1 update + n−1 creates — **no compound
 op**, keeping apply/undo per-row trivial), `propose_create_task`, `propose_update_task`,
-`set_plan_summary`.
+`propose_delete_task`, `propose_create_subtasks`, `set_plan_summary`.
 
 No `batch_id` argument on any write tool — the batch comes from the gateway the tools were
 constructed around, so the model cannot address another batch. **No timer tools:** the running timer

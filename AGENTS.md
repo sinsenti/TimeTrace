@@ -9,7 +9,9 @@ Shared working instructions for coding assistants in this repository.
   testing guidance, and current implementation status.
 - Read the relevant sections of [CLAUDE.md](CLAUDE.md) for owner decisions and historical rationale.
   Its statistics/dashboard decisions remain settled; do not silently redesign them.
-- Before AI changes, read [docs/ai-assistant-spec.md](docs/ai-assistant-spec.md).
+- Before AI changes, read [docs/ai-maintenance.md](docs/ai-maintenance.md); consult
+  [docs/ai-assistant-spec.md](docs/ai-assistant-spec.md) for historical rationale and settled
+  design decisions.
 - Before recurrence changes, read [docs/recurrence-engine-plan.md](docs/recurrence-engine-plan.md),
   including its final **Settled owner decisions** section, which overrides earlier proposals.
 - Specs and roadmap notes contain historical code snapshots. Check current source and tests before

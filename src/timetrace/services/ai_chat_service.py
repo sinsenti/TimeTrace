@@ -336,7 +336,7 @@ class AIChatService:
     # -- chat turns ------------------------------------------------------------------------
 
     async def run_turn(self, conversation_id: str, user_text: str) -> AIChatTurnResponse:
-        logger.info("AI turn start: conversation=%s text=%r", conversation_id, user_text[:200])
+        logger.info("AI turn start: conversation=%s input_chars=%d", conversation_id, len(user_text))
         conv = self.get_conversation(conversation_id)
         provider_config = self._resolve_provider_config(conv)
         sanitized_text = self._sanitize_for_provider(user_text, provider_config)
@@ -368,7 +368,9 @@ class AIChatService:
                 custom_instructions=AISettingsService(self.db).get_settings().custom_instructions,
             )
         except AIProviderError as exc:
-            logger.warning("AI turn failed building agent: conversation=%s error=%s", conversation_id, exc)
+            logger.warning(
+                "AI turn failed building agent: conversation=%s error_type=%s", conversation_id, type(exc).__name__
+            )
             self._finalize_batch(batch.id, None)
             raise
 
@@ -378,11 +380,11 @@ class AIChatService:
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             logger.warning(
-                "AI turn failed: conversation=%s batch=%s latency_ms=%d error=%s",
+                "AI turn failed: conversation=%s batch=%s latency_ms=%d error_type=%s",
                 conversation_id,
                 batch.id,
                 latency_ms,
-                exc,
+                type(exc).__name__,
             )
             self.add_message(
                 conversation_id,
@@ -445,7 +447,7 @@ class AIChatService:
             yield _sse("error", {"message": str(exc)})
             return
 
-        logger.info("AI turn start (stream): conversation=%s text=%r", conversation_id, user_text[:200])
+        logger.info("AI turn start (stream): conversation=%s input_chars=%d", conversation_id, len(user_text))
         sanitized_text = self._sanitize_for_provider(user_text, provider_config)
         logger.info("AI turn provider: %s/%s", provider_config.provider, provider_config.model)
         user_msg = self.add_message(conversation_id, role="user", content=sanitized_text)
@@ -516,11 +518,11 @@ class AIChatService:
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             logger.warning(
-                "AI turn failed (stream): conversation=%s batch=%s latency_ms=%d error=%s",
+                "AI turn failed (stream): conversation=%s batch=%s latency_ms=%d error_type=%s",
                 conversation_id,
                 batch.id,
                 latency_ms,
-                exc,
+                type(exc).__name__,
             )
             self.add_message(
                 conversation_id,

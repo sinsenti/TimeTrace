@@ -127,18 +127,13 @@ git diff --check
 - `reset_timer`: autouse reset of the timer singleton to prevent state leaking between tests.
 
 Coverage includes timer/idle state, UTC conversion, task title syntax, task HTTP basics, session
-creation, legacy tag fan-out, and substantial pure/service recurrence tests. There are currently
-no dedicated AI or structured-query-engine test modules, and no browser test suite. Add coverage
-where changing behavior; passing the existing suite does not establish those areas are correct.
+creation, legacy tag fan-out, substantial pure/service recurrence tests, and AI privacy boundaries
+in `tests/test_ai_privacy.py`. Draft lifecycle, gateway, and provider behavior still need dedicated
+tests as those areas change. There is no browser test suite. Add coverage where changing behavior;
+passing the existing suite does not establish those areas are correct.
 
-**Observed baseline at this documentation check:** 122 tests passed; two existing
-`TestSeriesDuration` tests in `tests/test_recurrence_service.py` failed:
-`test_resize_with_scope_all_future_updates_series_duration` and
-`test_later_occurrences_reflect_new_duration`. Both anchor `dtstart` and the new end time to
-2026-09-10 while selecting the first still-visible projected occurrence using the real clock.
-Once that date has elapsed, the selected occurrence is later than the requested end time.
-These tests need a controlled clock/future-relative fixture, not weaker duration validation.
-Re-run to determine the current baseline; these failures were not fixed by the documentation work.
+**Observed baseline at this documentation check:** 131 tests passed with 12 existing SQLite
+`DeprecationWarning`s. Re-run the suite after changes; warnings are not treated as failures.
 
 For Python edits, run scoped Ruff autofix and formatting (see `AGENTS.md`). Do not remove the
 SQLModel relationship-annotation exemptions in `pyproject.toml`/`db/models.py`. For each changed

@@ -34,15 +34,22 @@ logger = logging.getLogger("timetrace.ai")
 
 
 def _log_call(name: str, **kwargs: Any) -> None:
-    """Full step-by-step visibility into what the agent is doing: every tool call it makes,
-    logged before the gateway call runs. Omits arguments left at their default `None`/empty so
-    the log line stays readable for the common case of a mostly-omitted call."""
-    shown = {k: v for k, v in kwargs.items() if v not in (None, "")}
-    logger.info("AI tool call: %s(%s)", name, ", ".join(f"{k}={v!r}" for k, v in shown.items()))
+    """Log tool activity without recording user productivity data.
+
+    Tool arguments can contain titles, notes, IDs, and prompt-injection text. Keep diagnostics to
+    the tool name and argument count; detailed arguments do not belong in logs.
+    """
+    argument_count = sum(value not in (None, "") for value in kwargs.values())
+    logger.info("AI tool call: name=%s argument_count=%d", name, argument_count)
 
 
 def _log_result(name: str, result: Any) -> Any:
-    logger.info("AI tool result: %s -> %s", name, result)
+    """Log only the result shape, never task/session content or provider data."""
+    if isinstance(result, (list, tuple, set, dict)):
+        result_summary = f"{type(result).__name__}[{len(result)}]"
+    else:
+        result_summary = type(result).__name__
+    logger.info("AI tool result: name=%s result=%s", name, result_summary)
     return result
 
 

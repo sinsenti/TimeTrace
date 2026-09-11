@@ -191,8 +191,10 @@ fixed, with click-to-filter and a persistent chip; and a 5-step red-to-green gra
 now wired into the day rating badge, the day-history heatmap, and custom rating sliders.
 
 **Resolved (2026-09-05): AI assistant.** The AI feature described in the old "Roadmap" section
-below is done — merged to `dev` via `feat/ai-assistant`, built against `docs/ai-assistant-spec.md`
-(the locked design spec; read it before touching anything under `core/ai/`). Persistent AI chat
+below is done — merged to `dev` via `feat/ai-assistant`, built against `docs/ai-assistant-spec.md`.
+For current maintenance rules, privacy constraints, and required AI regression coverage, read
+[`docs/ai-maintenance.md`](docs/ai-maintenance.md). The spec is a design record; consult it for
+historical rationale rather than treating it as a list of missing work. Persistent AI chat
 drawer (global on every page, `Ctrl+Shift+A`, a full-screen mode that splits the dashboard's real
 calendar and the chat side by side), covering three capabilities: NL quick-add (a two-tiered
 router — a fast local parser handles simple date/time syntax, an LLM only for multi-constraint

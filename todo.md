@@ -6,11 +6,13 @@ That's my current version of this project. Find all inconsistencies and errors. 
 
 ## Architecture / Backend (from chat.pdf gap analysis, see CLAUDE.md "Roadmap")
 
-- [ ] Replace bulk pre-generated recurring session rows with an in-memory RFC 5545 `RRULE` projection
+- [x] Replace bulk pre-generated recurring session rows with an in-memory RFC 5545 `RRULE` projection
   engine (single master rule + exceptions table, evaluate only for the visible viewport range).
-- [ ] Add `timezone` (IANA id, e.g. `America/New_York`) handling to distinguish fixed (absolute UTC)
-  vs. floating (local wall-clock) events — the `session.timezone` column already exists in the live DB
-  but isn't modeled or used yet.
+  **Done 2026-09-02** via `feat/recurrence-rrule` (merged `fa1dbcf`) — see CLAUDE.md's Recurrence
+  roadmap row.
+- [ ] Define and implement fixed (absolute UTC) versus floating (local wall-clock) event semantics.
+  `Session.timezone` is already modeled and persisted, but general travel semantics are not implemented;
+  recurrence already uses `Task.recurrence_timezone` for DST-aware wall-clock expansion.
 
 
 
@@ -34,20 +36,35 @@ and don't lay further groundwork. Parked for later:
 - [ ] Once a native shell exists: global hotkey quick-add (e.g. `Ctrl+Shift+Space`), persistent system
   tray icon, OS-native notification daemon for reminders that fire even when the app is closed.
 
-## AI features — postponed, but ranked ABOVE external integrations
+## AI features — DONE (2026-09-05)
 
-Not started. Settle the UX controls (draft layers + rollback log) before wiring up any model call.
+Merged via `feat/ai-assistant`, built against `docs/ai-assistant-spec.md`. See CLAUDE.md's
+"Resolved (2026-09-05): AI assistant" note for the full picture (tool surface, safety invariant,
+traps found during the merge-review pass).
 
-- [ ] Two-tiered intent extraction: fast local parser for simple date/time syntax, LLM only for
-  multi-constraint scheduling requests.
-- [ ] Human-in-the-loop UX: render AI scheduling suggestions as non-destructive draft layers the user
-  explicitly accepts/rejects — never a silent DB mutation.
-- [ ] Audit log of AI-driven changes with one-tap rollback for a whole batch (e.g. a week of
-  AI-rescheduled tasks).
-- [ ] PII sanitization before sending calendar context (titles, attendee emails) to a third-party LLM API.
+- [x] Two-tiered intent extraction: fast local parser for simple date/time syntax, LLM only for
+  multi-constraint scheduling requests. (`core/ai/quick_add_router.py`)
+- [x] Human-in-the-loop UX: render AI scheduling suggestions as non-destructive draft layers the user
+  explicitly accepts/rejects — never a silent DB mutation. (`AIDraftService`, the AI chat drawer)
+- [x] Audit log of AI-driven changes with one-tap rollback for a whole batch (e.g. a week of
+  AI-rescheduled tasks). (`aiaudit` table, append-only; `POST /drafts/undo`)
+- [x] PII sanitization before sending calendar context (titles, attendee emails) to a third-party LLM API.
+  (`core/ai/redaction.py`)
 
-How its possible to create custom behaviors(like transmit from one status to another when soemthing happened) for users? Does it possible or no? or suggest better things
-How to be able to user create custom dashboard with different views, etc?
+Not built, and not currently planned unless asked for: habit/rating/day-review writes, timer
+control, embeddings/RAG, a multi-agent supervisor graph. Possible next steps if the user wants
+more: a "daily briefing" one-shot prompt, proactive double-booking detection, cross-conversation
+user preferences — none of these need new tools, just prompt/UX work on top of what exists.
+
+## Product notes
+
+- **Custom behaviors/automations:** not implemented. Do not add a generic automation engine or
+  trigger schema without a settled scope. A future design should start with allow-listed events,
+  conditions, actions, dry-run previews, audit history, and loop prevention; AI must not silently
+  execute those actions.
+- **Custom dashboards:** implemented through persisted named dashboards and widgets, structured
+  query widgets, optional read-only SQL widgets, and comparison baselines. See `CLAUDE.md` and
+  `docs/development.md`; this is no longer a todo item.
 
 ## Calendar grid rendering
 
