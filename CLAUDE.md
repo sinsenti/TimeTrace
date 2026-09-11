@@ -240,9 +240,9 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
 ## Current focus: statistics & custom dashboards
 
 This is the active feature. The design was settled with the project owner on 2026-08-21; these are
-decisions, not suggestions. Do not silently re-open them. **Slice 1 shipped 2026-08-24** (merged to
-`dev` via `feat/stats-engine`); slice 2 is partially implemented, and slices 3-4 are not started.
-See "Ship order" for the precise remaining scope.
+decisions, not suggestions. Do not silently re-open them. **Slices 1-4 shipped on this branch**
+(after slice 1 merged to `dev` via `feat/stats-engine`); see "Ship order" for the implemented scope
+and remaining follow-up work.
 
 **What it is.** The statistics page becomes a dashboard of configurable widgets. A widget is a
 *structured query* — source, measure, group-by, filters, chart type — built through pickers, with a
@@ -270,14 +270,16 @@ day/week/month, hour-of-day, weekday, tag, category, task, status, priority, hab
    UTC-vs-local split between `daily_trend` and `hourly_distribution` is gone). **No schema
    change** — this slice deliberately has no DB-backed dashboard/widget table; a `Dashboard`/
    `DashboardWidget` migration was written and then reverted (`db525d5`) for exactly this reason.
-2. **Partially done.** A manual "+ Add Widget" builder exists on `/stats`
-   (`static/js/dashboards.js`) — pick source/measure/group-by/filters from
-   `GET /analytics/capabilities`, run it via `POST /analytics/query` to validate, render alongside
-   the seeded widgets. Specs persist to **localStorage only**. Still missing: a real
-   `Dashboard`/`DashboardWidget` DB table, named/saved dashboards, and add/remove/reorder against
-   persisted state rather than a local array.
-3. **Not started.** Read-only SQL escape hatch.
-4. **Not started.** Per-widget comparison baselines.
+2. **DONE on this branch.** `Dashboard`/`DashboardWidget` tables and migration
+   `0009_dashboards_and_widgets` provide named dashboards, persisted widgets, seed/reset behavior,
+   add/edit/remove/reorder, and per-widget error isolation. The `/stats` builder now uses the API;
+   the one-time localStorage handoff preserves old custom widget specs.
+3. **DONE on this branch (opt-in).** Read-only SQL widgets are exposed by `/analytics/sql` and the
+   builder when `TIMETRACE_SQL_WIDGETS_ENABLED=true`. They use a separate SQLite `mode=ro`/
+   `query_only` connection, an authorizer allowlist, query timeout, and row/length limits. Disabled
+   by default.
+4. **DONE on this branch.** Query comparisons support previous period, same period last year, and
+   custom local-date ranges, with scalar, keyed, or positional comparison metadata and chart overlays.
 
 Not doing yet: per-user scoping on dashboards. Ids are UUIDv7, so an owner column can be added
 later without a rebuild — don't pre-build it.

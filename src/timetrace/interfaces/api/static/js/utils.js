@@ -265,7 +265,7 @@ window.addEventListener('keydown', function(e) {
             { id: 'sidebar_tab_config_modal', closeFn: typeof closeSidebarTabsConfigModal === 'function' ? closeSidebarTabsConfigModal : null },
             { id: 'session_review_modal', closeFn: typeof closeSessionReviewModal === 'function' ? closeSessionReviewModal : null },
             { id: 'rating_def_modal', closeFn: typeof closeRatingDefModal === 'function' ? closeRatingDefModal : null },
-            { id: 'widget_config_modal', closeFn: typeof toggleWidgetModal === 'function' ? toggleWidgetModal : null },
+            { id: 'widget_builder_modal', closeFn: typeof closeWidgetBuilder === 'function' ? closeWidgetBuilder : null },
             { id: 'idle_resolution_modal', closeFn: null },
             { id: 'custom_confirm_modal', closeFn: null }
         ];

@@ -13,12 +13,22 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
+from dateutil.relativedelta import relativedelta
 from sqlmodel import Session, select, text
 
+from timetrace.config import settings
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_compiler import CompiledQuery, QueryContext, compile_query
 from timetrace.core.query_registry import SOURCES
-from timetrace.core.query_spec import AnalyticsQuery, Dimension, RangePreset
+from timetrace.core.query_spec import (
+    AnalyticsQuery,
+    ComparisonMode,
+    ComparisonSpec,
+    DateRange,
+    Dimension,
+    RangePreset,
+    SortKey,
+)
 from timetrace.core.timezones import daemon_timezone_name
 from timetrace.db.models import Habit, Task
 from timetrace.interfaces.api.schemas import (
@@ -29,6 +39,7 @@ from timetrace.interfaces.api.schemas import (
     CapabilityFilterField,
     CapabilityMeasure,
     ColumnSpec,
+    ComparisonMeta,
     QueryCapabilitiesResponse,
     QueryContextRequest,
     QueryMeta,
@@ -141,6 +152,56 @@ def _resolve_date_range(query: AnalyticsQuery, tz: ZoneInfo, first_day_of_week: 
     return _ResolvedRange(start_date, end_date, start_utc, end_utc)
 
 
+_CALENDAR_DIMS = (Dimension.DAY, Dimension.WEEK, Dimension.MONTH)
+
+# Measures whose unit is already a percentage or a score: their delta is expressed in
+# *points*, and a "percent change of a percent" would be actively misleading, so delta_pct is
+# suppressed for these (see `_apply_comparison`).
+_POINT_UNITS = ("percent", "score")
+
+_COMPARISON_MODE_LABELS = {
+    ComparisonMode.PREVIOUS_PERIOD: "Previous period",
+    ComparisonMode.SAME_PERIOD_LAST_YEAR: "Same period last year",
+    ComparisonMode.CUSTOM: "Custom range",
+}
+
+
+def _resolve_comparison_range(primary: _ResolvedRange, spec: ComparisonSpec) -> tuple[date, date]:
+    """Compute the baseline window as LOCAL dates, given an already-resolved primary window.
+
+    Local dates, never a `timedelta` off the UTC instants: subtracting 14 days from a UTC
+    instant lands an hour off wall-clock time whenever a DST transition falls inside the
+    shifted window, which would reassign sessions near midnight to the neighbouring bucket.
+    The caller converts these dates to UTC through the same
+    `datetime.combine(d, time.min, tz)` path `_resolve_date_range` uses.
+    """
+    if primary.start_date is None or primary.end_date is None:
+        raise ValidationError("A comparison baseline requires a bounded date_range (not all_time).")
+
+    if spec.mode == ComparisonMode.PREVIOUS_PERIOD:
+        period_days = (primary.end_date - primary.start_date).days + 1
+        end = primary.start_date - timedelta(days=1)
+        return end - timedelta(days=period_days - 1), end
+
+    if spec.mode == ComparisonMode.SAME_PERIOD_LAST_YEAR:
+        # relativedelta handles Feb 29 -> Feb 28 on its own.
+        return primary.start_date - relativedelta(years=1), primary.end_date - relativedelta(years=1)
+
+    if spec.mode == ComparisonMode.CUSTOM:
+        if not spec.start_date or not spec.end_date:
+            raise ValidationError("comparison.mode=custom requires both start_date and end_date")
+        try:
+            start = date.fromisoformat(spec.start_date)
+            end = date.fromisoformat(spec.end_date)
+        except ValueError as e:
+            raise ValidationError(f"comparison start_date/end_date must be YYYY-MM-DD: {e}") from e
+        if end < start:
+            raise ValidationError("comparison.end_date must not be before start_date")
+        return start, end
+
+    raise ValidationError(f"Unknown comparison mode: {spec.mode}")
+
+
 def _label_for(dim: Dimension, key: str) -> str:
     try:
         if dim == Dimension.DAY:
@@ -155,7 +216,7 @@ def _label_for(dim: Dimension, key: str) -> str:
             return f"{int(key):02d}:00"
         if dim == Dimension.WEEKDAY:
             return _WEEKDAY_LABELS[int(key)]
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return key
     return key
 
@@ -212,7 +273,7 @@ class QueryService:
                     ],
                 )
             )
-        return QueryCapabilitiesResponse(sources=sources)
+        return QueryCapabilitiesResponse(sources=sources, sql_enabled=settings.sql_widgets_enabled)
 
     def run(self, query: AnalyticsQuery, context: QueryContextRequest) -> AnalyticsQueryResponse:
         start = time_module.monotonic()
@@ -227,9 +288,61 @@ class QueryService:
                 "results may be reported in UTC rather than local time."
             )
 
-        fills_calendar_dim = query.group_by and query.group_by[0] in (Dimension.DAY, Dimension.WEEK, Dimension.MONTH)
+        rows, resolved_range, compiled, truncated = self._execute(query, tz, tz_name, first_day_of_week)
+
+        columns = self._build_columns(query)
+        total = rows[0].value if not query.group_by and rows else None
+
+        comparison_meta: ComparisonMeta | None = None
+        comparison_total: float | None = None
+        if query.comparison is not None and query.comparison.mode != ComparisonMode.NONE:
+            comparison_meta, comparison_total = self._run_comparison(
+                query, resolved_range, rows, tz, tz_name, first_day_of_week, warnings
+            )
+
+        elapsed_ms = int((time_module.monotonic() - start) * 1000)
+
+        meta = QueryMeta(
+            timezone=tz_name,
+            first_day_of_week=first_day_of_week,
+            range_start_utc=resolved_range.start_utc,
+            range_end_utc=resolved_range.end_utc,
+            tag_attribution=query.tag_attribution,
+            totals_overlap=compiled.totals_overlap,
+            truncated=truncated,
+            elapsed_ms=elapsed_ms,
+            warnings=warnings,
+        )
+
+        return AnalyticsQueryResponse(
+            columns=columns,
+            rows=rows,
+            total=total,
+            row_count=len(rows),
+            meta=meta,
+            comparison_total=comparison_total,
+            comparison=comparison_meta,
+        )
+
+    def _execute(
+        self, query: AnalyticsQuery, tz: ZoneInfo, tz_name: str, first_day_of_week: int
+    ) -> tuple[list[QueryRow], _ResolvedRange, CompiledQuery, bool]:
+        """Compile and run one query pass, returning fully post-processed rows.
+
+        Factored out of `run()` so the comparison baseline (slice 4) can take exactly the
+        same path -- same compiled SQL shape, same gap-filling and sorting, only the date
+        binds shifted. Doing the baseline as a second pass rather than a UNION keeps top-N
+        `LIMIT` semantics defined for each period independently.
+        """
+        fills_calendar_dim = query.group_by and query.group_by[0] in _CALENDAR_DIMS
+        if query.fill_gaps and not query.group_by:
+            raise ValidationError("fill_gaps requires a group_by dimension")
         if query.fill_gaps and fills_calendar_dim and query.date_range.preset == RangePreset.ALL_TIME:
             raise ValidationError("fill_gaps on day/week/month requires a bounded date_range (not all_time)")
+        if query.fill_gaps and fills_calendar_dim and len(query.group_by) > 1:
+            # _fill_gaps keys rows by group_by[0] alone, so a second dimension would collapse
+            # every (bucket, dim2) row down to one arbitrary survivor per bucket.
+            raise ValidationError("fill_gaps on day/week/month doesn't support a second group_by dimension")
 
         resolved_range = _resolve_date_range(query, tz, first_day_of_week)
 
@@ -257,24 +370,119 @@ class QueryService:
         elif query.group_by and query.group_by[0] == Dimension.WEEKDAY and query.sort.value.startswith("dimension"):
             rows = self._reorder_weekday(rows, first_day_of_week, query.sort.value.endswith("desc"))
 
-        columns = self._build_columns(query)
-        total = rows[0].value if not query.group_by and rows else None
+        return rows, resolved_range, compiled, truncated
 
-        elapsed_ms = int((time_module.monotonic() - start) * 1000)
+    def _run_comparison(
+        self,
+        query: AnalyticsQuery,
+        primary_range: _ResolvedRange,
+        rows: list[QueryRow],
+        tz: ZoneInfo,
+        tz_name: str,
+        first_day_of_week: int,
+        warnings: list[str],
+    ) -> tuple[ComparisonMeta, float | None]:
+        """Run the baseline period and attach its values onto `rows` in place."""
+        spec = query.comparison
+        if spec is None:
+            raise ValidationError("No comparison spec on this query.")
 
-        meta = QueryMeta(
-            timezone=tz_name,
-            first_day_of_week=first_day_of_week,
-            range_start_utc=resolved_range.start_utc,
-            range_end_utc=resolved_range.end_utc,
-            tag_attribution=query.tag_attribution,
-            totals_overlap=compiled.totals_overlap,
-            truncated=truncated,
-            elapsed_ms=elapsed_ms,
-            warnings=warnings,
+        if query.date_range.preset == RangePreset.ALL_TIME:
+            raise ValidationError(
+                "A comparison baseline requires a bounded date_range: 'all time' has no defined previous period."
+            )
+
+        is_calendar = bool(query.group_by) and query.group_by[0] in _CALENDAR_DIMS
+        if is_calendar and (query.sort != SortKey.DIMENSION_ASC or not query.fill_gaps):
+            # Positional pairing (bucket i vs bucket i) is only meaningful if both series are
+            # dense and in calendar order. Coercing silently would change what the widget
+            # displays without the user asking, so this is an error, and the builder UI sets
+            # both options for the user the moment comparison is switched on.
+            raise ValidationError(
+                "Comparing a day/week/month widget requires sort='dimension_asc' and fill_gaps=true "
+                "so the two periods line up bucket for bucket."
+            )
+
+        base_start, base_end = _resolve_comparison_range(primary_range, spec)
+
+        baseline_query = query.model_copy(
+            update={
+                "date_range": DateRange(
+                    preset=RangePreset.CUSTOM,
+                    start_date=base_start.isoformat(),
+                    end_date=base_end.isoformat(),
+                ),
+                "comparison": None,
+            }
+        )
+        baseline_rows, baseline_range, _, _ = self._execute(baseline_query, tz, tz_name, first_day_of_week)
+
+        alignment, dropped_keys, comparison_total = self._apply_comparison(
+            query, rows, baseline_rows, is_calendar, warnings
         )
 
-        return AnalyticsQueryResponse(columns=columns, rows=rows, total=total, row_count=len(rows), meta=meta)
+        mode_label = _COMPARISON_MODE_LABELS.get(spec.mode, str(spec.mode))
+        label = f"{mode_label} ({base_start.isoformat()} to {base_end.isoformat()})"
+
+        return (
+            ComparisonMeta(
+                mode=spec.mode,
+                range_start_utc=baseline_range.start_utc,
+                range_end_utc=baseline_range.end_utc,
+                label=label,
+                alignment=alignment,
+                dropped_keys=dropped_keys,
+            ),
+            comparison_total,
+        )
+
+    def _apply_comparison(
+        self,
+        query: AnalyticsQuery,
+        rows: list[QueryRow],
+        baseline_rows: list[QueryRow],
+        is_calendar: bool,
+        warnings: list[str],
+    ) -> tuple[str, int, float | None]:
+        measure_spec = SOURCES[query.source].measures.get(query.measure)
+        point_based = bool(measure_spec) and measure_spec.unit in _POINT_UNITS
+
+        def _attach(row: QueryRow, baseline_value: float | None) -> None:
+            row.comparison_value = baseline_value
+            if row.value is None or baseline_value is None:
+                return
+            row.delta = row.value - baseline_value
+            # delta_pct only where a ratio means something: a real (non-zero) baseline and a
+            # measure that isn't already a percentage or a score.
+            if not point_based and baseline_value:
+                row.delta_pct = 100.0 * row.delta / baseline_value
+
+        if not query.group_by:
+            baseline_value = baseline_rows[0].value if baseline_rows else None
+            if rows:
+                _attach(rows[0], baseline_value)
+            return "scalar", 0, baseline_value
+
+        if is_calendar:
+            pairs = min(len(rows), len(baseline_rows))
+            for i in range(pairs):
+                _attach(rows[i], baseline_rows[i].value)
+            if len(rows) != len(baseline_rows):
+                warnings.append(
+                    f"The comparison period has {len(baseline_rows)} buckets against "
+                    f"{len(rows)} in the selected period; the unmatched buckets have no baseline value."
+                )
+            return "positional", 0, None
+
+        by_key = {tuple(r.keys): r.value for r in baseline_rows}
+        matched: set[tuple[str, ...]] = set()
+        for row in rows:
+            key = tuple(row.keys)
+            if key in by_key:
+                matched.add(key)
+                _attach(row, by_key[key])
+        dropped = len(by_key) - len(matched)
+        return "by_key", dropped, None
 
     def run_batch(self, batch: AnalyticsQueryBatchRequest) -> AnalyticsQueryBatchResponse:
         results: dict[str, AnalyticsQueryResponse] = {}

@@ -62,9 +62,19 @@ async def lifespan(app: FastAPI):
 def create_daemon_app() -> FastAPI:
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
 
+    # Same-origin only. The dashboard, CLI and TUI all talk to this daemon on its own
+    # host:port, so a wildcard bought nothing and -- now that the statistics page can run
+    # arbitrary read-only SQL (`POST /analytics/sql`) -- any web page in the browser could
+    # have driven that endpoint against the local daemon. `allow_credentials=True` is only
+    # legal with a concrete origin list anyway; the two had to change together.
+    allowed_origins = [
+        f"http://{settings.host}:{settings.port}",
+        f"http://127.0.0.1:{settings.port}",
+        f"http://localhost:{settings.port}",
+    ]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=sorted(set(allowed_origins)),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

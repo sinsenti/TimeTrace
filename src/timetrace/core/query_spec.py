@@ -133,6 +133,28 @@ class DateRange(BaseModel):
     end_date: str | None = None  # inclusive LOCAL YYYY-MM-DD, required iff preset=custom
 
 
+class ComparisonMode(StrEnum):
+    NONE = "none"
+    PREVIOUS_PERIOD = "previous_period"
+    SAME_PERIOD_LAST_YEAR = "same_period_last_year"
+    CUSTOM = "custom"
+
+
+class ComparisonSpec(BaseModel):
+    """Per-widget baseline period (statistics dashboards, slice 4).
+
+    Dates are LOCAL `YYYY-MM-DD`, like `DateRange` -- the comparison window is resolved on
+    local calendar dates and only then converted to UTC, so a DST boundary inside the shifted
+    window cannot slide session buckets by an hour.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    mode: ComparisonMode = ComparisonMode.NONE
+    start_date: str | None = None  # inclusive LOCAL YYYY-MM-DD, required iff mode=custom
+    end_date: str | None = None  # inclusive LOCAL YYYY-MM-DD, required iff mode=custom
+
+
 class QueryFilter(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -156,3 +178,7 @@ class AnalyticsQuery(BaseModel):
     sort: SortKey = SortKey.VALUE_DESC
     limit: int = Field(default=200, ge=1, le=2000)
     fill_gaps: bool = False
+    # Defaults to None (not ComparisonSpec()) so every spec written before slice 4 -- stored
+    # in a dashboardwidget row or still sitting in a browser's localStorage -- keeps
+    # validating byte-for-byte unchanged.
+    comparison: ComparisonSpec | None = None
