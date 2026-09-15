@@ -682,6 +682,12 @@ class AISettingsResponse(BaseModel):
     preview_on_calendar: bool
     scheduling_window_days: int
     batch_undo_retention_days: int
+    scheduling_day_start: str
+    scheduling_day_end: str
+    minimum_break_minutes: int
+    maximum_daily_minutes: int | None = None
+    scheduling_days: list[str]
+    preferred_tags: list[str]
     custom_instructions: str
     created_at: datetime
     updated_at: datetime
@@ -691,9 +697,19 @@ class AISettingsUpdateRequest(BaseModel):
     quickadd_fallback_enabled: bool | None = None
     redact_before_send: bool | None = None
     preview_on_calendar: bool | None = None
-    scheduling_window_days: int | None = None
-    batch_undo_retention_days: int | None = None
+    scheduling_window_days: int | None = Field(default=None, ge=1, le=90)
+    batch_undo_retention_days: int | None = Field(default=None, ge=1, le=3650)
+    scheduling_day_start: str | None = None
+    scheduling_day_end: str | None = None
+    minimum_break_minutes: int | None = Field(default=None, ge=0, le=1440)
+    maximum_daily_minutes: int | None = Field(default=None, ge=1, le=1440)
+    scheduling_days: list[str] | None = None
+    preferred_tags: list[str] | None = None
     custom_instructions: str | None = None
+
+
+class AIScheduleValidationRequest(BaseModel):
+    proposed_sessions: list[dict[str, Any]] = Field(min_length=1, max_length=100)
 
 
 class AIConversationResponse(BaseModel):

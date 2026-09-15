@@ -2,9 +2,9 @@
 
 DB-free by design: this module imports nothing from `db/` or `services/`. It exists so the tool
 surface can be built and unit-tested against a fake gateway with no SQLite, and so `core/` stays
-free of FastAPI/SQLModel. The real implementation, `services/ai_tool_gateway.py: DbAIToolGateway`,
-belongs to a later track and is out of scope here -- this file only pins down the interface
-precisely enough for that later work to implement against.
+free of FastAPI/SQLModel. The real implementation is
+`services/ai_tool_gateway.py:DbAIToolGateway`; read-only insight calculations are delegated to
+`services/ai_insights_service.py`.
 
 A gateway instance is constructed per agent turn, scoped to exactly one draft batch: write methods
 take no `batch_id` argument (spec S6) because the batch comes from the gateway itself, so the model
@@ -92,6 +92,46 @@ class AIToolGateway(Protocol):
         """Allow-listed passthrough to `QueryService.run` (the real-SQL stats engine from
         dashboards slice 1). Must never fall back to `AnalyticsService`, which loads every
         session/task into Python (spec S6)."""
+        ...
+
+    def search_tasks(
+        self,
+        query: str,
+        *,
+        status: str | None = None,
+        tag: str | None = None,
+        priority: str | None = None,
+        include_done: bool = False,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        """Searches task text with local full-text search plus exact filters."""
+        ...
+
+    def find_conflicts(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        include_pending: bool = True,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Finds overlapping real, recurring, and same-turn proposed sessions."""
+        ...
+
+    def get_task_progress(self, task_id: str) -> dict[str, Any]:
+        """Returns the task's authoritative logged/scheduled progress values."""
+        ...
+
+    def validate_schedule(self, proposed_sessions: list[dict[str, Any]]) -> dict[str, Any]:
+        """Validates hypothetical placements without writing them."""
+        ...
+
+    def get_daily_briefing(self, date: str | None = None) -> dict[str, Any]:
+        """Returns exact daily planning context for the current local day or an ISO date."""
+        ...
+
+    def get_weekly_review(self, *, start: datetime, end: datetime) -> dict[str, Any]:
+        """Returns SQL-backed logged/scheduled time summaries for a bounded range."""
         ...
 
     # ------------------------------------------------------------------

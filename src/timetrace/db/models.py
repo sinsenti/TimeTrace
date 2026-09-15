@@ -288,6 +288,15 @@ class AISettings(SQLModel, table=True):
     preview_on_calendar: bool = Field(default=True)
     scheduling_window_days: int = Field(default=14)
     batch_undo_retention_days: int = Field(default=30)
+    # Scheduling preferences are structured instead of hidden in prompt text. Empty
+    # `scheduling_days_json` means every day; the JSON columns keep this singleton compatible
+    # with SQLite while the API exposes normal lists.
+    scheduling_day_start: str = Field(default="09:00")
+    scheduling_day_end: str = Field(default="17:00")
+    minimum_break_minutes: int = Field(default=0)
+    maximum_daily_minutes: int | None = Field(default=None)
+    scheduling_days_json: str = Field(default="[]")
+    preferred_tags_json: str = Field(default="[]")
     # Non-nullable with "" as the "unset" sentinel, deliberately not `str | None`:
     # AISettingsService.update_settings skips any field whose incoming value is None, so a
     # nullable column could never be cleared back to empty through the existing update path.

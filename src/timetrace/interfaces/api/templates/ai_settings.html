@@ -151,24 +151,50 @@
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Preview on calendar (not yet enforced)</div>
-                    <div class="ai-toggle-row-hint">Show pending AI draft proposals as ghost events on the calendar -- currently always on regardless of this setting</div>
+                    <div class="ai-toggle-row-label">Preview on calendar</div>
+                    <div class="ai-toggle-row-hint">Show pending AI draft proposals as ghost events on the calendar</div>
                 </div>
                 <input type="checkbox" id="ai_setting_preview_on_calendar" class="w-4 h-4 accent-purple-600 rounded">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Scheduling window, days (not yet enforced)</div>
-                    <div class="ai-toggle-row-hint">How far ahead the whole-week auto-scheduler is allowed to place sessions -- saved, but nothing reads it yet</div>
+                    <div class="ai-toggle-row-label">Scheduling window, days</div>
+                    <div class="ai-toggle-row-hint">How far ahead schedule validation permits new placements</div>
                 </div>
                 <input type="number" id="ai_setting_scheduling_window_days" min="1" max="90" style="width: 80px;">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Batch undo retention, days (not yet enforced)</div>
-                    <div class="ai-toggle-row-hint">How long an applied draft batch stays undoable -- saved, but nothing reads it yet; every batch stays undoable indefinitely for now</div>
+                    <div class="ai-toggle-row-label">Batch undo retention, days</div>
+                    <div class="ai-toggle-row-hint">How long an applied draft batch remains eligible for undo</div>
                 </div>
-                <input type="number" id="ai_setting_batch_undo_retention_days" min="1" max="365" style="width: 80px;">
+                <input type="number" id="ai_setting_batch_undo_retention_days" min="1" max="3650" style="width: 80px;">
+            </div>
+            <div class="ai-form-row mt-3">
+                <div>
+                    <label for="ai_setting_scheduling_day_start">Preferred day start</label>
+                    <input type="time" id="ai_setting_scheduling_day_start" style="width: 120px;">
+                </div>
+                <div>
+                    <label for="ai_setting_scheduling_day_end">Preferred day end</label>
+                    <input type="time" id="ai_setting_scheduling_day_end" style="width: 120px;">
+                </div>
+                <div>
+                    <label for="ai_setting_minimum_break_minutes">Minimum break, minutes</label>
+                    <input type="number" id="ai_setting_minimum_break_minutes" min="0" max="1440" style="width: 100px;">
+                </div>
+                <div>
+                    <label for="ai_setting_maximum_daily_minutes">Daily planned limit, minutes</label>
+                    <input type="number" id="ai_setting_maximum_daily_minutes" min="1" max="1440" placeholder="Unlimited" style="width: 110px;">
+                </div>
+                <div class="ai-form-full">
+                    <label for="ai_setting_scheduling_days">Allowed days</label>
+                    <input type="text" id="ai_setting_scheduling_days" placeholder="monday, tuesday, ... (blank = every day)" style="width: 100%;">
+                </div>
+                <div class="ai-form-full">
+                    <label for="ai_setting_preferred_tags">Preferred tags</label>
+                    <input type="text" id="ai_setting_preferred_tags" placeholder="deep-work, admin (optional hints)" style="width: 100%;">
+                </div>
             </div>
             <div class="ai-form-full">
                 <label for="ai_setting_custom_instructions">Custom instructions</label>

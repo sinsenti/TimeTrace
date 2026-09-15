@@ -4,8 +4,8 @@ Layering: these functions are built against the `AIToolGateway` **Protocol**, ne
 `services.ai_tool_gateway.DbAIToolGateway` directly -- `core/` must not import `services/` (spec
 S5). The gateway instance itself is injected per-call via LangGraph's `ToolRuntime.context`
 (spec S3), constructed by `create_agent(context_schema=AIAgentContext)` in `core/ai/agent.py` and
-populated by whatever caller invokes the compiled graph (a later chat-service track, which is the
-only place a real `DbAIToolGateway(batch_id=...)` gets constructed). This file never imports
+populated by the chat service, which is the only place a real `DbAIToolGateway(batch_id=...)` gets
+constructed. This file never imports
 `timetrace.services` or `timetrace.db` at all.
 
 `AIAgentContext` is the context shape every tool function here reads via `runtime.context`: a
@@ -213,8 +213,9 @@ def find_free_slots(
     proposed earlier in this same turn -- so when placing several new sessions in one
     conversation turn (e.g. a whole-week plan), call this again before each new placement rather
     than reusing gaps you computed before your last proposal, or you risk it looking free when
-    it's actually already been proposed. `working_hours_only=True` (the default) restricts
-    results to roughly 9am-5pm local time each day; set it `False` to consider the full day.
+    it's actually already been proposed. `working_hours_only=True` (the default) applies the
+    saved local hours and allowed days; set it `False` to consider the full day while still
+    honoring breaks, allowed days, and daily capacity.
     Always call this before `propose_create_session` when you are choosing the placement
     yourself rather than following an explicit time the user gave you.
     """
@@ -240,11 +241,109 @@ def get_time_stats(query: dict[str, Any], runtime: ToolRuntime[AIAgentContext, A
     structured dict: `source` (`"sessions"` or `"tasks"`), `measure` (one of `"sum_duration"`,
     `"session_count"`, `"avg_session_length"`, `"task_count"`, `"completion_rate"`), an optional
     `group_by` list of dimensions (`"day"`, `"week"`, `"month"`, `"tag"`, `"task"`, `"status"`,
-    `"priority"`, `"category"`), an optional `filters` list, and an optional `date_range`. Use
+    `"priority"`, `"category"`), an optional `filters` list, and an optional `date_range`. For
+    session queries, `session_time_relative` filters accept `past`, `future`, or `ongoing`. Use
     this instead of trying to compute totals yourself from `list_sessions` output.
     """
     _log_call("get_time_stats", query=query)
     return runtime.context.gateway.get_time_stats(query)
+
+
+@tool
+def search_tasks(
+    query: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    status: str | None = None,
+    tag: str | None = None,
+    priority: str | None = None,
+    include_done: bool = False,
+    limit: int = 10,
+) -> list[dict[str, Any]]:
+    """Searches task titles, descriptions, tags, and categories using local full-text search.
+    Combine this with exact filters when the user describes a task vaguely. The results contain
+    real task ids; use `get_task` on the chosen id before proposing any change, and ask the user
+    to disambiguate when several candidates match.
+    """
+    _log_call("search_tasks", query=query, status=status, tag=tag, priority=priority)
+    return runtime.context.gateway.search_tasks(
+        query,
+        status=status,
+        tag=tag,
+        priority=priority,
+        include_done=include_done,
+        limit=limit,
+    )
+
+
+@tool
+def find_conflicts(
+    start: RequiredDateTime,
+    end: RequiredDateTime,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    include_pending: bool = True,
+    limit: int = 100,
+) -> list[dict[str, Any]]:
+    """Finds overlapping calendar sessions in `[start, end)`, including recurring projections
+    and proposals already made during this turn. Use this before presenting a multi-session plan
+    as conflict-free. It is read-only; moving anything still requires `propose_update_session`.
+    """
+    _log_call("find_conflicts", start=start, end=end, include_pending=include_pending)
+    return runtime.context.gateway.find_conflicts(
+        start=start,
+        end=end,
+        include_pending=include_pending,
+        limit=limit,
+    )
+
+
+@tool
+def get_task_progress(task_id: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Returns authoritative logged hours, scheduled hours, remaining work, progress percent,
+    and session count for a real task id. Never infer progress from a list of sessions yourself.
+    """
+    _log_call("get_task_progress", task_id=task_id)
+    return runtime.context.gateway.get_task_progress(task_id)
+
+
+@tool
+def validate_schedule(
+    proposed_sessions: list[dict[str, Any]],
+    runtime: ToolRuntime[AIAgentContext, Any],
+) -> dict[str, Any]:
+    """Validates hypothetical session placements against existing sessions, same-turn proposals,
+    working hours, allowed days, breaks, daily capacity, and the scheduling window. It never
+    writes anything. Call it after making a substantial group of proposals and revise drafts if
+    it reports errors.
+    """
+    _log_call("validate_schedule", proposed_sessions=proposed_sessions)
+    return runtime.context.gateway.validate_schedule(proposed_sessions)
+
+
+@tool
+def get_daily_briefing(
+    runtime: ToolRuntime[AIAgentContext, Any],
+    date: str | None = None,
+) -> dict[str, Any]:
+    """Returns exact planning context for today, or a local ISO date such as `2026-09-10`:
+    sessions, overdue and due-today tasks, logged/scheduled time, free slots, conflicts, and
+    scheduling preferences. Use it as the factual basis for a concise daily briefing.
+    """
+    _log_call("get_daily_briefing", date=date)
+    return runtime.context.gateway.get_daily_briefing(date)
+
+
+@tool
+def get_weekly_review(
+    start: RequiredDateTime,
+    end: RequiredDateTime,
+    runtime: ToolRuntime[AIAgentContext, Any],
+) -> dict[str, Any]:
+    """Returns SQL-backed logged and scheduled time totals and breakdowns by day, task, and tag
+    for a bounded range, plus average session length, session counts, and task status counts.
+    Use it for a weekly review instead of manually summing raw session results.
+    """
+    _log_call("get_weekly_review", start=start, end=end)
+    return runtime.context.gateway.get_weekly_review(start=start, end=end)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -554,6 +653,12 @@ ALL_TOOLS = [
     list_sessions,
     find_free_slots,
     get_time_stats,
+    search_tasks,
+    find_conflicts,
+    get_task_progress,
+    validate_schedule,
+    get_daily_briefing,
+    get_weekly_review,
     propose_create_session,
     propose_update_session,
     propose_delete_session,

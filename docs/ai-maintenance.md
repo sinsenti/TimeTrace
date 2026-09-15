@@ -34,7 +34,11 @@ rationale; it is not a checklist of missing work.
 - Snapshot restoration uses `parse_title_syntax=False`; otherwise restoring a title can reapply
   quick-add parsing and change human-authored data.
 - Never treat UUIDv7 IDs as numbers or invent IDs. Resolve references through the gateway read tools.
-- Keep `find_free_slots` aware of proposals already made in the current batch.
+- Keep `find_free_slots` aware of proposals already made in the current batch and honor the saved
+  scheduling hours, allowed days, break, and daily-cap preferences.
+- Read-only insights (`get_daily_briefing`, `get_weekly_review`, `find_conflicts`,
+  `get_task_progress`, and `search_tasks`) must use deterministic services/query SQL. They may
+  include pending same-turn drafts in planning views, but never persist domain rows.
 - Do not add timer, habit, rating, review, or external-sync writes without a separately settled scope.
 
 ## Required verification
@@ -56,7 +60,8 @@ Use fake models and gateways. Run the focused AI tests, `uv run pytest -q`, `uv 
 
 ## Scope decisions
 
-The assistant currently supports quick-add, rescheduling, whole-week scheduling, task/session draft
+The assistant currently supports quick-add, rescheduling, whole-week scheduling, read-only daily and
+weekly insights, deterministic conflict/schedule checks, local FTS task search, task/session draft
 writes, provider configuration, chat, calendar overlays, audit, undo, and reapply. Provider configuration
 supports the built-in LangChain providers plus **Pi**: Pi uses the locally installed
 `@earendil-works/pi-coding-agent` ModelRuntime and its existing `~/.pi/agent` credentials. Configure

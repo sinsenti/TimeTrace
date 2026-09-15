@@ -353,6 +353,7 @@ class QueryService:
             range_end_utc=resolved_range.end_utc,
             range_start_local=resolved_range.start_date.isoformat() if resolved_range.start_date else None,
             range_end_local=resolved_range.end_date.isoformat() if resolved_range.end_date else None,
+            now_utc=datetime.now(UTC).replace(tzinfo=None),
         )
 
         compiled = compile_query(query, ctx)

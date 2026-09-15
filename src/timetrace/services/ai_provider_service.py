@@ -7,6 +7,7 @@ ModelRuntime without passing Pi credentials through this service.
 """
 
 import json
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -477,6 +478,12 @@ class AISettingsService:
         "preview_on_calendar",
         "scheduling_window_days",
         "batch_undo_retention_days",
+        "scheduling_day_start",
+        "scheduling_day_end",
+        "minimum_break_minutes",
+        "maximum_daily_minutes",
+        "scheduling_days",
+        "preferred_tags",
         "custom_instructions",
     )
 
@@ -503,8 +510,59 @@ class AISettingsService:
             raise ValidationError("custom_instructions must be 4000 characters or fewer.")
 
         row = self.get_settings()
+        candidate = {key: getattr(row, key) for key in self._UPDATABLE_FIELDS if hasattr(row, key)}
+        candidate.update({key: value for key, value in fields.items() if value is not None})
+        if "maximum_daily_minutes" in fields:
+            candidate["maximum_daily_minutes"] = fields["maximum_daily_minutes"]
+
+        parsed_hours = {}
+        for key in ("scheduling_day_start", "scheduling_day_end"):
+            value = candidate.get(key)
+            try:
+                parsed = datetime.strptime(value, "%H:%M")
+            except (TypeError, ValueError) as exc:
+                raise ValidationError(f"{key} must use HH:MM") from exc
+            if parsed.second or parsed.microsecond:
+                raise ValidationError(f"{key} must use HH:MM")
+            parsed_hours[key] = parsed
+        if parsed_hours["scheduling_day_start"] >= parsed_hours["scheduling_day_end"]:
+            raise ValidationError("scheduling_day_start must be before scheduling_day_end")
+
+        minimum_break = candidate["minimum_break_minutes"]
+        if not isinstance(minimum_break, int) or not 0 <= minimum_break <= 1440:
+            raise ValidationError("minimum_break_minutes must be between 0 and 1440")
+        maximum_daily = candidate["maximum_daily_minutes"]
+        if maximum_daily is not None and (not isinstance(maximum_daily, int) or not 1 <= maximum_daily <= 1440):
+            raise ValidationError("maximum_daily_minutes must be between 1 and 1440, or null")
+        window_days = candidate["scheduling_window_days"]
+        if not isinstance(window_days, int) or not 1 <= window_days <= 90:
+            raise ValidationError("scheduling_window_days must be between 1 and 90")
+        retention_days = candidate["batch_undo_retention_days"]
+        if not isinstance(retention_days, int) or not 1 <= retention_days <= 3650:
+            raise ValidationError("batch_undo_retention_days must be between 1 and 3650")
+
+        json_fields = (("scheduling_days", "scheduling_days_json"), ("preferred_tags", "preferred_tags_json"))
+        for public_name, json_name in json_fields:
+            value = fields.get(public_name)
+            if value is None:
+                continue
+            if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+                raise ValidationError(f"{public_name} must be a list of strings")
+            normalized = [item.strip().lower() for item in value if item.strip()]
+            if public_name == "scheduling_days":
+                valid_days = {"monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"}
+                unknown_days = sorted(set(normalized) - valid_days)
+                if unknown_days:
+                    raise ValidationError(f"Unknown scheduling day(s): {', '.join(unknown_days)}")
+            if len(normalized) > 32:
+                raise ValidationError(f"{public_name} cannot contain more than 32 values")
+            setattr(row, json_name, json.dumps(normalized))
+
         for key, value in fields.items():
-            if value is not None:
+            should_set = key == "maximum_daily_minutes" or (
+                value is not None and key not in {"scheduling_days", "preferred_tags"}
+            )
+            if should_set:
                 setattr(row, key, value)
         row.updated_at = utc_now()
         self.db.add(row)

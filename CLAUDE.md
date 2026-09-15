@@ -219,7 +219,9 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
   after the graph finished; see `core/ai/agent.py`'s own docstring for the full reasoning.
 - Tool surface (`core/ai/tools.py`, `services/ai_tool_gateway.py`): read tools
   (`list_tasks`/`get_task`/`resolve_task_reference`/`list_sessions`/`find_free_slots`/
-  `get_time_stats`) plus write tools that only ever create drafts (`propose_create_session`,
+  `get_time_stats`/`search_tasks`/`find_conflicts`/`get_task_progress`/
+  `get_daily_briefing`/`get_weekly_review`/`validate_schedule`) plus write tools that only ever
+  create drafts (`propose_create_session`,
   `propose_update_session`, `propose_delete_session`, `propose_split_session`,
   `propose_create_task`, `propose_update_task`, `propose_delete_task`, `propose_create_subtasks`,
   `set_plan_summary`). `propose_create_task` covers recurring tasks too (`is_recurring` +
@@ -238,6 +240,11 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
   conflict. The redaction regex (`core/ai/redaction.py`) carves out date-shaped substrings the
   same way it already did for UUIDs, since an ISO/dot-separated date looks exactly like a grouped
   phone number to that pattern.
+- Read-only AI insights use `AIInsightsService`: deterministic overlap and schedule checks include
+  recurring projections and same-turn pending drafts, weekly/daily summaries delegate to the
+  structured SQL query engine, and task search uses a local SQLite FTS5 index when available.
+  Scheduling preferences are persisted in `AISettings`; no embeddings/RAG or provider network is
+  introduced.
 - Went through this project's full merge-review gate (automated checks, an adversarial agent pass
   that found and fixed 9 real bugs on the accept/undo trust boundary, then a human review).
 

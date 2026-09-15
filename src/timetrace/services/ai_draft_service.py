@@ -14,13 +14,13 @@ persisted). `is_stale` is deliberately computed at read time and never stored.
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.db.models import AIDraftBatch, AIDraftItem, Task, utc_now
+from timetrace.db.models import AIDraftBatch, AIDraftItem, AISettings, Task, utc_now
 from timetrace.interfaces.api.schemas import (
     CompletionPolicyPrompt,
     SessionCreate,
@@ -199,16 +199,24 @@ class AIDraftService:
         self._get_batch(batch_id)
         return self._items_for_batch(batch_id)
 
+    def _undo_retention_cutoff(self) -> datetime:
+        settings = self.db.exec(select(AISettings)).first()
+        retention_days = settings.batch_undo_retention_days if settings else 30
+        return (datetime.now(UTC) - timedelta(days=max(1, retention_days))).replace(tzinfo=None)
+
     def list_undoable_batches(self, since: datetime | None = None) -> list[AIDraftBatch]:
         """Batches with at least one item still standing (applied or reapplied -- both surface
-        as item status `applied`). Feeds `POST /drafts/undo {batch_ids?, since?}`."""
+        as item status `applied`) and within the configured undo-retention window. Feeds
+        `POST /drafts/undo {batch_ids?, since?}`."""
         query = (
             select(AIDraftBatch)
             .where(AIDraftBatch.status.in_(["applied", "partially_applied"]))
             .order_by(AIDraftBatch.created_at.desc())
         )
+        cutoff = self._undo_retention_cutoff()
         if since is not None:
-            query = query.where(AIDraftBatch.created_at >= ensure_utc(since).replace(tzinfo=None))
+            cutoff = max(cutoff, ensure_utc(since).replace(tzinfo=None))
+        query = query.where(AIDraftBatch.created_at >= cutoff)
         return list(self.db.exec(query).all())
 
     def is_stale(self, item: AIDraftItem) -> bool:
@@ -403,6 +411,8 @@ class AIDraftService:
         is the worst possible failure mode for this feature."""
         logger.info("AI undo_batch: batch=%s item_ids=%s actor=%s", batch_id, item_ids, actor)
         batch = self._get_batch(batch_id)
+        if batch.created_at < self._undo_retention_cutoff():
+            raise ValidationError("This draft batch is outside the configured undo-retention window")
         items = self._items_for_batch(batch_id, item_ids, descending=True)
 
         results = []

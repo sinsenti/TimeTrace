@@ -3,11 +3,12 @@ endpoints (`GET /drafts/batches`, `GET /drafts/overlay`, `PATCH /drafts/items/{i
 `GET /status`) that don't belong to `AIDraftService`'s accept/reject/undo/reapply lifecycle
 (spec S8, owned by a sibling track).
 
-Deliberately does NOT modify `services/ai_draft_service.py` or `services/ai_tool_gateway.py` --
-both are sibling-track files. Where a router endpoint needed a read/patch operation those files
-don't expose (listing batches, the calendar overlay, editing a pending item's `proposed_json`),
-this module implements it directly against the `AIDraftBatch`/`AIDraftItem` tables rather than
-adding methods to those files.
+Draft lifecycle ownership remains in `services/ai_draft_service.py`; the read-only insight and
+same-turn planning methods live in `services/ai_insights_service.py` and are exposed through the
+protocol-backed `ai_tool_gateway.py`. Where a router endpoint needs a draft-adjacent read/patch
+operation those services don't own (listing batches, the calendar overlay, editing a pending
+item's `proposed_json`), this module implements it directly against the
+`AIDraftBatch`/`AIDraftItem` tables.
 
 **Lazy vs eager batch creation (spec S6/S7):** a batch is created EAGERLY at the start of every
 `run_turn`/`run_turn_stream` call, not lazily on the first `propose_*` tool call. `DbAIToolGateway`
@@ -46,6 +47,7 @@ from timetrace.db.models import (
     AIDraftBatch,
     AIDraftItem,
     AIProviderConfig,
+    AISettings,
     Task,
     utc_now,
 )
@@ -597,6 +599,9 @@ class AIChatService:
         already a real calendar row and would double-render; rejected/undone items are gone."""
         start_utc = ensure_utc(start)
         end_utc = ensure_utc(end)
+        settings = self.db.exec(select(AISettings)).first()
+        if settings is not None and not settings.preview_on_calendar:
+            return []
         draft_service = AIDraftService(self.db)
         tz = daemon_tzinfo()
 
@@ -815,6 +820,17 @@ class AIChatService:
         # unambiguous and directly copyable.
         example_local = now_local.replace(hour=21, minute=40, second=0, microsecond=0)
         example_utc = example_local - offset
+        settings = AISettingsService(self.db).get_settings()
+        try:
+            scheduling_days = json.loads(settings.scheduling_days_json or "[]")
+        except (TypeError, ValueError):
+            scheduling_days = []
+        try:
+            preferred_tags = json.loads(settings.preferred_tags_json or "[]")
+        except (TypeError, ValueError):
+            preferred_tags = []
+        scheduling_days_text = ", ".join(str(item) for item in scheduling_days) or "all days"
+        preferred_tags_text = ", ".join(str(item) for item in preferred_tags) or "none"
         return (
             f"Current UTC datetime: {now_utc.isoformat()}. "
             f"Current local datetime: {now_local.isoformat()} ({daemon_timezone_name()}, "
@@ -825,7 +841,12 @@ class AIChatService:
             "argument must be UTC. To convert, SUBTRACT the local offset from the local time "
             f"(never add it): local time minus UTC{sign}{abs(offset_hours):g} equals UTC time. "
             f"Worked example using today's date: local {example_local.isoformat()} "
-            f"-> UTC {example_utc.isoformat()}."
+            f"-> UTC {example_utc.isoformat()}. "
+            f"Scheduling preferences: local {settings.scheduling_day_start}-{settings.scheduling_day_end}, "
+            f"minimum break {settings.minimum_break_minutes} minutes, "
+            f"maximum daily planned time {settings.maximum_daily_minutes or 'unlimited'} minutes, "
+            f"scheduling window {settings.scheduling_window_days} days, "
+            f"allowed days {scheduling_days_text}, preferred tags {preferred_tags_text}."
         )
 
     def _recent_history(self, conversation_id: str, exclude_message_id: str | None = None) -> list[AIChatMessage]:

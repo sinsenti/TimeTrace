@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from sqlalchemy import or_
 from sqlmodel import Session, func, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
@@ -101,6 +102,47 @@ class SessionService:
             result.extend(occ.to_dict() for occ in self.recurrence.project_range(start, end))
             result.sort(key=lambda item: item.get("start_time") or "")
 
+        return result
+
+    def list_overlapping_sessions(
+        self,
+        start: datetime,
+        end: datetime,
+        include_virtual: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Returns sessions whose time window overlaps ``[start, end)``.
+
+        ``list_sessions`` intentionally filters by session start for calendar range reads. AI
+        conflict detection also needs an event that started just before the requested window, so
+        this companion keeps that boundary behavior explicit while still using this service as the
+        real/virtual recurrence merge funnel.
+        """
+        start_utc = ensure_utc(start)
+        end_utc = ensure_utc(end)
+        if end_utc <= start_utc:
+            raise ValidationError("end must be strictly after start")
+
+        naive_start = start_utc.replace(tzinfo=None)
+        naive_end = end_utc.replace(tzinfo=None)
+        query = select(SessionModel).where(
+            SessionModel.start_time < naive_end,
+            or_(SessionModel.end_time.is_(None), SessionModel.end_time > naive_start),
+        )
+        sessions = self.db.exec(query).all()
+        result: list[dict[str, Any]] = []
+        for s in sessions:
+            s_dict = s.model_dump()
+            s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
+            s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+            s_dict["is_virtual"] = False
+            result.append(s_dict)
+
+        if include_virtual:
+            if (end_utc - start_utc) > timedelta(days=MAX_WINDOW_DAYS):
+                raise ValidationError(f"Requested range exceeds the maximum of {MAX_WINDOW_DAYS} days.")
+            result.extend(occ.to_dict() for occ in self.recurrence.project_range(start_utc, end_utc))
+
+        result.sort(key=lambda item: item.get("start_time") or "")
         return result
 
     def list_projected_occurrences(

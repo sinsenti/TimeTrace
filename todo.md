@@ -52,9 +52,10 @@ traps found during the merge-review pass).
   (`core/ai/redaction.py`)
 
 Not built, and not currently planned unless asked for: habit/rating/day-review writes, timer
-control, embeddings/RAG, a multi-agent supervisor graph. Possible next steps if the user wants
-more: a "daily briefing" one-shot prompt, proactive double-booking detection, cross-conversation
-user preferences — none of these need new tools, just prompt/UX work on top of what exists.
+control, embeddings/RAG, a multi-agent supervisor graph, or external integrations. Read-only daily
+briefings, weekly reviews, deterministic conflict/schedule validation, task progress, local FTS task
+search, and persisted scheduling preferences are implemented through the AI insights service and
+agent tools; they do not expand the draft-only write boundary.
 
 ## Product notes
 

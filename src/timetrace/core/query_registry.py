@@ -131,6 +131,7 @@ SOURCES: dict[QuerySource, SourceSpec] = {
             FilterSpec(FilterField.NOTES, "Notes"),
             FilterSpec(FilterField.HAS_TASK, "Has task"),
             FilterSpec(FilterField.DURATION_SECONDS, "Duration (seconds)"),
+            FilterSpec(FilterField.SESSION_TIME_RELATIVE, "Session time relative to now"),
             FilterSpec(FilterField.TASK_PARENT, "Parent task"),
         ),
     ),

@@ -47,6 +47,7 @@ class QueryContext:
     range_end_utc: datetime | None = None  # naive UTC, exclusive
     range_start_local: str | None = None  # YYYY-MM-DD, inclusive (LOCAL_DATE_STRING sources)
     range_end_local: str | None = None  # YYYY-MM-DD, inclusive (LOCAL_DATE_STRING sources)
+    now_utc: datetime | None = None  # naive UTC, used by relative session-time filters
 
 
 @dataclass
@@ -171,12 +172,37 @@ def _build_filter_clause(
     anchor: str,
     anchor_kind: TimeAnchorKind,
     param_prefix: str,
+    ctx: QueryContext,
 ) -> tuple[list[str], dict[str, object]]:
     conditions: list[str] = []
     params: dict[str, object] = {}
 
     for i, f in enumerate(filters):
         if f.field == FilterField.TAG:
+            continue
+
+        if f.field == FilterField.SESSION_TIME_RELATIVE:
+            if source != QuerySource.SESSIONS:
+                raise ValidationError("session_time_relative is only supported for source sessions")
+            if f.op not in (FilterOp.EQ, FilterOp.IN):
+                raise ValidationError("session_time_relative supports only eq and in")
+            if not f.values:
+                raise ValidationError("Filter on session_time_relative requires at least one value")
+            if ctx.now_utc is None:
+                raise ValidationError("session_time_relative requires a query timestamp")
+            relative_sql = {
+                "past": "s.end_time IS NOT NULL AND s.end_time <= :__now_utc",
+                "future": "s.start_time > :__now_utc",
+                "ongoing": "s.start_time <= :__now_utc AND (s.end_time IS NULL OR s.end_time > :__now_utc)",
+            }
+            predicates = []
+            for value in f.values:
+                predicate = relative_sql.get(str(value).lower())
+                if predicate is None:
+                    raise ValidationError("session_time_relative must be one of 'past', 'future', or 'ongoing'")
+                predicates.append(f"({predicate})")
+            params["__now_utc"] = ctx.now_utc
+            conditions.append(" OR ".join(predicates) if len(predicates) == 1 else f"({' OR '.join(predicates)})")
             continue
 
         if f.field in (
@@ -293,7 +319,7 @@ def _sessions_base_where(
         params.update(range_params)
 
     non_tag_filters = [f for f in query.filters if f.field != FilterField.TAG]
-    filt_sql, filt_params = _build_filter_clause(QuerySource.SESSIONS, non_tag_filters, anchor, anchor_kind, "s")
+    filt_sql, filt_params = _build_filter_clause(QuerySource.SESSIONS, non_tag_filters, anchor, anchor_kind, "s", ctx)
     conditions.extend(filt_sql)
     params.update(filt_params)
 
@@ -489,7 +515,7 @@ def _compile_tasks_plain(query: AnalyticsQuery, ctx: QueryContext) -> CompiledQu
         conditions.append(range_sql)
         params.update(range_params)
 
-    filt_sql, filt_params = _build_filter_clause(QuerySource.TASKS, query.filters, anchor, anchor_kind, "t")
+    filt_sql, filt_params = _build_filter_clause(QuerySource.TASKS, query.filters, anchor, anchor_kind, "t", ctx)
     conditions.extend(filt_sql)
     params.update(filt_params)
 
@@ -545,7 +571,9 @@ def _compile_tasks_estimation(query: AnalyticsQuery, ctx: QueryContext) -> Compi
         params.update(range_params)
 
     non_estimation_filters = [f for f in query.filters if f.field != FilterField.ESTIMATION_BUCKET]
-    filt_sql, filt_params = _build_filter_clause(QuerySource.TASKS, non_estimation_filters, anchor, anchor_kind, "t")
+    filt_sql, filt_params = _build_filter_clause(
+        QuerySource.TASKS, non_estimation_filters, anchor, anchor_kind, "t", ctx
+    )
     conditions.extend(filt_sql)
     params.update(filt_params)
 
@@ -668,7 +696,7 @@ def _compile_habit_logs(query: AnalyticsQuery, ctx: QueryContext) -> CompiledQue
         conditions.append(range_sql)
         params.update(range_params)
 
-    filt_sql, filt_params = _build_filter_clause(QuerySource.HABIT_LOGS, query.filters, anchor, anchor_kind, "hl")
+    filt_sql, filt_params = _build_filter_clause(QuerySource.HABIT_LOGS, query.filters, anchor, anchor_kind, "hl", ctx)
     conditions.extend(filt_sql)
     params.update(filt_params)
 
@@ -718,7 +746,7 @@ def _compile_day_reviews(query: AnalyticsQuery, ctx: QueryContext) -> CompiledQu
         conditions.append(range_sql)
         params.update(range_params)
 
-    filt_sql, filt_params = _build_filter_clause(QuerySource.DAY_REVIEWS, query.filters, anchor, anchor_kind, "dr")
+    filt_sql, filt_params = _build_filter_clause(QuerySource.DAY_REVIEWS, query.filters, anchor, anchor_kind, "dr", ctx)
     conditions.extend(filt_sql)
     params.update(filt_params)
 
@@ -768,7 +796,9 @@ def _compile_rating_entries(query: AnalyticsQuery, ctx: QueryContext) -> Compile
         conditions.append(range_sql)
         params.update(range_params)
 
-    filt_sql, filt_params = _build_filter_clause(QuerySource.RATING_ENTRIES, query.filters, anchor, anchor_kind, "re")
+    filt_sql, filt_params = _build_filter_clause(
+        QuerySource.RATING_ENTRIES, query.filters, anchor, anchor_kind, "re", ctx
+    )
     conditions.extend(filt_sql)
     params.update(filt_params)
 

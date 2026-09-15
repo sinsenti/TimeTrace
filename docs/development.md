@@ -68,7 +68,7 @@ Paths below are relative to `src/timetrace/` unless stated otherwise.
 | Structured statistics | `core/query_spec.py`, `core/query_registry.py`, `core/query_compiler.py`, `services/query_service.py` | `routers/analytics.py`, `static/js/dashboards.js`, `stats.js`, `settings.js` |
 | Reviews, habits, ratings | `services/revision_service.py`, `habit_service.py`, `rating_service.py` | Matching routers, templates, and JS feature files |
 | Markdown import/export | `core/parser.py`, `services/analytics_service.py` | CLI commands and analytics router |
-| AI tools and orchestration | `core/ai/`, `services/ai_tool_gateway.py`, `ai_chat_service.py` | `routers/ai.py`, `static/js/ai_assistant.js`, `ai_quickadd.js` |
+| AI tools and orchestration | `core/ai/`, `services/ai_tool_gateway.py`, `ai_insights_service.py`, `ai_chat_service.py` | `routers/ai.py`, `static/js/ai_assistant.js`, `ai_quickadd.js` |
 | AI approval and configuration | `services/ai_draft_service.py`, `ai_audit_service.py`, `ai_provider_service.py` | `static/js/ai_drafts.js`, `ai_draft_overlay.js`, `ai_settings_page.js` |
 
 In the table, `static/`, `templates/`, and `routers/` shorthand is under `interfaces/api/`.
@@ -102,8 +102,11 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   `0008_ai_custom_instructions` adds DB-backed custom instructions after the seven AI tables in
   `0007_ai_assistant_tables`. See the [AI spec](ai-assistant-spec.md) for the approval/privacy
   contract; its original provider/dependency lists and proposed migration numbers are historical.
-  AI tool calls use their own short-lived DB sessions because tools may run concurrently; never
-  share a request's SQLModel session across parallel tool calls.
+  Read-only insights include daily briefings, weekly reviews, conflict/schedule validation, task
+  progress, and local SQLite FTS task search. Scheduling hours, allowed days, breaks, daily caps,
+  and the placement window are stored in `AISettings`. AI tool calls use their own short-lived DB
+  sessions because tools may run concurrently; never share a request's SQLModel session across
+  parallel tool calls.
 - **CLI:** no Textual dependency or TUI implementation exists in the current tree. The numeric
   `@task` grammars in `parse_inline_timer`, `parse_inline_session_edit`, and `parse_inline_retro`
   have no call sites. Do not confuse these with the live `parse_inline_task` creation parser.
@@ -134,7 +137,7 @@ in `tests/test_ai_privacy.py`. Draft lifecycle, gateway, and provider behavior s
 tests as those areas change. There is no browser test suite. Add coverage where changing behavior;
 passing the existing suite does not establish those areas are correct.
 
-**Observed baseline at this documentation check:** 131 tests passed with 12 existing SQLite
+**Observed baseline at this documentation check:** 144 tests passed with 39 reported SQLite
 `DeprecationWarning`s. Re-run the suite after changes; warnings are not treated as failures.
 
 For Python edits, run scoped Ruff autofix and formatting (see `AGENTS.md`). Do not remove the
@@ -145,7 +148,7 @@ Do not use live AI providers as automated test fixtures or expose personal data 
 
 ## Migration verification
 
-The source tree currently ends at `0009_dashboards_and_widgets`; inspect revision ids and
+The source tree currently ends at `0010_ai_search_and_scheduling_preferences`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.

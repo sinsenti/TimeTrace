@@ -1,8 +1,9 @@
 """`DbAIToolGateway` -- the real, SQLite-backed implementation of `core.ai.spec.AIToolGateway`.
 
-Spec S5 layering: `core/ai/tools.py` (a later track) declares the LangChain tool surface against
-the `AIToolGateway` Protocol; this module is the only place that Protocol is backed by real
-queries. Every method here is DB-adjacent -- `core/` must stay free of this.
+Spec S5 layering: `core/ai/tools.py` declares the LangChain tool surface against the
+`AIToolGateway` Protocol; this module is the DB-backed implementation. Read-only insight and
+scheduling calculations live in `services/ai_insights_service.py`, while draft proposals still
+flow through `AIDraftService`.
 
 **Concurrency deviation (spec S5, S9):** every method opens its own short-lived `Session(engine)`
 instead of taking a `Depends(get_session)`-injected one. LangGraph's tool node can run several
@@ -15,25 +16,15 @@ exactly one `AIDraftBatch` via `batch_id`. None of the write ("propose_*") metho
 for.
 
 **Write tools never touch `task`/`session` rows.** Each `propose_*` method computes
-`proposed_json` / `baseline_json` and hands off to `AIDraftService.add_item(...)` (a sibling
-track's service, `services/ai_draft_service.py`), which is the only thing that inserts the
-`aidraftitem` row. That import is done lazily inside each write method (not at module import
-time) because `ai_draft_service.py` did not exist yet when this file was written -- see the
-"Dependency note" at the bottom of this docstring.
-
-Dependency note for whoever reconciles the two tracks: this file assumes
-`AIDraftService(db).add_item(batch_id, op, entity_type, target_id, proposed_json, baseline_json,
-rationale=None)` where `proposed_json`/`baseline_json` are pre-serialized JSON strings (or
-`None`), and that it returns something with either a `.model_dump()` (a SQLModel row) or a plain
-dict shape (an id at minimum). `_item_result()` below normalizes either shape. If the real
-signature differs, only the four `propose_*_session`/`propose_*_task` call sites and
-`_item_result()` need to change.
+`proposed_json` / `baseline_json` and hands off to `AIDraftService.add_item(...)`, which is the
+only thing that inserts the `aidraftitem` row. `_item_result()` keeps the gateway's public result
+shape plain and JSON-serializable.
 """
 
 from __future__ import annotations
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
@@ -42,8 +33,7 @@ from sqlmodel import Session, func, select
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.query_spec import AnalyticsQuery, Dimension, FilterField, Measure, QuerySource
 from timetrace.core.recurrence import is_occurrence_id
-from timetrace.core.timezones import daemon_tzinfo, from_local_naive, to_local_naive
-from timetrace.db.models import AIDraftBatch, AIDraftItem, Task, generate_uuid7
+from timetrace.db.models import AIDraftBatch, Task, generate_uuid7
 from timetrace.db.session import engine
 from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
@@ -80,15 +70,10 @@ _ALLOWED_STATS_FILTER_FIELDS = {d.value for d in _ALLOWED_STATS_DIMENSIONS} | {
     FilterField.DURATION_SECONDS.value,
     FilterField.HAS_TASK.value,
     FilterField.NOTES.value,
+    FilterField.SESSION_TIME_RELATIVE.value,
 }
 
 _STATS_MAX_LIMIT = 100
-
-# Naive local "working hours" window used by `find_free_slots(working_hours_only=True)`. No
-# precedent elsewhere in the codebase for this, so it is a plain module constant here rather
-# than a setting -- revisit if/when `aisettings` grows a configurable window.
-_WORKING_HOURS_START = 9
-_WORKING_HOURS_END = 17
 
 _DONE_LIKE_STATUSES = ("Done", "completed", "done")
 
@@ -192,7 +177,7 @@ class DbAIToolGateway:
         funnel for the two)."""
         limit = max(1, min(limit, 500))
         with Session(engine) as db:
-            rows = SessionService(db).list_sessions(start=start, end=end, include_virtual=True)
+            rows = SessionService(db).list_overlapping_sessions(start=start, end=end, include_virtual=True)
         if task_id:
             rows = [r for r in rows if r.get("task_id") == task_id]
         return rows[:limit]
@@ -220,74 +205,20 @@ class DbAIToolGateway:
         draft (e.g. the later LangGraph tool-wiring track, if it ever needs to reserve a slot
         mid-reasoning before calling `propose_create_session`). Most callers can omit it.
 
-        `working_hours_only` restricts free gaps to `09:00`-`17:00` in the daemon's local
-        timezone, every day (no weekend/weekday distinction -- there's no precedent for that
-        split elsewhere in this codebase, so it isn't invented here).
+        `working_hours_only` applies the saved local hours, allowed days, break, and daily-cap
+        preferences from `AISettings`.
         """
-        if min_duration_minutes <= 0:
-            raise ValidationError("min_duration_minutes must be positive")
-
-        start_utc = ensure_utc(start)
-        end_utc = ensure_utc(end)
-        if end_utc <= start_utc:
-            raise ValidationError("end must be strictly after start")
+        from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
-            sessions = SessionService(db).list_sessions(start=start_utc, end=end_utc, include_virtual=True)
-            add_windows, remove_windows = self._pending_batch_session_windows(db)
-
-        busy: list[tuple[datetime, datetime]] = []
-        for s in sessions:
-            st = _parse_dt(s.get("start_time"))
-            et = _parse_dt(s.get("end_time"))
-            if st and et:
-                busy.append((st, et))
-        busy.extend(add_windows)
-        if extra_busy_windows:
-            busy.extend((ensure_utc(w[0]), ensure_utc(w[1])) for w in extra_busy_windows)
-
-        def _overlaps(a: tuple[datetime, datetime], b: tuple[datetime, datetime]) -> bool:
-            return a[0] < b[1] and b[0] < a[1]
-
-        if remove_windows:
-            busy = [w for w in busy if not any(_overlaps(w, r) for r in remove_windows)]
-
-        # Clip to range and merge overlapping/adjacent intervals.
-        clipped = [(max(st, start_utc), min(et, end_utc)) for st, et in busy]
-        clipped = [(st, et) for st, et in clipped if st < et]
-        clipped.sort(key=lambda w: w[0])
-
-        merged: list[list[datetime]] = []
-        for st, et in clipped:
-            if merged and st <= merged[-1][1]:
-                merged[-1][1] = max(merged[-1][1], et)
-            else:
-                merged.append([st, et])
-
-        gaps: list[tuple[datetime, datetime]] = []
-        cursor = start_utc
-        for st, et in merged:
-            if st > cursor:
-                gaps.append((cursor, st))
-            cursor = max(cursor, et)
-        if cursor < end_utc:
-            gaps.append((cursor, end_utc))
-
-        min_delta = timedelta(minutes=min_duration_minutes)
-        if working_hours_only:
-            gaps = self._clip_to_working_hours(gaps)
-
-        result = []
-        for gap_start, gap_end in gaps:
-            if gap_end - gap_start >= min_delta:
-                result.append(
-                    {
-                        "start": gap_start.isoformat(),
-                        "end": gap_end.isoformat(),
-                        "duration_minutes": int((gap_end - gap_start).total_seconds() // 60),
-                    }
-                )
-        return result
+            return AIInsightsService(db).find_free_slots(
+                start,
+                end,
+                min_duration_minutes=min_duration_minutes,
+                working_hours_only=working_hours_only,
+                batch_id=self.batch_id,
+                extra_busy_windows=extra_busy_windows,
+            )
 
     def get_time_stats(self, query: dict[str, Any]) -> dict[str, Any]:
         """Allow-listed passthrough to `QueryService.run` (the real-SQL stats engine from
@@ -302,7 +233,7 @@ class DbAIToolGateway:
           - `group_by` dimensions: `day`, `week`, `month`, `tag`, `task`, `status`, `priority`,
             `category` (at most 2, per `AnalyticsQuery`).
           - `filters` fields: the same dimensions above, plus `duration_seconds`, `has_task`,
-            `notes`.
+            `notes`, and session-only `session_time_relative` (`past`, `future`, or `ongoing`).
           - `limit` is capped at 100 regardless of what's requested.
         Everything else in `query` (`date_range`, `chart`, `tag_attribution`, `sort`,
         `fill_gaps`) is passed through to `AnalyticsQuery` as-is and validated by its own
@@ -359,6 +290,74 @@ class DbAIToolGateway:
         with Session(engine) as db:
             response = QueryService(db).run(analytics_query, QueryContextRequest())
         return response.model_dump(mode="json")
+
+    def search_tasks(
+        self,
+        query: str,
+        *,
+        status: str | None = None,
+        tag: str | None = None,
+        priority: str | None = None,
+        include_done: bool = False,
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).search_tasks(
+                query,
+                status=status,
+                tag=tag,
+                priority=priority,
+                include_done=include_done,
+                limit=limit,
+            )
+
+    def find_conflicts(
+        self,
+        *,
+        start: datetime,
+        end: datetime,
+        include_pending: bool = True,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).find_conflicts(
+                start,
+                end,
+                batch_id=self.batch_id,
+                include_pending=include_pending,
+                limit=limit,
+            )
+
+    def get_task_progress(self, task_id: str) -> dict[str, Any]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).get_task_progress(task_id)
+
+    def validate_schedule(self, proposed_sessions: list[dict[str, Any]]) -> dict[str, Any]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).validate_schedule(
+                proposed_sessions,
+                batch_id=self.batch_id,
+            )
+
+    def get_daily_briefing(self, date: str | None = None) -> dict[str, Any]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).get_daily_briefing(date, batch_id=self.batch_id)
+
+    def get_weekly_review(self, *, start: datetime, end: datetime) -> dict[str, Any]:
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).get_weekly_review(start, end)
 
     # ------------------------------------------------------------------
     # Write tools -- each only ever inserts one or more `aidraftitem` rows against this
@@ -880,67 +879,5 @@ class DbAIToolGateway:
         if isinstance(result, dict):
             return result
         return {field: getattr(result, field, None) for field in self._ITEM_RESULT_FIELDS}
-
-    def _pending_batch_session_windows(
-        self, db: Session
-    ) -> tuple[list[tuple[datetime, datetime]], list[tuple[datetime, datetime]]]:
-        """Pending `AIDraftItem` session proposals in this batch, split into windows to ADD to
-        the busy set (pending create/update proposals) and windows to REMOVE from it (pending
-        delete proposals, read off their `baseline_json`). See `find_free_slots`."""
-        add_windows: list[tuple[datetime, datetime]] = []
-        remove_windows: list[tuple[datetime, datetime]] = []
-
-        items = db.exec(
-            select(AIDraftItem).where(
-                AIDraftItem.batch_id == self.batch_id,
-                AIDraftItem.entity_type == "session",
-                AIDraftItem.status == "pending",
-            )
-        ).all()
-
-        for item in items:
-            proposed = json.loads(item.proposed_json or "{}")
-            baseline = json.loads(item.baseline_json) if item.baseline_json else None
-
-            if item.op in ("create", "update"):
-                st = _parse_dt(proposed.get("start_time"))
-                et = _parse_dt(proposed.get("end_time"))
-                if item.op == "update" and baseline:
-                    st = st or _parse_dt(baseline.get("start_time"))
-                    et = et or _parse_dt(baseline.get("end_time"))
-                if st and et:
-                    add_windows.append((st, et))
-            elif item.op == "delete" and baseline:
-                st = _parse_dt(baseline.get("start_time"))
-                et = _parse_dt(baseline.get("end_time"))
-                if st and et:
-                    remove_windows.append((st, et))
-
-        return add_windows, remove_windows
-
-    def _clip_to_working_hours(self, gaps: list[tuple[datetime, datetime]]) -> list[tuple[datetime, datetime]]:
-        """Intersects each UTC gap with `09:00`-`17:00` local time, per local calendar day."""
-        tz = daemon_tzinfo()
-        result: list[tuple[datetime, datetime]] = []
-        for gap_start, gap_end in gaps:
-            local_start = to_local_naive(gap_start, tz)
-            local_end = to_local_naive(gap_end, tz)
-            day = local_start.date()
-            last_day = local_end.date()
-            while day <= last_day:
-                window_start = datetime.combine(day, datetime.min.time()).replace(hour=_WORKING_HOURS_START)
-                window_end = datetime.combine(day, datetime.min.time()).replace(hour=_WORKING_HOURS_END)
-                clipped_start = max(local_start, window_start)
-                clipped_end = min(local_end, window_end)
-                if clipped_start < clipped_end:
-                    result.append(
-                        (
-                            ensure_utc(from_local_naive(clipped_start, tz)),
-                            ensure_utc(from_local_naive(clipped_end, tz)),
-                        )
-                    )
-                day += timedelta(days=1)
-        return result
-
 
 __all__ = ["DbAIToolGateway"]

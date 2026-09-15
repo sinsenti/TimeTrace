@@ -40,13 +40,42 @@ from timetrace.interfaces.api.schemas import (
     AIQuickAddClassifyResponse,
     AIQuickAddParseRequest,
     AIQuickAddParseResponse,
+    AIScheduleValidationRequest,
     AISettingsResponse,
     AISettingsUpdateRequest,
     AIStatusResponse,
 )
-from timetrace.services import AIChatService, AIDraftService, AIProviderService, AISettingsService
+from timetrace.services import AIChatService, AIDraftService, AIInsightsService, AIProviderService, AISettingsService
 
 router = APIRouter(prefix="/api/ai", tags=["AI Assistant API"])
+
+
+def _json_list(value: str | None) -> list[str]:
+    try:
+        parsed = json.loads(value or "[]")
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in parsed] if isinstance(parsed, list) else []
+
+
+def _settings_response(settings) -> AISettingsResponse:
+    return AISettingsResponse(
+        id=settings.id,
+        quickadd_fallback_enabled=settings.quickadd_fallback_enabled,
+        redact_before_send=settings.redact_before_send,
+        preview_on_calendar=settings.preview_on_calendar,
+        scheduling_window_days=settings.scheduling_window_days,
+        batch_undo_retention_days=settings.batch_undo_retention_days,
+        scheduling_day_start=settings.scheduling_day_start,
+        scheduling_day_end=settings.scheduling_day_end,
+        minimum_break_minutes=settings.minimum_break_minutes,
+        maximum_daily_minutes=settings.maximum_daily_minutes,
+        scheduling_days=_json_list(settings.scheduling_days_json),
+        preferred_tags=_json_list(settings.preferred_tags_json),
+        custom_instructions=settings.custom_instructions,
+        created_at=settings.created_at,
+        updated_at=settings.updated_at,
+    )
 
 
 def _provider_response(config) -> AIProviderConfigResponse:
@@ -140,12 +169,69 @@ def activate_provider(config_id: str, db: DBSession = Depends(get_session)):
 
 @router.get("/settings", response_model=AISettingsResponse)
 def get_settings(db: DBSession = Depends(get_session)):
-    return AISettingsService(db).get_settings()
+    return _settings_response(AISettingsService(db).get_settings())
 
 
 @router.put("/settings", response_model=AISettingsResponse)
 def update_settings(req: AISettingsUpdateRequest, db: DBSession = Depends(get_session)):
-    return AISettingsService(db).update_settings(**req.model_dump(exclude_unset=True))
+    settings = AISettingsService(db).update_settings(**req.model_dump(exclude_unset=True))
+    return _settings_response(settings)
+
+
+# ============================================================
+# Read-only insights and scheduling
+# ============================================================
+
+
+@router.get("/insights/tasks/search")
+def search_tasks(
+    q: str = Query(..., min_length=1),
+    status_filter: str | None = Query(None, alias="status"),
+    tag: str | None = None,
+    priority: str | None = None,
+    include_done: bool = False,
+    limit: int = Query(10, ge=1, le=50),
+    db: DBSession = Depends(get_session),
+):
+    return AIInsightsService(db).search_tasks(
+        q,
+        status=status_filter,
+        tag=tag,
+        priority=priority,
+        include_done=include_done,
+        limit=limit,
+    )
+
+
+@router.get("/insights/tasks/{task_id}/progress")
+def get_task_progress(task_id: str, db: DBSession = Depends(get_session)):
+    return AIInsightsService(db).get_task_progress(task_id)
+
+
+@router.get("/insights/conflicts")
+def find_conflicts(
+    start: datetime,
+    end: datetime,
+    include_pending: bool = True,
+    limit: int = Query(100, ge=1, le=200),
+    db: DBSession = Depends(get_session),
+):
+    return AIInsightsService(db).find_conflicts(start, end, include_pending=include_pending, limit=limit)
+
+
+@router.get("/insights/daily-briefing")
+def get_daily_briefing(date: str | None = None, db: DBSession = Depends(get_session)):
+    return AIInsightsService(db).get_daily_briefing(date)
+
+
+@router.get("/insights/weekly-review")
+def get_weekly_review(start: datetime, end: datetime, db: DBSession = Depends(get_session)):
+    return AIInsightsService(db).get_weekly_review(start, end)
+
+
+@router.post("/insights/validate-schedule")
+def validate_schedule(req: AIScheduleValidationRequest, db: DBSession = Depends(get_session)):
+    return AIInsightsService(db).validate_schedule(req.proposed_sessions)
 
 
 # ============================================================

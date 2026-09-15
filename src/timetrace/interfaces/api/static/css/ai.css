@@ -552,9 +552,14 @@
     margin-bottom: 8px;
 }
 
+.ai-form-row .ai-form-full {
+    grid-column: 1 / -1;
+}
+
 .ai-settings-section input[type="text"],
 .ai-settings-section input[type="password"],
 .ai-settings-section input[type="number"],
+.ai-settings-section input[type="time"],
 .ai-settings-section select {
     width: 100%;
     background: #181a28;

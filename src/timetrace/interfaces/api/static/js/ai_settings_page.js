@@ -374,6 +374,12 @@ async function aiLoadBehaviorSettings() {
         document.getElementById('ai_setting_preview_on_calendar').checked = Boolean(s.preview_on_calendar);
         document.getElementById('ai_setting_scheduling_window_days').value = s.scheduling_window_days;
         document.getElementById('ai_setting_batch_undo_retention_days').value = s.batch_undo_retention_days;
+        document.getElementById('ai_setting_scheduling_day_start').value = s.scheduling_day_start || '09:00';
+        document.getElementById('ai_setting_scheduling_day_end').value = s.scheduling_day_end || '17:00';
+        document.getElementById('ai_setting_minimum_break_minutes').value = s.minimum_break_minutes ?? 0;
+        document.getElementById('ai_setting_maximum_daily_minutes').value = s.maximum_daily_minutes ?? '';
+        document.getElementById('ai_setting_scheduling_days').value = (s.scheduling_days || []).join(', ');
+        document.getElementById('ai_setting_preferred_tags').value = (s.preferred_tags || []).join(', ');
         document.getElementById('ai_setting_custom_instructions').value = s.custom_instructions || '';
     } catch (err) {
         console.error('Failed to load AI behavior settings:', err);
@@ -388,6 +394,16 @@ async function aiSaveBehaviorSettings() {
         preview_on_calendar: document.getElementById('ai_setting_preview_on_calendar').checked,
         scheduling_window_days: parseInt(document.getElementById('ai_setting_scheduling_window_days').value, 10),
         batch_undo_retention_days: parseInt(document.getElementById('ai_setting_batch_undo_retention_days').value, 10),
+        scheduling_day_start: document.getElementById('ai_setting_scheduling_day_start').value,
+        scheduling_day_end: document.getElementById('ai_setting_scheduling_day_end').value,
+        minimum_break_minutes: parseInt(document.getElementById('ai_setting_minimum_break_minutes').value, 10),
+        maximum_daily_minutes: document.getElementById('ai_setting_maximum_daily_minutes').value
+            ? parseInt(document.getElementById('ai_setting_maximum_daily_minutes').value, 10)
+            : null,
+        scheduling_days: document.getElementById('ai_setting_scheduling_days').value
+            .split(',').map(value => value.trim().toLowerCase()).filter(Boolean),
+        preferred_tags: document.getElementById('ai_setting_preferred_tags').value
+            .split(',').map(value => value.trim().toLowerCase()).filter(Boolean),
         custom_instructions: document.getElementById('ai_setting_custom_instructions').value
     };
     try {
