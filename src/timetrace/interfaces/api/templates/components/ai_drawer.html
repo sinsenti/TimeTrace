@@ -1,7 +1,7 @@
-<!-- Persistent AI Assistant drawer (docs/ai-assistant-spec.md S5). Included on all six page
+<!-- Persistent AI Assistant drawer (docs/ai-assistant-spec.md S5). Included on all current page
      templates. Toggled by the navbar launcher button and Ctrl+Shift+A (NOT Ctrl+K -- that
      collides with vim_engine.js's case 'k'). All model-generated text is rendered via
-     textContent in ai_assistant.js/ai_drafts.js -- never innerHTML, never Markdown-parsed
+     textContent in ai_assistant.js/ai_insights.js/ai_drafts.js -- never innerHTML, never Markdown-parsed
      (spec S9.5). -->
 <div id="ai_drawer" class="text-white">
 
@@ -27,6 +27,53 @@
                 <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" title="Close (Esc)">&times;</button>
             </div>
         </div>
+
+        <section id="ai_quick_actions" class="ai-quick-actions" aria-label="Assistant quick actions">
+            <div class="ai-quick-actions-heading">Quick actions</div>
+            <div class="ai-quick-actions-list">
+                <button type="button" id="ai_action_daily_briefing" class="ai-quick-action" data-ai-action="daily-briefing">
+                    Daily briefing
+                </button>
+                <button type="button" id="ai_action_weekly_review" class="ai-quick-action" data-ai-action="weekly-review"
+                        aria-controls="ai_weekly_review_panel" aria-expanded="false">
+                    Weekly review
+                </button>
+                <button type="button" id="ai_action_plan_rest_today" class="ai-quick-action" data-ai-action="plan-rest-today">
+                    Plan rest of today
+                </button>
+                <button type="button" id="ai_action_plan_tomorrow" class="ai-quick-action" data-ai-action="plan-tomorrow">
+                    Plan tomorrow
+                </button>
+                <button type="button" id="ai_action_plan_next_week" class="ai-quick-action" data-ai-action="plan-next-week">
+                    Plan next week
+                </button>
+            </div>
+        </section>
+
+        <section id="ai_weekly_review_panel" class="ai-weekly-review-panel hidden" aria-labelledby="ai_weekly_review_title">
+            <div class="ai-weekly-review-header">
+                <div>
+                    <h2 id="ai_weekly_review_title" class="ai-weekly-review-title">Weekly review</h2>
+                    <div id="ai_weekly_review_range" class="ai-weekly-review-range"></div>
+                    <div id="ai_weekly_review_timezone" class="ai-weekly-review-timezone"></div>
+                </div>
+                <button type="button" id="ai_weekly_review_refresh_btn" class="ai-icon-btn" aria-label="Refresh weekly review">
+                    Refresh
+                </button>
+            </div>
+            <div id="ai_weekly_review_status" class="ai-weekly-review-status" role="status" aria-live="polite"></div>
+            <div id="ai_weekly_review_loading" class="ai-weekly-review-state ai-weekly-review-loading hidden">Loading weekly review...</div>
+            <div id="ai_weekly_review_empty" class="ai-weekly-review-state ai-weekly-review-empty hidden">
+                No logged or future scheduled activity in this week yet.
+            </div>
+            <div id="ai_weekly_review_error" class="ai-weekly-review-state ai-weekly-review-error hidden" role="alert"></div>
+            <div id="ai_weekly_review_content" class="ai-weekly-review-content hidden"></div>
+            <div id="ai_weekly_review_actions" class="ai-weekly-review-actions hidden">
+                <button type="button" id="ai_weekly_review_ask_btn" class="ai-btn ai-btn-ask">
+                    Ask assistant
+                </button>
+            </div>
+        </section>
 
         <div id="ai_drawer_body" class="ai-drawer-body">
             <div id="ai_thread" class="flex flex-col gap-2" style="display: contents;"></div>

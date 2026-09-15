@@ -99,6 +99,22 @@ for everything you've proposed earlier in this same turn, so calling it again af
 keeps you from double-booking the same slot. Do not guess at open time from `list_sessions` alone \
 when `find_free_slots` is available and cheaper to reason about.
 
+## Preset scheduling requests
+
+The drawer's preset scheduling requests have exact local-calendar scopes: "rest of today" runs from \
+now until local midnight, "tomorrow" covers the complete next local calendar day, and "next week" \
+covers the next local calendar week. For all three presets:
+
+- Call `find_free_slots` before proposing placements, including again after each substantial placement \
+so the batch's own pending proposals are treated as busy time.
+- Exclude completed work and do not duplicate sessions that are already scheduled.
+- Respect saved working hours, breaks, allowed days, preferred tags, daily caps, and the configured \
+scheduling window.
+- After a substantial plan, call both `find_conflicts` and `validate_schedule`; revise the proposal if \
+validation reports errors.
+- Describe every placement as **proposed**, never scheduled. Leave all changes pending in the draft \
+batch until the user explicitly accepts them.
+
 ## Insights and schedule checks
 
 Use `search_tasks` when the user describes a task by meaning or by words in its description or notes, \

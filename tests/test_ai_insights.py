@@ -210,6 +210,47 @@ def test_weekly_review_separates_logged_and_future_time_with_sql_stats(db):
     assert review["session_count"]["rows"][0]["value"] == 1
 
 
+def test_current_weekly_review_delegates_daemon_local_calendar_bounds(db, monkeypatch):
+    service = AIInsightsService(db)
+    tz = daemon_tzinfo()
+    today = datetime.now(tz).date()
+    first_day = 0  # Sunday, matching FullCalendar's browser setting.
+    sqlite_weekday = (today.weekday() + 1) % 7
+    expected_start_date = today - timedelta(days=(sqlite_weekday - first_day) % 7)
+    expected_start = from_local_naive(datetime.combine(expected_start_date, datetime.min.time()), tz)
+    expected_end = from_local_naive(datetime.combine(expected_start_date + timedelta(days=7), datetime.min.time()), tz)
+    captured = {}
+
+    def fake_review(start, end):
+        captured["start"] = start
+        captured["end"] = end
+        return {"start": start, "end": end}
+
+    monkeypatch.setattr(service, "get_weekly_review", fake_review)
+
+    assert service.get_current_weekly_review(first_day) == {"start": expected_start, "end": expected_end}
+    assert captured == {"start": expected_start, "end": expected_end}
+
+
+def test_current_weekly_review_api_uses_local_week_and_supports_empty_data(client):
+    tz = daemon_tzinfo()
+    today = datetime.now(tz).date()
+    sqlite_weekday = (today.weekday() + 1) % 7
+    expected_start = today - timedelta(days=sqlite_weekday)
+
+    response = client.get("/api/ai/insights/weekly-review/current", params={"firstDayOfWeek": 0})
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["start_date"] == expected_start.isoformat()
+    assert payload["end_date"] == (expected_start + timedelta(days=6)).isoformat()
+    assert payload["timezone"] == str(tz)
+    assert payload["logged_total"]["rows"] == [] or payload["logged_total"]["total"] in (0, None)
+    assert payload["scheduled_total"]["rows"] == [] or payload["scheduled_total"]["total"] in (0, None)
+
+    invalid = client.get("/api/ai/insights/weekly-review/current", params={"firstDayOfWeek": 7})
+    assert invalid.status_code == 422
+
+
 def test_preview_setting_can_disable_the_calendar_draft_overlay(db):
     AISettingsService(db).update_settings(preview_on_calendar=False)
     assert (

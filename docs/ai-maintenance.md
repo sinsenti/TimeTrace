@@ -62,7 +62,9 @@ Use fake models and gateways. Run the focused AI tests, `uv run pytest -q`, `uv 
 
 The assistant currently supports quick-add, rescheduling, whole-week scheduling, read-only daily and
 weekly insights, deterministic conflict/schedule checks, local FTS task search, task/session draft
-writes, provider configuration, chat, calendar overlays, audit, undo, and reapply. Provider configuration
+writes, provider configuration, chat, calendar overlays, audit, undo, and reapply. The shared drawer's
+weekly report uses `/api/ai/insights/weekly-review/current`, whose daemon-resolved local week can
+accept the browser's validated `firstDayOfWeek` setting. Provider configuration
 supports the built-in LangChain providers plus **Pi**: Pi uses the locally installed
 `@earendil-works/pi-coding-agent` ModelRuntime and its existing `~/.pi/agent` credentials. Configure
 Pi authentication with `/login`, then select an exact `provider/model` ID (such as

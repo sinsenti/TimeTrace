@@ -857,6 +857,28 @@ class AIInsightsService:
             "preferences": self.scheduling_preferences(),
         }
 
+    def get_current_weekly_review(self, first_day_of_week: int = 1) -> dict[str, Any]:
+        """Return the review for the current local calendar week.
+
+        Week boundaries are resolved by the daemon, rather than by a browser clock.  The
+        ``first_day_of_week`` value follows FullCalendar's convention (0=Sunday through
+        6=Saturday) and is used only to choose the local boundary; ``get_weekly_review`` keeps
+        ownership of the report shape and all of its statistics.
+        """
+        if not isinstance(first_day_of_week, int) or not 0 <= first_day_of_week <= 6:
+            raise ValidationError("first_day_of_week must be between 0 and 6")
+
+        tz = daemon_tzinfo()
+        local_today = to_local_naive(datetime.now(UTC), tz).date()
+        local_weekday = (local_today.weekday() + 1) % 7
+        local_start_date = local_today - timedelta(days=(local_weekday - first_day_of_week) % 7)
+        local_start = datetime.combine(local_start_date, time.min)
+        local_end = datetime.combine(local_start_date + timedelta(days=7), time.min)
+        return self.get_weekly_review(
+            from_local_naive(local_start, tz),
+            from_local_naive(local_end, tz),
+        )
+
     def get_weekly_review(self, start: datetime, end: datetime) -> dict[str, Any]:
         start_utc = ensure_utc(start)
         end_utc = ensure_utc(end)

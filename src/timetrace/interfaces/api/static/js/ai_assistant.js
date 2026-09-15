@@ -9,7 +9,25 @@
 
 let aiCurrentConversationId = null;
 let aiConversationsCache = [];
+let aiConversationsLoadPromise = null;
+let aiConversationCreatePromise = null;
 let aiStreamInFlight = false;
+
+function aiSetQuickActionsDisabled(disabled) {
+    const quickActions = document.getElementById('ai_quick_actions');
+    if (quickActions) {
+        quickActions.classList.toggle('ai-quick-actions-loading', disabled);
+        quickActions.querySelectorAll('button').forEach((button) => {
+            button.disabled = disabled;
+            button.setAttribute('aria-disabled', String(disabled));
+        });
+    }
+    const askButton = document.getElementById('ai_weekly_review_ask_btn');
+    if (askButton) {
+        askButton.disabled = disabled;
+        askButton.setAttribute('aria-disabled', String(disabled));
+    }
+}
 
 function isAiDrawerOpen() {
     const el = document.getElementById('ai_drawer');
@@ -188,30 +206,38 @@ function aiRenderEmptyThreadHint() {
     aiAppendThreadNode(hint);
 }
 
-async function aiLoadConversations() {
-    try {
-        aiConversationsCache = await api.get('/api/ai/conversations');
-        const select = document.getElementById('ai_conversation_select');
-        if (select) {
-            select.textContent = '';
-            aiConversationsCache.forEach((conv) => {
-                const opt = document.createElement('option');
-                opt.value = conv.id;
-                opt.textContent = conv.title || '(untitled conversation)';
-                select.appendChild(opt);
-            });
+function aiLoadConversations() {
+    if (aiConversationsLoadPromise) return aiConversationsLoadPromise;
+
+    aiConversationsLoadPromise = (async () => {
+        try {
+            const loadedConversations = await api.get('/api/ai/conversations');
+            aiConversationsCache = Array.isArray(loadedConversations) ? loadedConversations : [];
+            const select = document.getElementById('ai_conversation_select');
+            if (select) {
+                select.textContent = '';
+                aiConversationsCache.forEach((conv) => {
+                    const opt = document.createElement('option');
+                    opt.value = conv.id;
+                    opt.textContent = conv.title || '(untitled conversation)';
+                    select.appendChild(opt);
+                });
+            }
+            if (aiConversationsCache.length > 0) {
+                const targetId = aiCurrentConversationId || aiConversationsCache[0].id;
+                if (select) select.value = targetId;
+                await aiSelectConversation(targetId);
+            } else {
+                aiClearThread();
+                aiRenderEmptyThreadHint();
+            }
+        } catch (err) {
+            console.error('Failed to load AI conversations:', err);
         }
-        if (aiConversationsCache.length > 0) {
-            const targetId = aiCurrentConversationId || aiConversationsCache[0].id;
-            if (select) select.value = targetId;
-            await aiSelectConversation(targetId);
-        } else {
-            aiClearThread();
-            aiRenderEmptyThreadHint();
-        }
-    } catch (err) {
-        console.error('Failed to load AI conversations:', err);
-    }
+    })().finally(() => {
+        aiConversationsLoadPromise = null;
+    });
+    return aiConversationsLoadPromise;
 }
 
 async function aiSelectConversation(conversationId) {
@@ -254,22 +280,31 @@ async function aiRenderDraftBatchById(batchId) {
     }
 }
 
-async function aiCreateConversation() {
-    try {
-        const conv = await api.post('/api/ai/conversations', {});
-        aiConversationsCache.unshift(conv);
-        const select = document.getElementById('ai_conversation_select');
-        if (select) {
-            const opt = document.createElement('option');
-            opt.value = conv.id;
-            opt.textContent = conv.title || '(untitled conversation)';
-            select.insertBefore(opt, select.firstChild);
+function aiCreateConversation() {
+    if (aiConversationCreatePromise) return aiConversationCreatePromise;
+
+    aiConversationCreatePromise = (async () => {
+        try {
+            const conv = await api.post('/api/ai/conversations', {});
+            aiConversationsCache.unshift(conv);
+            const select = document.getElementById('ai_conversation_select');
+            if (select) {
+                const opt = document.createElement('option');
+                opt.value = conv.id;
+                opt.textContent = conv.title || '(untitled conversation)';
+                select.insertBefore(opt, select.firstChild);
+            }
+            await aiSelectConversation(conv.id);
+            return conv.id;
+        } catch (err) {
+            console.error('Failed to create AI conversation:', err);
+            alert('Failed to start a new conversation: ' + (err.message || err));
+            return null;
         }
-        await aiSelectConversation(conv.id);
-    } catch (err) {
-        console.error('Failed to create AI conversation:', err);
-        alert('Failed to start a new conversation: ' + (err.message || err));
-    }
+    })().finally(() => {
+        aiConversationCreatePromise = null;
+    });
+    return aiConversationCreatePromise;
 }
 
 async function aiRenameCurrentConversation() {
@@ -297,29 +332,37 @@ async function aiRenameCurrentConversation() {
 
 async function aiEnsureConversation() {
     if (aiCurrentConversationId) return aiCurrentConversationId;
-    await aiCreateConversation();
-    return aiCurrentConversationId;
+
+    // A preset can be clicked immediately after opening the drawer. Wait for the initial list
+    // request before deciding that there are no conversations, otherwise two rapid clicks can
+    // each create a new conversation while the list is still loading.
+    if (aiConversationsLoadPromise) {
+        await aiConversationsLoadPromise;
+    } else if (aiConversationsCache.length === 0) {
+        await aiLoadConversations();
+    }
+    if (aiCurrentConversationId) return aiCurrentConversationId;
+
+    if (aiConversationsCache.length > 0) {
+        await aiSelectConversation(aiConversationsCache[0].id);
+        return aiCurrentConversationId;
+    }
+    return aiCreateConversation();
 }
 
-async function aiSendMessage() {
+async function aiSendMessage(prompt = null) {
     if (aiStreamInFlight) return;
     const input = document.getElementById('ai_composer_input');
     if (!input) return;
-    const text = input.value.trim();
+    const text = prompt === null ? input.value.trim() : String(prompt).trim();
     if (!text) return;
 
-    const conversationId = await aiEnsureConversation();
-    if (!conversationId) return;
-
-    input.value = '';
-    aiAutoGrowComposer(input);
-    const emptyHint = document.querySelector('#ai_thread .ai-thread-empty');
-    if (emptyHint) emptyHint.remove();
-    aiAppendMessageBubble('user', text);
-
+    // Set the in-flight guard before the first await. This covers both the conversation lookup
+    // and the actual stream, so rapid preset clicks cannot race through aiEnsureConversation().
+    aiStreamInFlight = true;
     const sendBtn = document.getElementById('ai_composer_send');
     if (sendBtn) sendBtn.disabled = true;
-    aiStreamInFlight = true;
+    aiSetQuickActionsDisabled(true);
 
     let statusNode = null;
     let assistantBubble = null;
@@ -334,6 +377,20 @@ async function aiSendMessage() {
     };
 
     try {
+        const conversationId = await aiEnsureConversation();
+        if (!conversationId) {
+            aiAppendMessageBubble('error', 'Failed to start an assistant conversation.');
+            return;
+        }
+
+        if (prompt === null) {
+            input.value = '';
+            aiAutoGrowComposer(input);
+        }
+        const emptyHint = document.querySelector('#ai_thread .ai-thread-empty');
+        if (emptyHint) emptyHint.remove();
+        aiAppendMessageBubble('user', text);
+
         await api.stream(`/api/ai/conversations/${encodeURIComponent(conversationId)}/messages`, { text, stream: true }, (evt) => {
             switch (evt.event) {
                 case 'message_start':
@@ -386,10 +443,16 @@ async function aiSendMessage() {
         aiAppendMessageBubble('error', 'Failed to reach the assistant: ' + (err.message || err));
     } finally {
         aiStreamInFlight = false;
+        aiSetQuickActionsDisabled(false);
         if (sendBtn) sendBtn.disabled = false;
         refreshAiStatusBadge();
     }
 }
+
+function aiRunPresetPrompt(prompt) {
+    return aiSendMessage(prompt);
+}
+window.aiRunPresetPrompt = aiRunPresetPrompt;
 
 async function refreshAiStatusBadge() {
     const badge = document.getElementById('ai_launcher_badge');

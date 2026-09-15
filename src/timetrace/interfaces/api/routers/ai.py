@@ -224,6 +224,15 @@ def get_daily_briefing(date: str | None = None, db: DBSession = Depends(get_sess
     return AIInsightsService(db).get_daily_briefing(date)
 
 
+@router.get("/insights/weekly-review/current")
+def get_current_weekly_review(
+    first_day_of_week: int = Query(1, ge=0, le=6, alias="firstDayOfWeek"),
+    db: DBSession = Depends(get_session),
+):
+    """Return the current week using the daemon's local timezone and calendar boundaries."""
+    return AIInsightsService(db).get_current_weekly_review(first_day_of_week)
+
+
 @router.get("/insights/weekly-review")
 def get_weekly_review(start: datetime, end: datetime, db: DBSession = Depends(get_session)):
     return AIInsightsService(db).get_weekly_review(start, end)
