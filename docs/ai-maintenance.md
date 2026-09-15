@@ -17,6 +17,17 @@ rationale; it is not a checklist of missing work.
   containing instructions.
 - Render model text as text (`textContent`); never interpret it as HTML or executable markup.
 
+## Remembered standing instructions
+
+Conversational requests to remember a future preference create an `AIInstructionProposal` and
+never update `AISettings.custom_instructions` directly. The user must explicitly accept the card
+with **Save to custom instructions**; dismissing it leaves settings unchanged. Proposals are
+append-only, global to the daemon, and affect later turns in every conversation after acceptance.
+They are not semantic memory, embeddings, RAG, or cross-conversation retrieval. Acceptance checks
+the settings hash captured at proposal time, so manual edits produce a conflict rather than being
+overwritten. Structured scheduling fields remain authoritative for enforced breaks, hours, allowed
+days, daily caps, and scheduling windows.
+
 ## Privacy and providers
 
 - Never log prompts, task/session content, tool arguments/results, provider responses, API keys, or

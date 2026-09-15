@@ -31,6 +31,10 @@ from timetrace.interfaces.api.schemas import (
     AIDraftItemResponse,
     AIDraftOverlayItemResponse,
     AIDraftUndoRequest,
+    AIInstructionProposalAcceptRequest,
+    AIInstructionProposalActionResponse,
+    AIInstructionProposalRejectRequest,
+    AIInstructionProposalResponse,
     AIProviderConfigResponse,
     AIProviderCreateRequest,
     AIProviderTestRequest,
@@ -45,7 +49,14 @@ from timetrace.interfaces.api.schemas import (
     AISettingsUpdateRequest,
     AIStatusResponse,
 )
-from timetrace.services import AIChatService, AIDraftService, AIInsightsService, AIProviderService, AISettingsService
+from timetrace.services import (
+    AIChatService,
+    AIDraftService,
+    AIInsightsService,
+    AIInstructionService,
+    AIProviderService,
+    AISettingsService,
+)
 
 router = APIRouter(prefix="/api/ai", tags=["AI Assistant API"])
 
@@ -76,6 +87,10 @@ def _settings_response(settings) -> AISettingsResponse:
         created_at=settings.created_at,
         updated_at=settings.updated_at,
     )
+
+
+def _instruction_proposal_response(proposal) -> AIInstructionProposalResponse:
+    return AIInstructionProposalResponse.model_validate(proposal)
 
 
 def _provider_response(config) -> AIProviderConfigResponse:
@@ -176,6 +191,74 @@ def get_settings(db: DBSession = Depends(get_session)):
 def update_settings(req: AISettingsUpdateRequest, db: DBSession = Depends(get_session)):
     settings = AISettingsService(db).update_settings(**req.model_dump(exclude_unset=True))
     return _settings_response(settings)
+
+
+# ============================================================
+# Conversational standing-instruction proposals
+# ============================================================
+
+
+@router.get(
+    "/conversations/{conversation_id}/instruction-proposals",
+    response_model=list[AIInstructionProposalResponse],
+)
+def list_instruction_proposals(conversation_id: str, db: DBSession = Depends(get_session)):
+    AIChatService(db).get_conversation(conversation_id)
+    return [_instruction_proposal_response(p) for p in AIInstructionService(db).list_for_conversation(conversation_id)]
+
+
+@router.get("/instruction-proposals/{proposal_id}", response_model=AIInstructionProposalResponse)
+def get_instruction_proposal(proposal_id: str, db: DBSession = Depends(get_session)):
+    return _instruction_proposal_response(AIInstructionService(db).get_proposal(proposal_id))
+
+
+@router.post(
+    "/instruction-proposals/{proposal_id}/accept",
+    response_model=AIInstructionProposalActionResponse,
+)
+def accept_instruction_proposal(
+    proposal_id: str,
+    req: AIInstructionProposalAcceptRequest | None = None,
+    db: DBSession = Depends(get_session),
+):
+    proposal, settings = AIInstructionService(db).accept(
+        proposal_id,
+        edited_instruction=req.instruction if req is not None else None,
+    )
+    return AIInstructionProposalActionResponse(
+        proposal=_instruction_proposal_response(proposal),
+        settings=_settings_response(settings),
+        message="Saved to custom instructions for future conversations.",
+    )
+
+
+@router.post(
+    "/instruction-proposals/{proposal_id}/reject",
+    response_model=AIInstructionProposalActionResponse,
+)
+def reject_instruction_proposal(
+    proposal_id: str,
+    req: AIInstructionProposalRejectRequest | None = None,
+    db: DBSession = Depends(get_session),
+):
+    proposal = AIInstructionService(db).reject(proposal_id)
+    return AIInstructionProposalActionResponse(
+        proposal=_instruction_proposal_response(proposal),
+        message="Dismissed; custom instructions were not changed.",
+    )
+
+
+@router.post(
+    "/instruction-proposals/{proposal_id}/undo",
+    response_model=AIInstructionProposalActionResponse,
+)
+def undo_instruction_proposal(proposal_id: str, db: DBSession = Depends(get_session)):
+    proposal, settings = AIInstructionService(db).undo(proposal_id)
+    return AIInstructionProposalActionResponse(
+        proposal=_instruction_proposal_response(proposal),
+        settings=_settings_response(settings),
+        message="Removed this standing instruction.",
+    )
 
 
 # ============================================================

@@ -200,7 +200,7 @@
                 <label for="ai_setting_custom_instructions">Custom instructions</label>
                 <textarea id="ai_setting_custom_instructions" rows="6" maxlength="4000"
                     style="width: 100%; background: #181a28; border: 1px solid #262938; color: #e2e8f0; border-radius: 6px; padding: 6px 8px; font-size: 11px; font-family: inherit;"></textarea>
-                <div class="ai-toggle-row-hint">Standing instructions appended to the assistant's system prompt on every turn -- e.g. "leave at least 15 minutes between sessions", "no sessions before 09:00". Leave empty for none.</div>
+                <div class="ai-toggle-row-hint">Remembered instructions are global standing preferences appended to the assistant's prompt in every conversation. Chat requests create a proposal that must be explicitly saved; they are not semantic memory. Structured scheduling settings remain authoritative for enforced breaks, hours, days, and daily limits.</div>
             </div>
 
             <button type="button" id="ai_settings_save_btn" class="ai-btn ai-btn-accept mt-3">Save behavior settings</button>

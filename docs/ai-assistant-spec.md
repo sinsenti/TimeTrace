@@ -324,7 +324,18 @@ for this feature.
    Verify against a copy of the real DB **and** a genuinely fresh one; only the second catches a
    broken chain.
 
-## 10. Explicitly not in this slice
+## 10. Conversational remembered instructions
+
+The assistant may recognize an explicit future-directed request such as "remember this", "from
+now on", or "for future conversations" and call `propose_remembered_instruction`. This creates a
+separate `AIInstructionProposal`; it does not reuse `AIDraftItem` and does not modify
+`AISettings.custom_instructions`. The drawer shows the proposed instruction, the before/after
+custom-instructions text, and requires an explicit **Save to custom instructions** or **Dismiss**
+action. Acceptance is append-only and hash-checked against manual edits. These remembered
+instructions are global persisted custom instructions, not semantic memory or cross-conversation
+retrieval. Structured scheduling settings remain authoritative for enforced constraints.
+
+## 11. Explicitly not in this slice
 
 No LangGraph checkpointer/`interrupt()`. No timer tools. No AI writes to habits, ratings, reviews or
 `TaskStatus`. No changes to `core/inline_parser.py` (the three dead functions stay dead;

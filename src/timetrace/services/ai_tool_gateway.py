@@ -24,12 +24,14 @@ shape plain and JSON-serializable.
 from __future__ import annotations
 
 import json
+import threading
 from datetime import datetime
 from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 from sqlmodel import Session, func, select
 
+from timetrace.core.ai.remember_intent import is_remember_intent
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.query_spec import AnalyticsQuery, Dimension, FilterField, Measure, QuerySource
 from timetrace.core.recurrence import is_occurrence_id
@@ -99,8 +101,20 @@ class DbAIToolGateway:
     queries; write methods only ever append a pending `AIDraftItem` to this batch.
     """
 
-    def __init__(self, batch_id: str):
+    def __init__(
+        self,
+        batch_id: str,
+        *,
+        conversation_id: str | None = None,
+        source_message_id: str | None = None,
+        source_message_text: str | None = None,
+    ):
         self.batch_id = batch_id
+        self.conversation_id = conversation_id
+        self.source_message_id = source_message_id
+        self.source_message_text = source_message_text or ""
+        self._instruction_proposal_created = False
+        self._instruction_proposal_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Read tools
@@ -358,6 +372,49 @@ class DbAIToolGateway:
 
         with Session(engine) as db:
             return AIInsightsService(db).get_weekly_review(start, end)
+
+    # ------------------------------------------------------------------
+    # Confirmation-gated settings proposal
+    # ------------------------------------------------------------------
+
+    def propose_remembered_instruction(self, instruction: str) -> dict[str, Any]:
+        """Create one pending instruction proposal, never mutate AISettings directly."""
+        if not self.source_message_id or not self.conversation_id:
+            raise ValidationError("remembered instructions require conversation context")
+        if not is_remember_intent(self.source_message_text):
+            raise ValidationError("the original message did not clearly request a standing preference")
+
+        # Tool calls may be dispatched concurrently. The in-memory guard covers this gateway's
+        # turn, while AIInstructionService repeats the source-message check in its DB session.
+        with self._instruction_proposal_lock:
+            if self._instruction_proposal_created:
+                raise ValidationError("only one remembered-instruction proposal is allowed per turn")
+            self._instruction_proposal_created = True
+            try:
+                from timetrace.services.ai_instruction_service import AIInstructionService
+
+                with Session(engine) as db:
+                    proposal = AIInstructionService(db).create_proposal(
+                        conversation_id=self.conversation_id,
+                        source_message_id=self.source_message_id,
+                        instruction=instruction,
+                    )
+                    return {
+                        "id": proposal.id,
+                        "conversation_id": proposal.conversation_id,
+                        "source_message_id": proposal.source_message_id,
+                        "operation": proposal.operation,
+                        "proposed_instruction": proposal.proposed_instruction,
+                        "before_instructions": proposal.before_instructions,
+                        "after_instructions": proposal.after_instructions,
+                        "status": proposal.status,
+                        "confirmation_message": (
+                            "I proposed this standing instruction. Save it to use it in future conversations."
+                        ),
+                    }
+            except Exception:
+                self._instruction_proposal_created = False
+                raise
 
     # ------------------------------------------------------------------
     # Write tools -- each only ever inserts one or more `aidraftitem` rows against this

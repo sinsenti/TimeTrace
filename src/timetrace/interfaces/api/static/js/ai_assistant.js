@@ -265,6 +265,9 @@ async function aiSelectConversation(conversationId) {
                 aiAppendToolAnnotation(`tool: ${msg.tool_name || 'unknown'}${msg.error ? ' (error)' : ''}`);
             }
         }
+        for (const proposal of (detail.instruction_proposals || [])) {
+            aiAppendInstructionProposal(proposal);
+        }
     } catch (err) {
         console.error('Failed to load AI conversation detail:', err);
         aiAppendMessageBubble('error', 'Failed to load this conversation.');
@@ -278,6 +281,138 @@ async function aiRenderDraftBatchById(batchId) {
     } catch (err) {
         console.error('Failed to load draft batch for chat turn:', err);
     }
+}
+
+function aiInstructionTextBlock(label, value, className = 'ai-instruction-proposal-text') {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'ai-instruction-proposal-section';
+    const heading = document.createElement('div');
+    heading.className = 'ai-instruction-proposal-label';
+    heading.textContent = label;
+    wrapper.appendChild(heading);
+    const text = document.createElement('div');
+    text.className = className;
+    text.textContent = value || '(empty)';
+    wrapper.appendChild(text);
+    return wrapper;
+}
+
+function aiSyncCustomInstructions(settings) {
+    if (!settings || typeof settings.custom_instructions !== 'string') return;
+    const textarea = document.getElementById('ai_setting_custom_instructions');
+    if (textarea) textarea.value = settings.custom_instructions;
+}
+
+function aiBuildInstructionProposalNode(proposal, options = {}) {
+    const card = document.createElement('section');
+    card.className = 'ai-instruction-proposal';
+    card.dataset.proposalId = proposal.id;
+
+    const heading = document.createElement('div');
+    heading.className = 'ai-instruction-proposal-heading';
+    heading.textContent = 'Standing instruction proposal';
+    card.appendChild(heading);
+
+    const explanation = document.createElement('div');
+    explanation.className = 'ai-instruction-proposal-explanation';
+    explanation.textContent = proposal.status === 'pending'
+        ? 'I proposed this standing instruction. Save it to use it in future conversations.'
+        : (proposal.status === 'accepted'
+            ? 'Saved to custom instructions.'
+            : proposal.status === 'rejected' ? 'Dismissed; custom instructions were not changed.' : `Status: ${proposal.status}`);
+    card.appendChild(explanation);
+
+    card.appendChild(aiInstructionTextBlock('Existing custom instructions', proposal.before_instructions));
+
+    const proposedSection = document.createElement('div');
+    proposedSection.className = 'ai-instruction-proposal-section';
+    const proposedLabel = document.createElement('div');
+    proposedLabel.className = 'ai-instruction-proposal-label';
+    proposedLabel.textContent = 'Proposed standing instruction';
+    proposedSection.appendChild(proposedLabel);
+    const input = document.createElement('textarea');
+    input.className = 'ai-instruction-proposal-editor';
+    input.rows = 3;
+    input.maxLength = 4000;
+    input.value = proposal.proposed_instruction || '';
+    input.disabled = proposal.status !== 'pending';
+    proposedSection.appendChild(input);
+    card.appendChild(proposedSection);
+
+    card.appendChild(aiInstructionTextBlock('Resulting custom instructions', proposal.after_instructions));
+
+    const status = document.createElement('div');
+    status.className = 'ai-instruction-proposal-status';
+    card.appendChild(status);
+
+    if (proposal.status === 'pending') {
+        const actions = document.createElement('div');
+        actions.className = 'ai-instruction-proposal-actions';
+        const saveButton = document.createElement('button');
+        saveButton.type = 'button';
+        saveButton.className = 'ai-btn ai-btn-accept';
+        saveButton.dataset.proposalId = proposal.id;
+        saveButton.textContent = 'Save to custom instructions';
+        const dismissButton = document.createElement('button');
+        dismissButton.type = 'button';
+        dismissButton.className = 'ai-btn ai-btn-reject';
+        dismissButton.dataset.proposalId = proposal.id;
+        dismissButton.textContent = 'Dismiss';
+        actions.appendChild(dismissButton);
+        actions.appendChild(saveButton);
+        card.appendChild(actions);
+
+        const setBusy = (busy) => {
+            saveButton.disabled = busy;
+            dismissButton.disabled = busy;
+            input.disabled = busy;
+        };
+        saveButton.addEventListener('click', async () => {
+            setBusy(true);
+            try {
+                const result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/accept`, {
+                    instruction: input.value
+                });
+                aiSyncCustomInstructions(result.settings);
+                card.replaceWith(aiBuildInstructionProposalNode(result.proposal, options));
+                if (typeof options.onChanged === 'function') options.onChanged();
+            } catch (err) {
+                if (/changed|conflict|review/i.test(err.message || '')) {
+                    setBusy(true);
+                    try {
+                        const settings = await api.get('/api/ai/settings');
+                        aiSyncCustomInstructions(settings);
+                        status.textContent = 'Settings changed since this proposal. Review the current custom instructions and decide again.';
+                    } catch (_reloadErr) {
+                        status.textContent = 'Settings changed. Reload the AI settings page and review again.';
+                    }
+                } else {
+                    setBusy(false);
+                    status.textContent = `Save failed: ${err.message || err}`;
+                }
+            }
+        });
+        dismissButton.addEventListener('click', async () => {
+            setBusy(true);
+            try {
+                const result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/reject`, {});
+                card.replaceWith(aiBuildInstructionProposalNode(result.proposal, options));
+                if (typeof options.onChanged === 'function') options.onChanged();
+            } catch (err) {
+                setBusy(false);
+                status.textContent = `Dismiss failed: ${err.message || err}`;
+            }
+        });
+    }
+    return card;
+}
+
+function aiAppendInstructionProposal(proposal) {
+    if (!proposal || !proposal.id) return;
+    const existing = document.querySelector(`[data-proposal-id="${CSS.escape(proposal.id)}"]`);
+    const node = aiBuildInstructionProposalNode(proposal, { onChanged: refreshAiStatusBadge });
+    if (existing) existing.replaceWith(node);
+    else aiAppendThreadNode(node);
 }
 
 function aiCreateConversation() {
@@ -424,6 +559,10 @@ async function aiSendMessage(prompt = null) {
                     }
                     break;
                 }
+                case 'instruction_proposal':
+                    if (statusNode) { statusNode.remove(); statusNode = null; }
+                    aiAppendInstructionProposal(evt.data);
+                    break;
                 case 'message_end':
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     break;

@@ -2,6 +2,7 @@ from timetrace.services.ai_audit_service import AIAuditService
 from timetrace.services.ai_chat_service import AIChatService
 from timetrace.services.ai_draft_service import AIDraftService
 from timetrace.services.ai_insights_service import AIInsightsService
+from timetrace.services.ai_instruction_service import AIInstructionService
 from timetrace.services.ai_provider_service import AIProviderService, AISettingsService
 from timetrace.services.ai_tool_gateway import DbAIToolGateway
 from timetrace.services.analytics_service import AnalyticsService
@@ -33,6 +34,7 @@ __all__ = [
     "AIAuditService",
     "AIDraftService",
     "AIInsightsService",
+    "AIInstructionService",
     "AIChatService",
     "DbAIToolGateway",
 ]

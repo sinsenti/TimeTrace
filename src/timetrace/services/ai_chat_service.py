@@ -46,6 +46,7 @@ from timetrace.db.models import (
     AIConversation,
     AIDraftBatch,
     AIDraftItem,
+    AIInstructionProposal,
     AIProviderConfig,
     AISettings,
     Task,
@@ -60,11 +61,13 @@ from timetrace.interfaces.api.schemas import (
     AIDraftBatchResponse,
     AIDraftItemResponse,
     AIDraftOverlayItemResponse,
+    AIInstructionProposalResponse,
     AIQuickAddParseResponse,
     AIStatusResponse,
 )
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.ai_draft_service import AIDraftService
+from timetrace.services.ai_instruction_service import AIInstructionService
 from timetrace.services.ai_provider_service import AIProviderService, AISettingsService
 from timetrace.services.ai_tool_gateway import DbAIToolGateway
 
@@ -171,6 +174,10 @@ def _sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
+def _instruction_proposal_response(proposal: AIInstructionProposal) -> AIInstructionProposalResponse:
+    return AIInstructionProposalResponse.model_validate(proposal)
+
+
 class AIChatService:
     """`AIChatService(db)` -- construct per-request, like every other service in this codebase."""
 
@@ -246,6 +253,8 @@ class AIChatService:
         ).all()
         resp = AIConversationDetailResponse.model_validate(conv)
         resp.messages = [AIChatMessageResponse.model_validate(m) for m in messages]
+        proposals = AIInstructionService(self.db).list_for_conversation(conversation_id)
+        resp.instruction_proposals = [_instruction_proposal_response(p) for p in proposals]
         return resp
 
     def update_conversation(self, conversation_id: str, **fields: Any) -> AIConversation:
@@ -273,6 +282,11 @@ class AIChatService:
         for batch in batches:
             batch.conversation_id = None
             self.db.add(batch)
+        proposals = AIInstructionService(self.db).list_for_conversation(conversation_id)
+        for proposal in proposals:
+            proposal.conversation_id = None
+            proposal.updated_at = utc_now()
+            self.db.add(proposal)
         self.db.delete(conv)
         self.db.commit()
 
@@ -356,7 +370,12 @@ class AIChatService:
             model=provider_config.model,
         )
         logger.info("AI turn batch created: batch=%s", batch.id)
-        gateway = DbAIToolGateway(batch_id=batch.id)
+        gateway = DbAIToolGateway(
+            batch_id=batch.id,
+            conversation_id=conversation_id,
+            source_message_id=user_msg.id,
+            source_message_text=user_text,
+        )
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
         input_messages = self._history_to_langchain(history) + [HumanMessage(content=sanitized_text)]
@@ -397,6 +416,7 @@ class AIChatService:
                 latency_ms=latency_ms,
                 error=str(exc),
             )
+            AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
             self._finalize_batch(batch.id, None)
             raise AIProviderError(f"AI provider call failed: {exc}") from exc
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -417,6 +437,7 @@ class AIChatService:
         finalized_batch = self._finalize_batch(batch.id, final_msg)
         conv = self.get_conversation(conversation_id)
         draft_batch_resp = self.get_draft_batch_detail(finalized_batch.id) if finalized_batch else None
+        instruction_proposal = AIInstructionService(self.db).get_for_source_message(user_msg.id)
         logger.info(
             "AI turn done: conversation=%s batch=%s latency_ms=%d draft_items=%d",
             conversation_id,
@@ -429,6 +450,9 @@ class AIChatService:
             conversation=AIConversationResponse.model_validate(conv),
             message=AIChatMessageResponse.model_validate(final_msg),
             draft_batch=draft_batch_resp,
+            instruction_proposal=(
+                _instruction_proposal_response(instruction_proposal) if instruction_proposal is not None else None
+            ),
         )
 
     async def run_turn_stream(self, conversation_id: str, user_text: str) -> AsyncIterator[str]:
@@ -465,7 +489,12 @@ class AIChatService:
             model=provider_config.model,
         )
         logger.info("AI turn batch created: batch=%s", batch.id)
-        gateway = DbAIToolGateway(batch_id=batch.id)
+        gateway = DbAIToolGateway(
+            batch_id=batch.id,
+            conversation_id=conversation_id,
+            source_message_id=user_msg.id,
+            source_message_text=user_text,
+        )
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
         input_messages = self._history_to_langchain(history) + [HumanMessage(content=sanitized_text)]
@@ -535,6 +564,7 @@ class AIChatService:
                 latency_ms=latency_ms,
                 error=str(exc),
             )
+            AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
             self._finalize_batch(batch.id, None)
             yield _sse("error", {"message": str(exc)})
             return
@@ -556,6 +586,13 @@ class AIChatService:
         if finalized_batch:
             draft_resp = self.get_draft_batch_detail(finalized_batch.id)
             yield _sse("draft", json.loads(draft_resp.model_dump_json()))
+
+        instruction_proposal = AIInstructionService(self.db).get_for_source_message(user_msg.id)
+        if instruction_proposal is not None:
+            yield _sse(
+                "instruction_proposal",
+                json.loads(_instruction_proposal_response(instruction_proposal).model_dump_json()),
+            )
 
         logger.info(
             "AI turn done (stream): conversation=%s batch=%s latency_ms=%d draft_items=%d",

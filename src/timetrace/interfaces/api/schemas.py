@@ -708,6 +708,37 @@ class AISettingsUpdateRequest(BaseModel):
     custom_instructions: str | None = None
 
 
+class AIInstructionProposalResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    conversation_id: str | None = None
+    source_message_id: str | None = None
+    operation: str
+    proposed_instruction: str
+    before_instructions: str
+    after_instructions: str
+    base_hash: str
+    status: str
+    created_at: datetime
+    decided_at: datetime | None = None
+    updated_at: datetime
+
+
+class AIInstructionProposalAcceptRequest(BaseModel):
+    instruction: str | None = None
+
+
+class AIInstructionProposalRejectRequest(BaseModel):
+    reason: str | None = None
+
+
+class AIInstructionProposalActionResponse(BaseModel):
+    proposal: AIInstructionProposalResponse
+    settings: AISettingsResponse | None = None
+    message: str
+
+
 class AIScheduleValidationRequest(BaseModel):
     proposed_sessions: list[dict[str, Any]] = Field(min_length=1, max_length=100)
 
@@ -762,6 +793,7 @@ class AIChatMessageResponse(BaseModel):
 
 class AIConversationDetailResponse(AIConversationResponse):
     messages: list[AIChatMessageResponse] = Field(default_factory=list)
+    instruction_proposals: list[AIInstructionProposalResponse] = Field(default_factory=list)
 
 
 class AIChatMessageRequest(BaseModel):
@@ -833,12 +865,13 @@ class AIDraftBatchDetailResponse(AIDraftBatchResponse):
 
 
 class AIChatTurnResponse(BaseModel):
-    """Return shape of a non-streaming chat turn (spec S7). `draft_batch` is populated only when
-    the turn's tool calls produced at least one draft item."""
+    """Return shape of a non-streaming chat turn. Instruction proposals are separate from
+    task/session draft batches and are always confirmation-gated."""
 
     conversation: AIConversationResponse
     message: AIChatMessageResponse
     draft_batch: AIDraftBatchDetailResponse | None = None
+    instruction_proposal: AIInstructionProposalResponse | None = None
 
 
 class AIDraftItemResult(BaseModel):

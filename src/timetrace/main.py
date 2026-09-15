@@ -10,7 +10,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from timetrace import __version__
 from timetrace.config import settings
-from timetrace.core.exceptions import AIProviderError, EntityNotFoundError, TimerError, ValidationError
+from timetrace.core.exceptions import AIProviderError, ConflictError, EntityNotFoundError, TimerError, ValidationError
 from timetrace.core.idle_detector import get_idle_seconds
 from timetrace.core.timer import timer_manager
 from timetrace.db.session import init_db
@@ -96,18 +96,27 @@ def create_daemon_app() -> FastAPI:
     async def ai_provider_error_handler(request: Request, exc: AIProviderError):
         return JSONResponse(status_code=502, content={"detail": str(exc)})
 
+    @app.exception_handler(ConflictError)
+    async def conflict_error_handler(request: Request, exc: ConflictError):
+        return JSONResponse(status_code=409, content={"detail": str(exc)})
+
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Request bodies can contain prompts, task text, and remembered instructions. Keep the
+        # useful validation diagnostics while never copying those values into application logs.
         try:
-            body = await request.body()
-            body_str = body.decode("utf-8")
+            body_length = len(await request.body())
+            body_summary = f"<{body_length} bytes redacted>"
         except Exception:
-            body_str = "<failed to read body>"
+            body_summary = "<failed to read body>"
 
         logger.error("=" * 60)
         logger.error(f"HTTP 422 Validation Error on {request.method} {request.url.path}")
-        logger.error(f"Incoming Request Body: {body_str}")
-        logger.error(f"Validation Failure Details: {exc.errors()}")
+        logger.error(f"Incoming Request Body: {body_summary}")
+        validation_summary = [
+            {"loc": error.get("loc"), "type": error.get("type")} for error in exc.errors()
+        ]
+        logger.error(f"Validation Failure Details: {validation_summary}")
         logger.error("=" * 60)
 
         return JSONResponse(

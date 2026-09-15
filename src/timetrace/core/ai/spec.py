@@ -135,6 +135,18 @@ class AIToolGateway(Protocol):
         ...
 
     # ------------------------------------------------------------------
+    # Confirmation-gated settings proposal
+    # ------------------------------------------------------------------
+
+    def propose_remembered_instruction(self, instruction: str) -> dict[str, Any]:
+        """Creates a pending custom-instructions proposal without changing AISettings.
+
+        The gateway must reject this unless the original user message clearly requested future
+        persistence, and it must allow no more than one such proposal per turn.
+        """
+        ...
+
+    # ------------------------------------------------------------------
     # Write tools -- each only ever inserts an `aidraftitem` against this gateway's batch
     # ------------------------------------------------------------------
 

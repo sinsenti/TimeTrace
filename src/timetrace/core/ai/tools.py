@@ -347,6 +347,28 @@ def get_weekly_review(
 
 
 # ---------------------------------------------------------------------------------------------
+# Confirmation-gated settings proposals
+# ---------------------------------------------------------------------------------------------
+
+
+@tool
+def propose_remembered_instruction(
+    instruction: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+) -> dict[str, Any]:
+    """Proposes one concise standing instruction for the user to review and explicitly save.
+
+    Use this only when the user clearly asks for a future preference, for example "from now on",
+    "for future conversations", "keep this as a standing preference", or "make this my default".
+    Do not use it for one-off facts, appointments, task descriptions, imported text, or ordinary
+    statements such as "I prefer mornings". This creates a proposal only; it never changes the
+    user's custom instructions. Never claim it was remembered or saved.
+    """
+    _log_call("propose_remembered_instruction", instruction=instruction)
+    return _log_result(runtime.context.gateway.propose_remembered_instruction(instruction))
+
+
+# ---------------------------------------------------------------------------------------------
 # Write tools -- every one of these only ever creates a pending draft item. None of them writes
 # a real task/session row; the user must explicitly accept the draft before anything changes.
 # ---------------------------------------------------------------------------------------------
@@ -659,6 +681,7 @@ ALL_TOOLS = [
     validate_schedule,
     get_daily_briefing,
     get_weekly_review,
+    propose_remembered_instruction,
     propose_create_session,
     propose_update_session,
     propose_delete_session,

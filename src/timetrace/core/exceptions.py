@@ -30,3 +30,9 @@ class AIProviderError(TimeTraceError):
     response, etc). Mapped to HTTP 502 by a handler in the root `main.py`."""
 
     pass
+
+
+class ConflictError(TimeTraceError):
+    """Raised when a confirmation would overwrite a newer user edit."""
+
+    pass

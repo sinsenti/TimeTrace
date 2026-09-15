@@ -305,6 +305,30 @@ class AISettings(SQLModel, table=True):
     updated_at: datetime = Field(default_factory=utc_now)
 
 
+class AIInstructionProposal(SQLModel, table=True):
+    """A confirmation-gated append to the global custom-instructions setting.
+
+    The proposal stores the exact setting value seen when it was created. Acceptance compares
+    that value's hash before applying it, so a manual edit made in the meantime cannot be
+    overwritten accidentally. ``conversation_id`` is nullable because the setting change is
+    global and must survive deletion of the originating chat.
+    """
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    conversation_id: str | None = Field(default=None, foreign_key="aiconversation.id", index=True)
+    source_message_id: str | None = Field(default=None, index=True)
+    operation: str = Field(default="append")
+    proposed_instruction: str
+    before_instructions: str = Field(default="")
+    after_instructions: str = Field(default="")
+    base_hash: str
+    status: str = Field(default="pending", index=True)
+    # "pending" | "accepted" | "rejected" | "conflict" | "failed" | "undone"
+    created_at: datetime = Field(default_factory=utc_now, index=True)
+    decided_at: datetime | None = Field(default=None)
+    updated_at: datetime = Field(default_factory=utc_now)
+
+
 class AIConversation(SQLModel, table=True):
     """One multi-turn chat thread in the assistant drawer."""
 

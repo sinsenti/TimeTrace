@@ -69,7 +69,7 @@ Paths below are relative to `src/timetrace/` unless stated otherwise.
 | Reviews, habits, ratings | `services/revision_service.py`, `habit_service.py`, `rating_service.py` | Matching routers, templates, and JS feature files |
 | Markdown import/export | `core/parser.py`, `services/analytics_service.py` | CLI commands and analytics router |
 | AI tools and orchestration | `core/ai/`, `services/ai_tool_gateway.py`, `ai_insights_service.py`, `ai_chat_service.py` | `routers/ai.py`, `static/js/ai_assistant.js`, `ai_quickadd.js` |
-| AI approval and configuration | `services/ai_draft_service.py`, `ai_audit_service.py`, `ai_provider_service.py` | `static/js/ai_drafts.js`, `ai_draft_overlay.js`, `ai_settings_page.js` |
+| AI approval and configuration | `services/ai_draft_service.py`, `ai_audit_service.py`, `ai_provider_service.py`, `ai_instruction_service.py` | `static/js/ai_drafts.js`, `ai_draft_overlay.js`, `ai_settings_page.js`, `ai_assistant.js` |
 
 In the table, `static/`, `templates/`, and `routers/` shorthand is under `interfaces/api/`.
 Templates include shared pieces from `templates/components/`, but there is no common base template.
@@ -94,7 +94,10 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   not project them. Completing a recurring task resets its status, not its schedule anchor.
   The [recurrence plan](recurrence-engine-plan.md) is a design record, not a list of missing files;
   read its final settled decisions before relying on earlier scope tables.
-- **AI:** draft/accept/undo/reapply, the global drawer, and calendar overlays are implemented.
+- **AI:** draft/accept/undo/reapply, the global drawer, calendar overlays, and confirmation-gated
+  conversational remembered instructions are implemented. Remembered instructions append to the
+  global `AISettings.custom_instructions` field after explicit acceptance; they are not semantic
+  memory or cross-conversation retrieval. Structured scheduling preferences remain authoritative.
   Providers now include Anthropic, OpenAI, OpenRouter, Ollama, Google, Groq, and Pi. Google uses
   `langchain-google-genai`; Groq uses the OpenAI-compatible client. Pi uses a small Node bridge to
   the locally installed `@earendil-works/pi-coding-agent` ModelRuntime, reusing Pi's credentials
@@ -148,7 +151,7 @@ Do not use live AI providers as automated test fixtures or expose personal data 
 
 ## Migration verification
 
-The source tree currently ends at `0010_ai_search_and_scheduling_preferences`; inspect revision ids and
+The source tree currently ends at `0011_ai_instruction_proposals`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
