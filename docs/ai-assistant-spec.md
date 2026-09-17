@@ -337,12 +337,17 @@ retrieval. Structured scheduling settings remain authoritative for enforced cons
 
 ## 11. Explicitly not in this slice
 
-No LangGraph checkpointer/`interrupt()`. No timer tools. No AI writes to habits, ratings, reviews or
-`TaskStatus`. No changes to `core/inline_parser.py` (the three dead functions stay dead;
+No LangGraph checkpointer/`interrupt()`. Timer, habit, rating, and review domains are exposed only
+through explicit read tools (`get_timer_status`, habit progress/list, rating definitions/entries,
+review summaries/lists). `propose_day_review` may create only a pending `day_review` draft; acceptance
+still goes through `AIDraftService`, and it never writes directly from a tool call. No AI writes to
+habits or ratings or `TaskStatus`. No changes to `core/inline_parser.py` (the three dead functions stay dead;
 `resolve_task_reference` is the UUID-era answer to their `@123` scheme). No `timetrace ai` CLI
 command (the CLI talks HTTP; addable later with no backend change). No embeddings/vector store/RAG,
 no cross-conversation semantic memory. No cost budgeting beyond call-count limits (token counts are
-recorded so a budget needs no migration later). No per-user scoping — ids are UUIDv7, an owner
-column is additive. No multi-agent supervisor graph. No LangSmith tracing. No migration of the
+recorded so a budget needs no migration later). Sensitive domains are opt-in through
+`AISettings.data_scope_json` (migration `0013_ai_data_scope`); redaction is not complete anonymization.
+No per-user scoping — ids are UUIDv7, an owner column is additive. No multi-agent supervisor graph.
+No LangSmith tracing. No migration of the
 existing localStorage settings to the server (only provider config and the AI behavior toggles go
 server-side; theme/vim/`firstDayOfWeek` stay in `settings.js`).

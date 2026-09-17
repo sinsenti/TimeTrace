@@ -22,6 +22,7 @@ from langchain.agents.middleware import (
 )
 
 from timetrace.core.ai.prompts import build_system_prompt
+from timetrace.core.ai.redaction import detect_phone_pii
 from timetrace.core.ai.tools import ALL_TOOLS, AIAgentContext
 
 # Hard ceilings independent of provider-side limits -- a runaway tool-calling loop (e.g. the
@@ -33,10 +34,10 @@ _DEFAULT_MODEL_CALL_LIMIT = 25
 _DEFAULT_TOOL_CALL_LIMIT = 40
 
 # PII types this app's tool-result surface can plausibly leak: task/session titles, descriptions,
-# and notes are free text a user might type an email address or a link into (e.g. a task titled
-# "reply to jane@example.com" or "check https://internal.example.com/doc"). `credit_card`,
-# `ip`, and `mac_address` have no plausible source in this app's data model, so they're left
-# unconfigured rather than added speculatively.
+# and notes are free text a user might type an email address, link, or phone number into (e.g. a
+# task titled "reply to jane@example.com"). `credit_card`, `ip`, and `mac_address` have no
+# plausible source in this app's data model, so they're left unconfigured rather than added
+# speculatively.
 _PII_TYPES = ("email", "url")
 
 
@@ -86,6 +87,17 @@ def build_agent(
                     apply_to_tool_results=True,
                 )
             )
+        # Built-in middleware has no phone detector. Keep phone matching consistent with
+        # ``sanitize_text`` so dates and UUIDs in tool results are never damaged.
+        middleware.append(
+            PIIMiddleware(
+                "phone",
+                detector=detect_phone_pii,
+                strategy="redact",
+                apply_to_input=apply_to_input,
+                apply_to_tool_results=True,
+            )
+        )
 
     return create_agent(
         model,

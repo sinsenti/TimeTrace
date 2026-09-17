@@ -1,11 +1,11 @@
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import sqlalchemy as sa
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError
+from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.inline_parser import parse_inline_task
 from timetrace.core.timezones import daemon_tzinfo, to_local_naive
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
@@ -687,3 +687,93 @@ class TaskService:
 
     def get_task_review(self, task_id: str) -> TaskReview | None:
         return self.db.exec(select(TaskReview).where(TaskReview.task_id == task_id)).first()
+
+    @staticmethod
+    def _review_date(value: str, field_name: str) -> date:
+        try:
+            parsed = date.fromisoformat(value)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"{field_name} must use YYYY-MM-DD") from exc
+        if parsed.isoformat() != value:
+            raise ValidationError(f"{field_name} must use YYYY-MM-DD")
+        return parsed
+
+    def _task_review_dict(self, review: TaskReview, task: Task) -> dict[str, Any]:
+        created_at = ensure_utc(review.created_at) if review.created_at else None
+        return {
+            "id": review.id,
+            "task_id": task.id,
+            "task_title": task.title,
+            "difficulty": review.difficulty,
+            "what_went_well": review.what_went_well or "",
+            "blockers": review.blockers or "",
+            "key_takeaways": review.key_takeaways or "",
+            "created_at": created_at.isoformat() if created_at else None,
+        }
+
+    def get_task_review_for_ai(self, task_id: str) -> dict[str, Any]:
+        task = self.db.get(Task, task_id)
+        if not task:
+            raise EntityNotFoundError("Task", task_id)
+        review = self.get_task_review(task_id)
+        return {
+            "task_id": task.id,
+            "task_title": task.title,
+            "review": self._task_review_dict(review, task) if review else None,
+        }
+
+    def list_task_reviews_for_ai(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        task_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        start = self._review_date(start_date, "start_date") if start_date else None
+        end = self._review_date(end_date, "end_date") if end_date else None
+        if start and end and end < start:
+            raise ValidationError("end_date must not be before start_date")
+        if start and end and (end - start).days + 1 > 730:
+            raise ValidationError("task review date range cannot exceed 730 days")
+        if task_id and not self.db.get(Task, task_id):
+            raise EntityNotFoundError("Task", task_id)
+        try:
+            requested_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("limit must be an integer") from exc
+        limit = max(1, min(requested_limit, 500))
+        reviews_query = select(TaskReview)
+        if task_id:
+            reviews_query = reviews_query.where(TaskReview.task_id == task_id)
+        tz = daemon_tzinfo()
+        if start:
+            start_utc = datetime.combine(start, time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            reviews_query = reviews_query.where(TaskReview.created_at >= start_utc)
+        if end:
+            end_utc = datetime.combine(end + timedelta(days=1), time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            reviews_query = reviews_query.where(TaskReview.created_at < end_utc)
+        reviews = list(self.db.exec(reviews_query.order_by(TaskReview.created_at.desc()).limit(limit + 1)).all())
+        filtered: list[dict[str, Any]] = []
+        for review in reviews:
+            created_local_date = to_local_naive(ensure_utc(review.created_at), tz).date() if review.created_at else None
+            if start and (created_local_date is None or created_local_date < start):
+                continue
+            if end and (created_local_date is None or created_local_date > end):
+                continue
+            task = self.db.get(Task, review.task_id)
+            if task is not None:
+                filtered.append(self._task_review_dict(review, task))
+        # Date filtering happens after the bounded query because created_at is stored as UTC and
+        # the requested boundaries are local dates. Fetch one extra row and report truncation only
+        # when the returned page itself is full; the range is still explicitly bounded by callers.
+        truncated = len(filtered) > limit
+        filtered = filtered[:limit]
+        return {
+            "start_date": start.isoformat() if start else None,
+            "end_date": end.isoformat() if end else None,
+            "task_id": task_id,
+            "reviews": filtered,
+            "truncated": truncated,
+            "warnings": ["Task reviews were limited; request a narrower range."] if truncated else [],
+        }

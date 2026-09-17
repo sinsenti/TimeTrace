@@ -5,6 +5,7 @@ from sqlmodel import Session, select
 
 from timetrace.core.analytics import calculate_day_breakdowns
 from timetrace.core.exceptions import ValidationError
+from timetrace.core.timezones import daemon_tzinfo
 from timetrace.db.models import DayReview, RatingDefinition, RatingEntry, Task
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import DayReviewCreate
@@ -14,6 +15,73 @@ from timetrace.interfaces.api.utils import ensure_utc
 class RevisionService:
     def __init__(self, db: Session):
         self.db = db
+
+    def list_day_reviews(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_skipped: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """List reviews by their local calendar date, not by creation timestamp."""
+        try:
+            start = date.fromisoformat(start_date)
+            end = date.fromisoformat(end_date)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("start_date and end_date must use YYYY-MM-DD") from exc
+        if start.isoformat() != start_date or end.isoformat() != end_date:
+            raise ValidationError("start_date and end_date must use YYYY-MM-DD")
+        if end < start:
+            raise ValidationError("end_date must not be before start_date")
+        if (end - start).days + 1 > 730:
+            raise ValidationError("day review date range cannot exceed 730 days")
+        try:
+            requested_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("limit must be an integer") from exc
+        limit = max(1, min(requested_limit, 500))
+        query = select(DayReview).where(
+            DayReview.date_str >= start.isoformat(),
+            DayReview.date_str <= end.isoformat(),
+        )
+        if not include_skipped:
+            query = query.where(DayReview.review_skipped.is_(False))
+        reviews = list(self.db.exec(query.order_by(DayReview.date_str).limit(limit + 1)).all())
+        truncated = len(reviews) > limit
+        reviews = reviews[:limit]
+        return {
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "include_skipped": include_skipped,
+            "reviews": [self._day_review_dict(review) for review in reviews],
+            "truncated": truncated,
+            "warnings": ["Day reviews were limited; request a narrower range."] if truncated else [],
+        }
+
+    @staticmethod
+    def _json_serializable(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return ensure_utc(value).isoformat()
+        if isinstance(value, dict):
+            return {key: RevisionService._json_serializable(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [RevisionService._json_serializable(item) for item in value]
+        return value
+
+    @staticmethod
+    def _day_review_dict(review: DayReview) -> dict[str, Any]:
+        return {
+            "id": review.id,
+            "date": review.date_str,
+            "date_str": review.date_str,
+            "rating": review.rating,
+            "highlights": review.highlights or "",
+            "friction": review.friction or "",
+            "notes": review.notes or "",
+            "review_skipped": bool(review.review_skipped),
+            "created_at": ensure_utc(review.created_at).isoformat() if review.created_at else None,
+        }
 
     def get_day_history_overview(self) -> list[dict[str, Any]]:
         sessions = self.db.exec(select(SessionModel)).all()
@@ -56,11 +124,14 @@ class RevisionService:
     def get_day_summary(self, date_str: str) -> dict[str, Any]:
         try:
             day = date.fromisoformat(date_str)
-        except ValueError as e:
+        except (TypeError, ValueError) as e:
             raise ValidationError(f"Invalid date_str '{date_str}': expected YYYY-MM-DD") from e
+        if day.isoformat() != date_str:
+            raise ValidationError(f"Invalid date_str '{date_str}': expected YYYY-MM-DD")
 
         # Local calendar day, by session start time
-        start_local = datetime.combine(day, time.min).astimezone()
+        local_tz = daemon_tzinfo()
+        start_local = datetime.combine(day, time.min, local_tz)
         end_local = start_local + timedelta(days=1)
         start_utc = start_local.astimezone(UTC).replace(tzinfo=None)
         end_utc = end_local.astimezone(UTC).replace(tzinfo=None)
@@ -90,10 +161,14 @@ class RevisionService:
 
         session_details = []
         for s in matching_sessions:
-            s_dict = s.model_dump()
+            s_dict = self._json_serializable(s.model_dump())
             s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
             s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-            s_dict["task"] = tasks_map.get(s.task_id).model_dump() if s.task_id and s.task_id in tasks_map else None
+            s_dict["task"] = (
+                self._json_serializable(tasks_map[s.task_id].model_dump())
+                if s.task_id and s.task_id in tasks_map
+                else None
+            )
             session_details.append(s_dict)
 
         day_ratings = self.db.exec(
@@ -103,8 +178,8 @@ class RevisionService:
         ratings_detailed = []
         for r in day_ratings:
             r_def = self.db.get(RatingDefinition, r.rating_definition_id)
-            r_dict = r.model_dump()
-            r_dict["definition"] = r_def.model_dump() if r_def else None
+            r_dict = self._json_serializable(r.model_dump())
+            r_dict["definition"] = self._json_serializable(r_def.model_dump()) if r_def else None
             ratings_detailed.append(r_dict)
 
         task_titles = {tid: t.title for tid, t in tasks_map.items()}
@@ -116,12 +191,25 @@ class RevisionService:
             "total_sessions": len(matching_sessions),
             "completed_tasks_count": len(completed_tasks),
             "sessions": session_details,
-            "day_review": saved_review.model_dump() if saved_review else None,
+            "day_review": self._json_serializable(saved_review.model_dump()) if saved_review else None,
             "custom_ratings": ratings_detailed,
             "tag_breakdown": breakdowns["tag_breakdown"],
             "task_breakdown": breakdowns["task_breakdown"],
             "tag_attribution": "fanout",
         }
+
+    def delete_day_review(self, date_str: str) -> None:
+        """Delete a review by its natural local-date key (used only for AI undo)."""
+        try:
+            parsed = date.fromisoformat(date_str)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("date_str must use YYYY-MM-DD") from exc
+        if parsed.isoformat() != date_str:
+            raise ValidationError("date_str must use YYYY-MM-DD")
+        review = self.db.exec(select(DayReview).where(DayReview.date_str == date_str)).first()
+        if review is not None:
+            self.db.delete(review)
+            self.db.commit()
 
     def save_day_review(self, req: DayReviewCreate) -> DayReview:
         existing = self.db.exec(select(DayReview).where(DayReview.date_str == req.date_str)).first()

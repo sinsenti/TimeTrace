@@ -57,6 +57,7 @@ from timetrace.services import (
     AIProviderService,
     AISettingsService,
 )
+from timetrace.services.ai_provider_service import AI_DATA_SCOPE_DEFAULTS
 
 router = APIRouter(prefix="/api/ai", tags=["AI Assistant API"])
 
@@ -69,12 +70,24 @@ def _json_list(value: str | None) -> list[str]:
     return [str(item) for item in parsed] if isinstance(parsed, list) else []
 
 
+def _settings_data_scope(settings) -> dict[str, bool]:
+    try:
+        parsed = json.loads(settings.data_scope_json or "{}")
+    except (TypeError, ValueError):
+        parsed = {}
+    return {
+        key: parsed[key] if isinstance(parsed, dict) and isinstance(parsed.get(key), bool) else default
+        for key, default in AI_DATA_SCOPE_DEFAULTS.items()
+    }
+
+
 def _settings_response(settings) -> AISettingsResponse:
     return AISettingsResponse(
         id=settings.id,
         quickadd_fallback_enabled=settings.quickadd_fallback_enabled,
         redact_before_send=settings.redact_before_send,
         preview_on_calendar=settings.preview_on_calendar,
+        data_scope=_settings_data_scope(settings),
         scheduling_window_days=settings.scheduling_window_days,
         batch_undo_retention_days=settings.batch_undo_retention_days,
         scheduling_day_start=settings.scheduling_day_start,

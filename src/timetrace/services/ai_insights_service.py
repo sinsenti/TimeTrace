@@ -857,6 +857,184 @@ class AIInsightsService:
             "preferences": self.scheduling_preferences(),
         }
 
+    def get_reflection_context(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_timer: bool = False,
+        batch_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Build compact, deterministic cross-domain facts for one local-date range.
+
+        The gateway applies privacy-scope checks before calling this method. This service owns
+        only the facts and never writes domain rows. The time statistics describe persisted
+        sessions; pending draft proposals are not counted as performed or scheduled work.
+        """
+        try:
+            start_local = date.fromisoformat(start_date)
+            end_local = date.fromisoformat(end_date)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("start_date and end_date must use YYYY-MM-DD") from exc
+        if start_local.isoformat() != start_date or end_local.isoformat() != end_date:
+            raise ValidationError("start_date and end_date must use YYYY-MM-DD")
+        if end_local < start_local:
+            raise ValidationError("end_date must not be before start_date")
+        period_days = (end_local - start_local).days + 1
+        if period_days > 366:
+            raise ValidationError("reflection date range cannot exceed 366 days")
+
+        start_value = start_local.isoformat()
+        end_value = end_local.isoformat()
+        logged_by_day = self._run_session_stat(
+            start_value, end_value, Measure.SUM_DURATION, group_by=[Dimension.DAY], relative="past", fill_gaps=True
+        )
+        scheduled_by_day = self._run_session_stat(
+            start_value, end_value, Measure.SUM_DURATION, group_by=[Dimension.DAY], relative="future", fill_gaps=True
+        )
+        logged_by_task = self._run_session_stat(
+            start_value, end_value, Measure.SUM_DURATION, group_by=[Dimension.TASK], relative="past"
+        )
+        logged_by_tag = self._run_session_stat(
+            start_value, end_value, Measure.SUM_DURATION, group_by=[Dimension.TAG], relative="past"
+        )
+
+        from timetrace.services.habit_service import HabitService
+        from timetrace.services.rating_service import RatingService
+        from timetrace.services.revision_service import RevisionService
+        from timetrace.services.task_service import TaskService
+
+        habits = HabitService(self.db).list_habits_for_ai(
+            start_date=start_value, end_date=end_value, include_logs=True, limit=100
+        )
+        day_reviews = RevisionService(self.db).list_day_reviews(
+            start_date=start_value, end_date=end_value, include_skipped=True, limit=200
+        )
+        task_reviews = TaskService(self.db).list_task_reviews_for_ai(
+            start_date=start_value, end_date=end_value, limit=100
+        )
+        ratings = RatingService(self.db).list_entries_for_ai(
+            start_date=start_value,
+            end_date=end_value,
+            include_dismissed=True,
+            limit=200,
+        )
+
+        review_rows = day_reviews["reviews"]
+        skipped_review_rows = [row for row in review_rows if row["review_skipped"]]
+        completed_review_rows = [row for row in review_rows if not row["review_skipped"]]
+        rating_values = [row["rating"] for row in completed_review_rows if row.get("rating") is not None]
+        day_rating_summary = {
+            "count": len(completed_review_rows),
+            "average": round(sum(rating_values) / len(rating_values), 2) if rating_values else None,
+            "trend": (
+                round(
+                    sum(row["rating"] for row in completed_review_rows[-3:] if row.get("rating") is not None)
+                    / max(1, len([row for row in completed_review_rows[-3:] if row.get("rating") is not None]))
+                    - sum(row["rating"] for row in completed_review_rows[:3] if row.get("rating") is not None)
+                    / max(1, len([row for row in completed_review_rows[:3] if row.get("rating") is not None])),
+                    2,
+                )
+                if len(completed_review_rows) >= 2
+                else None
+            ),
+        }
+        review_dates = {row["date"] for row in completed_review_rows}
+        missing_review_dates = [
+            (start_local + timedelta(days=offset)).isoformat()
+            for offset in range(period_days)
+            if (start_local + timedelta(days=offset)).isoformat() not in review_dates
+        ]
+        custom_rating_values: dict[str, list[float]] = {}
+        for entry in ratings["entries"]:
+            if entry.get("dismissed") or entry.get("score") is None:
+                continue
+            definition = entry.get("definition") or {}
+            key = definition.get("name") or entry.get("target_type") or "rating"
+            custom_rating_values.setdefault(str(key), []).append(float(entry["score"]))
+        custom_rating_averages = {
+            key: round(sum(values) / len(values), 2) for key, values in custom_rating_values.items() if values
+        }
+        day_rating_entries = [row for row in ratings["entries"] if row.get("target_type") == "day"]
+        rated_days = {row.get("target_id") for row in day_rating_entries if row.get("target_id")}
+        missing_rating_dates = [
+            (start_local + timedelta(days=offset)).isoformat()
+            for offset in range(period_days)
+            if (start_local + timedelta(days=offset)).isoformat() not in rated_days
+        ]
+
+        logged_total = self._run_session_stat(start_value, end_value, Measure.SUM_DURATION, relative="past")
+        scheduled_total = self._run_session_stat(start_value, end_value, Measure.SUM_DURATION, relative="future")
+
+        day_review_output_truncated = len(review_rows) > 50 or len(skipped_review_rows) > 50
+        rating_output_truncated = len(ratings["entries"]) > 100
+        warnings: list[str] = []
+        if logged_total.get("total") is None:
+            warnings.append("No logged session data was recorded in this range.")
+        if scheduled_total.get("total") is None:
+            warnings.append("No future scheduled session data was recorded in this range.")
+        truncated = (
+            day_review_output_truncated
+            or rating_output_truncated
+            or any(
+                section.get("truncated", False)
+                for section in (habits, day_reviews, task_reviews, ratings)
+                if isinstance(section, dict)
+            )
+        )
+        if missing_review_dates:
+            warnings.append(f"No completed day review was recorded for {len(missing_review_dates)} day(s).")
+        if missing_rating_dates:
+            warnings.append(f"No day custom rating was recorded for {len(missing_rating_dates)} day(s).")
+        if day_review_output_truncated or rating_output_truncated:
+            warnings.append("Some reflection lists were shortened; use specialized tools for detail.")
+        if truncated and not (day_review_output_truncated or rating_output_truncated):
+            warnings.append("Some context lists were truncated; use specialized tools for detail.")
+
+        timer = None
+        if include_timer:
+            from timetrace.services.timer_service import TimerService
+
+            timer = TimerService(self.db).get_status()
+
+        return {
+            "range": {
+                "start_date": start_value,
+                "end_date": end_value,
+                "timezone": daemon_timezone_name(),
+            },
+            "time": {
+                "logged_total": logged_total,
+                "scheduled_total": scheduled_total,
+                "logged_by_day": logged_by_day,
+                "scheduled_by_day": scheduled_by_day,
+                "logged_by_task": logged_by_task,
+                "logged_by_tag": logged_by_tag,
+            },
+            "habits": habits,
+            "day_reviews": {
+                "reviews": completed_review_rows[:50],
+                "skipped": skipped_review_rows[:50],
+                "summary": day_rating_summary,
+                "missing_dates": missing_review_dates,
+                "truncated": day_review_output_truncated,
+            },
+            "task_reviews": {
+                "count": len(task_reviews["reviews"]),
+                "reviews": task_reviews["reviews"][:50],
+                "truncated": task_reviews.get("truncated", False) or len(task_reviews["reviews"]) > 50,
+            },
+            "ratings": {
+                "entries": ratings["entries"][:100],
+                "average_by_definition": custom_rating_averages,
+                "truncated": ratings.get("truncated", False) or rating_output_truncated,
+                "missing_day_rating_dates": missing_rating_dates,
+            },
+            "timer": timer,
+            "warnings": warnings,
+            "truncated": truncated,
+        }
+
     def get_current_weekly_review(self, first_day_of_week: int = 1) -> dict[str, Any]:
         """Return the review for the current local calendar week.
 

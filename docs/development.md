@@ -105,9 +105,11 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   `0008_ai_custom_instructions` adds DB-backed custom instructions after the seven AI tables in
   `0007_ai_assistant_tables`. See the [AI spec](ai-assistant-spec.md) for the approval/privacy
   contract; its original provider/dependency lists and proposed migration numbers are historical.
-  Read-only insights include daily briefings, weekly reviews, conflict/schedule validation, task
-  progress, and local SQLite FTS task search. Scheduling hours, allowed days, breaks, daily caps,
-  and the placement window are stored in `AISettings`. AI tool calls use their own short-lived DB
+  Read-only insights include daily briefings, weekly reviews, bounded habits/ratings/reviews/timer
+  reads, holistic reflection context, conflict/schedule validation, task progress, and local SQLite
+  FTS task search. Day-review create/update is an approval-gated draft only. Scheduling hours,
+  allowed days, breaks, daily caps, the placement window, and explicit AI data scope are stored in
+  `AISettings`. AI tool calls use their own short-lived DB
   sessions because tools may run concurrently; never share a request's SQLModel session across
   parallel tool calls. Remembered-instruction release hardening now has fake-agent coverage for
   both chat modes, server-side original-message intent gating, one-proposal uniqueness, draft-batch
@@ -143,10 +145,10 @@ fake-agent remembered-instruction chat/API lifecycle tests. Draft lifecycle, gat
 coverage remains partial outside this hardening slice. There is no browser test suite. Add coverage
 where changing behavior; passing the existing suite does not establish those areas are correct.
 
-**Observed baseline at this documentation check:** 167 tests passed with 65 reported SQLite
+**Observed baseline at this documentation check:** 181 tests passed with 83 reported SQLite
 `DeprecationWarning`s. Re-run the suite after changes; warnings are not treated as failures.
 
-The hardening smoke check migrated a fresh scratch database through `0012_ai_instruction_source_unique`
+The hardening smoke check migrated a fresh scratch database through `0013_ai_data_scope`
 and verified `/health`, AI settings, provider CRUD, and AI status on a non-default daemon port. A
 local Ollama chat attempt did not complete within 180 seconds, so interactive drawer acceptance is
 still explicitly manual and no paid provider was used.
@@ -159,7 +161,7 @@ Do not use live AI providers as automated test fixtures or expose personal data 
 
 ## Migration verification
 
-The source tree currently ends at `0012_ai_instruction_source_unique`; inspect revision ids and
+The source tree currently ends at `0013_ai_data_scope`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.

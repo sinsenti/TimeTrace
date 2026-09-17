@@ -1,16 +1,305 @@
-from datetime import datetime, timedelta
+import re
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError
+from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import Habit, HabitGoalHistory, HabitLog
 from timetrace.interfaces.api.schemas import HabitCreate, HabitLogRequest, HabitUpdate
+
+_AI_MAX_HABIT_LOGS = 5000
+_AI_MAX_HABIT_GOALS = 1000
 
 
 class HabitService:
     def __init__(self, db: Session):
         self.db = db
+
+    @staticmethod
+    def _parse_local_date(value: str, field_name: str = "date") -> date:
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValidationError(f"{field_name} must use YYYY-MM-DD")
+        try:
+            return date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValidationError(f"{field_name} must be a valid local date") from exc
+
+    @classmethod
+    def _validate_range(cls, start_date: str, end_date: str, *, max_days: int = 730) -> tuple[date, date]:
+        start = cls._parse_local_date(start_date, "start_date")
+        end = cls._parse_local_date(end_date, "end_date")
+        if end < start:
+            raise ValidationError("end_date must not be before start_date")
+        if (end - start).days + 1 > max_days:
+            raise ValidationError(f"habit date range cannot exceed {max_days} days")
+        return start, end
+
+    @staticmethod
+    def _expected_dates(start: date, end: date, frequency: str) -> list[str]:
+        """Return days on which a habit can meaningfully be expected.
+
+        The UI stores frequency as a human-readable string. Only the two unambiguous built-in
+        schedules are treated specially; unknown/custom frequencies deliberately return no
+        expected dates instead of turning missing logs into failures.
+        """
+        normalized = (frequency or "").strip().lower()
+        every_day = "every day" in normalized or normalized in {"daily", "day"}
+        weekdays = "weekday" in normalized or "monday-friday" in normalized
+        if not every_day and not weekdays:
+            return []
+        values: list[str] = []
+        current = start
+        while current <= end:
+            if every_day or current.weekday() < 5:
+                values.append(current.isoformat())
+            current += timedelta(days=1)
+        return values
+
+    def list_habits_for_ai(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        habit_id: str | None = None,
+        include_logs: bool = True,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Return a bounded, explicit habit snapshot for the AI gateway.
+
+        This is separate from the browser endpoint's historical 365-day convenience response:
+        the caller supplies the local range and receives ``truncated`` metadata. The caller owns
+        the session, so this method deliberately does not close it.
+        """
+        start, end = self._validate_range(start_date, end_date)
+        try:
+            requested_limit = int(limit)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("limit must be an integer") from exc
+        limit = max(1, min(requested_limit, 200))
+        db = self.db
+        query = select(Habit).order_by(Habit.created_at.asc())
+        if habit_id:
+            query = query.where(Habit.id == habit_id)
+        habits = list(db.exec(query.limit(limit + 1)).all())
+        if habit_id and not habits:
+            raise EntityNotFoundError("Habit", habit_id)
+        truncated = len(habits) > limit
+        habits = habits[:limit]
+
+        logs_by_habit: dict[str, list[dict[str, Any]]] = {}
+        goal_by_habit: dict[str, list[dict[str, Any]]] = {}
+        logs_truncated = False
+        goals_truncated = False
+        if habits and include_logs:
+            ids = [habit.id for habit in habits]
+            logs = list(
+                db.exec(
+                    select(HabitLog)
+                    .where(
+                        HabitLog.habit_id.in_(ids),
+                        HabitLog.date_str >= start.isoformat(),
+                        HabitLog.date_str <= end.isoformat(),
+                    )
+                    .order_by(HabitLog.habit_id, HabitLog.date_str)
+                    .limit(_AI_MAX_HABIT_LOGS + 1)
+                ).all()
+            )
+            logs_truncated = len(logs) > _AI_MAX_HABIT_LOGS
+            logs = logs[:_AI_MAX_HABIT_LOGS]
+            for log in logs:
+                entry = log.model_dump()
+                entry["date"] = log.date_str
+                logs_by_habit.setdefault(log.habit_id, []).append(entry)
+
+        if habits:
+            ids = [habit.id for habit in habits]
+            goals = list(
+                db.exec(
+                    select(HabitGoalHistory)
+                    .where(
+                        HabitGoalHistory.habit_id.in_(ids),
+                        HabitGoalHistory.effective_from <= end.isoformat(),
+                    )
+                    .order_by(HabitGoalHistory.habit_id, HabitGoalHistory.effective_from)
+                    .limit(_AI_MAX_HABIT_GOALS + 1)
+                ).all()
+            )
+            goals_truncated = len(goals) > _AI_MAX_HABIT_GOALS
+            goals = goals[:_AI_MAX_HABIT_GOALS]
+            for goal in goals:
+                goal_by_habit.setdefault(goal.habit_id, []).append(
+                    {
+                        "target_value": goal.target_value,
+                        "effective_from": goal.effective_from,
+                        "created_at": goal.created_at.isoformat() if goal.created_at else None,
+                    }
+                )
+
+        result = []
+        for habit in habits:
+            result.append(
+                {
+                    "id": habit.id,
+                    "name": habit.name,
+                    "habit_type": habit.habit_type,
+                    "target_value": habit.target_value,
+                    "unit": habit.unit,
+                    "frequency": habit.frequency,
+                    "reminder_time": habit.reminder_time,
+                    "logs": logs_by_habit.get(habit.id, []) if include_logs else [],
+                    "goal_history": goal_by_habit.get(habit.id, []),
+                }
+            )
+
+        return {
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "habits": result,
+            "include_logs": include_logs,
+            "truncated": truncated or logs_truncated or goals_truncated,
+            "warnings": (
+                (["Habit definitions were limited; request a narrower range or use habit_id."] if truncated else [])
+                + (["Habit logs were limited; request a narrower range or use habit_id."] if logs_truncated else [])
+                + (
+                    ["Habit goal history was limited; request a narrower range or use habit_id."]
+                    if goals_truncated
+                    else []
+                )
+            ),
+        }
+
+    def get_habit_progress_for_ai(self, *, habit_id: str, start_date: str, end_date: str) -> dict[str, Any]:
+        """Calculate progress without treating an absent log as a failed log."""
+        start, end = self._validate_range(start_date, end_date)
+        habit = self.db.get(Habit, habit_id)
+        if not habit:
+            raise EntityNotFoundError("Habit", habit_id)
+
+        logs = list(
+            self.db.exec(
+                select(HabitLog).where(
+                    HabitLog.habit_id == habit_id,
+                    HabitLog.date_str >= start.isoformat(),
+                    HabitLog.date_str <= end.isoformat(),
+                )
+            ).all()
+        )
+        log_by_date = {log.date_str: log for log in logs}
+        goals = list(
+            self.db.exec(
+                select(HabitGoalHistory)
+                .where(HabitGoalHistory.habit_id == habit_id, HabitGoalHistory.effective_from <= end.isoformat())
+                .order_by(HabitGoalHistory.effective_from)
+                .limit(_AI_MAX_HABIT_GOALS + 1)
+            ).all()
+        )
+        goals_truncated = len(goals) > _AI_MAX_HABIT_GOALS
+        goals = goals[:_AI_MAX_HABIT_GOALS]
+
+        def target_for(day_value: str) -> float:
+            target = habit.target_value
+            for goal in goals:
+                if goal.effective_from <= day_value:
+                    target = goal.target_value
+                else:
+                    break
+            return target
+
+        expected_dates = self._expected_dates(start, end, habit.frequency)
+        days: list[dict[str, Any]] = []
+        counts = {
+            "completed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "pending": 0,
+            "in_progress": 0,
+            "below_target": 0,
+            "no_log": 0,
+        }
+        numeric_values: list[float] = []
+        current = start
+        while current <= end:
+            day_value = current.isoformat()
+            log = log_by_date.get(day_value)
+            target = target_for(day_value)
+            if log is None:
+                state = "no_log"
+                counts[state] += 1
+                entry: dict[str, Any] = {
+                    "date": day_value,
+                    "status": state,
+                    "has_log": False,
+                    "value": None,
+                    "target_value": target,
+                    "target_met": None,
+                }
+            else:
+                value = float(log.value or 0)
+                if habit.habit_type == "numeric" and log.status not in {"failed", "skipped"} and value < target:
+                    state = "below_target"
+                    counts[state] += 1
+                else:
+                    state = log.status or "pending"
+                    if state not in counts:
+                        counts["pending"] += 1
+                        state = "pending"
+                    else:
+                        counts[state] += 1
+                if habit.habit_type == "numeric" and log.status not in {"skipped", "failed"}:
+                    numeric_values.append(value)
+                entry = {
+                    "date": day_value,
+                    "status": state,
+                    "raw_status": log.status,
+                    "has_log": True,
+                    "value": value,
+                    "notes": log.notes or "",
+                    "target_value": target,
+                    "target_met": state == "completed" or (habit.habit_type == "numeric" and value >= target),
+                }
+            days.append(entry)
+            current += timedelta(days=1)
+
+        logged_days = len(logs)
+        completed = counts["completed"]
+        meaningful_logged = sum(
+            counts[key] for key in ("completed", "failed", "skipped", "pending", "in_progress", "below_target")
+        )
+        completion_rate = round(100.0 * completed / meaningful_logged, 2) if meaningful_logged else None
+        expected_completion_rate = round(100.0 * completed / len(expected_dates), 2) if expected_dates else None
+        missing = [entry["date"] for entry in days if entry["status"] == "no_log" and entry["date"] in expected_dates]
+        goal_history = [
+            {"target_value": goal.target_value, "effective_from": goal.effective_from}
+            for goal in goals
+        ]
+
+        return {
+            "habit": {
+                "id": habit.id,
+                "name": habit.name,
+                "habit_type": habit.habit_type,
+                "target_value": habit.target_value,
+                "unit": habit.unit,
+                "frequency": habit.frequency,
+            },
+            "range": {"start_date": start.isoformat(), "end_date": end.isoformat()},
+            "logged_days": logged_days,
+            "expected_days": len(expected_dates) if expected_dates else None,
+            "missing_log_days": missing,
+            "counts": counts,
+            "completion_rate": completion_rate,
+            "expected_completion_rate": expected_completion_rate,
+            "numeric_total": round(sum(numeric_values), 4) if numeric_values else None,
+            "numeric_average": round(sum(numeric_values) / len(numeric_values), 4) if numeric_values else None,
+            "goal_history": goal_history,
+            "days": days,
+            "truncated": goals_truncated,
+            "warnings": (
+                ([] if expected_dates else ["This custom frequency has no computable expected-day schedule."])
+                + (["Habit goal history was limited; results may omit older goal changes."] if goals_truncated else [])
+            ),
+        }
 
     def create_habit(self, req: HabitCreate) -> Habit:
         # UUIDv7 ids are assigned client-side at construction (default_factory), not

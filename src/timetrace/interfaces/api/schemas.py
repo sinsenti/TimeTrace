@@ -1,7 +1,7 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
 from timetrace.config import settings
 from timetrace.core.query_spec import (
@@ -166,12 +166,28 @@ class TimerSplitRequest(BaseModel):
 
 
 class DayReviewCreate(BaseModel):
-    date_str: str
-    rating: int | None = 3
-    highlights: str | None = ""
-    friction: str | None = ""
-    notes: str | None = ""
-    review_skipped: bool | None = False
+    """A day review addressed by its local calendar date.
+
+    The date is deliberately a strict local ``YYYY-MM-DD`` value rather than a datetime or a
+    database UUID: it is the natural key used by the revision UI and by AI draft staleness
+    checks. Text limits keep both the API and the AI proposal path on the same contract.
+    """
+
+    date_str: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    rating: StrictInt | None = Field(default=3, ge=1, le=5)
+    highlights: str | None = Field(default="", max_length=10000)
+    friction: str | None = Field(default="", max_length=10000)
+    notes: str | None = Field(default="", max_length=10000)
+    review_skipped: StrictBool | None = False
+
+    @field_validator("date_str")
+    @classmethod
+    def validate_date_str(cls, value: str) -> str:
+        try:
+            date.fromisoformat(value)
+        except ValueError as exc:
+            raise ValueError("date_str must be a valid local date in YYYY-MM-DD format") from exc
+        return value
 
 
 class TaskReviewCreate(BaseModel):
@@ -680,6 +696,7 @@ class AISettingsResponse(BaseModel):
     quickadd_fallback_enabled: bool
     redact_before_send: bool
     preview_on_calendar: bool
+    data_scope: dict[str, bool] = Field(default_factory=dict)
     scheduling_window_days: int
     batch_undo_retention_days: int
     scheduling_day_start: str
@@ -697,6 +714,7 @@ class AISettingsUpdateRequest(BaseModel):
     quickadd_fallback_enabled: bool | None = None
     redact_before_send: bool | None = None
     preview_on_calendar: bool | None = None
+    data_scope: dict[str, StrictBool] | None = None
     scheduling_window_days: int | None = Field(default=None, ge=1, le=90)
     batch_undo_retention_days: int | None = Field(default=None, ge=1, le=3650)
     scheduling_day_start: str | None = None

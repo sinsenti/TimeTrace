@@ -12,7 +12,8 @@ const AI_UI_KIND_LABELS = {
     resize: 'RESIZE',
     split: 'SPLIT',
     add: 'ADD',
-    remove: 'REMOVE'
+    remove: 'REMOVE',
+    review: 'REVIEW'
 };
 
 function aiFormatLocalDt(raw) {
@@ -45,6 +46,15 @@ function aiDescribeDraftItem(item) {
         }
     } else if (item.entity_type === 'task') {
         parts.push(item.display_title || proposed.title || baseline.title || '(untitled task)');
+    } else if (item.entity_type === 'day_review') {
+        const date = proposed.date_str || baseline.date_str || item.target_id || 'Day review';
+        const rating = proposed.rating == null ? '' : `rating ${proposed.rating}/5`;
+        parts.push(date);
+        if (rating) parts.push(rating);
+        const highlights = typeof proposed.highlights === 'string' ? proposed.highlights.trim() : '';
+        const friction = typeof proposed.friction === 'string' ? proposed.friction.trim() : '';
+        if (highlights) parts.push(`Highlights: ${highlights}`);
+        if (friction) parts.push(`Friction: ${friction}`);
     } else {
         parts.push(item.entity_type || 'item');
     }
@@ -52,7 +62,7 @@ function aiDescribeDraftItem(item) {
 }
 
 function aiBadgeForItem(item) {
-    const kind = item.ui_kind || item.op;
+    const kind = item.entity_type === 'day_review' ? 'review' : (item.ui_kind || item.op);
     const badge = document.createElement('span');
     const cls = AI_UI_KIND_LABELS[kind] ? kind : (item.op || 'add');
     badge.className = `ai-badge ai-badge-${cls}`;
@@ -89,12 +99,13 @@ function aiBuildDraftItemNode(item, batch, options) {
     titleRow.appendChild(aiBadgeForItem(item));
     const titleSpan = document.createElement('span');
     titleSpan.className = 'ai-draft-item-title';
-    const [titleText] = aiDescribeDraftItem(item);
+    const descriptionParts = aiDescribeDraftItem(item);
+    const [titleText] = descriptionParts;
     titleSpan.textContent = titleText;
     titleRow.appendChild(titleSpan);
     body.appendChild(titleRow);
 
-    const [, metaText] = aiDescribeDraftItem(item);
+    const metaText = descriptionParts.slice(1).join(' · ');
     if (metaText) {
         const meta = document.createElement('div');
         meta.className = 'ai-draft-item-meta';
@@ -278,6 +289,48 @@ function aiToggleInlineEdit(row, item, batch) {
         markUneditable(tagsInput, 'tags');
         aiAddEditField(fieldsWrap, 'Tags', tagsInput);
         addCollector('tags', () => tagsInput.value);
+    } else if (item.entity_type === 'day_review') {
+        const dateInput = document.createElement('input');
+        dateInput.type = 'date';
+        dateInput.value = proposed.date_str || item.target_id || '';
+        dateInput.readOnly = true;
+        dateInput.title = 'The review date is fixed for this proposal.';
+        aiAddEditField(fieldsWrap, 'Date', dateInput);
+
+        const ratingSelect = document.createElement('select');
+        [1, 2, 3, 4, 5].forEach((rating) => {
+            const opt = document.createElement('option');
+            opt.value = String(rating);
+            opt.textContent = `${rating}/5`;
+            if (Number(proposed.rating) === rating) opt.selected = true;
+            ratingSelect.appendChild(opt);
+        });
+        aiAddEditField(fieldsWrap, 'Rating', ratingSelect);
+        addCollector('rating', () => Number(ratingSelect.value));
+
+        const highlightsInput = document.createElement('textarea');
+        highlightsInput.rows = 3;
+        highlightsInput.value = proposed.highlights || '';
+        aiAddEditField(fieldsWrap, 'Highlights', highlightsInput);
+        addCollector('highlights', () => highlightsInput.value);
+
+        const frictionInput = document.createElement('textarea');
+        frictionInput.rows = 3;
+        frictionInput.value = proposed.friction || '';
+        aiAddEditField(fieldsWrap, 'Friction', frictionInput);
+        addCollector('friction', () => frictionInput.value);
+
+        const notesInput = document.createElement('textarea');
+        notesInput.rows = 3;
+        notesInput.value = proposed.notes || '';
+        aiAddEditField(fieldsWrap, 'Notes', notesInput);
+        addCollector('notes', () => notesInput.value);
+
+        const skippedInput = document.createElement('input');
+        skippedInput.type = 'checkbox';
+        skippedInput.checked = Boolean(proposed.review_skipped);
+        aiAddEditField(fieldsWrap, 'Mark as skipped', skippedInput);
+        addCollector('review_skipped', () => skippedInput.checked);
     } else if (item.entity_type === 'task') {
         const titleInput = document.createElement('input');
         titleInput.type = 'text';

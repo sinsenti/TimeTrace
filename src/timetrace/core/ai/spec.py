@@ -134,9 +134,100 @@ class AIToolGateway(Protocol):
         """Returns SQL-backed logged/scheduled time summaries for a bounded range."""
         ...
 
+    def list_habits(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        habit_id: str | None = None,
+        include_logs: bool = True,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        """Returns bounded habit definitions, logs, and goal history for local dates."""
+        ...
+
+    def get_habit_progress(self, *, habit_id: str, start_date: str, end_date: str) -> dict[str, Any]:
+        """Returns deterministic progress for one habit and local date range."""
+        ...
+
+    def get_day_summary(self, date_str: str) -> dict[str, Any]:
+        """Returns the existing revision summary for one local calendar date."""
+        ...
+
+    def list_day_reviews(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_skipped: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Lists bounded day reviews by local date."""
+        ...
+
+    def get_task_review(self, task_id: str) -> dict[str, Any]:
+        """Returns one task review together with the task title."""
+        ...
+
+    def list_task_reviews(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        task_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Lists task reviews with resolved task titles."""
+        ...
+
+    def list_rating_definitions(self) -> list[dict[str, Any]]:
+        """Lists custom rating definitions without writing anything."""
+        ...
+
+    def list_rating_entries(
+        self,
+        *,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        include_dismissed: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Lists custom rating entries with best-effort target labels."""
+        ...
+
+    def get_timer_status(self) -> dict[str, Any]:
+        """Returns active timer and idle state; this is read-only."""
+        ...
+
+    def get_reflection_context(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_timer: bool = False,
+    ) -> dict[str, Any]:
+        """Returns compact deterministic cross-domain context for a bounded period."""
+        ...
+
     # ------------------------------------------------------------------
     # Confirmation-gated settings proposal
     # ------------------------------------------------------------------
+
+    def propose_day_review(
+        self,
+        *,
+        date_str: str,
+        rating: int,
+        highlights: str = "",
+        friction: str = "",
+        notes: str = "",
+        review_skipped: bool = False,
+        rationale: str = "",
+    ) -> dict[str, Any]:
+        """Proposes creating or updating a day review; it never writes the review row."""
+        ...
 
     def propose_remembered_instruction(self, instruction: str) -> dict[str, Any]:
         """Creates a pending custom-instructions proposal without changing AISettings.

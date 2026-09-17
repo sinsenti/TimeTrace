@@ -156,6 +156,20 @@
                 </div>
                 <input type="checkbox" id="ai_setting_preview_on_calendar" class="w-4 h-4 accent-purple-600 rounded">
             </div>
+
+            <div class="ai-scope-section">
+                <div class="ai-toggle-row-label">Data sent to the assistant</div>
+                <div class="ai-toggle-row-hint">Existing task/session access stays enabled. New sensitive domains are disabled until you opt in.</div>
+                <div id="ai_data_scope_provider_warning" class="ai-scope-warning"></div>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_tasks"> <span>Tasks (titles, descriptions, tags)</span></label>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_sessions"> <span>Sessions (times, tags, notes)</span></label>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_habits"> <span>Habits and habit logs</span></label>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_reviews"> <span>Day and task reviews</span></label>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_ratings"> <span>Custom ratings and notes</span></label>
+                <label class="ai-scope-option"><input type="checkbox" id="ai_scope_timer"> <span>Active timer and idle state</span></label>
+                <div class="ai-toggle-row-hint">Redaction is not complete anonymization and does not protect arbitrary private content.</div>
+            </div>
+
             <div class="ai-toggle-row">
                 <div>
                     <div class="ai-toggle-row-label">Scheduling window, days</div>

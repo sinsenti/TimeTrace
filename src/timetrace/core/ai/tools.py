@@ -236,14 +236,11 @@ def find_free_slots(
 
 @tool
 def get_time_stats(query: dict[str, Any], runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
-    """Runs an allow-listed statistics query over the user's sessions/tasks, e.g. "how much time
-    on #deepwork last week" or "how many sessions per task this month". `query` is a small
-    structured dict: `source` (`"sessions"` or `"tasks"`), `measure` (one of `"sum_duration"`,
-    `"session_count"`, `"avg_session_length"`, `"task_count"`, `"completion_rate"`), an optional
-    `group_by` list of dimensions (`"day"`, `"week"`, `"month"`, `"tag"`, `"task"`, `"status"`,
-    `"priority"`, `"category"`), an optional `filters` list, and an optional `date_range`. For
-    session queries, `session_time_relative` filters accept `past`, `future`, or `ongoing`. Use
-    this instead of trying to compute totals yourself from `list_sessions` output.
+    """Runs a source-specific, allow-listed statistics query. Sources include sessions/tasks plus
+    habit logs, day reviews, and rating entries; each source has its own valid measures, dimensions,
+    and filters. Use this instead of trying to compute totals yourself from raw read-tool output.
+    The query supports an optional local `date_range`, `group_by`, `filters`, and a result `limit`.
+    Session queries may use `session_time_relative` filters (`past`, `future`, `ongoing`).
     """
     _log_call("get_time_stats", query=query)
     return runtime.context.gateway.get_time_stats(query)
@@ -346,9 +343,216 @@ def get_weekly_review(
     return runtime.context.gateway.get_weekly_review(start=start, end=end)
 
 
+@tool
+def list_habits(
+    start_date: str,
+    end_date: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    habit_id: str | None = None,
+    include_logs: bool = True,
+    limit: int = 50,
+) -> dict[str, Any]:
+    """Lists habit definitions and daily logs for a bounded local YYYY-MM-DD range. The result
+    includes goal history, explicit log statuses, and ``truncated`` metadata. Missing logs are
+    not failures. Use a real habit id returned here when narrowing with ``habit_id``.
+    """
+    _log_call("list_habits", start_date=start_date, end_date=end_date, habit_id=habit_id, limit=limit)
+    return _log_result(
+        "list_habits",
+        runtime.context.gateway.list_habits(
+            start_date=start_date,
+            end_date=end_date,
+            habit_id=habit_id,
+            include_logs=include_logs,
+            limit=limit,
+        ),
+    )
+
+
+@tool
+def get_habit_progress(
+    habit_id: str,
+    start_date: str,
+    end_date: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+) -> dict[str, Any]:
+    """Returns deterministic progress for one habit. It distinguishes no log, failed, skipped,
+    pending, in-progress, completed, and numeric below-target days; do not infer absent logs as failures.
+    """
+    _log_call("get_habit_progress", habit_id=habit_id, start_date=start_date, end_date=end_date)
+    return _log_result(
+        "get_habit_progress",
+        runtime.context.gateway.get_habit_progress(habit_id=habit_id, start_date=start_date, end_date=end_date),
+    )
+
+
+@tool
+def get_day_summary(date_str: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Returns the existing revision summary for one local YYYY-MM-DD day: sessions, task
+    information, logged hours, completed tasks, breakdowns, the saved review, and day ratings.
+    Read this first before proposing a day-review draft.
+    """
+    _log_call("get_day_summary", date_str=date_str)
+    return _log_result("get_day_summary", runtime.context.gateway.get_day_summary(date_str))
+
+
+@tool
+def list_day_reviews(
+    start_date: str,
+    end_date: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    include_skipped: bool = False,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Lists day reviews in a bounded local date range. Skipped reviews are excluded by default
+    and the result reports truncation explicitly.
+    """
+    _log_call("list_day_reviews", start_date=start_date, end_date=end_date, limit=limit)
+    return _log_result(
+        "list_day_reviews",
+        runtime.context.gateway.list_day_reviews(
+            start_date=start_date, end_date=end_date, include_skipped=include_skipped, limit=limit
+        ),
+    )
+
+
+@tool
+def get_task_review(task_id: str, runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Returns one task's review, including its real task id/title, difficulty, what went well,
+    blockers, and key takeaways. Use a real id from another read tool.
+    """
+    _log_call("get_task_review", task_id=task_id)
+    return _log_result("get_task_review", runtime.context.gateway.get_task_review(task_id))
+
+
+@tool
+def list_task_reviews(
+    runtime: ToolRuntime[AIAgentContext, Any],
+    start_date: str | None = None,
+    end_date: str | None = None,
+    task_id: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Lists task reviews with task titles and ids. Optional dates are local YYYY-MM-DD
+    creation-date bounds; the response includes truncation metadata.
+    """
+    _log_call("list_task_reviews", start_date=start_date, end_date=end_date, task_id=task_id, limit=limit)
+    return _log_result(
+        "list_task_reviews",
+        runtime.context.gateway.list_task_reviews(
+            start_date=start_date, end_date=end_date, task_id=task_id, limit=limit
+        ),
+    )
+
+
+@tool
+def list_rating_definitions(runtime: ToolRuntime[AIAgentContext, Any]) -> list[dict[str, Any]]:
+    """Lists custom rating definitions, score bounds, target types, required state, and
+    descriptions. This is read-only.
+    """
+    _log_call("list_rating_definitions")
+    return _log_result("list_rating_definitions", runtime.context.gateway.list_rating_definitions())
+
+
+@tool
+def list_rating_entries(
+    runtime: ToolRuntime[AIAgentContext, Any],
+    target_type: str | None = None,
+    target_id: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    include_dismissed: bool = False,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Lists custom rating entries, optionally bounded by local creation dates or target.
+    Distinguishes day/task/session ratings and dismissed entries, resolving target labels where
+    possible. Missing ratings remain missing; they are not zero scores.
+    """
+    _log_call(
+        "list_rating_entries",
+        target_type=target_type,
+        target_id=target_id,
+        start_date=start_date,
+        end_date=end_date,
+        limit=limit,
+    )
+    return _log_result(
+        "list_rating_entries",
+        runtime.context.gateway.list_rating_entries(
+            target_type=target_type,
+            target_id=target_id,
+            start_date=start_date,
+            end_date=end_date,
+            include_dismissed=include_dismissed,
+            limit=limit,
+        ),
+    )
+
+
+@tool
+def get_timer_status(runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
+    """Returns the current running timer, task, tags, notes, elapsed/remaining time, idle state,
+    pending idle gap, and next scheduled session. It cannot start, stop, split, or resolve a
+    timer.
+    """
+    _log_call("get_timer_status")
+    return _log_result("get_timer_status", runtime.context.gateway.get_timer_status())
+
+
+@tool
+def get_reflection_context(
+    start_date: str,
+    end_date: str,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    include_timer: bool = False,
+) -> dict[str, Any]:
+    """Returns compact deterministic context for holistic day/week/month analysis: logged vs
+    scheduled time, habits, day/task reviews, ratings, missing-data warnings, and optionally
+    timer state. Use this before making broad cross-domain claims.
+    """
+    _log_call("get_reflection_context", start_date=start_date, end_date=end_date, include_timer=include_timer)
+    return _log_result(
+        "get_reflection_context",
+        runtime.context.gateway.get_reflection_context(
+            start_date=start_date, end_date=end_date, include_timer=include_timer
+        ),
+    )
+
+
 # ---------------------------------------------------------------------------------------------
 # Confirmation-gated settings proposals
 # ---------------------------------------------------------------------------------------------
+
+
+@tool
+def propose_day_review(
+    date_str: str,
+    rating: int,
+    runtime: ToolRuntime[AIAgentContext, Any],
+    highlights: str = "",
+    friction: str = "",
+    notes: str = "",
+    review_skipped: bool = False,
+    rationale: str = "",
+) -> dict[str, Any]:
+    """Proposes a day review for explicit user approval. Normally call get_day_summary(date_str)
+    first. This creates only a pending AI draft; it does not save a DayReview row. Use a local
+    YYYY-MM-DD date and a rating from 1 through 5. Say proposed/drafted, never saved, until the
+    user accepts the draft.
+    """
+    _log_call("propose_day_review", date_str=date_str, rating=rating, rationale=rationale)
+    return _log_result(
+        "propose_day_review",
+        runtime.context.gateway.propose_day_review(
+            date_str=date_str,
+            rating=rating,
+            highlights=highlights,
+            friction=friction,
+            notes=notes,
+            review_skipped=review_skipped,
+            rationale=rationale,
+        ),
+    )
 
 
 @tool
@@ -681,6 +885,17 @@ ALL_TOOLS = [
     validate_schedule,
     get_daily_briefing,
     get_weekly_review,
+    list_habits,
+    get_habit_progress,
+    get_day_summary,
+    list_day_reviews,
+    get_task_review,
+    list_task_reviews,
+    list_rating_definitions,
+    list_rating_entries,
+    get_timer_status,
+    get_reflection_context,
+    propose_day_review,
     propose_remembered_instruction,
     propose_create_session,
     propose_update_session,

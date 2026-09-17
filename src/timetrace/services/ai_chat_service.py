@@ -64,6 +64,7 @@ from timetrace.interfaces.api.schemas import (
     AIInstructionProposalResponse,
     AIQuickAddParseResponse,
     AIStatusResponse,
+    DayReviewCreate,
 )
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.ai_draft_service import AIDraftService
@@ -98,6 +99,9 @@ def _draft_display_title(
     baseline = baseline or {}
     if item.entity_type == "task":
         return proposed.get("title") or baseline.get("title") or "(untitled task)"
+
+    if item.entity_type == "day_review":
+        return proposed.get("date_str") or baseline.get("date_str") or item.target_id or "Day review"
 
     if item.entity_type == "session":
         task_id = proposed.get("task_id") or baseline.get("task_id") or (applied_after or {}).get("task_id")
@@ -375,6 +379,7 @@ class AIChatService:
             conversation_id=conversation_id,
             source_message_id=user_msg.id,
             source_message_text=user_text,
+            data_scope=AISettingsService(self.db).get_data_scope(),
         )
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
@@ -497,6 +502,7 @@ class AIChatService:
             conversation_id=conversation_id,
             source_message_id=user_msg.id,
             source_message_text=user_text,
+            data_scope=AISettingsService(self.db).get_data_scope(),
         )
 
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
@@ -692,7 +698,16 @@ class AIChatService:
             raise ValidationError(f"draft item {item_id} is not pending (status={item.status}); cannot edit")
 
         current = json.loads(item.proposed_json or "{}")
+        if item.entity_type == "day_review" and "date_str" in proposed_updates:
+            if proposed_updates["date_str"] != item.target_id:
+                raise ValidationError("day-review draft dates cannot be changed")
         current.update(proposed_updates)
+
+        if item.entity_type == "day_review":
+            try:
+                DayReviewCreate(**current)
+            except Exception as exc:
+                raise ValidationError(f"invalid day-review draft: {exc}") from exc
 
         start_raw = current.get("start_time")
         end_raw = current.get("end_time")

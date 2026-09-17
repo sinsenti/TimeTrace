@@ -221,7 +221,10 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
 - Tool surface (`core/ai/tools.py`, `services/ai_tool_gateway.py`): read tools
   (`list_tasks`/`get_task`/`resolve_task_reference`/`list_sessions`/`find_free_slots`/
   `get_time_stats`/`search_tasks`/`find_conflicts`/`get_task_progress`/
-  `get_daily_briefing`/`get_weekly_review`/`validate_schedule`) plus write tools that only ever
+  `get_daily_briefing`/`get_weekly_review`/`validate_schedule`, plus bounded read tools for habits,
+  day/task reviews, custom ratings, active timer/idle state, and deterministic `get_reflection_context`.
+  `propose_day_review` creates only a pending day-review draft; it cannot write a review row directly.
+  Privacy scope defaults to tasks/sessions and is explicitly opt-in for sensitive domains. Write tools that only ever
   create drafts (`propose_create_session`,
   `propose_update_session`, `propose_delete_session`, `propose_split_session`,
   `propose_create_task`, `propose_update_task`, `propose_delete_task`, `propose_create_subtasks`,

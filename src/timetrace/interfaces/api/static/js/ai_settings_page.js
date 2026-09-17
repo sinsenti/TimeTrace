@@ -161,6 +161,7 @@ async function aiLoadProviders() {
     list.textContent = '';
     try {
         const providers = await api.get('/api/ai/providers');
+        aiUpdateDataScopeWarning(providers);
         if (providers.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'ai-settings-hint';
@@ -366,12 +367,28 @@ async function aiTestProviderForm() {
     }
 }
 
+function aiUpdateDataScopeWarning(providers) {
+    const warning = document.getElementById('ai_data_scope_provider_warning');
+    if (!warning) return;
+    const active = (providers || []).find((provider) => provider.is_active);
+    warning.textContent = active && active.provider !== 'ollama' && active.provider !== 'pi'
+        ? 'Cloud provider active: review, habit, rating, and timer text may leave this machine when enabled.'
+        : active && active.provider === 'pi'
+            ? 'Pi uses its configured model runtime; review sensitive domains before enabling them.'
+            : 'Sensitive domains are sent only to the active provider when enabled.';
+}
+
 async function aiLoadBehaviorSettings() {
     try {
         const s = await api.get('/api/ai/settings');
         document.getElementById('ai_setting_quickadd_fallback').checked = Boolean(s.quickadd_fallback_enabled);
         document.getElementById('ai_setting_redact_before_send').checked = Boolean(s.redact_before_send);
         document.getElementById('ai_setting_preview_on_calendar').checked = Boolean(s.preview_on_calendar);
+        const scope = s.data_scope || {};
+        ['tasks', 'sessions', 'habits', 'reviews', 'ratings', 'timer'].forEach((domain) => {
+            const checkbox = document.getElementById(`ai_scope_${domain}`);
+            if (checkbox) checkbox.checked = Boolean(scope[domain]);
+        });
         document.getElementById('ai_setting_scheduling_window_days').value = s.scheduling_window_days;
         document.getElementById('ai_setting_batch_undo_retention_days').value = s.batch_undo_retention_days;
         document.getElementById('ai_setting_scheduling_day_start').value = s.scheduling_day_start || '09:00';
@@ -392,6 +409,14 @@ async function aiSaveBehaviorSettings() {
         quickadd_fallback_enabled: document.getElementById('ai_setting_quickadd_fallback').checked,
         redact_before_send: document.getElementById('ai_setting_redact_before_send').checked,
         preview_on_calendar: document.getElementById('ai_setting_preview_on_calendar').checked,
+        data_scope: {
+            tasks: document.getElementById('ai_scope_tasks').checked,
+            sessions: document.getElementById('ai_scope_sessions').checked,
+            habits: document.getElementById('ai_scope_habits').checked,
+            reviews: document.getElementById('ai_scope_reviews').checked,
+            ratings: document.getElementById('ai_scope_ratings').checked,
+            timer: document.getElementById('ai_scope_timer').checked
+        },
         scheduling_window_days: parseInt(document.getElementById('ai_setting_scheduling_window_days').value, 10),
         batch_undo_retention_days: parseInt(document.getElementById('ai_setting_batch_undo_retention_days').value, 10),
         scheduling_day_start: document.getElementById('ai_setting_scheduling_day_start').value,

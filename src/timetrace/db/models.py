@@ -286,6 +286,12 @@ class AISettings(SQLModel, table=True):
     quickadd_fallback_enabled: bool = Field(default=True)
     redact_before_send: bool = Field(default=True)
     preview_on_calendar: bool = Field(default=True)
+    # JSON keeps the privacy scope extensible without another migration for every domain. New
+    # sensitive domains default to disabled; tasks/sessions retain the assistant's existing
+    # behavior for installations that have not opted into the additional context.
+    data_scope_json: str = Field(
+        default='{"tasks": true, "sessions": true, "habits": false, "reviews": false, "ratings": false, "timer": false}'
+    )
     scheduling_window_days: int = Field(default=14)
     batch_undo_retention_days: int = Field(default=30)
     # Scheduling preferences are structured instead of hidden in prompt text. Empty

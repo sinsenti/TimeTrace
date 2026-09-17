@@ -1,7 +1,7 @@
 import logging
 
 from timetrace.core.ai.prompts import build_system_prompt
-from timetrace.core.ai.redaction import sanitize_text
+from timetrace.core.ai.redaction import detect_phone_pii, sanitize_text
 from timetrace.core.ai.tools import _log_call, _log_result
 
 
@@ -14,6 +14,23 @@ def test_redaction_preserves_dates_and_uuid_ids():
     assert "550e8400-e29b-41d4-a716-446655440000" in redacted
     assert "[redacted-phone]" in redacted
     assert "555-123-4567" not in redacted
+
+
+def test_redaction_redacts_urls_without_corrupting_embedded_keys():
+    value = "See https://example.test/2026-09-04/550e8400-e29b-41d4-a716-446655440000"
+
+    redacted = sanitize_text(value)
+
+    assert "[redacted-url]" in redacted
+    assert "https://example.test" not in redacted
+    assert "2026-09-04" in redacted
+    assert "550e8400-e29b-41d4-a716-446655440000" in redacted
+
+
+def test_phone_detector_preserves_dates_and_uuid_ids():
+    value = "Call 2026-09-04 about 550e8400-e29b-41d4-a716-446655440000 at 555-123-4567"
+    matches = detect_phone_pii(value)
+    assert [match["value"] for match in matches] == ["555-123-4567"]
 
 
 def test_ai_tool_logs_do_not_include_arguments_or_results(caplog):

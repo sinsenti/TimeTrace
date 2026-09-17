@@ -34,7 +34,9 @@ days, daily caps, and scheduling windows.
   raw provider exceptions. Logs may contain opaque IDs, provider/model names, counts, durations, and
   error classes.
 - Redact content before sending it to a third-party provider according to the configured privacy
-  settings. Do not use real providers or personal data in automated tests; use fake models/gateways.
+  settings. The AI data scope defaults to tasks/sessions only; habits, reviews, ratings, and timer
+  context require explicit opt-in. Redaction is not complete anonymization. Do not use real providers
+  or personal data in automated tests; use fake models/gateways.
 - Do not enable LangSmith tracing or add provider/network calls to tests.
 - Fernet keys and provider configuration must remain masked in API responses and UI output.
 
@@ -48,9 +50,11 @@ days, daily caps, and scheduling windows.
 - Keep `find_free_slots` aware of proposals already made in the current batch and honor the saved
   scheduling hours, allowed days, break, and daily-cap preferences.
 - Read-only insights (`get_daily_briefing`, `get_weekly_review`, `find_conflicts`,
-  `get_task_progress`, and `search_tasks`) must use deterministic services/query SQL. They may
-  include pending same-turn drafts in planning views, but never persist domain rows.
-- Do not add timer, habit, rating, review, or external-sync writes without a separately settled scope.
+  `get_task_progress`, `search_tasks`, habits, ratings, reviews, and reflection context) must use
+  deterministic services/query SQL. They may include pending same-turn drafts in planning views,
+  but never persist domain rows.
+- Timer controls and habit/rating/review writes remain out of scope. Day-review create/update is
+  allowed only as a pending draft and must pass through `AIDraftService.accept_items` after approval.
 
 ## Required verification
 
@@ -83,7 +87,8 @@ Pi authentication with `/login`, then select an exact `provider/model` ID (such 
 for a non-standard install, set `TIMETRACE_PI_PACKAGE_DIR` to the Pi package root. TimeTrace does
 not store or receive the Pi API key;
 Pi is used only for model inference, while TimeTrace retains ownership of all tools and draft approval.
-It does not
-support timer/habit/rating/review writes, embeddings/RAG, cross-conversation semantic memory,
-external integrations, multi-user ownership, or a CLI AI command. Do not add groundwork for those
-features without an explicit owner decision.
+It does not support timer controls or direct habit/rating/review writes: those domains are
+read-only through explicit typed tools, while day-review create/update is an approval-gated draft.
+Embeddings/RAG, cross-conversation semantic memory, external integrations, multi-user ownership, and
+a CLI AI command are also out of scope. Do not add groundwork for those features without an explicit
+owner decision.

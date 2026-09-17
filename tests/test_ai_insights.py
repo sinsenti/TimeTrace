@@ -151,6 +151,16 @@ def test_schedule_validation_counts_existing_sessions_for_the_whole_local_day(db
     assert result["daily_minutes"][local_day.date().isoformat()] == 100
 
 
+def test_ai_settings_api_round_trips_data_scope(client):
+    response = client.put("/api/ai/settings", json={"data_scope": {"habits": True, "reviews": True}})
+    assert response.status_code == 200
+    assert response.json()["data_scope"]["habits"] is True
+    assert response.json()["data_scope"]["sessions"] is True
+
+    invalid = client.put("/api/ai/settings", json={"data_scope": {"habits": "yes"}})
+    assert invalid.status_code == 422
+
+
 def test_ai_settings_api_round_trips_scheduling_preferences(client):
     response = client.put(
         "/api/ai/settings",

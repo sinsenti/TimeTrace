@@ -20,9 +20,10 @@ from typing import Any
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.db.models import AIDraftBatch, AIDraftItem, AISettings, Task, utc_now
+from timetrace.db.models import AIDraftBatch, AIDraftItem, AISettings, DayReview, Task, utc_now
 from timetrace.interfaces.api.schemas import (
     CompletionPolicyPrompt,
+    DayReviewCreate,
     SessionCreate,
     SessionUpdate,
     TaskCreate,
@@ -79,6 +80,14 @@ class AIDraftService:
         "notes",
         "review_skipped",
         "duration_seconds",
+    )
+    _DAY_REVIEW_SNAPSHOT_FIELDS = (
+        "date_str",
+        "rating",
+        "highlights",
+        "friction",
+        "notes",
+        "review_skipped",
     )
     _TASK_SNAPSHOT_FIELDS = (
         "title",
@@ -153,8 +162,20 @@ class AIDraftService:
         batch = self._get_batch(batch_id)
         if op not in ("create", "update", "delete"):
             raise ValidationError(f"invalid draft op '{op}'")
-        if entity_type not in ("session", "task"):
+        if entity_type not in ("session", "task", "day_review"):
             raise ValidationError(f"invalid entity_type '{entity_type}'")
+        if entity_type == "day_review":
+            if op not in ("create", "update"):
+                raise ValidationError("day_review drafts support only create and update")
+            if not target_id or not isinstance(target_id, str):
+                raise ValidationError("day_review drafts require date_str as target_id")
+            proposed_data = _json_loads(_json_dumps(proposed_json)) or {}
+            if proposed_data.get("date_str") != target_id:
+                raise ValidationError("day_review target_id must equal proposed date_str")
+            try:
+                DayReviewCreate(**proposed_data)
+            except Exception as exc:
+                raise ValidationError(f"invalid day_review draft: {exc}") from exc
 
         next_position = self.db.exec(
             select(AIDraftItem.position).where(AIDraftItem.batch_id == batch_id).order_by(AIDraftItem.position.desc())
@@ -220,10 +241,22 @@ class AIDraftService:
         return list(self.db.exec(query).all())
 
     def is_stale(self, item: AIDraftItem) -> bool:
-        """Computed at read time, never stored. A `create` item has no live target to compare
-        against and is never stale. A vanished target (deleted between propose and accept) is
-        always stale."""
-        if item.op == "create" or not item.target_id:
+        """Computed at read time, never stored. Natural-key creates such as day reviews can
+        become stale when a row is created at the proposed date before acceptance; ordinary
+        creates have no live target to compare against. A vanished update target is always stale.
+        """
+        if item.op == "create":
+            if item.entity_type != "day_review" or not item.target_id:
+                return False
+            live = self._fetch_live_snapshot(item.entity_type, item.target_id)
+            if item.status == "pending":
+                return live is not None
+            if item.status == "applied":
+                return live is None or live != _json_loads(item.applied_after_json)
+            if item.status == "undone":
+                return live is not None
+            return False
+        if not item.target_id:
             return False
         if item.baseline_json is None:
             return False
@@ -278,6 +311,9 @@ class AIDraftService:
                 return self._fail_item(item, "target no longer exists", actor=actor)
             if item.baseline_json is not None and live_before != json.loads(item.baseline_json):
                 return self._fail_item(item, "stale: target changed since this was proposed", actor=actor)
+        elif entity_type == "day_review" and target_id:
+            if self._fetch_live_snapshot(entity_type, target_id) is not None:
+                return self._fail_item(item, "stale: a day review now exists for this date", actor=actor)
 
         proposed = _json_loads(item.proposed_json) or {}
 
@@ -551,6 +587,15 @@ class AIDraftService:
                 self.db.commit()
                 self.db.refresh(item)
                 return {"item_id": item.id, "status": "conflict", "error": item.error, "completion_policy": None}
+        elif entity_type == "day_review" and item.target_id:
+            if self._fetch_live_snapshot(entity_type, item.target_id) is not None:
+                item.status = "conflict"
+                item.error = "target was recreated since this item was undone; left alone"
+                item.updated_at = utc_now()
+                self.db.add(item)
+                self.db.commit()
+                self.db.refresh(item)
+                return {"item_id": item.id, "status": "conflict", "error": item.error, "completion_policy": None}
 
         proposed = _json_loads(item.proposed_json) or {}
         ref_error = self._check_session_task_ref(entity_type, item.op, proposed)
@@ -659,6 +704,24 @@ class AIDraftService:
                 return None, target_id, None
             raise ValidationError(f"unsupported op '{op}' for entity_type 'session'")
 
+        if entity_type == "day_review":
+            date_str = target_id or payload.get("date_str")
+            if not date_str:
+                raise ValidationError("day_review requires date_str")
+            from timetrace.services.revision_service import RevisionService
+
+            if op == "delete":
+                RevisionService(self.db).delete_day_review(date_str)
+                return None, date_str, None
+            if op not in ("create", "update"):
+                raise ValidationError("day_review supports only create and update")
+            req_payload = {**payload, "date_str": date_str}
+            req = DayReviewCreate(**self._filter_fields(req_payload, DayReviewCreate))
+            result = RevisionService(self.db).save_day_review(req)
+            # ``date_str`` is the stable natural key for every subsequent stale/undo/reapply
+            # lookup. Do not substitute the row UUID here.
+            return self.normalize_day_review(result), date_str, None
+
         if entity_type == "task":
             tsvc = TaskService(self.db)
             if op == "create":
@@ -694,6 +757,9 @@ class AIDraftService:
             if not task:
                 return None
             return self.normalize_task(task)
+        if entity_type == "day_review":
+            review = self.db.exec(select(DayReview).where(DayReview.date_str == target_id)).first()
+            return self.normalize_day_review(review) if review else None
         raise ValidationError(f"unknown entity_type '{entity_type}'")
 
     # --- snapshot normalization (public: reuse from the tool-gateway track) ----------------
@@ -719,6 +785,19 @@ class AIDraftService:
             "notes": data.get("notes") or "",
             "review_skipped": bool(data.get("review_skipped") or False),
             "duration_seconds": data.get("duration_seconds"),
+        }
+
+    @classmethod
+    def normalize_day_review(cls, review: Any) -> dict[str, Any]:
+        """Canonical day-review snapshot; ``created_at`` is intentionally excluded."""
+        data = review if isinstance(review, dict) else review.model_dump()
+        return {
+            "date_str": data.get("date_str") or data.get("date"),
+            "rating": data.get("rating"),
+            "highlights": data.get("highlights") or "",
+            "friction": data.get("friction") or "",
+            "notes": data.get("notes") or "",
+            "review_skipped": bool(data.get("review_skipped") or False),
         }
 
     @classmethod

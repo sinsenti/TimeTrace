@@ -13,31 +13,36 @@ from timetrace.services.session_service import SessionService
 
 
 class TimerService:
-    def __init__(self, db: Session):
+    def __init__(self, db: Session | None):
         self.db = db
 
     def get_status(self) -> dict[str, Any]:
         status_data = timer_manager.get_status()
-        if status_data.get("task_id") and not status_data.get("task_title"):
+        if status_data.get("task_id") and not status_data.get("task_title") and self.db is not None:
             task_obj = self.db.get(Task, status_data["task_id"])
             if task_obj:
                 status_data["task_title"] = task_obj.title
 
-        if not status_data.get("is_running"):
+        upcoming_payload = None
+        if not status_data.get("is_running") and self.db is not None:
             now = datetime.now(UTC)
             # Merged: the earliest real future row or the next projected occurrence of a
-            # recurring series, whichever is sooner. Response shape is unchanged.
+            # recurring series, whichever is sooner.
             upcoming = SessionService(self.db).next_upcoming_occurrence()
             if upcoming:
                 up_start = ensure_utc(upcoming["start_time"])
-                status_data["next_session"] = {
+                upcoming_payload = {
                     "title": upcoming["title"],
                     "start_time": up_start.isoformat(),
                     "starts_in_minutes": max(1, int((up_start - now).total_seconds() / 60)),
                 }
-            else:
-                status_data["next_session"] = None
-
+        # Keep the existing next_session key for the UI and provide an explicit name for AI
+        # consumers. A running timer still reports the next item as null: the active timer is
+        # not logged work and must not be presented as a scheduled session.
+        status_data["next_session"] = upcoming_payload
+        status_data["next_scheduled_session"] = upcoming_payload
+        status_data["timer_mode"] = status_data.get("mode")
+        status_data["remaining_pomodoro_seconds"] = status_data.get("remaining_seconds")
         return status_data
 
     def start_timer(self, req: TimerStartRequest) -> dict[str, Any]:

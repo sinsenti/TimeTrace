@@ -35,46 +35,115 @@ from timetrace.core.ai.remember_intent import is_remember_intent
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.query_spec import AnalyticsQuery, Dimension, FilterField, Measure, QuerySource
 from timetrace.core.recurrence import is_occurrence_id
-from timetrace.db.models import AIDraftBatch, Task, generate_uuid7
+from timetrace.db.models import AIDraftBatch, DayReview, Task, generate_uuid7
 from timetrace.db.session import engine
-from timetrace.interfaces.api.schemas import QueryContextRequest
+from timetrace.interfaces.api.schemas import DayReviewCreate, QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.services.ai_provider_service import AI_DATA_SCOPE_DEFAULTS
 from timetrace.services.query_service import QueryService
 from timetrace.services.session_service import SessionService
 
 # ---------------------------------------------------------------------------------------------
 # get_time_stats allow-list (spec S6: "an allow-listed passthrough to QueryService.run ... pick
-# a small, safe subset of measures/dimensions"). This is deliberately narrower than the full
-# structured-query surface the human dashboard builder gets: an LLM tool call should be able to
-# ask "how much time on #tag last week" or "how many sessions per task this month", not run the
-# entire query vocabulary (habits/ratings/day-reviews, hour-of-day/weekday buckets, estimation
-# buckets) -- those stay out until there's an actual tool-calling use case for them.
+# a small, safe subset of measures/dimensions"). It is deliberately narrower than the human
+# dashboard vocabulary and is validated per source: a dimension allowed for sessions must not
+# become valid for habit logs, day reviews, or ratings merely because it is in a global set.
 # ---------------------------------------------------------------------------------------------
-_ALLOWED_STATS_SOURCES = {QuerySource.SESSIONS, QuerySource.TASKS}
-_ALLOWED_STATS_MEASURES = {
-    Measure.SUM_DURATION,
-    Measure.SESSION_COUNT,
-    Measure.AVG_SESSION_LENGTH,
-    Measure.TASK_COUNT,
-    Measure.COMPLETION_RATE,
-}
-_ALLOWED_STATS_DIMENSIONS = {
-    Dimension.DAY,
-    Dimension.WEEK,
-    Dimension.MONTH,
-    Dimension.TAG,
-    Dimension.TASK,
-    Dimension.STATUS,
-    Dimension.PRIORITY,
-    Dimension.CATEGORY,
-}
-_ALLOWED_STATS_FILTER_FIELDS = {d.value for d in _ALLOWED_STATS_DIMENSIONS} | {
-    FilterField.DURATION_SECONDS.value,
-    FilterField.HAS_TASK.value,
-    FilterField.NOTES.value,
-    FilterField.SESSION_TIME_RELATIVE.value,
+# Tool-level scope names intentionally follow the settings API rather than query-source names.
+# ``reviews`` covers day/task reviews; ``ratings`` covers definitions and rating entries.
+
+# Unlike the dashboard query registry, the conversational tool is intentionally narrower and
+# source-specific. This prevents a valid dimension for one source from becoming valid merely
+# because it is present in a global set.
+_STATS_CAPABILITIES = {
+    QuerySource.SESSIONS: {
+        "measures": {
+            Measure.SUM_DURATION,
+            Measure.SESSION_COUNT,
+            Measure.AVG_SESSION_LENGTH,
+            Measure.AVG_RATING,
+        },
+        "dimensions": {
+            Dimension.DAY,
+            Dimension.WEEK,
+            Dimension.MONTH,
+            Dimension.TAG,
+            Dimension.TASK,
+            Dimension.STATUS,
+            Dimension.PRIORITY,
+            Dimension.CATEGORY,
+        },
+        "filters": {
+            FilterField.DAY,
+            FilterField.WEEK,
+            FilterField.MONTH,
+            FilterField.TAG,
+            FilterField.TASK,
+            FilterField.STATUS,
+            FilterField.PRIORITY,
+            FilterField.CATEGORY,
+            FilterField.DURATION_SECONDS,
+            FilterField.HAS_TASK,
+            FilterField.NOTES,
+            FilterField.SESSION_TIME_RELATIVE,
+        },
+    },
+    QuerySource.TASKS: {
+        "measures": {Measure.TASK_COUNT, Measure.COMPLETION_RATE, Measure.AVG_RATING},
+        "dimensions": {
+            Dimension.DAY,
+            Dimension.WEEK,
+            Dimension.MONTH,
+            Dimension.STATUS,
+            Dimension.PRIORITY,
+            Dimension.CATEGORY,
+        },
+        "filters": {
+            FilterField.DAY,
+            FilterField.WEEK,
+            FilterField.MONTH,
+            FilterField.STATUS,
+            FilterField.PRIORITY,
+            FilterField.CATEGORY,
+        },
+    },
+    QuerySource.HABIT_LOGS: {
+        "measures": {Measure.HABIT_COMPLETION_RATE},
+        "dimensions": {Dimension.DAY, Dimension.WEEK, Dimension.MONTH, Dimension.WEEKDAY, Dimension.HABIT},
+        "filters": {FilterField.DAY, FilterField.WEEK, FilterField.MONTH, FilterField.WEEKDAY, FilterField.HABIT},
+    },
+    QuerySource.DAY_REVIEWS: {
+        "measures": {Measure.AVG_RATING},
+        "dimensions": {Dimension.DAY, Dimension.WEEK, Dimension.MONTH, Dimension.WEEKDAY},
+        "filters": {FilterField.DAY, FilterField.WEEK, FilterField.MONTH, FilterField.WEEKDAY},
+    },
+    QuerySource.RATING_ENTRIES: {
+        "measures": {Measure.AVG_RATING},
+        "dimensions": {
+            Dimension.DAY,
+            Dimension.WEEK,
+            Dimension.MONTH,
+            Dimension.WEEKDAY,
+            Dimension.RATING_TYPE,
+        },
+        "filters": {
+            FilterField.DAY,
+            FilterField.WEEK,
+            FilterField.MONTH,
+            FilterField.WEEKDAY,
+            FilterField.RATING_TYPE,
+            FilterField.RATING_SCORE,
+        },
+    },
 }
 
+_STATS_DOMAIN = {
+    QuerySource.SESSIONS: "sessions",
+    QuerySource.TASKS: "tasks",
+    QuerySource.HABIT_LOGS: "habits",
+    QuerySource.DAY_REVIEWS: "reviews",
+    QuerySource.RATING_ENTRIES: "ratings",
+}
 _STATS_MAX_LIMIT = 100
 
 _DONE_LIKE_STATUSES = ("Done", "completed", "done")
@@ -108,17 +177,31 @@ class DbAIToolGateway:
         conversation_id: str | None = None,
         source_message_id: str | None = None,
         source_message_text: str | None = None,
+        data_scope: dict[str, bool] | None = None,
     ):
         self.batch_id = batch_id
         self.conversation_id = conversation_id
         self.source_message_id = source_message_id
         self.source_message_text = source_message_text or ""
+        # ChatService supplies the persisted scope. Direct gateway callers get the same safe
+        # compatibility defaults, so constructing this class without settings cannot silently
+        # enable newly-added sensitive domains.
+        self.data_scope = {**AI_DATA_SCOPE_DEFAULTS, **(data_scope or {})}
         self._instruction_proposal_created = False
         self._instruction_proposal_lock = threading.Lock()
 
     # ------------------------------------------------------------------
     # Read tools
     # ------------------------------------------------------------------
+
+    def _require_scope(self, domain: str) -> None:
+        if self.data_scope is not None and not self.data_scope.get(domain, False):
+            raise ValidationError(
+                f"AI data scope '{domain}' is disabled. Enable it in Settings > AI before using this tool."
+            )
+
+    def _require_stats_scope(self, source: QuerySource) -> None:
+        self._require_scope(_STATS_DOMAIN[source])
 
     def list_tasks(
         self,
@@ -136,6 +219,7 @@ class DbAIToolGateway:
         the closest available proxy for "most recently touched". `tag` matches as a substring
         against the CSV `tags` field (mirrors how tags are stored elsewhere in this codebase).
         """
+        self._require_scope("tasks")
         limit = max(1, min(limit, 200))
         with Session(engine) as db:
             stmt = select(Task)
@@ -155,6 +239,7 @@ class DbAIToolGateway:
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         """Fetches one task by id. Raises `EntityNotFoundError` if it doesn't exist."""
+        self._require_scope("tasks")
         with Session(engine) as db:
             task = db.get(Task, task_id)
             if not task:
@@ -167,6 +252,7 @@ class DbAIToolGateway:
         invent an id. Returns `[]` when nothing matches; returns more than one candidate when
         the match is ambiguous, so the caller can ask the user to disambiguate rather than
         guessing."""
+        self._require_scope("tasks")
         q = (query or "").strip().lower()
         if not q:
             return []
@@ -189,6 +275,7 @@ class DbAIToolGateway:
         """Lists sessions overlapping `[start, end)`, real rows merged with projected occurrences
         of recurring tasks (delegates to `SessionService.list_sessions`, the app's single merge
         funnel for the two)."""
+        self._require_scope("sessions")
         limit = max(1, min(limit, 500))
         with Session(engine) as db:
             rows = SessionService(db).list_overlapping_sessions(start=start, end=end, include_virtual=True)
@@ -222,6 +309,7 @@ class DbAIToolGateway:
         `working_hours_only` applies the saved local hours, allowed days, break, and daily-cap
         preferences from `AISettings`.
         """
+        self._require_scope("sessions")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
@@ -239,50 +327,85 @@ class DbAIToolGateway:
         dashboards slice 1) -- never `AnalyticsService`, which loads every session/task into
         Python.
 
-        Allow-list (deliberately a small subset of the full query vocabulary; see module-level
-        constants for the exact sets):
-          - `source`: `sessions`, `tasks`.
-          - `measure`: `sum_duration`, `session_count`, `avg_session_length`, `task_count`,
-            `completion_rate`.
-          - `group_by` dimensions: `day`, `week`, `month`, `tag`, `task`, `status`, `priority`,
-            `category` (at most 2, per `AnalyticsQuery`).
-          - `filters` fields: the same dimensions above, plus `duration_seconds`, `has_task`,
-            `notes`, and session-only `session_time_relative` (`past`, `future`, or `ongoing`).
+        Allow-list (deliberately a small subset of the full query vocabulary; see the
+        source-specific capability map above):
+          - `source`: `sessions`, `tasks`, `habit_logs`, `day_reviews`, or `rating_entries`.
+          - `measure`, `group_by`, and `filters` must be supported by that source. Habit logs
+            expose `habit_completion_rate`; day reviews and rating entries expose `avg_rating`.
           - `limit` is capped at 100 regardless of what's requested.
         Everything else in `query` (`date_range`, `chart`, `tag_attribution`, `sort`,
         `fill_gaps`) is passed through to `AnalyticsQuery` as-is and validated by its own
         pydantic schema.
         """
+        if not isinstance(query, dict):
+            raise ValidationError("get_time_stats: query must be an object")
         source = query.get("source")
         measure = query.get("measure")
-        if source not in {s.value for s in _ALLOWED_STATS_SOURCES}:
+        try:
+            source_enum = QuerySource(source)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError(f"get_time_stats: unsupported source {source!r}") from exc
+        self._require_stats_scope(source_enum)
+        capabilities = _STATS_CAPABILITIES[source_enum]
+        if measure not in {item.value for item in capabilities["measures"]}:
             raise ValidationError(
-                f"get_time_stats: source must be one of "
-                f"{sorted(s.value for s in _ALLOWED_STATS_SOURCES)}, got {source!r}"
-            )
-        if measure not in {m.value for m in _ALLOWED_STATS_MEASURES}:
-            raise ValidationError(
-                f"get_time_stats: measure must be one of "
-                f"{sorted(m.value for m in _ALLOWED_STATS_MEASURES)}, got {measure!r}"
+                f"get_time_stats: measure {measure!r} is not supported for source {source!r}; "
+                f"allowed: {sorted(item.value for item in capabilities['measures'])}"
             )
 
         group_by = query.get("group_by") or []
+        if not isinstance(group_by, list):
+            raise ValidationError("get_time_stats: group_by must be a list")
         for dim in group_by:
-            if dim not in {d.value for d in _ALLOWED_STATS_DIMENSIONS}:
+            if dim not in {item.value for item in capabilities["dimensions"]}:
                 raise ValidationError(
-                    f"get_time_stats: group_by dimension must be one of "
-                    f"{sorted(d.value for d in _ALLOWED_STATS_DIMENSIONS)}, got {dim!r}"
+                    f"get_time_stats: dimension {dim!r} is not supported for source {source!r}; "
+                    f"allowed: {sorted(item.value for item in capabilities['dimensions'])}"
                 )
 
         filters = query.get("filters") or []
-        for f in filters:
-            field = f.get("field") if isinstance(f, dict) else None
-            if field not in _ALLOWED_STATS_FILTER_FIELDS:
+        if not isinstance(filters, list):
+            raise ValidationError("get_time_stats: filters must be a list")
+        for filter_value in filters:
+            field = filter_value.get("field") if isinstance(filter_value, dict) else None
+            if field not in {item.value for item in capabilities["filters"]}:
                 raise ValidationError(
-                    f"get_time_stats: filter field must be one of {sorted(_ALLOWED_STATS_FILTER_FIELDS)}, got {field!r}"
+                    f"get_time_stats: filter {field!r} is not supported for source {source!r}; "
+                    f"allowed: {sorted(item.value for item in capabilities['filters'])}"
                 )
 
-        limit = min(int(query.get("limit", 50) or 50), _STATS_MAX_LIMIT)
+        if source_enum in (QuerySource.SESSIONS, QuerySource.TASKS) and measure == Measure.AVG_RATING.value:
+            self._require_scope("ratings")
+        if source_enum == QuerySource.SESSIONS:
+            task_fields = {
+                Dimension.TASK.value,
+                Dimension.CATEGORY.value,
+                Dimension.STATUS.value,
+                Dimension.PRIORITY.value,
+                FilterField.TASK.value,
+                FilterField.CATEGORY.value,
+                FilterField.STATUS.value,
+                FilterField.PRIORITY.value,
+                FilterField.HAS_TASK.value,
+            }
+            if any(dim in task_fields for dim in group_by) or any(
+                isinstance(filter_value, dict) and filter_value.get("field") in task_fields for filter_value in filters
+            ):
+                self._require_scope("tasks")
+            if measure == Measure.AVG_RATING.value and (
+                Dimension.TAG.value in group_by
+                or any(
+                    isinstance(filter_value, dict) and filter_value.get("field") == FilterField.TAG.value
+                    for filter_value in filters
+                )
+            ):
+                raise ValidationError("get_time_stats: avg_rating cannot be combined with session tags")
+
+        try:
+            requested_limit = int(query.get("limit", 50) or 50)
+        except (TypeError, ValueError) as exc:
+            raise ValidationError("get_time_stats: limit must be an integer") from exc
+        limit = max(1, min(requested_limit, _STATS_MAX_LIMIT))
 
         payload = {
             "source": source,
@@ -315,6 +438,7 @@ class DbAIToolGateway:
         include_done: bool = False,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
+        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
@@ -335,6 +459,8 @@ class DbAIToolGateway:
         include_pending: bool = True,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        self._require_scope("sessions")
+        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
@@ -347,12 +473,14 @@ class DbAIToolGateway:
             )
 
     def get_task_progress(self, task_id: str) -> dict[str, Any]:
+        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
             return AIInsightsService(db).get_task_progress(task_id)
 
     def validate_schedule(self, proposed_sessions: list[dict[str, Any]]) -> dict[str, Any]:
+        self._require_scope("sessions")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
@@ -362,20 +490,229 @@ class DbAIToolGateway:
             )
 
     def get_daily_briefing(self, date: str | None = None) -> dict[str, Any]:
+        self._require_scope("sessions")
+        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
             return AIInsightsService(db).get_daily_briefing(date, batch_id=self.batch_id)
 
     def get_weekly_review(self, *, start: datetime, end: datetime) -> dict[str, Any]:
+        self._require_scope("sessions")
+        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
         with Session(engine) as db:
             return AIInsightsService(db).get_weekly_review(start, end)
 
+    def list_habits(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        habit_id: str | None = None,
+        include_logs: bool = True,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        self._require_scope("habits")
+        from timetrace.services.habit_service import HabitService
+
+        with Session(engine) as db:
+            return HabitService(db).list_habits_for_ai(
+                start_date=start_date,
+                end_date=end_date,
+                habit_id=habit_id,
+                include_logs=include_logs,
+                limit=limit,
+            )
+
+    def get_habit_progress(self, *, habit_id: str, start_date: str, end_date: str) -> dict[str, Any]:
+        self._require_scope("habits")
+        from timetrace.services.habit_service import HabitService
+
+        with Session(engine) as db:
+            return HabitService(db).get_habit_progress_for_ai(
+                habit_id=habit_id, start_date=start_date, end_date=end_date
+            )
+
+    def get_day_summary(self, date_str: str) -> dict[str, Any]:
+        self._require_scope("sessions")
+        self._require_scope("tasks")
+        self._require_scope("reviews")
+        from timetrace.services.revision_service import RevisionService
+
+        with Session(engine) as db:
+            return RevisionService(db).get_day_summary(date_str)
+
+    def list_day_reviews(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_skipped: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        self._require_scope("reviews")
+        from timetrace.services.revision_service import RevisionService
+
+        with Session(engine) as db:
+            return RevisionService(db).list_day_reviews(
+                start_date=start_date,
+                end_date=end_date,
+                include_skipped=include_skipped,
+                limit=limit,
+            )
+
+    def get_task_review(self, task_id: str) -> dict[str, Any]:
+        self._require_scope("reviews")
+        self._require_scope("tasks")
+        from timetrace.services.task_service import TaskService
+
+        with Session(engine) as db:
+            return TaskService(db).get_task_review_for_ai(task_id)
+
+    def list_task_reviews(
+        self,
+        *,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        task_id: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        self._require_scope("reviews")
+        self._require_scope("tasks")
+        from timetrace.services.task_service import TaskService
+
+        with Session(engine) as db:
+            return TaskService(db).list_task_reviews_for_ai(
+                start_date=start_date, end_date=end_date, task_id=task_id, limit=limit
+            )
+
+    def list_rating_definitions(self) -> list[dict[str, Any]]:
+        self._require_scope("ratings")
+        from timetrace.services.rating_service import RatingService
+
+        with Session(engine) as db:
+            return RatingService(db).list_definitions_for_ai()
+
+    def list_rating_entries(
+        self,
+        *,
+        target_type: str | None = None,
+        target_id: str | None = None,
+        start_date: str | None = None,
+        end_date: str | None = None,
+        include_dismissed: bool = False,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        self._require_scope("ratings")
+        if target_type == "task":
+            self._require_scope("tasks")
+        elif target_type == "session":
+            self._require_scope("sessions")
+        elif target_type == "habit":
+            self._require_scope("habits")
+        elif target_type is None and self.data_scope is not None:
+            required_domains = ("tasks", "sessions", "habits")
+            if any(not self.data_scope.get(domain, False) for domain in required_domains):
+                raise ValidationError(
+                    "AI data scope for task/session/habit targets is disabled; filter rating entries by "
+                    "target_type=day or enable the corresponding domains in Settings > AI."
+                )
+        from timetrace.services.rating_service import RatingService
+
+        with Session(engine) as db:
+            return RatingService(db).list_entries_for_ai(
+                target_type=target_type,
+                target_id=target_id,
+                start_date=start_date,
+                end_date=end_date,
+                include_dismissed=include_dismissed,
+                limit=limit,
+            )
+
+    def get_timer_status(self) -> dict[str, Any]:
+        self._require_scope("timer")
+        from timetrace.services.timer_service import TimerService
+
+        with Session(engine) as db:
+            return TimerService(db).get_status()
+
+    def get_reflection_context(
+        self,
+        *,
+        start_date: str,
+        end_date: str,
+        include_timer: bool = False,
+    ) -> dict[str, Any]:
+        for domain in ("sessions", "tasks", "habits", "reviews", "ratings"):
+            self._require_scope(domain)
+        if include_timer:
+            self._require_scope("timer")
+        from timetrace.services.ai_insights_service import AIInsightsService
+
+        with Session(engine) as db:
+            return AIInsightsService(db).get_reflection_context(
+                start_date=start_date,
+                end_date=end_date,
+                include_timer=include_timer,
+                batch_id=self.batch_id,
+            )
+
     # ------------------------------------------------------------------
     # Confirmation-gated settings proposal
     # ------------------------------------------------------------------
+
+    def propose_day_review(
+        self,
+        *,
+        date_str: str,
+        rating: int,
+        highlights: str = "",
+        friction: str = "",
+        notes: str = "",
+        review_skipped: bool = False,
+        rationale: str = "",
+    ) -> dict[str, Any]:
+        """Create a day-review draft and never touch ``dayreview`` directly."""
+        self._require_scope("reviews")
+        try:
+            request = DayReviewCreate(
+                date_str=date_str,
+                rating=rating,
+                highlights=highlights,
+                friction=friction,
+                notes=notes,
+                review_skipped=review_skipped,
+            )
+        except PydanticValidationError as exc:
+            raise ValidationError(f"Invalid day review proposal: {exc}") from exc
+
+        from timetrace.services.ai_draft_service import AIDraftService
+
+        with Session(engine) as db:
+            existing = db.exec(select(DayReview).where(DayReview.date_str == request.date_str)).first()
+            baseline = AIDraftService.normalize_day_review(existing) if existing else None
+            proposed = {
+                "date_str": request.date_str,
+                "rating": request.rating,
+                "highlights": request.highlights or "",
+                "friction": request.friction or "",
+                "notes": request.notes or "",
+                "review_skipped": bool(request.review_skipped),
+                "ui_kind": "review",
+            }
+            item = self._add_item(
+                db,
+                op="update" if existing else "create",
+                entity_type="day_review",
+                target_id=request.date_str,
+                proposed=proposed,
+                baseline=baseline,
+                rationale=rationale,
+            )
+        item["confirmation_message"] = "I prepared a day-review proposal for your approval."
+        return item
 
     def propose_remembered_instruction(self, instruction: str) -> dict[str, Any]:
         """Create one pending instruction proposal, never mutate AISettings directly."""
@@ -936,5 +1273,6 @@ class DbAIToolGateway:
         if isinstance(result, dict):
             return result
         return {field: getattr(result, field, None) for field in self._ITEM_RESULT_FIELDS}
+
 
 __all__ = ["DbAIToolGateway"]

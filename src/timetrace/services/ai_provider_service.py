@@ -20,6 +20,14 @@ from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
 KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq", "pi")
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
+AI_DATA_SCOPE_DEFAULTS: dict[str, bool] = {
+    "tasks": True,
+    "sessions": True,
+    "habits": False,
+    "reviews": False,
+    "ratings": False,
+    "timer": False,
+}
 
 # See core/ai/providers.py's twin constant for why this translation exists: `init_chat_model`'s
 # registry key for direct Google AI Studio access is "google_genai", not this app's shorter
@@ -476,6 +484,7 @@ class AISettingsService:
         "quickadd_fallback_enabled",
         "redact_before_send",
         "preview_on_calendar",
+        "data_scope",
         "scheduling_window_days",
         "batch_undo_retention_days",
         "scheduling_day_start",
@@ -500,6 +509,25 @@ class AISettingsService:
         self.db.refresh(row)
         return row
 
+    def get_data_scope(self) -> dict[str, bool]:
+        """Return the normalized provider-facing data allow-list.
+
+        Missing keys are filled from the compatibility defaults so a row created by an older
+        database or a hand-written test cannot accidentally enable a newly-added sensitive
+        domain. The returned dict is a copy and is safe for a gateway to retain for one turn.
+        """
+        row = self.get_settings()
+        try:
+            parsed = json.loads(row.data_scope_json or "{}")
+        except (TypeError, ValueError):
+            parsed = {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+        return {
+            key: parsed[key] if isinstance(parsed.get(key), bool) else default
+            for key, default in AI_DATA_SCOPE_DEFAULTS.items()
+        }
+
     def update_settings(self, **fields: Any) -> AISettings:
         unknown = set(fields) - set(self._UPDATABLE_FIELDS)
         if unknown:
@@ -508,6 +536,16 @@ class AISettingsService:
         custom_instructions = fields.get("custom_instructions")
         if custom_instructions is not None and len(custom_instructions) > 4000:
             raise ValidationError("custom_instructions must be 4000 characters or fewer.")
+
+        data_scope = fields.get("data_scope")
+        if data_scope is not None:
+            if not isinstance(data_scope, dict):
+                raise ValidationError("data_scope must be an object of domain names to booleans")
+            unknown_scope = set(data_scope) - set(AI_DATA_SCOPE_DEFAULTS)
+            if unknown_scope:
+                raise ValidationError(f"Unknown AI data scope domain(s): {', '.join(sorted(unknown_scope))}")
+            if not all(isinstance(value, bool) for value in data_scope.values()):
+                raise ValidationError("data_scope values must be booleans")
 
         row = self.get_settings()
         candidate = {key: getattr(row, key) for key in self._UPDATABLE_FIELDS if hasattr(row, key)}
@@ -558,9 +596,13 @@ class AISettingsService:
                 raise ValidationError(f"{public_name} cannot contain more than 32 values")
             setattr(row, json_name, json.dumps(normalized))
 
+        if data_scope is not None:
+            normalized_scope = {**self.get_data_scope(), **data_scope}
+            row.data_scope_json = json.dumps(normalized_scope, separators=(",", ":"))
+
         for key, value in fields.items():
             should_set = key == "maximum_daily_minutes" or (
-                value is not None and key not in {"scheduling_days", "preferred_tags"}
+                value is not None and key not in {"scheduling_days", "preferred_tags", "data_scope"}
             )
             if should_set:
                 setattr(row, key, value)
