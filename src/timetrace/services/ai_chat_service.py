@@ -414,11 +414,14 @@ class AIChatService:
                 provider=provider_config.provider,
                 model=provider_config.model,
                 latency_ms=latency_ms,
-                error=str(exc),
+                # Provider exceptions can contain response bodies, prompt fragments, or other
+                # sensitive data. Keep only a stable generic marker in the conversation record;
+                # the log above records the exception class, never its text.
+                error="AI provider call failed.",
             )
             AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
             self._finalize_batch(batch.id, None)
-            raise AIProviderError(f"AI provider call failed: {exc}") from exc
+            raise AIProviderError("AI provider call failed.") from exc
         latency_ms = int((time.monotonic() - start) * 1000)
 
         new_messages = result.get("messages", [])[len(input_messages) :]
@@ -507,9 +510,9 @@ class AIChatService:
                 extra_system_context=self._turn_context(),
                 custom_instructions=AISettingsService(self.db).get_settings().custom_instructions,
             )
-        except AIProviderError as exc:
+        except AIProviderError:
             self._finalize_batch(batch.id, None)
-            yield _sse("error", {"message": str(exc)})
+            yield _sse("error", {"message": "Failed to initialize the AI provider."})
             return
 
         start = time.monotonic()
@@ -562,11 +565,11 @@ class AIChatService:
                 provider=provider_config.provider,
                 model=provider_config.model,
                 latency_ms=latency_ms,
-                error=str(exc),
+                error="AI provider call failed.",
             )
             AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
             self._finalize_batch(batch.id, None)
-            yield _sse("error", {"message": str(exc)})
+            yield _sse("error", {"message": "AI provider call failed."})
             return
 
         latency_ms = int((time.monotonic() - start) * 1000)
@@ -763,7 +766,7 @@ class AIChatService:
         try:
             response = await model.ainvoke(prompt)
         except Exception as exc:
-            raise AIProviderError(f"quick-add parse failed: {exc}") from exc
+            raise AIProviderError("Quick-add parse failed.") from exc
 
         raw = _stringify_content(getattr(response, "content", response))
         fields = self._extract_json(raw)
@@ -829,7 +832,9 @@ class AIChatService:
                 extra_params=extra_params,
             )
         except Exception as exc:
-            raise AIProviderError(f"Failed to initialize provider '{config.provider}': {exc}") from exc
+            # Provider libraries may include response bodies or request fragments in their
+            # exception text. Expose only the configured provider name to the caller.
+            raise AIProviderError(f"Failed to initialize provider '{config.provider}'.") from exc
 
     def _turn_context(self) -> str:
         """Grounding info injected into the system prompt every turn (spec's `build_system_prompt
@@ -971,6 +976,11 @@ class AIChatService:
         batch = self.db.get(AIDraftBatch, batch_id)
         if not batch:
             return None
+        # Draft tools intentionally use short-lived sessions because LangGraph may dispatch
+        # them concurrently. Refresh the batch before deciding whether it is empty; otherwise
+        # this request session can still hold the zero item_count written at batch creation and
+        # delete a batch whose tool session has just added real draft items.
+        self.db.refresh(batch)
         if (batch.item_count or 0) > 0:
             if final_msg is not None:
                 final_msg.draft_batch_id = batch.id

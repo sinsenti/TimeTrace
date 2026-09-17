@@ -17,7 +17,7 @@ from typing import Optional
 # silently breaks the ORM. That is not hypothetical; it happened on 2026-09-02.
 #
 # Plain column annotations (`str | None = Field(...)`) are unaffected and stay PEP 604.
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import Index, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -313,6 +313,8 @@ class AIInstructionProposal(SQLModel, table=True):
     overwritten accidentally. ``conversation_id`` is nullable because the setting change is
     global and must survive deletion of the originating chat.
     """
+
+    __table_args__ = (Index("uq_aiinstructionproposal_source_message_id", "source_message_id", unique=True),)
 
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     conversation_id: str | None = Field(default=None, foreign_key="aiconversation.id", index=True)

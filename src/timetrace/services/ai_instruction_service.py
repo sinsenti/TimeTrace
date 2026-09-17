@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import re
 
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
@@ -25,7 +26,7 @@ def _hash_instructions(value: str) -> str:
 
 def _equivalence_key(value: str) -> str:
     normalized = " ".join(value.split()).casefold()
-    return re.sub(r"^(?:[-*]\s+|\d+[.)]\s+)", "", normalized)
+    return re.sub(r"^(?:[-*•]\s+|\d+[.)]\s+)", "", normalized)
 
 
 def _append_instruction(existing: str, instruction: str) -> str:
@@ -119,7 +120,16 @@ class AIInstructionService:
             status="pending",
         )
         self.db.add(proposal)
-        self.db.commit()
+        try:
+            self.db.commit()
+        except IntegrityError as exc:
+            # The source-message index is the database-level guard for two concurrently
+            # dispatched tool calls. The in-memory gateway lock only covers one gateway object;
+            # separate workers/requests still need the same one-proposal invariant.
+            self.db.rollback()
+            if self.get_for_source_message(source_message_id) is not None:
+                raise ValidationError("only one remembered-instruction proposal is allowed per turn") from exc
+            raise
         self.db.refresh(proposal)
         return proposal
 

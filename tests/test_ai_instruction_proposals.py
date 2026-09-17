@@ -35,6 +35,26 @@ def test_proposal_appends_without_mutating_settings_and_deduplicates(db):
     assert duplicate == proposal.after_instructions
 
 
+def test_instruction_validation_and_bullet_equivalent_deduplication(db):
+    service = AIInstructionService(db)
+
+    for invalid in ("", "   ", "x" * 4001):
+        try:
+            service.create_proposal(
+                conversation_id=None,
+                source_message_id=f"invalid-{len(invalid)}",
+                instruction=invalid,
+            )
+        except Exception as exc:
+            assert "instruction" in str(exc).lower()
+        else:
+            raise AssertionError("expected invalid instruction to be rejected")
+
+    existing = "- Prefer mornings"
+    assert service.append_instruction(existing, "1. PREFER   mornings") == existing
+    assert service.append_instruction(existing, "• prefer mornings") == existing
+
+
 def test_proposal_does_not_create_or_update_settings_row(db):
     service = AIInstructionService(db)
     proposal = service.create_proposal(
@@ -45,6 +65,22 @@ def test_proposal_does_not_create_or_update_settings_row(db):
 
     assert proposal.before_instructions == ""
     assert db.exec(select(AISettings)).first() is None
+
+
+def test_accept_creates_missing_settings_and_allows_edited_text(db):
+    service = AIInstructionService(db)
+    proposal = service.create_proposal(
+        conversation_id=None,
+        source_message_id="edited-instruction",
+        instruction="Use mornings.",
+    )
+
+    accepted, settings = service.accept(proposal.id, edited_instruction="Prefer concise mornings.")
+
+    assert accepted.status == "accepted"
+    assert accepted.proposed_instruction == "Prefer concise mornings."
+    assert settings.custom_instructions == "Prefer concise mornings."
+    assert db.exec(select(AISettings)).one().custom_instructions == "Prefer concise mornings."
 
 
 def test_accept_and_reject_have_confirmation_gated_lifecycle(db):

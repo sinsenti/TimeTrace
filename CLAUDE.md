@@ -29,9 +29,10 @@ uv run pytest -q                 # run the test suite
 ### Tests
 
 `tests/` covers timer/idle state, `ensure_utc`, session creation, task HTTP basics, quick-add/title
-syntax, the legacy tag fan-out contract, and pure/service recurrence behavior. There are no dedicated
-AI or structured-query-engine test modules yet. `tests/conftest.py` redirects `TIMETRACE_DB_FILE` to a
-tempdir **before** the first `timetrace` import (settings and the DB engine are import-time singletons)
+syntax, the legacy tag fan-out contract, pure/service recurrence behavior, and dedicated AI assistant
+lifecycle/privacy cases. Structured-query and provider coverage remains partial. `tests/conftest.py`
+redirects `TIMETRACE_DB_FILE` to a tempdir **before** the first `timetrace` import (settings and the
+DB engine are import-time singletons)
 and provides an in-memory `StaticPool` SQLite engine. The API client fixture skips lifespan startup;
 these tests do not exercise the Alembic chain. Coverage is partial — extend it rather than assuming
 it's exhaustive. See [docs/development.md](docs/development.md#testing-and-checks).

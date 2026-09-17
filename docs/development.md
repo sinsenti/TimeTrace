@@ -109,7 +109,10 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   progress, and local SQLite FTS task search. Scheduling hours, allowed days, breaks, daily caps,
   and the placement window are stored in `AISettings`. AI tool calls use their own short-lived DB
   sessions because tools may run concurrently; never share a request's SQLModel session across
-  parallel tool calls.
+  parallel tool calls. Remembered-instruction release hardening now has fake-agent coverage for
+  both chat modes, server-side original-message intent gating, one-proposal uniqueness, draft-batch
+  retention, failure redaction, and instruction/API lifecycle edge cases. The browser drawer
+  checklist remains a manual acceptance checklist; there is intentionally no browser framework.
 - **CLI:** no Textual dependency or TUI implementation exists in the current tree. The numeric
   `@task` grammars in `parse_inline_timer`, `parse_inline_session_edit`, and `parse_inline_retro`
   have no call sites. Do not confuse these with the live `parse_inline_task` creation parser.
@@ -135,13 +138,18 @@ git diff --check
 - `reset_timer`: autouse reset of the timer singleton to prevent state leaking between tests.
 
 Coverage includes timer/idle state, UTC conversion, task title syntax, task HTTP basics, session
-creation, legacy tag fan-out, substantial pure/service recurrence tests, and AI privacy boundaries
-in `tests/test_ai_privacy.py`. Draft lifecycle, gateway, and provider behavior still need dedicated
-tests as those areas change. There is no browser test suite. Add coverage where changing behavior;
-passing the existing suite does not establish those areas are correct.
+creation, legacy tag fan-out, substantial pure/service recurrence tests, AI privacy boundaries, and
+fake-agent remembered-instruction chat/API lifecycle tests. Draft lifecycle, gateway, and provider
+coverage remains partial outside this hardening slice. There is no browser test suite. Add coverage
+where changing behavior; passing the existing suite does not establish those areas are correct.
 
-**Observed baseline at this documentation check:** 144 tests passed with 39 reported SQLite
+**Observed baseline at this documentation check:** 167 tests passed with 65 reported SQLite
 `DeprecationWarning`s. Re-run the suite after changes; warnings are not treated as failures.
+
+The hardening smoke check migrated a fresh scratch database through `0012_ai_instruction_source_unique`
+and verified `/health`, AI settings, provider CRUD, and AI status on a non-default daemon port. A
+local Ollama chat attempt did not complete within 180 seconds, so interactive drawer acceptance is
+still explicitly manual and no paid provider was used.
 
 For Python edits, run scoped Ruff autofix and formatting (see `AGENTS.md`). Do not remove the
 SQLModel relationship-annotation exemptions in `pyproject.toml`/`db/models.py`. For each changed
@@ -151,7 +159,7 @@ Do not use live AI providers as automated test fixtures or expose personal data 
 
 ## Migration verification
 
-The source tree currently ends at `0011_ai_instruction_proposals`; inspect revision ids and
+The source tree currently ends at `0012_ai_instruction_source_unique`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.

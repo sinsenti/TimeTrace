@@ -51,6 +51,19 @@ traps found during the merge-review pass).
 - [x] PII sanitization before sending calendar context (titles, attendee emails) to a third-party LLM API.
   (`core/ai/redaction.py`)
 
+## AI remembered-instructions release hardening — IMPLEMENTED (2026-09-17)
+
+- [x] Fake-agent tests cover positive, ordinary-chat, intent-gate, failure, streaming-parity, and
+  task/session draft-only paths without provider or network calls.
+- [x] Proposal lifecycle/API edge cases cover validation limits, edited acceptance, deduplication,
+  missing settings, empty request bodies, stale conflicts, undo conflicts, and conversation deletion.
+- [x] Database uniqueness prevents concurrent duplicate proposals for one source message; migration
+  `0012_ai_instruction_source_unique` is verified on a fresh database.
+- [x] Empty chat draft batches are retained only when draft items exist, and provider exception text
+  is not persisted in chat errors or emitted by the streaming failure path.
+- [ ] Interactive drawer smoke checklist remains manual; backend scratch-daemon/API smoke and static
+  JavaScript checks passed. Do not add a browser test framework for this checklist.
+
 Not built, and not currently planned unless asked for: habit/rating/day-review writes, timer
 control, embeddings/RAG, a multi-agent supervisor graph, or external integrations. Read-only daily
 briefings, weekly reviews, deterministic conflict/schedule validation, task progress, local FTS task
