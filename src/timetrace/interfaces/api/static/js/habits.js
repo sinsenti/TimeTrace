@@ -66,12 +66,13 @@ function generateMatrixDateHeaders() {
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
         
         const isToday = (yyyy === today.getFullYear() && (d.getMonth() === today.getMonth()) && d.getDate() === today.getDate());
-        matrixDates.push({ date_str: `${yyyy}-${mm}-${dd}`, dayName: dayName, dayNum: d.getDate(), isToday: isToday });
+        const displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        matrixDates.push({ date_str: `${yyyy}-${mm}-${dd}`, displayDate, dayName: dayName, dayNum: d.getDate(), isToday: isToday });
     }
 
     const labelEl = document.getElementById('matrix_week_range_label');
     if (labelEl && matrixDates.length === 7) {
-        labelEl.innerText = `${matrixDates[0].date_str} to ${matrixDates[6].date_str}`;
+        labelEl.innerText = `${matrixDates[0].displayDate} – ${matrixDates[6].displayDate}`;
     }
 }
 
@@ -112,7 +113,7 @@ function renderMatrixTable() {
 
     headerRow.innerHTML = '<th class="py-2.5 px-3 font-bold uppercase w-56">Habit Name</th>' +
         matrixDates.map(d => `
-            <th class="py-2.5 px-2 text-center font-extrabold ${d.isToday ? 'text-emerald-400 bg-emerald-950/20 rounded' : 'text-slate-400'}">
+            <th class="py-2.5 px-2 text-center font-extrabold ${d.isToday ? 'habit-today-column text-slate-200 rounded' : 'text-slate-400'}">
                 <div class="text-[10px] opacity-75">${d.dayName}</div>
                 <div class="text-sm">${d.dayNum}</div>
             </th>
@@ -137,14 +138,17 @@ function renderMatrixTable() {
                 </td>
                 ${matrixDates.map(d => {
                     const log = logs[d.date_str] || { status: 'pending', value: 0 };
-                    return renderMatrixCell(h, d.date_str, log);
+                    return renderMatrixCell(h, d, log);
                 }).join('')}
             </tr>
         `;
     }).join('');
 }
 
-function renderMatrixCell(habit, dateStr, log) {
+function renderMatrixCell(habit, date, log) {
+    const dateStr = date.date_str;
+    const todayColumnClass = date.isToday ? ' habit-today-column' : '';
+
     if (habit.habit_type === 'boolean') {
         let badgeContent = '·';
         let bgClass = 'bg-[#181a28] text-slate-600';
@@ -154,7 +158,7 @@ function renderMatrixCell(habit, dateStr, log) {
         else if (log.status === 'skipped') { badgeContent = '↷'; bgClass = 'cell-skipped'; }
 
         return `
-            <td class="py-2 px-1 text-center">
+            <td class="py-2 px-1 text-center${todayColumnClass}">
                 <button onclick="toggleBooleanHabitLog('${habit.id}', '${dateStr}', '${log.status}')" class="w-8 h-8 rounded-lg ${bgClass} font-bold text-sm hover:scale-110 transition flex items-center justify-center mx-auto">
                     ${badgeContent}
                 </button>
@@ -165,7 +169,7 @@ function renderMatrixCell(habit, dateStr, log) {
         const bgClass = isTargetReached ? 'cell-completed' : (log.value > 0 ? 'cell-in-progress' : 'bg-[#181a28] text-slate-400');
 
         return `
-            <td class="py-2 px-1 text-center">
+            <td class="py-2 px-1 text-center${todayColumnClass}">
                 <div class="flex flex-col items-center space-y-1">
                     <div class="flex items-center space-x-1">
                         <input type="number" step="any" min="0" value="${log.value}" onchange="setHabitDirectValue('${habit.id}', '${dateStr}', this.value)" class="w-12 py-0.5 px-1 rounded-lg ${bgClass} text-[11px] font-black text-center focus:outline-none focus:ring-1 focus:ring-emerald-400">
