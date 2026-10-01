@@ -217,6 +217,25 @@ function initSidebarResizers() {
     });
 }
 
+function getTaskCardTextColor(backgroundColor) {
+    const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(backgroundColor || '');
+    if (!match) return '#ffffff';
+
+    const hex = match[1].length === 3
+        ? [...match[1]].map(channel => channel + channel).join('')
+        : match[1];
+    const linearize = value => {
+        const channel = parseInt(value, 16) / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = 0.2126 * linearize(hex.slice(0, 2))
+        + 0.7152 * linearize(hex.slice(2, 4))
+        + 0.0722 * linearize(hex.slice(4, 6));
+    const whiteContrast = 1.05 / (luminance + 0.05);
+    const darkContrast = (luminance + 0.05) / (0.0092 + 0.05); // #111827
+    return whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+}
+
 function escapeTaskCardText(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;',
@@ -268,7 +287,7 @@ async function fetchTasks() {
                         ? allTasksMap[t.parent_id]
                         : null;
                     const parentTaskLinkHTML = t.parent_id
-                        ? `<div class="text-[10px] opacity-80 truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeTaskCardText(parentTask ? parentTask.title : 'Parent task')}</a></div>`
+                        ? `<div class="text-[10px] truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeTaskCardText(parentTask ? parentTask.title : 'Parent task')}</a></div>`
                         : '';
 
                     // Recurring tasks carry the next projected occurrence in next_occurrence_date (derived,
@@ -278,31 +297,31 @@ async function fetchTasks() {
                     if (dateBadge) {
                         dueBadgeHTML = dateBadge.isUrgent
                             ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dateBadge.label}</span>`
-                            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dateBadge.label}</span>`;
+                            : `<span class="text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded shrink-0">${dateBadge.label}</span>`;
                     }
 
                     return `
-                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} text-white cursor-pointer">
+                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color}; color: ${getTaskCardTextColor(color)};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} cursor-pointer">
                             <div>
                                 <div class="flex justify-between items-start">
                                     <span class="font-black text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
-                                    ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/40 px-1.5 py-0.5 rounded ml-1 shrink-0">${estBadge}</span>` : ''}
+                                    ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/60 px-1.5 py-0.5 rounded ml-1 shrink-0 text-white">${estBadge}</span>` : ''}
                                 </div>
-                                <div class="text-[11px] opacity-80 truncate flex items-center space-x-1 mt-0.5">
+                                <div class="text-[11px] truncate flex items-center space-x-1 mt-0.5">
                                     ${dueBadgeHTML}
                                     <span class="truncate">${t.description || ''}</span>
                                 </div>
                                 ${parentTaskLinkHTML}
                             </div>
-                            <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
+                            <div class="flex justify-between items-center text-[10px] font-semibold">
                                 <div class="flex items-center space-x-1">
-                                    <span class="bg-black/20 px-1.5 py-0.5 rounded uppercase text-[9px]">${t.category || 'work'}</span>
-                                    ${isRecurring ? '<span class="text-[9px] font-bold text-emerald-300">↻</span>' : ''}
-                                    ${hasAttachments ? '<span class="text-[9px] font-bold text-blue-300">📎</span>' : ''}
+                                    <span class="bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${t.category || 'work'}</span>
+                                    ${isRecurring ? '<span class="text-[9px] font-bold text-white">↻</span>' : ''}
+                                    ${hasAttachments ? '<span class="text-[9px] font-bold text-white">📎</span>' : ''}
                                 </div>
                                 <div class="flex items-center space-x-1">
-                                    <span class="bg-black/30 px-1.5 py-0.5 rounded font-bold">${prioLabel}</span>
-                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/40 hover:bg-black/70 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
+                                    <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${prioLabel}</span>
+                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[9px] text-white">Edit</button>
                                 </div>
                             </div>
                         </div>
