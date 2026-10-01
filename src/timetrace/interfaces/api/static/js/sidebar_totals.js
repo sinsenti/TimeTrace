@@ -217,25 +217,6 @@ function initSidebarResizers() {
     });
 }
 
-function getTaskCardTextColor(backgroundColor) {
-    const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(backgroundColor || '');
-    if (!match) return '#ffffff';
-
-    const hex = match[1].length === 3
-        ? [...match[1]].map(channel => channel + channel).join('')
-        : match[1];
-    const linearize = value => {
-        const channel = parseInt(value, 16) / 255;
-        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
-    };
-    const luminance = 0.2126 * linearize(hex.slice(0, 2))
-        + 0.7152 * linearize(hex.slice(2, 4))
-        + 0.0722 * linearize(hex.slice(4, 6));
-    const whiteContrast = 1.05 / (luminance + 0.05);
-    const darkContrast = (luminance + 0.05) / (0.0092 + 0.05); // #111827
-    return whiteContrast >= darkContrast ? '#ffffff' : '#111827';
-}
-
 function escapeTaskCardText(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({
         '&': '&amp;',
@@ -301,10 +282,10 @@ async function fetchTasks() {
                     }
 
                     return `
-                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color}; color: ${getTaskCardTextColor(color)};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} cursor-pointer">
+                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color}; color: ${getContrastingTextColor(color)};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} cursor-pointer">
                             <div>
                                 <div class="flex justify-between items-start">
-                                    <span class="font-black text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
+                                    <span class="font-semibold text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
                                     ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/60 px-1.5 py-0.5 rounded ml-1 shrink-0 text-white">${estBadge}</span>` : ''}
                                 </div>
                                 <div class="text-[11px] truncate flex items-center space-x-1 mt-0.5">

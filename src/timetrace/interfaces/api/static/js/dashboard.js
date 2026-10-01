@@ -70,6 +70,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const notes = props.notes || '';
                 const tags = props.tags || '';
                 const isMonthView = arg.view.type === 'dayGridMonth';
+                const eventTextColor = getContrastingTextColor(arg.event.backgroundColor || '#7c3aed');
 
                 let displayTitle = '';
                 let displayDesc = '';
@@ -101,10 +102,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 return {
                     html: `
-                        <div class="fc-event-custom flex flex-col h-full w-full overflow-hidden leading-tight p-0.5 text-white">
-                            <div class="font-black text-[11px] truncate shrink-0">${displayTitle}</div>
-                            ${displayDesc ? `<div class="text-[10px] opacity-85 overflow-hidden line-clamp-2 shrink-0">${displayDesc}</div>` : ''}
-                            ${showTags ? `<div class="text-[9px] font-mono text-purple-200 opacity-80 truncate shrink-0 mt-auto">${tags}</div>` : ''}
+                        <div style="color: ${eventTextColor};" class="fc-event-custom flex flex-col h-full w-full overflow-hidden leading-tight p-0.5">
+                            <div class="font-semibold text-[11px] truncate shrink-0">${displayTitle}</div>
+                            ${displayDesc ? `<div class="text-[10px] overflow-hidden line-clamp-2 shrink-0">${displayDesc}</div>` : ''}
+                            ${showTags ? `<div class="text-[9px] font-mono truncate shrink-0 mt-auto">${tags}</div>` : ''}
                         </div>
                     `
                 };
@@ -169,9 +170,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
                             allSessions.push(createdSession);
                         }
-                        if (calendar && typeof formatCalEventFromSession === 'function') {
-                            calendar.addEvent(formatCalEventFromSession(createdSession));
-                        }
+                        if (calendar) calendar.refetchEvents();
                     }
 
                     if (taskId) {

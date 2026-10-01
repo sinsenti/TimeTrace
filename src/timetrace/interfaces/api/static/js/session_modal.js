@@ -342,13 +342,8 @@ async function saveSessionFromModal() {
                 }
             }
 
-            if (typeof calendar !== 'undefined' && calendar && typeof formatCalEventFromSession === 'function') {
-                const calEventData = formatCalEventFromSession(savedSession);
-                const existingCalEvent = calendar.getEventById(String(savedSession.id));
-                if (existingCalEvent) {
-                    existingCalEvent.remove();
-                }
-                calendar.addEvent(calEventData);
+            if (typeof calendar !== 'undefined' && calendar) {
+                calendar.refetchEvents();
             }
         }
 

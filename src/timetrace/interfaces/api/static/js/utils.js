@@ -384,6 +384,25 @@ function getTaskColor(task, index = 0) {
     return activePalette[hash % activePalette.length];
 }
 
+function getContrastingTextColor(backgroundColor) {
+    const match = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(backgroundColor || '');
+    if (!match) return '#ffffff';
+
+    const hex = match[1].length === 3
+        ? [...match[1]].map(channel => channel + channel).join('')
+        : match[1];
+    const linearize = value => {
+        const channel = parseInt(value, 16) / 255;
+        return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    };
+    const luminance = 0.2126 * linearize(hex.slice(0, 2))
+        + 0.7152 * linearize(hex.slice(2, 4))
+        + 0.0722 * linearize(hex.slice(4, 6));
+    const whiteContrast = 1.05 / (luminance + 0.05);
+    const darkContrast = (luminance + 0.05) / (0.0092 + 0.05); // #111827
+    return whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+}
+
 function reshuffleColors() {
     const settings = typeof getUserSettings === 'function' ? getUserSettings() : {};
     settings.colorSeed = (settings.colorSeed || 0) + 1;

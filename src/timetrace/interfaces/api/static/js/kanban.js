@@ -90,7 +90,7 @@ function renderKanbanCard(task) {
     return `
         <div data-task-id="${task.id}" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
-                <span class="font-bold text-xs text-white leading-snug hover:underline hover:text-purple-300">${task.title}</span>
+                <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${task.title}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
             </div>
             ${dueBadgeHTML ? `<div class="pt-0.5">${dueBadgeHTML}</div>` : ''}
