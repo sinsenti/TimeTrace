@@ -25,6 +25,16 @@ def test_list_tasks_includes_created_task(client):
     assert isinstance(created["id"], str)
 
 
+def test_list_tasks_includes_parent_id_for_subtasks(client):
+    parent = client.post("/api/tasks", json={"title": "Parent task"}).json()
+    child = client.post("/api/tasks", json={"title": "Child task", "parent_id": parent["id"]}).json()
+
+    listed = client.get("/api/tasks?status=all").json()
+    listed_child = next(task for task in listed if task["id"] == child["id"])
+
+    assert listed_child["parent_id"] == parent["id"]
+
+
 def test_get_missing_task_returns_404(client):
     response = client.get("/api/tasks/01920000-0000-7000-8000-000000000000")
 

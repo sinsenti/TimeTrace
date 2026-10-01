@@ -217,6 +217,16 @@ function initSidebarResizers() {
     });
 }
 
+function escapeTaskCardText(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[char]);
+}
+
 async function fetchTasks() {
     try {
         const currentFilterVal = getCurrentStatusFilter();
@@ -254,6 +264,12 @@ async function fetchTasks() {
                     const estBadge = formatMinutesToDuration(t.estimated_minutes);
                     const hasAttachments = Boolean(t.attachments && t.attachments.trim());
                     const isRecurring = t.is_recurring === true;
+                    const parentTask = t.parent_id && typeof allTasksMap !== 'undefined'
+                        ? allTasksMap[t.parent_id]
+                        : null;
+                    const parentTaskLinkHTML = t.parent_id
+                        ? `<div class="text-[10px] opacity-80 truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeTaskCardText(parentTask ? parentTask.title : 'Parent task')}</a></div>`
+                        : '';
 
                     // Recurring tasks carry the next projected occurrence in next_occurrence_date (derived,
                     // read-only); everything else falls back to the stored assigned_date.
@@ -266,7 +282,7 @@ async function fetchTasks() {
                     }
 
                     return `
-                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between h-24 text-white cursor-pointer">
+                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} text-white cursor-pointer">
                             <div>
                                 <div class="flex justify-between items-start">
                                     <span class="font-black text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
@@ -276,6 +292,7 @@ async function fetchTasks() {
                                     ${dueBadgeHTML}
                                     <span class="truncate">${t.description || ''}</span>
                                 </div>
+                                ${parentTaskLinkHTML}
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold opacity-90">
                                 <div class="flex items-center space-x-1">
