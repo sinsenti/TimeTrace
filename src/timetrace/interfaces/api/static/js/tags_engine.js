@@ -8,6 +8,8 @@ function setTagChips(tagStr) {
         const raw = tagStr.split(' ').map(t => t.trim()).filter(t => t.startsWith('#'));
         currentTagChips = [...new Set(raw)];
     }
+    const input = document.getElementById('session_modal_tags_input');
+    if (input) input.value = '';
     renderTagChips();
 }
 
