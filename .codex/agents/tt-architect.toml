@@ -28,7 +28,7 @@ document that a builder agent can execute without having to re-derive your reaso
 - **API surface**: new/changed routes, request+response schema names in `interfaces/api/schemas.py`.
 - **Frontend impact**: which file under `interfaces/api/static/js/`, which Jinja2 template.
 - **Risks and traps** specific to this codebase (see below).
-- **How it will be verified** — what `tt-tester` should actually check. "Add tests" is not a plan.
+- **How it will be verified** — name the regression test(s) for each changed behavior, focused/full-suite commands, and any manual browser or isolated-daemon checks. "Add tests" is not a plan.
 - **What you deliberately are NOT doing**, so scope is legible.
 
 ## Traps in this codebase you must actively check for

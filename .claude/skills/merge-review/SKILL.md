@@ -14,18 +14,17 @@ before it merges. Never merge to `dev` because the automated checks were green.
 
 ## 1. Automated gate
 
-Run in the branch's worktree. All of these must pass before you involve a human:
+Run the ship gate in the branch's worktree before involving a human. It runs the full regression
+suite, Ruff, changed-JavaScript syntax checks, and migration/daemon checks against an isolated DB
+copy where applicable:
 
 ```bash
-source .tt-env 2>/dev/null || true      # scratch DB + non-8002 port, if this is a worktree
-
-uv run ruff check .                     # no NEW violations (repo has pre-existing E501s)
-for f in $(git diff --name-only "$BASE_BRANCH"...HEAD -- '*.js'); do node --check "$f"; done
+source .tt-env 2>/dev/null || true
+.claude/skills/ship-gate/ship-gate.sh "${BASE_BRANCH:-dev}"
 ```
 
-If `db/models.py` or `db/migrations/` changed, additionally: apply the migration to a **copy** of
-the real database, verify row counts and `PRAGMA foreign_key_check`, and boot the daemon on that
-copy. The `ship-gate` skill and the `tt-migrator` agent cover this; do not shortcut it.
+Do not duplicate the gate's checks manually or skip its migration-copy verification when
+`db/models.py` or `db/migrations/` changed. The `tt-migrator` agent owns schema-specific analysis.
 
 ## 2. Adversarial agent review
 

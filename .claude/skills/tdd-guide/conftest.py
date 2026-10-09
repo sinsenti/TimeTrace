@@ -1,6 +1,8 @@
-"""Copy this file to tests/conftest.py.
+"""Reference snapshot of the active fixtures in tests/conftest.py.
 
-Order matters: TIMETRACE_DB_FILE must be set before the first `timetrace` import,
+Do not copy this file to bootstrap a second suite; maintain the active fixtures in
+`tests/conftest.py` and use the tdd-guide for their current usage. Order matters:
+TIMETRACE_DB_FILE must be set before the first `timetrace` import,
 because timetrace.config.settings is a module-level singleton and db/session.py
 builds its engine at import time. core/timer.py derives active_timer.json from
 settings.db_file.parent, so this redirects that too.

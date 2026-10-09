@@ -45,14 +45,16 @@ The test: every changed line traces directly to the request.
 
 ## 4. Goal-driven execution — state how you'll verify
 
-There is **no test suite in this repo yet** (see the `tdd-guide` skill to start one). So "verify" means something concrete you actually ran:
+This repo has an existing pytest suite with isolated fixtures (see `tests/conftest.py` and the
+`tdd-guide` skill). Behavior changes should add a focused regression test; run the relevant tests
+and full suite. Verification also means concrete mechanical and manual checks where applicable:
 
 | Change | Verification |
 |---|---|
-| Any Python | `uv run ruff check .` clean (`--fix` first) |
-| Model change | New Alembic revision applied against a **copy** of the DB, then `uv run timetrace db migrate` |
-| New/changed endpoint | Daemon boots, `curl -s localhost:8002/health`, then curl the endpoint and paste the real response |
-| Service logic | A pytest test if the suite exists; otherwise a short throwaway script driving `Service(db)` against an in-memory engine |
+| Any Python | `uv run ruff check .`; use scoped `--fix` only on changed files |
+| Model change | New Alembic revision applied to an isolated DB copy via `TIMETRACE_DB_FILE` |
+| New/changed endpoint | Start an isolated scratch daemon using `docs/development.md`; curl `/health` and the endpoint on its non-8002 port |
+| Service logic | A focused pytest test driving `Service(db)` against the in-memory `db` fixture |
 | Frontend JS | Load the page, exercise the interaction, check the browser console for errors |
 
 For multi-step work, state the plan up front:

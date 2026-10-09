@@ -123,11 +123,13 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 
 ## Testing and checks
 
-Run `uv run pytest -q` for the suite. For a narrower loop:
+Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed
+because the repository-root `copy.py` shadows Python's standard-library `copy` module. For a
+narrower loop:
 
 ```bash
-uv run pytest -q tests/test_recurrence.py tests/test_recurrence_service.py
-uv run pytest -q tests/test_tasks_api.py tests/test_session_service.py
+uv run python -P -m pytest -q tests/test_recurrence.py tests/test_recurrence_service.py
+uv run python -P -m pytest -q tests/test_tasks_api.py tests/test_session_service.py
 uv run ruff check .
 git diff --check
 ```
@@ -145,7 +147,7 @@ fake-agent remembered-instruction chat/API lifecycle tests. Draft lifecycle, gat
 coverage remains partial outside this hardening slice. There is no browser test suite. Add coverage
 where changing behavior; passing the existing suite does not establish those areas are correct.
 
-**Observed baseline at this documentation check:** 181 tests passed with 83 reported SQLite
+**Observed baseline at this documentation check:** 192 tests passed with 85 reported SQLite
 `DeprecationWarning`s. Re-run the suite after changes; warnings are not treated as failures.
 
 The hardening smoke check migrated a fresh scratch database through `0013_ai_data_scope`

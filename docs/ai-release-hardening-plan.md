@@ -120,7 +120,7 @@ adding a browser framework during this hardening pass.
 Run:
 
 ```bash
-uv run pytest -q
+uv run python -P -m pytest -q
 uv run ruff check <all changed Python files>
 git diff --check
 node --check src/timetrace/interfaces/api/static/js/ai_assistant.js

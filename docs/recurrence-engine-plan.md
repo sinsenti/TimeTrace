@@ -830,7 +830,7 @@ Against a **copy** of the live DB, with the daemon on :8002:
 10. `GET /timer/status` (or the timer widget's "next up") names the next projected occurrence.
 11. `/stats` and the day-review tab totals are **byte-identical** before and after the branch
     (nothing analytics-facing should move).
-12. `uv run ruff check .` clean; `uv run pytest -q` green.
+12. `uv run ruff check .` clean; `uv run python -P -m pytest -q` green (safe-path mode avoids root `copy.py` shadowing).
 
 ### 11.2 Automated — `tests/test_recurrence.py` (pure, no DB; this is where the value is)
 - `expand` with `FREQ=WEEKLY` at 09:00 local across a spring-forward boundary in a DST zone

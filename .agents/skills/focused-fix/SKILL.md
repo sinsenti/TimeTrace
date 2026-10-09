@@ -114,18 +114,18 @@ Rules:
 - One issue at a time. Verify each before starting the next (reload the page, or curl the endpoint).
 - Don't change files outside the slice without saying why.
 - Model change → migration in the same fix, applied to a **copy** of the DB first.
-- `uv run ruff check --fix .` after the Python is settled.
+- Run scoped Ruff autofix only on changed Python files after the behavior is settled.
 
 **Three-strike escalation:** if three fixes each create a new problem elsewhere, stop. That's an architecture signal, not a bug list. Tell the user what you found and ask whether to keep patching or restructure. Do not attempt fix #4 first.
 
 ## Phase 5: VERIFY
 
-1. Restart the daemon cleanly — startup runs `alembic upgrade head` and will fail loudly on a bad migration.
-2. `curl -s localhost:8002/health` returns ok.
+1. If a daemon/browser check is needed, start an isolated scratch daemon using `docs/development.md`; never use the personal DB or default port for experiments.
+2. Confirm `/health` on the scratch host/port.
 3. Exercise the feature in the browser: every action in the slice, console clean.
 4. Exercise the **consumers** found in Phase 2 — sidebar, dashboard, CLI. This is the step people skip.
-5. `uv run ruff check .` clean.
-6. If a test suite exists, run it; if not, consider whether this bug deserves being the first test (`tdd-guide`).
+5. Run `uv run ruff check .`; use scoped autofix only on changed files.
+6. Add a focused regression test for behavior changes and run it, then the full suite with `uv run python -P -m pytest -q`. The suite already exists; do not bootstrap another one.
 
 ```
 FOCUSED FIX COMPLETE: habits

@@ -21,19 +21,21 @@ uv sync                          # install/refresh the environment (creates .ven
 uv run timetrace daemon          # start the FastAPI daemon on http://127.0.0.1:8002
 uv run timetrace                 # CLI status / subcommands (talks to the running daemon over HTTP)
 uv run ruff check .              # lint
-uv run ruff check --fix .        # lint with autofix
-uv run ruff format .             # format
-uv run pytest -q                 # run the test suite
+uv run ruff check --fix path/to/changed.py  # scoped lint autofix
+uv run ruff format path/to/changed.py        # scoped format
+uv run python -P -m pytest -q     # run the test suite (safe-path mode avoids root copy.py shadowing)
 ```
 
 ### Tests
 
-`tests/` covers timer/idle state, `ensure_utc`, session creation, task HTTP basics, quick-add/title
-syntax, the legacy tag fan-out contract, pure/service recurrence behavior, and dedicated AI assistant
-lifecycle/privacy cases. Structured-query and provider coverage remains partial. `tests/conftest.py`
-redirects `TIMETRACE_DB_FILE` to a tempdir **before** the first `timetrace` import (settings and the
-DB engine are import-time singletons)
-and provides an in-memory `StaticPool` SQLite engine. The API client fixture skips lifespan startup;
+For behavior changes, add focused regression coverage unless the user explicitly requests a
+manual-only change. Run focused tests while developing and the full suite before reporting code
+changes. `tests/` covers timer/idle state, `ensure_utc`, session creation, task HTTP basics,
+quick-add/title syntax, the legacy tag fan-out contract, pure/service recurrence behavior, and
+AI assistant lifecycle/privacy cases. Structured-query and provider coverage remains partial.
+`tests/conftest.py` redirects `TIMETRACE_DB_FILE` to a tempdir **before** the first `timetrace`
+import (settings and the DB engine are import-time singletons), provides an in-memory `StaticPool`
+SQLite engine, and creates an API client fixture that skips lifespan startup;
 these tests do not exercise the Alembic chain. Coverage is partial — extend it rather than assuming
 it's exhaustive. See [docs/development.md](docs/development.md#testing-and-checks).
 
@@ -252,12 +254,12 @@ requests), a reschedule assistant, and whole-week auto-scheduling.
 - Went through this project's full merge-review gate (automated checks, an adversarial agent pass
   that found and fixed 9 real bugs on the accept/undo trust boundary, then a human review).
 
-## Current focus: statistics & custom dashboards
+## Statistics & custom dashboards (shipped)
 
-This is the active feature. The design was settled with the project owner on 2026-08-21; these are
-decisions, not suggestions. Do not silently re-open them. **Slices 1-4 shipped on this branch**
-(after slice 1 merged to `dev` via `feat/stats-engine`); see "Ship order" for the implemented scope
-and remaining follow-up work.
+The design was settled with the project owner on 2026-08-21; these are decisions, not suggestions.
+Do not silently re-open them. **All four planned slices have shipped** (slice 1 merged to `dev` via
+`feat/stats-engine`; slices 2-4 completed on this branch). The notes below record implemented scope
+and settled behavior, not open implementation work.
 
 **What it is.** The statistics page becomes a dashboard of configurable widgets. A widget is a
 *structured query* — source, measure, group-by, filters, chart type — built through pickers, with a
@@ -307,11 +309,11 @@ where this project is headed next. Recurrence, completion policy, and AI feature
 architecture; check before assuming anything else has landed.
 
 **Priority, set by the project owner on 2026-08-21** (highest first):
-statistics/dashboards (above, slice 1 done / 2-4 open) → recurrence & completion policy
-(**both done** — completion policy 2026-08-24, recurrence engine 2026-09-02) → teams/multi-user,
-*if it proves needed* (project tracking closer to Jira, scheduling closer to Morgen) → AI features
-(**done 2026-09-05**, see "Resolved" section above) → **external integrations, explicitly deferred**
-(Google Calendar, Slack, Linear — not being built now; don't start groundwork for them).
+statistics/dashboards (**slices 1-4 done**) → recurrence & completion policy (**both done** —
+completion policy 2026-08-24, recurrence engine 2026-09-02) → teams/multi-user, *only if it proves
+needed* → AI features (**done 2026-09-05**) → **external integrations, explicitly deferred**
+(Google Calendar, Slack, Linear — not being built now; don't start groundwork for them). This is the
+historical priority order; the shipped slices are not open work.
 
 | Area | Planned direction | Current state | Priority action |
 | --- | --- | --- | --- |

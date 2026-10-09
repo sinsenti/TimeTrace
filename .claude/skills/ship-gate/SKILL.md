@@ -1,6 +1,6 @@
 ---
 name: ship-gate
-description: The mechanical pre-merge verification for a TimeTrace branch - ruff clean, JS parses, migrations apply cleanly to a COPY of the real database, and the daemon boots and serves /health on that copy. Use before merging to dev, before saying a change is done, or whenever a diff touches db/models.py or db/migrations/.
+description: The mechanical pre-merge verification for a TimeTrace branch - regression tests, Ruff, JS syntax, migrations on a database copy, and a daemon /health check. Use before merging to dev, before saying a change is done, or whenever a diff touches db/models.py or db/migrations/.
 ---
 
 # Ship Gate (TimeTrace)
@@ -9,14 +9,15 @@ The automated half of the pre-merge gate. Run this **before** involving the huma
 
 This skill verifies. It does not merge. The `merge-review` skill owns the full flow (this gate → adversarial agent pass → human review in tuicr → merge to `dev`); the human review is not optional and green checks here are not permission to merge.
 
-## The four checks
+## The five checks
 
 | # | Check | Blocking |
 |---|---|---|
-| 1 | `uv run ruff check .` — no **new** violations | yes |
-| 2 | Every changed `.js` file parses | yes |
-| 3 | Migrations apply to a **copy** of the real DB, `PRAGMA foreign_key_check` empty, row counts preserved | yes, if `db/` changed |
-| 4 | Daemon boots against that copy and `/health` returns ok | yes |
+| 1 | `uv run python -P -m pytest -q` — full regression suite (`-P` avoids root `copy.py` shadowing) | yes |
+| 2 | `uv run ruff check .` — no **new** violations | yes |
+| 3 | Every changed `.js` file parses | yes |
+| 4 | Migrations apply to a **copy** of the real DB, `PRAGMA foreign_key_check` empty, row counts preserved | yes, if `db/` changed |
+| 5 | Daemon boots against that copy and `/health` returns ok | yes |
 
 ## Run it
 
@@ -28,20 +29,23 @@ This skill verifies. It does not merge. The `merge-review` skill owns the full f
 Or by hand, which is worth doing at least once so you know what the script does:
 
 ```bash
-# 1. lint
+# 1. regression suite
+uv run python -P -m pytest -q
+
+# 2. lint
 uv run ruff check .
 
-# 2. JS syntax (catches the unquoted-UUID-in-onclick class of bug)
+# 3. JS syntax (catches the unquoted-UUID-in-onclick class of bug)
 for f in $(git diff --name-only dev...HEAD -- '*.js'); do node --check "$f"; done
 
-# 3. migrations against a COPY - never the real file
+# 4. migrations against a COPY - never the real file
 cp ~/.timetrace/timetrace.db /tmp/tt-gate.db
 TIMETRACE_DB_FILE=/tmp/tt-gate.db uv run timetrace db migrate
 sqlite3 /tmp/tt-gate.db "PRAGMA foreign_key_check;"                  # must print nothing
 sqlite3 ~/.timetrace/timetrace.db "SELECT COUNT(*) FROM task;"        # compare
 sqlite3 /tmp/tt-gate.db          "SELECT COUNT(*) FROM task;"         # ...to this
 
-# 4. daemon boots and serves, on a scratch port and the scratch DB
+# 5. daemon boots and serves, on a scratch port and the scratch DB
 TIMETRACE_DB_FILE=/tmp/tt-gate.db TIMETRACE_PORT=8099 uv run timetrace daemon &
 sleep 3 && curl -s localhost:8099/health && kill %1
 ```
@@ -59,12 +63,11 @@ sleep 3 && curl -s localhost:8099/health && kill %1
 **Ruff:** the repo has pre-existing violations on files nobody has touched. Compare against the base branch rather than demanding a globally clean tree:
 
 ```bash
-uv run ruff check . --output-format=concise | sort > /tmp/after.txt
-git stash && uv run ruff check . --output-format=concise | sort > /tmp/before.txt && git stash pop
-comm -13 /tmp/before.txt /tmp/after.txt        # violations this branch introduced
+# Prefer the gate script: it compares changed files against the base without stashing or switching branches.
+.claude/skills/ship-gate/ship-gate.sh
 ```
 
-Anything in that output is blocking. Fix with `uv run ruff check --fix .`, then re-run.
+Anything in the gate's new-violation report is blocking. Use scoped Ruff fixes on changed files, then re-run the gate. Never stash or switch branches to obtain a baseline.
 
 **Migrations:** these are the failures to expect, and what they mean:
 - `Can't locate revision identified by '...'` — `down_revision` doesn't chain onto the real head, or a revision file is missing.
@@ -78,21 +81,22 @@ Anything in that output is blocking. Fix with `uv run ruff check --fix .`, then 
 ### Two things to know before you trust check 3
 
 - **`TIMETRACE_DB_FILE` is the only way to redirect Alembic.** `db/migrations/env.py` hardcodes `get_url()` to `settings.database_url`, overwriting anything set via `alembic.ini`, `-x`, or `set_main_option`. That's why the gate uses `TIMETRACE_DB_FILE=... uv run timetrace db migrate` and not a bare `alembic` invocation — get this wrong and you migrate the user's real database while believing you're on a copy.
-- **From-scratch bootstrap is broken today, for a pre-existing reason.** With no `~/.timetrace/timetrace.db` to copy, the gate migrates an empty database, which currently fails at `0002_add_task_statuses_and_subtasks` (`sa.func.now()` in a `DateTime` bulk-insert → `TypeError`). If check 3 fails that way on an empty DB, it is not your branch's fault — say so, and don't "fix" it inside a feature diff. Migrating a copy of a real database, which is already past 0002, works fine.
+- **Fresh-database migrations still need explicit verification.** The gate primarily exercises a copy of an existing DB. For any migration change, also follow `docs/development.md#migration-verification` and migrate a genuinely fresh scratch DB; the old `0002` SQLite datetime-adapter failure was fixed and should not be treated as current behavior.
 
 ## Report
 
 ```
 SHIP GATE — feat/<branch>
-  [1] ruff             PASS  (0 new violations)
-  [2] js syntax        PASS  (2 files checked)
-  [3] migrations       PASS  (0003 -> 0005 on copy; task 412 -> 412, session 8801 -> 8801; fk_check empty)
-  [4] daemon /health   PASS  (port 8099, scratch DB)
+  [1] regression suite PASS  (full suite green; count shown by runner)
+  [2] ruff             PASS  (0 new violations)
+  [3] js syntax        PASS  (2 files checked)
+  [4] migrations       PASS  (head applied to copy; row counts preserved; fk_check empty)
+  [5] daemon /health   PASS  (port 8099, scratch DB)
 
 VERDICT: READY FOR REVIEW
 ```
 
-Verdicts: **READY FOR REVIEW** (all pass — hand to `merge-review`), **BLOCKED** (any failure; fix and re-run). There is no "ship with caution" here — the gate is four mechanical checks and they either pass or they don't.
+Verdicts: **READY FOR REVIEW** (all pass — hand to `merge-review`), **BLOCKED** (any failure; fix and re-run). There is no "ship with caution" here — the gate is five mechanical checks and they either pass or they don't.
 
 ## What this gate deliberately does not check
 

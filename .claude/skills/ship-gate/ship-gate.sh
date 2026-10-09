@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# TimeTrace pre-merge gate: lint, JS syntax, migrations on a DB COPY, daemon boot.
+# TimeTrace pre-merge gate: tests, lint, JS syntax, migrations on a DB COPY, daemon boot.
 # Usage: .claude/skills/ship-gate/ship-gate.sh [base-branch]   (default: dev)
 #
 # Never touches ~/.timetrace/timetrace.db and never binds port 8002.
@@ -31,10 +31,21 @@ pass() { echo "  PASS  $*"; }
 echo "SHIP GATE - $(git rev-parse --abbrev-ref HEAD) vs $BASE"
 echo
 
-# ---------------------------------------------------------------- 1. ruff
+# ---------------------------------------------------------- 1. pytest
+echo "[1] regression suite"
+if uv run python -P -m pytest -q > "$SCRATCH_DIR/pytest.log" 2>&1; then
+    tail -2 "$SCRATCH_DIR/pytest.log" | sed 's/^/          /'
+    pass "full pytest suite passed"
+else
+    fail "pytest suite failed:"
+    tail -30 "$SCRATCH_DIR/pytest.log" | sed 's/^/          /'
+fi
+echo
+
+# ---------------------------------------------------------------- 2. ruff
 # Never switches branches (worktrees may be in play). Base versions of the
 # changed files are materialized into a temp tree with `git show` instead.
-echo "[1] ruff"
+echo "[2] ruff"
 uv run ruff check . --output-format=concise 2>/dev/null | sort > "$SCRATCH_DIR/tree.txt"
 TREE_N=$(wc -l < "$SCRATCH_DIR/tree.txt")
 
@@ -75,15 +86,15 @@ else
     if [ -n "$NEW" ]; then
         fail "new violations in changed files:"
         echo "$NEW" | sed 's/^/          /'
-        echo "          (run: uv run ruff check --fix .)"
+        echo "          (run scoped Ruff autofix on the changed file(s))"
     else
         pass "0 new violations in $(echo "$PY_FILES" | wc -w) changed file(s); $TREE_N pre-existing tree-wide"
     fi
 fi
 echo
 
-# ------------------------------------------------------------ 2. js syntax
-echo "[2] js syntax"
+# ------------------------------------------------------------ 3. js syntax
+echo "[3] js syntax"
 JS_FILES=$(git diff --name-only "$BASE"...HEAD -- '*.js' 2>/dev/null)
 if [ -z "$JS_FILES" ]; then
     pass "no .js files changed"
@@ -100,8 +111,8 @@ else
 fi
 echo
 
-# ------------------------------------------------------------ 3. migrations
-echo "[3] migrations (on a copy - the real DB is never touched)"
+# ------------------------------------------------------------ 4. migrations
+echo "[4] migrations (on a copy - the real DB is never touched)"
 if [ ! -f "$REAL_DB" ]; then
     echo "  SKIP  no database at $REAL_DB; testing against an empty one"
 else
@@ -134,8 +145,8 @@ else
 fi
 echo
 
-# ----------------------------------------------------------- 4. daemon boot
-echo "[4] daemon boot + /health (port $GATE_PORT, scratch DB)"
+# ----------------------------------------------------------- 5. daemon boot
+echo "[5] daemon boot + /health (port $GATE_PORT, scratch DB)"
 TIMETRACE_DB_FILE="$SCRATCH_DB" TIMETRACE_PORT="$GATE_PORT" \
     uv run timetrace daemon > "$DAEMON_LOG" 2>&1 &
 DAEMON_PID=$!

@@ -37,7 +37,7 @@ def update_foo(foo_id: str, req: FooUpdate, db: DBSession = Depends(get_session)
 4. **Ordering** — static paths before dynamic ones in the same router. `tasks.py` is explicit about this: `/statuses` and `/completed` are declared above `/{task_id}`, otherwise `"statuses"` gets captured as a task id.
 5. **Register** — if it's a new router, import and `include_router` it in `routers/__init__.py`.
 6. **Client** — call it from `static/js/*.js` via `api.get/post/put/del`, never raw `fetch`.
-7. **Verify** — `uv run ruff check --fix .`, boot `uv run timetrace daemon`, `curl` the endpoint, paste the real response.
+7. **Verify** — add a focused regression test for changed behavior, run the full suite with `uv run python -P -m pytest -q`, and lint with scoped Ruff checks. For an HTTP smoke check, use an isolated scratch daemon/DB and curl `/health` plus the affected endpoint; never use the personal DB or default port for experiments.
 
 ## Service conventions
 

@@ -15,7 +15,8 @@ Write down what you're building before you build it. Not a document for a review
 
 ## Where specs live
 
-`specs/<feature>.md`, in the repo, in the same branch as the implementation. If the directory doesn't exist yet, create it.
+`specs/<feature>.md`, in the repo, in the same branch as the implementation. The checked-in
+[`specs/README.md`](../../../specs/README.md) describes the directory and status lifecycle.
 
 ## The template
 
@@ -79,7 +80,7 @@ How you'll know it works. Concretely.
 1. **Gather.** Read the existing code first — half the "requirements" are already answered by `services/` or an existing column. If real ambiguity remains, use the `grill-me` skill: one question at a time, with a recommendation.
 2. **Write the spec.** Every numbered behavior must be checkable by looking at something. "Feels responsive" is not a behavior; "the kanban column updates without a page reload" is.
 3. **Get it approved.** For a solo local project this means: show it, get a yes. Don't start on a Draft.
-4. **Build behavior by behavior.** MUST items in order, simplest first. If the test suite exists (`tdd-guide`), each behavior gets a test first.
+4. **Build behavior by behavior.** MUST items in order, simplest first. Add a focused regression test for each behavior change using the existing suite; see `tdd-guide`.
 5. **Check the diff against the spec** before calling it done — every MUST satisfied, nothing from Out of Scope built.
 
 ## Stop and ask when

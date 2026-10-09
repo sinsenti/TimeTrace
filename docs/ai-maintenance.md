@@ -70,7 +70,8 @@ applicable:
 - absence of secrets/productivity content from logs;
 - equivalent persisted results for streaming and non-streaming turns.
 
-Use fake models and gateways. Run the focused AI tests, `uv run pytest -q`, `uv run ruff check .`,
+Use fake models and gateways. Run the focused AI tests and the full suite with
+`uv run python -P -m pytest -q` (`-P` avoids root `copy.py` shadowing), plus `uv run ruff check .`,
 `git diff --check`, and `node --check` for each changed JavaScript file.
 
 ## Scope decisions

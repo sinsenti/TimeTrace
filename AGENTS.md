@@ -17,6 +17,9 @@ Shared working instructions for coding assistants in this repository.
 - Specs and roadmap notes contain historical code snapshots. Check current source and tests before
   treating a feature as missing. Report a conflict with an owner decision rather than quietly
   changing either the decision or the behavior.
+- Use `.agents/skills/spec-driven-workflow/SKILL.md` for non-trivial features. Specs live in
+  `specs/<feature>.md` and require explicit owner approval before implementation; see
+  [`specs/README.md`](specs/README.md).
 
 ## Working agreement
 
@@ -24,8 +27,9 @@ Shared working instructions for coding assistants in this repository.
    do not reset, stash, or overwrite them to get a clean tree.
 2. Trace the affected slice: JS/template or CLI → router/schema → service → core/model. Check other
    callers before changing a shared contract. Keep fixes scoped; do not bundle unrelated cleanup.
-3. Add regression tests for behavior changes. Run relevant checks and report exactly what passed,
-   failed, or was not run. Separate pre-existing failures from new ones.
+3. Add regression tests for behavior changes unless the user explicitly requests a manual-only
+   change. Run focused tests during development and the full suite before reporting code changes;
+   report exactly what passed, failed, or was not run. Separate pre-existing failures from new ones.
 4. Update the relevant documentation when behavior, commands, or architectural constraints change.
    Keep this file short and durable; put detailed maps/runbooks in `docs/`, not another history here.
 5. Do not commit, push, merge, or open a PR unless asked. Before a feature merge into `dev`, follow
@@ -39,14 +43,16 @@ Python **3.14**, managed with `uv`; there is no frontend build step.
 
 ```bash
 uv sync
-uv run pytest -q
+uv run python -P -m pytest -q
 uv run ruff check .
 uv run ruff check --fix path/to/changed.py
 uv run ruff format path/to/changed.py
 node --check src/timetrace/interfaces/api/static/js/calendar.js  # substitute each changed JS file
 ```
 
-Use scoped autofix/format commands so unrelated files and user edits stay untouched. Ruff uses
+Use Python safe-path mode (`-P`) for pytest because the repository-root `copy.py` shadows the
+standard-library `copy` module. Use scoped autofix/format commands so unrelated files and user edits
+stay untouched. Ruff uses
 `E/F/I/UP/B`, 120 columns, `py314`; `B008` is currently ignored in `pyproject.toml`.
 
 **Never use the personal database for experiments.** Set `TIMETRACE_DB_FILE` to an absolute path
@@ -101,9 +107,9 @@ in [docs/development.md](docs/development.md#isolated-development).
 
 ## Scope guard
 
-Statistics/custom dashboards remain the current focus and now include the query engine, persisted
-named dashboards/widgets, optional read-only SQL widgets, and comparison baselines. Review the
-sandbox and migration carefully when touching that slice. Recurrence and the AI assistant have
-shipped. External integrations are explicitly deferred: do not add Redis, queues, Postgres, OAuth,
-or sync groundwork. Multi-user scoping and native clients are not implicit follow-up work. See
-`CLAUDE.md` for the detailed agreed ship order.
+Statistics/custom dashboards are shipped and include the query engine, persisted named
+dashboards/widgets, optional read-only SQL widgets, and comparison baselines. Review the sandbox
+and migrations carefully when touching that slice. Recurrence and the AI assistant have shipped.
+External integrations are explicitly deferred: do not add Redis, queues, Postgres, OAuth, or sync
+groundwork. Multi-user scoping and native clients are not implicit follow-up work. See `CLAUDE.md`
+for the detailed settled scope and historical ship order.

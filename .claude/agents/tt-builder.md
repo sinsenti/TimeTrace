@@ -35,33 +35,25 @@ No bundler, no framework. One plain JS file per feature area under
 `interfaces/api/templates/`, with modals/partials in `components/`. Match the surrounding file's
 style; don't introduce a build step or a dependency.
 
-## Testing policy (2026-08-24): the user tests manually — do not write automated tests by default
+## Testing policy
 
-The user has asked to skip almost all automated test-writing going forward. They test features
-themselves. This changes "definition of done":
-
-- **Do not** write new `tests/test_*.py` files or add cases to the existing suite unless the user
-  or the spec explicitly asks for a test. Do not run the full `pytest` suite as your verification
-  step for new feature work.
-- **Do** still run the cheap mechanical checks below — they catch crashes/typos, not behavior, and
-  take seconds.
-- **Do not** hand off to `tt-tester` for exhaustive live-daemon curl verification by default either
-  — that is also "testing" in the sense the user opted out of. A quick boot + `/health` check is
-  enough to prove the daemon doesn't crash on startup.
-- When you report back, end with a short, concrete list of **what the user should click through or
-  curl themselves** to confirm the feature works — specific pages, buttons, or example inputs, not
-  "test the feature." Ask which of these they want to check, if it's not obvious.
-- The existing pytest suite (`tests/`) is not being deleted — leave it as-is. This policy is about
-  not *growing* it for new feature work, not about ripping out existing coverage.
+Add a focused regression test for each behavior change unless the user explicitly requests a
+manual-only change. Use the existing `tests/` suite; do not bootstrap another suite or add test
+dependencies. Run focused tests during development and the full suite before reporting code changes
+with `uv run python -P -m pytest -q` (`-P` avoids the repository-root `copy.py` shadowing the
+standard library). Keep manual browser acceptance checks for behavior the Python suite cannot cover;
+there is no browser harness, and adding one requires a separate justification. Use fake AI models and
+gateways, never live providers or personal data in automated tests.
 
 ## Definition of done
 
-1. `uv run ruff check --fix .` then `uv run ruff check .` — your files clean. (The repo has some
-   pre-existing E501 violations in `task_service.py`; don't let those hide new ones you introduced,
-   and don't go reformat unrelated code to fix them.)
-2. If you changed JS: `node --check <file>` on each file you touched.
-3. If you changed models: a migration exists, and it applies cleanly to a **copy** of a real DB.
-4. The daemon still boots and serves `/health` (a quick smoke check, not a full test pass).
+1. Run focused regression tests during development and `uv run python -P -m pytest -q` before
+   reporting code changes. Use `-P` because the root `copy.py` shadows the standard library.
+2. Run scoped Ruff checks/formatting on changed Python files; avoid rewriting unrelated files.
+3. If you changed JS: `node --check <file>` on each file you touched.
+4. If you changed models: a migration exists, and it applies cleanly to a **copy** of a real DB.
+5. The daemon still boots and serves `/health` on an isolated database when the change warrants a
+   daemon smoke check.
 
 ## Never do this
 

@@ -1,8 +1,8 @@
-Prompt (original):
+# TimeTrace backlog
 
-That's my current version of this project. Find all inconsistencies and errors. Also write full files if i need to change something in those files. i don't want to use icons like this ✨ mostly(if they already exist in code,then its fine)
-
----
+This is a status-oriented backlog, not a list of presumed missing features. Check current code and
+owner decisions before reopening historical items. `[x]` means verified shipped; unchecked items
+may be deferred rather than active work.
 
 ## Architecture / Backend (from chat.pdf gap analysis, see CLAUDE.md "Roadmap")
 
@@ -82,14 +82,19 @@ agent tools; they do not expand the draft-only write boundary.
 
 ## Calendar grid rendering
 
-- [ ] Decouple drag-to-reschedule from state writes: render a lightweight preview layer at 60fps while
-  dragging, commit to DB only on `drag_end`.
+- [x] Persist event moves/resizes only after the gesture completes. Current FullCalendar
+  `eventDrop`/`eventResize` callbacks call the session update path after release; no pointer-move
+  callback writes to the API (`dashboard.js`, `calendar.js`).
+- [ ] Measure drag responsiveness with representative overlap-heavy calendars. Only if the built-in
+  FullCalendar preview is observably slow, scope a custom lightweight preview; do not assume or
+  promise 60fps without profiling.
 
 ## Teams / multi-user — only if it proves needed
 
-Not committed to. The shape if it happens: project tracking closer to Jira, scheduling closer to
-Morgen, shared dashboards. Ranked below recurrence work and above AI. UUIDv7 ids already make
-adding an owner/workspace column a non-rebuild change, so nothing needs pre-building for it.
+Not committed to; reconsider only if single-user constraints prove insufficient. The shape if it
+happens: project tracking closer to Jira, scheduling closer to Morgen, shared dashboards. UUIDv7 ids
+already make adding an owner/workspace column a non-rebuild change, so nothing needs pre-building
+for it.
 
 - [ ] Decide whether scoping is per-user or per-workspace before any schema work.
 - [ ] Sharing model (read-only links? real accounts?) — undecided.
