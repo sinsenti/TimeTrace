@@ -268,7 +268,7 @@ async function saveTask() {
 
         closeTaskModal();
 
-        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
+        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
         if (typeof fetchTasks === 'function') fetchTasks();
         if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
@@ -303,7 +303,7 @@ async function deleteTask() {
     if (confirmed) {
         await api.delete(`/api/tasks/${id}`);
         closeTaskModal();
-        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
+        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
         if (typeof fetchTasks === 'function') fetchTasks();
         if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
         if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();

@@ -7,6 +7,22 @@ let activeTasks = [];
 let allSessions = [];
 let currentFilter = 'all';
 
+async function resolveCalendarDropTask(taskId, taskTitle) {
+    if (!taskId) return null;
+
+    if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
+
+    const task = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
+    if (task) return task;
+
+    if (typeof allTasksMap !== 'undefined' && taskTitle) {
+        allTasksMap[taskId] = { id: taskId, title: taskTitle };
+        return allTasksMap[taskId];
+    }
+
+    return null;
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     const userSettings = getUserSettings();
 
@@ -145,6 +161,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 try {
                     const taskTitle = info.event.title;
                     const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
+                    const targetTask = await resolveCalendarDropTask(taskId, taskTitle);
                     const estMins = info.event.extendedProps && info.event.extendedProps.estimatedMinutes ? parseInt(info.event.extendedProps.estimatedMinutes) : 15;
                     const sessionMins = estMins > 120 ? 30 : estMins;
                     
@@ -153,7 +170,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                     info.event.remove();
 
-                    const targetTask = (taskId && typeof allTasksMap !== 'undefined') ? allTasksMap[taskId] : null;
                     const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "";
 
                     const payload = {
