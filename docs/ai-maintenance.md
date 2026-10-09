@@ -83,9 +83,10 @@ accept the browser's validated `firstDayOfWeek` setting. Provider configuration
 supports the built-in LangChain providers plus **Pi**: Pi uses the locally installed
 `@earendil-works/pi-coding-agent` ModelRuntime and its existing `~/.pi/agent` credentials. Configure
 Pi authentication with `/login`, then select an exact `provider/model` ID (such as
-`openai-codex/gpt-6-astra`) in `/settings/ai`. The daemon must be able to find the `pi` executable;
-for a non-standard install, set `TIMETRACE_PI_PACKAGE_DIR` to the Pi package root. TimeTrace does
-not store or receive the Pi API key;
+`openai-codex/gpt-6-astra`) in `/settings/ai`. The daemon needs Node.js on its `PATH` and auto-detects
+the standard managed package under `~/.pi/agent/install/current-version` (or `PI_MANAGED_INSTALL_ROOT`);
+for a non-standard install, set `TIMETRACE_PI_PACKAGE_DIR` to the Pi package root. TimeTrace does not
+store or receive the Pi API key;
 Pi is used only for model inference, while TimeTrace retains ownership of all tools and draft approval.
 It does not support timer controls or direct habit/rating/review writes: those domains are
 read-only through explicit typed tools, while day-review create/update is an approval-gated draft.

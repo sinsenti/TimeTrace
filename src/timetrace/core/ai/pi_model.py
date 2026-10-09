@@ -27,12 +27,31 @@ _CALL_ERROR = (
 )
 
 
+def _managed_package(install_root: Path) -> Path | None:
+    try:
+        version = (install_root / "current-version").read_text().strip()
+    except OSError:
+        return None
+    if not version or version in {".", ".."} or Path(version).name != version:
+        return None
+    return install_root / "releases" / version / "node_modules" / "@earendil-works" / "pi-coding-agent"
+
+
 def _command() -> list[str]:
     node = shutil.which("node")
     pi = shutil.which("pi")
     # An explicit package directory supports daemon PATHs with wrapper scripts or no pi binary.
     override = os.environ.get("TIMETRACE_PI_PACKAGE_DIR")
-    candidates = [Path(override).expanduser()] if override else list(Path(pi).resolve().parents) if pi else []
+    if override:
+        candidates = [Path(override).expanduser()]
+    else:
+        candidates = list(Path(pi).resolve().parents) if pi else []
+        install_roots = [Path.home() / ".pi" / "agent" / "install"]
+        managed_root = os.environ.get("PI_MANAGED_INSTALL_ROOT")
+        if managed_root:
+            install_roots.insert(0, Path(managed_root).expanduser())
+        candidates.extend(package for root in install_roots if (package := _managed_package(root)) is not None)
+
     if node:
         for directory in candidates:
             try:
