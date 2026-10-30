@@ -37,6 +37,11 @@ days, daily caps, and scheduling windows.
   settings. The AI data scope defaults to tasks/sessions only; habits, reviews, ratings, and timer
   context require explicit opt-in. Redaction is not complete anonymization. Do not use real providers
   or personal data in automated tests; use fake models/gateways.
+- Both chat and saved/inline connectivity probes use the DB-free `core.ai.providers.get_chat_model`
+  constructor for routing, defaults and option precedence. Keep DB reads and decryption in the
+  services; the provider-service wrapper preserves domain validation, while chat sanitizes
+  initialization failures. Probes cap output at 16 tokens and timeout at 30 seconds (or a smaller
+  configured value); explicit options still override `extra_params`. Pi credentials remain owned by Pi.
 - Do not enable LangSmith tracing or add provider/network calls to tests.
 - Fernet keys and provider configuration must remain masked in API responses and UI output.
 

@@ -1,9 +1,9 @@
 """Provider config CRUD, exactly-one-active enforcement, model catalog/listing, and provider
 connectivity testing for the AI assistant feature (spec S4 item 1 / S7 "Providers").
 
-The service-level builder handles DB-backed LangChain providers. Pi is handled by the DB-free
-`core.ai.pi_model` adapter, which delegates model authentication and inference to Pi's own
-ModelRuntime without passing Pi credentials through this service.
+Configuration extraction, credential decryption and probe limits belong here; the shared
+DB-free `core.ai.providers` constructor owns model routing and options. Pi's adapter delegates
+authentication and inference to Pi's ModelRuntime without passing Pi credentials through this service.
 """
 
 import json
@@ -14,11 +14,11 @@ import httpx
 from sqlmodel import Session, select
 
 from timetrace.core.ai.pi_model import list_pi_models
+from timetrace.core.ai.providers import KNOWN_PROVIDERS, get_chat_model
 from timetrace.core.ai.secrets import decrypt_secret, encrypt_secret, key_last4
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
-KNOWN_PROVIDERS = ("anthropic", "openai", "openrouter", "ollama", "google", "groq", "pi")
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
 AI_DATA_SCOPE_DEFAULTS: dict[str, bool] = {
     "tasks": True,
@@ -28,11 +28,6 @@ AI_DATA_SCOPE_DEFAULTS: dict[str, bool] = {
     "ratings": False,
     "timer": False,
 }
-
-# See core/ai/providers.py's twin constant for why this translation exists: `init_chat_model`'s
-# registry key for direct Google AI Studio access is "google_genai", not this app's shorter
-# user-facing "google".
-_MODEL_PROVIDER_OVERRIDES = {"google": "google_genai"}
 
 # Sentinel distinguishing "argument omitted" (keep existing value) from an explicit value,
 # including an explicit `None`/`""`. Needed for `update_provider`'s `api_key` semantics (S7):
@@ -62,57 +57,19 @@ def build_chat_model(
     use_native_openrouter: bool = False,
     extra_params: dict[str, Any] | None = None,
 ) -> Any:
-    """Builds a runnable LangChain chat model from provider config fields via
-    `langchain.chat_models.init_chat_model` (spec S3 verified API surface).
-
-    OpenRouter needs no extra package unless `use_native_openrouter` is set: by default it's
-    routed through `model_provider="openai"` with OpenRouter's base URL (spec S3); the native
-    `langchain-openrouter` provider is opt-in and pre-1.0, and isn't a pinned dependency, so
-    selecting it without the package installed surfaces as a normal `test_config` failure.
-
-    Groq needs no extra package at all -- its API is fully OpenAI-compatible
-    (`https://api.groq.com/openai/v1`, exactly as Groq's own docs recommend), so it's always
-    routed through `model_provider="openai"` with no native-package opt-in.
-    """
+    """Construct a model with service-level validation, using the shared DB-free builder."""
     _validate_provider(provider)
-    if provider == "pi":
-        from timetrace.core.ai.pi_model import build_pi_model
-
-        return build_pi_model(
-            model=model,
-            base_url=base_url,
-            api_key=api_key,
-            temperature=temperature,
-            max_output_tokens=max_output_tokens,
-            request_timeout_seconds=request_timeout_seconds or 120,
-            use_native_openrouter=use_native_openrouter,
-            extra_params=extra_params,
-        )
-
-    model_provider = _MODEL_PROVIDER_OVERRIDES.get(provider, provider)
-    resolved_base_url = base_url
-    if provider == "openrouter" and not use_native_openrouter:
-        model_provider = "openai"
-        resolved_base_url = base_url or "https://openrouter.ai/api/v1"
-    elif provider == "groq":
-        model_provider = "openai"
-        resolved_base_url = base_url or "https://api.groq.com/openai/v1"
-
-    kwargs: dict[str, Any] = dict(extra_params or {})
-    if resolved_base_url:
-        kwargs["base_url"] = resolved_base_url
-    if api_key:
-        kwargs["api_key"] = api_key
-    if temperature is not None:
-        kwargs["temperature"] = temperature
-    if max_output_tokens:
-        kwargs["max_tokens"] = max_output_tokens
-    if request_timeout_seconds:
-        kwargs["timeout"] = request_timeout_seconds
-
-    from langchain.chat_models import init_chat_model
-
-    return init_chat_model(model=model, model_provider=model_provider, **kwargs)
+    return get_chat_model(
+        provider=provider,
+        model=model,
+        base_url=base_url,
+        api_key=api_key,
+        temperature=temperature,
+        max_output_tokens=max_output_tokens,
+        request_timeout_seconds=request_timeout_seconds,
+        use_native_openrouter=use_native_openrouter,
+        extra_params=extra_params,
+    )
 
 
 class AIProviderService:

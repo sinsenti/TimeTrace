@@ -101,7 +101,10 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   Providers now include Anthropic, OpenAI, OpenRouter, Ollama, Google, Groq, and Pi. Google uses
   `langchain-google-genai`; Groq uses the OpenAI-compatible client. Pi uses a small Node bridge to
   the locally installed `@earendil-works/pi-coding-agent` ModelRuntime, reusing Pi's credentials
-  and model catalog without loading Pi coding tools or extensions. Migration
+  and model catalog without loading Pi coding tools or extensions. Chat and saved/inline connectivity
+  probes share the DB-free `core/ai/providers.py` constructor; services retain configuration/key
+  extraction, caller-specific errors, and probe caps (16 output tokens / 30 seconds, or lower).
+  Migration
   `0008_ai_custom_instructions` adds DB-backed custom instructions after the seven AI tables in
   `0007_ai_assistant_tables`. See the [AI spec](ai-assistant-spec.md) for the approval/privacy
   contract; its original provider/dependency lists and proposed migration numbers are historical.
@@ -162,8 +165,10 @@ git diff --check
 
 Coverage includes timer/idle state, UTC conversion, task title syntax, task HTTP basics, session
 creation, legacy tag fan-out, substantial pure/service recurrence tests, AI privacy boundaries, and
-fake-agent remembered-instruction chat/API lifecycle tests. Draft lifecycle, gateway, and provider
-coverage remains partial outside this hardening slice. There is no browser test suite. Add coverage
+fake-agent remembered-instruction chat/API lifecycle tests. Provider-construction tests replace
+LangChain adapters and Pi inference with fakes, covering routing/options, saved/inline probe caps,
+key decryption, and real-agent JSON/SSE chat initialization. Draft lifecycle, gateway, and other provider
+coverage remains partial outside these slices. There is no browser test suite. Add coverage
 where changing behavior; passing the existing suite does not establish those areas are correct.
 
 **Observed baseline at this documentation check:** 192 tests passed with 85 reported SQLite

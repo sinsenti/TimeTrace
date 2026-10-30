@@ -1,21 +1,10 @@
 """Provider abstraction (`init_chat_model` wiring plus the Pi ModelRuntime adapter).
 
-Layering (spec S5: "core/ free of FastAPI and SQLModel"): `services/ai_provider_service.py`
-already has a `build_chat_model` helper, but it can't be imported here -- `services/` imports
-`core/`, never the reverse, and importing it from `core/ai/providers.py` would invert that
-dependency direction. Instead this module takes already-extracted plain values (provider name,
-model, base url, decrypted api key, temperature, etc.) rather than an `AIProviderConfig` ORM
-object; the ORM-to-plain-values extraction and Fernet decryption stay the caller's job (a later
-chat-service track reading an `AIProviderConfig` row).
-
-This means the OpenRouter `base_url` routing logic (`model_provider="openai"` unless
-`use_native_openrouter`) is duplicated here in a DB-free form rather than shared with
-`ai_provider_service.build_chat_model`. That's deliberate, not an oversight: the two functions
-serve different layers (one is DB-aware and returns/consumes `AIProviderConfig`, this one is
-pure and agent-facing) and the duplicated logic is a few lines that change together only if
-OpenRouter's routing convention itself changes -- an actual shared helper would need to live in
-a third module either both of these already depend on, which doesn't exist and isn't worth
-inventing for four lines.
+This DB-free constructor owns provider routing, defaults and option precedence for both chat
+and connectivity probes. Service callers extract plain configuration values and decrypt keys;
+no ORM object or request context enters this module. Caller-specific validation, error handling
+and the probes' smaller token/timeout limits remain in the services. Pi authentication and
+inference stay with Pi's ModelRuntime through the existing adapter.
 """
 
 from typing import Any
@@ -47,7 +36,7 @@ def get_chat_model(
     """Builds a runnable LangChain chat model from plain provider parameters, via
     `langchain.chat_models.init_chat_model` (spec S3 verified API surface).
 
-    Callers (the chat-service track) are responsible for reading an `AIProviderConfig` row and
+    Service callers are responsible for reading an `AIProviderConfig` row and
     decrypting `api_key_encrypted` (`core/ai/secrets.py: decrypt_secret`) before calling this --
     this function never touches the DB or the encryption layer.
 
