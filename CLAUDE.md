@@ -5,6 +5,23 @@ other coding assistants. Start with [AGENTS.md](AGENTS.md) for shared working ru
 [docs/development.md](docs/development.md) for the current code map, isolated setup, and verification
 runbook. Historical snapshots below explain past fixes; verify current source before reusing them.
 
+## Agent skills
+
+### Issue tracker
+
+Issues live in `.scratch/<feature>/`; approved specs remain in `specs/`.
+Read `docs/agents/issue-tracker.md` before reading or publishing tickets.
+
+### Triage labels
+
+Use the five default triage roles as local issue status strings.
+Read `docs/agents/triage-labels.md` when triaging issues.
+
+### Domain docs
+
+Single-context: root `GLOSSARY.md` and `docs/adr/`.
+Read `docs/agents/domain.md` before exploring domain concepts or decisions.
+
 ## What this is
 
 TimeTrace is a local-first, single-user time tracking and productivity daemon. A single FastAPI process

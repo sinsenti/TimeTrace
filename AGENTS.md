@@ -21,6 +21,12 @@ Shared working instructions for coding assistants in this repository.
   `specs/<feature>.md` and require explicit owner approval before implementation; see
   [`specs/README.md`](specs/README.md).
 
+## Agent skills
+
+- Before reading or publishing tickets, read [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
+- When triaging issues, read [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
+- Before exploring domain concepts or decisions, read [docs/agents/domain.md](docs/agents/domain.md).
+
 ## Working agreement
 
 1. Inspect `git status --short` and the relevant diff before editing. Preserve existing user changes;
