@@ -228,9 +228,11 @@ function escapeTaskCardText(value) {
 }
 
 async function fetchTasks() {
+    const generation = taskKnowledge.state().generation;
     try {
         const currentFilterVal = getCurrentStatusFilter();
         let fetched = await api.get(`/api/tasks?status=${encodeURIComponent(currentFilterVal)}&sort=smart_gap_filler`) || [];
+        if (generation !== taskKnowledge.state().generation) return;
 
         if (typeof matchesCustomFilter === 'function') {
             activeTasks = fetched.filter(t => matchesCustomFilter(t));
@@ -245,12 +247,14 @@ async function fetchTasks() {
         if (countEl) countEl.innerText = `${activeTasks.length} tasks`;
         
         if (select) {
+            const selectedTask = select.value;
             const openTasks = activeTasks.filter(t => {
                 const st = (t.status || '').toLowerCase();
                 return st !== 'done' && st !== 'completed';
             });
             select.innerHTML = '<option value="">-- Attach Task --</option>' + 
                 openTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+            select.value = selectedTask;
         }
 
         if (cardList) {
@@ -264,8 +268,8 @@ async function fetchTasks() {
                     const estBadge = formatMinutesToDuration(t.estimated_minutes);
                     const hasAttachments = Boolean(t.attachments && t.attachments.trim());
                     const isRecurring = t.is_recurring === true;
-                    const parentTask = t.parent_id && typeof allTasksMap !== 'undefined'
-                        ? allTasksMap[t.parent_id]
+                    const parentTask = t.parent_id
+                        ? taskKnowledge.get(t.parent_id)
                         : null;
                     const parentTaskLinkHTML = t.parent_id
                         ? `<div class="text-[10px] truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeTaskCardText(parentTask ? parentTask.title : 'Parent task')}</a></div>`
@@ -312,8 +316,12 @@ async function fetchTasks() {
         }
 
         fetchRangeTotals();
+        taskKnowledge.viewResult("sidebar", true);
+        return true;
     } catch (err) {
+        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult("sidebar", false);
         console.error("Error fetching tasks:", err);
+        return false;
     }
 }
 
@@ -321,8 +329,7 @@ async function clearCompletedTasks() {
     const confirmed = await showCustomConfirm("Clear Completed Tasks", "Are you sure you want to remove all completed task slots?");
     if (confirmed) {
         await api.delete('/api/tasks/completed');
-        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
-        fetchTasks();
+        await taskKnowledge.changed();
     }
 }
 
@@ -379,7 +386,7 @@ function renderBreakdownFilterChip() {
         if (breakdownFilter.value === '__none__') {
             label = 'Direct Session Log';
         } else {
-            const t = typeof allTasksMap !== 'undefined' ? allTasksMap[breakdownFilter.value] : null;
+            const t = taskKnowledge.get(breakdownFilter.value);
             label = t ? t.title : '(deleted task)';
         }
     }
@@ -421,7 +428,7 @@ function renderBreakdownLists() {
         } else {
             totalsList.innerHTML = sortedTasks.map(([tid, secs], idx) => {
                 const isNone = tid === '__none__';
-                const task = isNone ? null : (typeof allTasksMap !== 'undefined' ? allTasksMap[tid] : null);
+                const task = isNone ? null : (taskKnowledge.get(tid));
                 const title = isNone ? 'Direct Session Log' : (task ? task.title : '(deleted task)');
                 const color = task ? getTaskColor(task, idx) : '#334155';
                 const isActive = breakdownFilter && breakdownFilter.type === 'task' && String(breakdownFilter.value) === String(tid);

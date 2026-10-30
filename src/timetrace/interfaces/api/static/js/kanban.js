@@ -14,12 +14,20 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 async function loadKanbanBoard() {
+    const generation = taskKnowledge.state().generation;
     try {
-        allStatuses = await api.get('/api/tasks/statuses') || [];
-        kanbanTasks = await api.get('/api/tasks?status=all&sort=smart_gap_filler') || [];
+        const statuses = await api.get('/api/tasks/statuses') || [];
+        const tasks = await api.get('/api/tasks?status=all&sort=smart_gap_filler') || [];
+        if (generation !== taskKnowledge.state().generation) return;
+        allStatuses = statuses;
+        kanbanTasks = tasks;
         renderKanbanColumns();
+        taskKnowledge.viewResult('kanban', true);
+        return true;
     } catch (e) {
+        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('kanban', false);
         console.error("Failed to load Kanban board:", e);
+        return false;
     }
 }
 
@@ -166,6 +174,7 @@ function initKanbanDragAndDrop() {
                         if (oldTask) oldTask.status = newStatusName;
 
                         if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
+                        await taskKnowledge.changed();
                     } catch (err) {
                         console.error("Failed to update task status on drag:", err);
                         loadKanbanBoard();

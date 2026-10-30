@@ -2,23 +2,39 @@
  * Task Inspector, Typeahead Combobox & Task Post-Mortem
  */
 
+let selectedInspectedTaskId = null;
+let activeTaskInspectorSearchIdx = -1;
+
 async function loadTaskInspectorRegistry() {
-    try {
-        allTasksList = await api.get('/api/tasks?status=all') || [];
-        renderTaskQuickChipsBar();
-    } catch (e) {}
+    await taskKnowledge.load();
+    await refreshTaskInspectorKnowledge();
+}
+
+async function refreshTaskInspectorKnowledge() {
+    refreshTaskInspectorLabels();
+    if (selectedInspectedTaskId) return loadTaskInspectorStats(selectedInspectedTaskId, true);
+}
+
+function refreshTaskInspectorLabels() {
+    renderTaskQuickChipsBar();
+    const dropdown = document.getElementById('task_inspector_dropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        const search = document.getElementById('task_inspector_search');
+        renderTaskInspectorSuggestions(search ? search.value : '');
+    }
 }
 
 function renderTaskQuickChipsBar() {
     const bar = document.getElementById('task_quick_chips_bar');
     if (!bar) return;
 
-    if (allTasksList.length === 0) {
+    const tasks = taskKnowledge.values();
+    if (tasks.length === 0) {
         bar.innerHTML = '<span class="text-xs text-slate-500">No tasks created yet.</span>';
         return;
     }
 
-    bar.innerHTML = allTasksList.map((t, idx) => {
+    bar.innerHTML = tasks.map((t, idx) => {
         const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
         return `
             <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${color};">
@@ -75,7 +91,7 @@ function renderTaskInspectorSuggestions(query) {
     if (!dropdown) return;
 
     const q = (query || '').trim().toLowerCase();
-    let filtered = allTasksList;
+    let filtered = taskKnowledge.values();
     if (q) {
         filtered = filtered.filter(t => 
             t.title.toLowerCase().includes(q) || 
@@ -114,7 +130,7 @@ function highlightTaskInspectItem(items) {
 }
 
 function selectTaskInspectorById(taskId) {
-    const task = allTasksList.find(t => t.id === taskId);
+    const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');
     const dropdown = document.getElementById('task_inspector_dropdown');
 
@@ -128,7 +144,8 @@ function selectTaskInspectorById(taskId) {
     loadTaskInspectorStats(taskId);
 }
 
-async function loadTaskInspectorStats(taskId) {
+async function loadTaskInspectorStats(taskId, preserveEdits = false) {
+    const generation = taskKnowledge.state().generation;
     const body = document.getElementById('task_inspector_body');
     if (!taskId) {
         if (body) body.classList.add('hidden');
@@ -139,6 +156,7 @@ async function loadTaskInspectorStats(taskId) {
 
     try {
         const data = await api.get(`/api/tasks/${taskId}/stats`);
+        if (generation !== taskKnowledge.state().generation || selectedInspectedTaskId !== taskId) return null;
         const task = data.task;
 
         if (body) body.classList.remove('hidden');
@@ -193,16 +211,22 @@ async function loadTaskInspectorStats(taskId) {
             }
         }
 
-        const rev = data.task_review;
-        document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
-        document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
-        document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
-        document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
+        if (!preserveEdits) {
+            const rev = data.task_review;
+            document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
+            document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
+            document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
+            document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
 
-        await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings);
-
+            await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings);
+        }
+        taskKnowledge.viewResult('inspector-registry', true);
+        return true;
     } catch (e) {
+        if (generation !== taskKnowledge.state().generation || selectedInspectedTaskId !== taskId) return null;
+        taskKnowledge.viewResult('inspector-registry', false);
         console.error("Failed to load task inspector stats:", e);
+        return false;
     }
 }
 

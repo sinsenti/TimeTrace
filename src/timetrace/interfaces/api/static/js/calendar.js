@@ -76,7 +76,7 @@ function scrollToCurrentTime() {
 
 function formatCalEventFromSession(s, idx = 0) {
     if (!s) return null;
-    const matchedTask = (s.task_id && typeof allTasksMap !== 'undefined') ? allTasksMap[s.task_id] : null;
+    const matchedTask = s.task_id ? taskKnowledge.get(s.task_id) : null;
     const color = matchedTask 
         ? getTaskColor(matchedTask, idx) 
         : (typeof defaultPalette !== 'undefined' ? defaultPalette[idx % defaultPalette.length] : '#7c3aed');
@@ -108,8 +108,8 @@ function isRecurringCalendarEvent(event) {
     const props = event.extendedProps || {};
     if (props.isVirtual) return true;
     const taskId = props.taskId;
-    if (!taskId || typeof allTasksMap === 'undefined' || !allTasksMap[taskId]) return false;
-    return Boolean(allTasksMap[taskId].is_recurring);
+    if (!taskId || !taskKnowledge.get(taskId)) return false;
+    return Boolean(taskKnowledge.get(taskId).is_recurring);
 }
 
 /**
@@ -176,10 +176,13 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
 }
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
+    const generation = taskKnowledge.state().generation;
     try {
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
         const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
-        allSessions = res || [];
+        const current = generation === taskKnowledge.state().generation;
+        if (current) allSessions = res || [];
+        // Settle superseded FullCalendar requests with the last-known display, not old rows.
 
         const visibleForCalendar = typeof sessionMatchesBreakdownFilter === 'function'
             ? allSessions.filter(sessionMatchesBreakdownFilter)
@@ -187,7 +190,12 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
 
         const events = visibleForCalendar.map((s, idx) => formatCalEventFromSession(s, idx));
         successCallback(events);
+        if (!current) return;
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
-    } catch (err) { failureCallback(err); }
+        taskKnowledge.viewResult('calendar', true);
+    } catch (err) {
+        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('calendar', false);
+        failureCallback(err);
+    }
 }

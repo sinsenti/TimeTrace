@@ -300,8 +300,8 @@ async function promptDeleteSession(sessionId) {
     let isRecurring = false;
     if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
         const s = allSessions.find(item => String(item.id) === String(sessionId));
-        if (s && s.task_id && typeof allTasksMap !== 'undefined' && allTasksMap[s.task_id]) {
-            isRecurring = Boolean(allTasksMap[s.task_id].is_recurring);
+        if (s && s.task_id && typeof taskKnowledge !== 'undefined' && taskKnowledge.get(s.task_id)) {
+            isRecurring = Boolean(taskKnowledge.get(s.task_id).is_recurring);
         }
     }
 

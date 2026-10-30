@@ -12,12 +12,11 @@ async function resolveCalendarDropTask(taskId, taskTitle) {
 
     if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
 
-    const task = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
+    const task = taskKnowledge.get(taskId);
     if (task) return task;
 
-    if (typeof allTasksMap !== 'undefined' && taskTitle) {
-        allTasksMap[taskId] = { id: taskId, title: taskTitle };
-        return allTasksMap[taskId];
+    if (taskTitle) {
+        return taskKnowledge.rememberFallback({ id: taskId, title: taskTitle });
     }
 
     return null;
@@ -192,7 +191,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     if (taskId) {
                         const isOngoing = targetTask && (targetTask.status || '').toLowerCase() === 'ongoing';
                         if (!isOngoing) {
-                            try { await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" }); } catch(e) {}
+                            try {
+                                await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" });
+                                await taskKnowledge.changed();
+                            } catch(e) {}
                         }
                     }
 

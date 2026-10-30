@@ -114,9 +114,9 @@ function openNewTaskModal() {
 }
 
 async function openEditTaskModal(id) {
-    let t = (typeof activeTasks !== 'undefined' && Array.isArray(activeTasks) ? activeTasks.find(item => item && String(item.id) === String(id)) : null)
-         || (typeof kanbanTasks !== 'undefined' && Array.isArray(kanbanTasks) ? kanbanTasks.find(item => item && String(item.id) === String(id)) : null)
-         || (typeof allTasksMap !== 'undefined' && allTasksMap ? (allTasksMap[id] || allTasksMap[String(id)]) : null);
+    const cached = taskKnowledge.get(id);
+    // Last-known display rows and title-only fallbacks must not populate an editable snapshot.
+    let t = taskKnowledge.state().status === 'fresh' && cached && cached.status !== undefined ? cached : null;
 
     if (!t) {
         try {
@@ -268,10 +268,7 @@ async function saveTask() {
 
         closeTaskModal();
 
-        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
-        if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+        await taskKnowledge.changed();
 
         if (sessionModalStateBackup && createdTask && createdTask.id) {
             const backup = sessionModalStateBackup;
@@ -303,10 +300,7 @@ async function deleteTask() {
     if (confirmed) {
         await api.delete(`/api/tasks/${id}`);
         closeTaskModal();
-        if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry(true);
-        if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof loadKanbanBoard === 'function') await loadKanbanBoard();
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+        await taskKnowledge.changed();
     }
 }
 

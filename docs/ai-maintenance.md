@@ -90,6 +90,18 @@ step, not authorization or a guarantee that permitted aggregates hide linked dom
 requirements, and concurrent DB connection isolation/cleanup. Never tighten visibility as part of
 an internal read-context refactor.
 
+## Browser task refresh after approval
+
+After a successful accept/undo/reapply or undo-all, `ai_drafts.js` calls
+`taskKnowledge.changed()` before refreshing draft cards. Keep these paths independent: a failed
+batch-detail read must not prevent calendar/task/attachment views from refreshing, and display
+failures must not be reported as a failed write. The shared task-knowledge module is included on
+every drawer page; it retains last-known metadata and provides a refresh-only retry notice.
+It must not reopen forms or overwrite unsaved fields. See the
+[same-page metadata reference](development.md#same-page-task-metadata) for ownership and Node/browser
+verification. These are display changes only; server-side approval, conflict and audit rules stay
+in `AIDraftService`.
+
 ## Domain traps
 
 - Recurring occurrence writes go through `SessionService`; support synthetic `virt:` IDs and record

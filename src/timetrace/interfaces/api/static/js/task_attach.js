@@ -1,27 +1,12 @@
-let allTasksMap = {};
 let attachedTask = null;
 let activeTaskSuggestionIndex = -1;
-
-async function fetchAllTasksRegistry(force = false) {
-    if (!force && Object.keys(allTasksMap).length > 0) {
-        return allTasksMap;
-    }
-    try {
-        const tasks = await api.get('/api/tasks?status=all') || [];
-        allTasksMap = {};
-        tasks.forEach(t => {
-            allTasksMap[t.id] = t;
-        });
-    } catch(e) {}
-    return allTasksMap;
-}
 
 function renderTaskSuggestions(query) {
     const dropdown = document.getElementById('task_suggestions_dropdown');
     if (!dropdown) return;
 
     let q = (query || "").trim().toLowerCase();
-    const tasks = Object.values(allTasksMap);
+    const tasks = taskKnowledge.values();
     let filtered = tasks.filter(t => {
         const statusLower = (t.status || '').toLowerCase();
         if (statusLower === 'done' || statusLower === 'completed') return false;
@@ -48,6 +33,19 @@ function renderTaskSuggestions(query) {
     dropdown.classList.remove('hidden');
 }
 
+function refreshAttachedTaskViews() {
+    if (attachedTask) {
+        // A miss is not an instruction to detach, nor to rewrite tags, times or hidden IDs.
+        attachedTask = taskKnowledge.get(attachedTask.id) || attachedTask;
+        renderTaskChip();
+    }
+    const dropdown = document.getElementById('task_suggestions_dropdown');
+    if (dropdown && !dropdown.classList.contains('hidden')) {
+        const search = document.getElementById('session_modal_task_search');
+        renderTaskSuggestions(search ? search.value : '');
+    }
+}
+
 function highlightTaskSuggestionItem(items) {
     items.forEach((item, idx) => {
         if (idx === activeTaskSuggestionIndex) {
@@ -59,7 +57,7 @@ function highlightTaskSuggestionItem(items) {
 }
 
 function attachTaskById(taskId, preventFocus = false) {
-    const t = typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
+    const t = taskKnowledge.get(taskId);
     if (!t) return;
     attachedTask = t;
 

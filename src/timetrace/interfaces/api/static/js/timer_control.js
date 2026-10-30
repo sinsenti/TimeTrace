@@ -117,7 +117,7 @@ function updateDocumentTitle() {
     if (currentSession) {
         const end = currentSession.end_time ? new Date(currentSession.end_time) : new Date(now.getTime() + 15 * 60000);
         const minsLeft = Math.max(1, Math.ceil((end - now) / 60000));
-        const matchedTask = (typeof allTasksMap !== 'undefined' && allTasksMap) ? allTasksMap[currentSession.task_id] : null;
+        const matchedTask = typeof taskKnowledge !== 'undefined' ? taskKnowledge.get(currentSession.task_id) : null;
         const titleName = (matchedTask ? matchedTask.title : null) || currentSession.notes || currentSession.tags || 'Current Task';
         document.title = `${minsLeft}m left | ${titleName}`;
         return;
@@ -135,7 +135,7 @@ function updateDocumentTitle() {
         const hoursUntilNext = diffMs / (1000 * 60 * 60);
 
         if (hoursUntilNext <= 5) {
-            const matchedTask = (typeof allTasksMap !== 'undefined' && allTasksMap) ? allTasksMap[nextSession.task_id] : null;
+            const matchedTask = typeof taskKnowledge !== 'undefined' ? taskKnowledge.get(nextSession.task_id) : null;
             const titleName = (matchedTask ? matchedTask.title : null) || nextSession.notes || nextSession.tags || 'Next Task';
             document.title = `in ${minsUntilNext}m | ${titleName}`;
             return;

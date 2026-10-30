@@ -479,9 +479,17 @@ function aiBuildDraftBatchNode(batch, options) {
         return Array.from(checked).map((cb) => cb.dataset.itemId);
     };
 
-    const runAction = async (fn) => {
+    const runAction = async (fn, changesTasks = true) => {
         try {
             await fn();
+        } catch (err) {
+            console.error('AI draft action failed:', err);
+            alert('Action failed: ' + (err.message || err));
+            return;
+        }
+        // The write is already saved. Refresh task views independently of draft-card reads.
+        if (changesTasks) await taskKnowledge.changed();
+        try {
             // Always re-fetch and re-render THIS card in place -- confirmed live: without this,
             // clicking Accept/Reject/Undo/Reapply succeeds on the backend (status genuinely
             // changes) but the card built here is a static snapshot from render time, so it kept
@@ -491,8 +499,7 @@ function aiBuildDraftBatchNode(batch, options) {
             await aiRefreshCurrentBatchView(batch.id);
             if (typeof opts.onChanged === 'function') opts.onChanged();
         } catch (err) {
-            console.error('AI draft action failed:', err);
-            alert('Action failed: ' + (err.message || err));
+            console.error('Failed to refresh saved AI draft action:', err);
         }
     };
 
@@ -513,7 +520,7 @@ function aiBuildDraftBatchNode(batch, options) {
         rejectBtn.className = 'ai-btn ai-btn-reject';
         rejectBtn.textContent = 'Reject';
         rejectBtn.addEventListener('click', () => runAction(() =>
-            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: getSelectedItemIds() })
+            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: getSelectedItemIds() }), false
         ));
 
         actions.appendChild(rejectBtn);
@@ -604,6 +611,7 @@ async function aiLoadBatchesPanel() {
 async function aiUndoAllBatches() {
     try {
         await api.post('/api/ai/drafts/undo', {});
+        await taskKnowledge.changed();
         aiLoadBatchesPanel();
         if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
         if (typeof refreshAiStatusBadge === 'function') refreshAiStatusBadge();

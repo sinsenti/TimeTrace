@@ -66,7 +66,7 @@ test("saving a task refreshes the registry used to render its calendar session",
         defaultPalette: ["#7c3aed"]
     });
 
-    for (const filename of ["task_attach.js", "calendar.js", "task_modal.js", "dashboard.js"]) {
+    for (const filename of ["task_knowledge.js", "task_attach.js", "calendar.js", "task_modal.js", "dashboard.js"]) {
         const source = fs.readFileSync(path.join(staticJs, filename), "utf8");
         vm.runInContext(source, context, { filename });
     }
@@ -76,7 +76,7 @@ test("saving a task refreshes the registry used to render its calendar session",
 
     assert.equal(registryFetches, 2, "saving the task should reload the cached task registry");
 
-    vm.runInContext('allTasksMap = { "old-task": { id: "old-task", title: "Existing task" } }', context);
+    vm.runInContext('taskKnowledge.invalidate()', context);
     const resolvedTask = await vm.runInContext(
         `resolveCalendarDropTask("${createdTask.id}", "${createdTask.title}")`,
         context

@@ -95,10 +95,7 @@ async function clearCompletionPolicySessions() {
             session_ids: sessionIds
         });
 
-        if (typeof calendar !== 'undefined' && calendar && typeof calendar.refetchEvents === 'function') calendar.refetchEvents();
-        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
-        if (typeof loadTaskDetailTree === 'function') loadTaskDetailTree();
+        await taskKnowledge.changed();
     } catch (err) {
         console.error("Failed to clear scheduled sessions:", err);
         alert("Failed to clear scheduled sessions: " + (err.message || err));

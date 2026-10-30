@@ -77,7 +77,7 @@ function handleOpenSessionBefore() {
 async function handleDeleteUnderCursor() {
     const s = getSessionUnderCursor();
     if (s && s.id) {
-        const seriesTask = (s.task_id && typeof allTasksMap !== 'undefined') ? allTasksMap[s.task_id] : null;
+        const seriesTask = s.task_id ? taskKnowledge.get(s.task_id) : null;
         if (s.is_virtual || (seriesTask && seriesTask.is_recurring)) {
             // Recurring occurrence: needs the scope prompt, not a plain yes/no delete.
             if (typeof promptDeleteSession === 'function') promptDeleteSession(s.id);

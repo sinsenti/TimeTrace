@@ -55,14 +55,16 @@ function setupInspectorKeyboardShortcuts() {
     });
 }
 
-async function loadTaskDetailTree() {
+async function loadTaskDetailTree(preserveEdits = false) {
+    const generation = taskKnowledge.state().generation;
     const taskIdEl = document.getElementById('inspector_task_id');
     if (!taskIdEl || !taskIdEl.value) return;
 
     const taskId = taskIdEl.value;
     try {
-        currentTreeData = await api.get(`/api/tasks/${taskId}/tree`);
-        const tree = currentTreeData;
+        const tree = await api.get(`/api/tasks/${taskId}/tree`);
+        if (generation !== taskKnowledge.state().generation) return;
+        currentTreeData = tree;
         
         const titleHeader = document.getElementById('detail_task_title_header');
         if (titleHeader) titleHeader.innerText = tree.title || 'Untitled Task';
@@ -79,6 +81,7 @@ async function loadTaskDetailTree() {
         if (tree.parent_id) {
             try {
                 const parentTask = await api.get(`/api/tasks/${tree.parent_id}`);
+                if (generation !== taskKnowledge.state().generation) return;
                 if (parentBannerEl) {
                     parentBannerEl.classList.remove('hidden');
                     parentBannerEl.innerHTML = `
@@ -115,6 +118,7 @@ async function loadTaskDetailTree() {
             }
         }
 
+        if (generation !== taskKnowledge.state().generation) return;
         const estContainer = document.getElementById('detail_task_est_container');
         const progressContainer = document.getElementById('detail_task_progress_container');
         const scheduledContainer = document.getElementById('detail_task_scheduled_container');
@@ -127,49 +131,52 @@ async function loadTaskDetailTree() {
         if (remainingContainer) remainingContainer.classList.remove('hidden');
         if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
 
-        const titleInput = document.getElementById('inspector_edit_title');
-        if (titleInput) titleInput.value = tree.title || '';
+        if (!preserveEdits) {
+            const titleInput = document.getElementById('inspector_edit_title');
+            if (titleInput) titleInput.value = tree.title || '';
 
-        const tagsInput = document.getElementById('inspector_edit_tags');
-        if (tagsInput) tagsInput.value = tree.tags || '';
+            const tagsInput = document.getElementById('inspector_edit_tags');
+            if (tagsInput) tagsInput.value = tree.tags || '';
 
-        const descInput = document.getElementById('inspector_edit_desc');
-        if (descInput) descInput.value = tree.description || '';
+            const descInput = document.getElementById('inspector_edit_desc');
+            if (descInput) descInput.value = tree.description || '';
 
-        const statusSelect = document.getElementById('inspector_edit_status');
-        if (statusSelect) statusSelect.value = tree.status || 'To Do';
+            const statusSelect = document.getElementById('inspector_edit_status');
+            if (statusSelect) statusSelect.value = tree.status || 'To Do';
 
-        const catSelect = document.getElementById('inspector_edit_category');
-        if (catSelect) catSelect.value = tree.category || 'work';
+            const catSelect = document.getElementById('inspector_edit_category');
+            if (catSelect) catSelect.value = tree.category || 'work';
 
-        const prioSelect = document.getElementById('inspector_edit_priority');
-        if (prioSelect) prioSelect.value = tree.priority || '-';
+            const prioSelect = document.getElementById('inspector_edit_priority');
+            if (prioSelect) prioSelect.value = tree.priority || '-';
 
-        const estInput = document.getElementById('inspector_edit_est');
-        if (estInput) estInput.value = formatMinutesToDuration(tree.estimated_minutes);
+            const estInput = document.getElementById('inspector_edit_est');
+            if (estInput) estInput.value = formatMinutesToDuration(tree.estimated_minutes);
 
-        const isRecur = tree.is_recurring === true;
-        const recurCheck = document.getElementById('inspector_edit_is_recurring');
-        if (recurCheck) recurCheck.checked = isRecur;
+            const isRecur = tree.is_recurring === true;
+            const recurCheck = document.getElementById('inspector_edit_is_recurring');
+            if (recurCheck) recurCheck.checked = isRecur;
 
-        const ruleSelect = document.getElementById('inspector_edit_recurrence_rule');
-        if (ruleSelect) {
-            ruleSelect.value = tree.recurrence_rule || 'daily';
-            if (!ruleSelect.value) ruleSelect.value = 'daily';
+            const ruleSelect = document.getElementById('inspector_edit_recurrence_rule');
+            if (ruleSelect) {
+                ruleSelect.value = tree.recurrence_rule || 'daily';
+                if (!ruleSelect.value) ruleSelect.value = 'daily';
+            }
+
+            toggleInspectorRecurrenceRule(isRecur);
+
+            const assignedInput = document.getElementById('inspector_edit_assigned_date');
+            if (assignedInput) assignedInput.value = tree.assigned_date ? formatFlexibleDateForInput(tree.assigned_date) : '';
+
+            const dueInput = document.getElementById('inspector_edit_due_date');
+            if (dueInput) dueInput.value = tree.due_date ? formatFlexibleDateForInput(tree.due_date) : '';
+
+            const attachInput = document.getElementById('inspector_edit_attachments');
+            if (attachInput) attachInput.value = tree.attachments || '';
         }
 
-        toggleInspectorRecurrenceRule(isRecur);
-
-        const assignedInput = document.getElementById('inspector_edit_assigned_date');
-        if (assignedInput) assignedInput.value = tree.assigned_date ? formatFlexibleDateForInput(tree.assigned_date) : '';
-
-        const dueInput = document.getElementById('inspector_edit_due_date');
-        if (dueInput) dueInput.value = tree.due_date ? formatFlexibleDateForInput(tree.due_date) : '';
-
-        const attachInput = document.getElementById('inspector_edit_attachments');
-        if (attachInput) attachInput.value = tree.attachments || '';
-
         const stats = await api.get(`/api/tasks/${taskId}/stats`);
+        if (generation !== taskKnowledge.state().generation) return;
         const trackedEl = document.getElementById('detail_task_tracked');
         if (trackedEl) trackedEl.innerText = `${stats.logged_hours}h`;
 
@@ -269,8 +276,12 @@ async function loadTaskDetailTree() {
         }
 
         renderSubtasksTreeNodes(tree.subtasks, document.getElementById('subtasks_tree_container'));
+        taskKnowledge.viewResult("task-detail", true);
+        return true;
     } catch (e) {
+        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult("task-detail", false);
         console.error("Failed to load task tree:", e);
+        return false;
     }
 }
 
@@ -320,6 +331,7 @@ async function saveInspectorTaskProperties(event) {
     try {
         const updatedTask = await api.put(`/api/tasks/${taskId}`, payload);
         if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
+        await taskKnowledge.changed();
         if (!updatedTask || !updatedTask.completion_policy) {
             navigateBack();
         }
@@ -511,7 +523,7 @@ async function saveSubtaskFromModal() {
     }
 
     closeSubtaskModal();
-    loadTaskDetailTree();
+    await taskKnowledge.changed();
 }
 
 async function toggleSubtaskCompletion(subtaskId, currentStatus) {
@@ -519,14 +531,14 @@ async function toggleSubtaskCompletion(subtaskId, currentStatus) {
     const newStatus = (stLower === 'done' || stLower === 'completed') ? 'To Do' : 'Done';
     const updatedTask = await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
     if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
-    loadTaskDetailTree();
+    await taskKnowledge.changed();
 }
 
 async function deleteSubtaskNode(id) {
     const confirmed = await showCustomConfirm("Delete Subtask", "Are you sure you want to delete this subtask and all its nested children?");
     if (confirmed) {
         await api.delete(`/api/tasks/${id}`);
-        loadTaskDetailTree();
+        await taskKnowledge.changed();
     }
 }
 

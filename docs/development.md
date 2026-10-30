@@ -150,6 +150,44 @@ one occurrence, not the entire series. Progress is `None`/JSON `null` for non-po
 estimates in both interfaces. Negative estimates otherwise keep the inspector's legacy balances and
 `is_unbounded` behavior; this does not change intentional negative balances from overspending.
 
+## Same-page task metadata
+
+`static/js/task_knowledge.js` owns the page's task metadata, lookup, fallback labels and refresh
+ordering. Every current page includes it after `api_client.js`, including pages with only the AI
+drawer. `fetchAllTasksRegistry()` is a compatibility entry point; consumers use `taskKnowledge.get`
+and `values`, not a writable global map. Metadata snapshots are read-only. Sorted/filtered sidebar
+and kanban reads remain view-specific and do not replace the complete registry.
+
+`state()` distinguishes `unloaded`, `fresh` (including a successful empty list), `stale` and `failed`
+(no successful registry yet); `failed` also flags a failed refresh of last-known metadata. `loading`
+tracks the current generation's request. Title-only drop/attachment fallbacks do not mark a registry
+loaded or establish that an absent task was deleted. Overlapping equivalent loads share a request;
+`invalidate()` advances the generation so older responses cannot replace post-mutation metadata.
+
+After a successful same-page task write, call `await taskKnowledge.changed()`. It invalidates and
+refreshes existing calendar, sidebar, kanban, attachment and inspector display paths independently.
+Inspector refreshes preserve editable fields, including selected revision-task reviews and ratings;
+attachment refreshes update labels without reattaching or changing IDs, tags, notes or times.
+Every successful metadata load also updates local labels, so transient recovery cannot clear a
+warning while leaving old attachment text behind. Task editors fetch current task data rather
+than using stale registry entries or title-only fallbacks as editable snapshots. AI accept/undo/reapply (including undo-all) use this path before
+draft-card refresh. Completion-policy prompts still use the existing keep/clear UI.
+
+Refresh failures keep last-known data and show a non-blocking **Retry refresh** notice. The retry
+loads metadata/views only: it never repeats the saved write. Calendar source failures report back
+to this notice because FullCalendar's `refetchEvents()` does not return a completion promise.
+There is no cross-tab/CLI detection or background metadata polling. Missing-link and unknown-
+recurrence safeguards are the separate follow-up ticket, not guarantees of this freshness change.
+
+Verification uses Node VM caller/workflow tests in `tests/test_task_knowledge.cjs` and the existing
+calendar/tag regressions. Browser checks on an isolated daemon covered dashboard create/rename,
+calendar/sidebar/suggestion/chip coherence, metadata failure/retry without a repeated write,
+kanban editing, unsaved inspector/revision-review fields, revision chips/selected-task displays,
+transient recovery, stale-registry task editing, and real draft accept/undo/reapply with
+synthetic data (no model invocation), including failed draft-card reads. Stats, habits and AI
+settings includes were checked too. Drag/status-manager gestures, multi-item draft batches and
+completion-policy interaction were not manually exercised in that check.
+
 ## Testing and checks
 
 Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed

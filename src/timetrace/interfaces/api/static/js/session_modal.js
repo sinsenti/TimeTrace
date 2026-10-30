@@ -176,7 +176,7 @@ function openEditSessionModal(sessionId) {
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
-    if (session.task_id && allTasksMap[session.task_id]) {
+    if (session.task_id && taskKnowledge.get(session.task_id)) {
         attachTaskById(session.task_id, true);
     } else {
         detachTask();
@@ -216,7 +216,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         const now = new Date();
         const startNowBtn = document.getElementById('session_modal_start_now_btn');
 
-        const attachedTaskObj = taskId && typeof allTasksMap !== 'undefined' ? allTasksMap[taskId] : null;
+        const attachedTaskObj = taskId ? taskKnowledge.get(taskId) : null;
         const estMins = attachedTaskObj ? (attachedTaskObj.estimated_minutes || 15) : 15;
         const defaultSessionMins = estMins > 120 ? 30 : estMins;
 
