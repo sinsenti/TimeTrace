@@ -37,6 +37,7 @@ from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.query_service import QueryService
 from timetrace.services.session_service import SessionService
+from timetrace.services.task_service import TaskService
 
 _DONE_STATUSES = ("Done", "completed", "done")
 _DAY_NAMES = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
@@ -774,43 +775,16 @@ class AIInsightsService:
         if task is None:
             raise EntityNotFoundError("Task", task_id)
 
-        now_naive = datetime.now(UTC).replace(tzinfo=None)
-        logged_seconds = self.db.exec(
-            select(func.coalesce(func.sum(SessionModel.duration_seconds), 0)).where(
-                SessionModel.task_id == task_id,
-                SessionModel.end_time.is_not(None),
-                SessionModel.end_time <= now_naive,
-            )
-        ).one()
-        scheduled_seconds = self.db.exec(
-            select(func.coalesce(func.sum(SessionModel.duration_seconds), 0)).where(
-                SessionModel.task_id == task_id,
-                SessionModel.start_time > now_naive,
-            )
-        ).one()
+        accounting = TaskService(self.db).get_work_accounting(task)
         session_count = self.db.exec(
             select(func.count()).select_from(SessionModel).where(SessionModel.task_id == task_id)
         ).one()
-
-        logged_seconds = int(logged_seconds or 0)
-        scheduled_seconds = int(scheduled_seconds or 0)
-        is_unbounded = not (task.estimated_minutes or 0) or task.is_recurring
-        estimated_seconds = (task.estimated_minutes or 0) * 60
-        progress_pct = round((logged_seconds / estimated_seconds) * 100, 1) if estimated_seconds else None
-        remaining_seconds = estimated_seconds - logged_seconds
-        unscheduled_seconds = estimated_seconds - logged_seconds - scheduled_seconds
 
         return {
             "task_id": task.id,
             "title": task.title,
             "status": task.status,
-            "estimated_hours": round((task.estimated_minutes or 0) / 60, 2),
-            "logged_hours": round(logged_seconds / 3600, 2),
-            "scheduled_hours": round(scheduled_seconds / 3600, 2),
-            "remaining_hours": None if is_unbounded else round(remaining_seconds / 3600, 2),
-            "unscheduled_hours": None if is_unbounded else round(unscheduled_seconds / 3600, 2),
-            "progress_pct": progress_pct,
-            "is_unbounded": is_unbounded,
+            **accounting,
             "session_count": int(session_count or 0),
             "is_recurring": task.is_recurring,
         }

@@ -53,6 +53,11 @@ days, daily caps, and scheduling windows.
   `get_task_progress`, `search_tasks`, habits, ratings, reviews, and reflection context) must use
   deterministic services/query SQL. They may include pending same-turn drafts in planning views,
   but never persist domain rows.
+- Task progress consumes `TaskService.get_work_accounting` and its recorded-session SQL totals.
+  Keep it separate from the richer task inspector: do not load session history, reviews or ratings
+  for AI progress. Non-positive/missing estimates return null progress; existing balances, counts
+  and recurring per-occurrence semantics remain unchanged. See
+  [task work accounting](development.md#task-work-accounting).
 - Timer controls and habit/rating/review writes remain out of scope. Day-review create/update is
   allowed only as a pending draft and must pass through `AIDraftService.accept_items` after approval.
 

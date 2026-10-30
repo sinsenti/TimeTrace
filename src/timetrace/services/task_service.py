@@ -588,6 +588,30 @@ class TaskService:
 
         return build_node(task)
 
+    def get_work_accounting(self, task: Task) -> dict[str, Any]:
+        """Account for a loaded task using recorded-session SQL totals at one instant.
+
+        This deliberately excludes inspector history, reviews and ratings, as well as
+        virtual occurrences and running/frozen timers. Balances use seconds before rounding;
+        recurring estimates are per occurrence, not a finite budget for the whole series.
+        """
+        logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task.id])
+        est_minutes = task.estimated_minutes or 0
+        estimated_seconds = est_minutes * 60
+        is_unbounded = not est_minutes or task.is_recurring
+
+        return {
+            "estimated_hours": round(est_minutes / 60.0, 2),
+            "progress_pct": round((logged_seconds / estimated_seconds) * 100, 1) if est_minutes > 0 else None,
+            "logged_hours": round(logged_seconds / 3600, 2),
+            "scheduled_hours": round(scheduled_seconds / 3600, 2),
+            "remaining_hours": None if is_unbounded else round((estimated_seconds - logged_seconds) / 3600, 2),
+            "unscheduled_hours": (
+                None if is_unbounded else round((estimated_seconds - logged_seconds - scheduled_seconds) / 3600, 2)
+            ),
+            "is_unbounded": is_unbounded,
+        }
+
     def get_task_statistics(self, task_id: str) -> dict[str, Any]:
         task = self.db.get(Task, task_id)
         if not task:
@@ -602,24 +626,7 @@ class TaskService:
         total_seconds = sum(s.duration_seconds or 0 for s in sessions)
         total_hours = round(total_seconds / 3600.0, 2)
 
-        logged_seconds, scheduled_seconds = SessionService(self.db).sum_durations_for_tasks([task_id])
-
-        is_unbounded = not (task.estimated_minutes or 0) or task.is_recurring
-        est_minutes = task.estimated_minutes or 0
-        est_hours = round(est_minutes / 60.0, 2)
-        progress_pct = round((logged_seconds / (est_minutes * 60)) * 100, 1) if est_minutes > 0 else None
-
-        logged_hours = round(logged_seconds / 3600, 2)
-        scheduled_hours = round(scheduled_seconds / 3600, 2)
-        if is_unbounded:
-            remaining_hours = None
-            unscheduled_hours = None
-        else:
-            estimated_seconds = (task.estimated_minutes or 0) * 60
-            remaining_seconds = estimated_seconds - logged_seconds
-            unscheduled_seconds = estimated_seconds - logged_seconds - scheduled_seconds
-            remaining_hours = round(remaining_seconds / 3600, 2)
-            unscheduled_hours = round(unscheduled_seconds / 3600, 2)
+        accounting = self.get_work_accounting(task)
 
         session_list = []
         for s in sessions:
@@ -651,16 +658,10 @@ class TaskService:
             "task": task_data,
             "total_hours": total_hours,
             "total_sessions": len(sessions),
-            "estimated_hours": est_hours,
-            "progress_pct": progress_pct,
             "sessions": session_list,
             "task_review": review.model_dump() if review else None,
             "custom_ratings": ratings_detailed,
-            "logged_hours": logged_hours,
-            "scheduled_hours": scheduled_hours,
-            "remaining_hours": remaining_hours,
-            "unscheduled_hours": unscheduled_hours,
-            "is_unbounded": is_unbounded,
+            **accounting,
         }
 
     def create_or_update_task_review(self, req: TaskReviewCreate) -> TaskReview:

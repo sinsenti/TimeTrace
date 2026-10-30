@@ -426,6 +426,7 @@ class SessionService:
         scheduled_seconds = self.db.exec(
             select(func.coalesce(func.sum(SessionModel.duration_seconds), 0)).where(
                 SessionModel.task_id.in_(task_ids),
+                SessionModel.end_time.is_not(None),
                 SessionModel.start_time > now_naive,
             )
         ).one()

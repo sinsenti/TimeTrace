@@ -121,6 +121,25 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 - **Deferred:** external integrations, multi-user scoping, Tauri/mobile clients, and native tray/
   hotkey services are not implemented. Existing external-sync columns are not a sync feature.
 
+## Task work accounting
+
+`TaskService.get_work_accounting(task)` is the shared accounting capability for a loaded task.
+Both `get_task_statistics` and `AIInsightsService.get_task_progress` consume it; the AI path does
+not load the inspector's session history, reviews or ratings. AI session counts remain a separate
+SQL count of all recorded rows linked to the task.
+
+Duration totals come from `SessionService.sum_durations_for_tasks`, which captures one measurement
+instant for its SQL queries: logged sessions end at/before it, and closed scheduled sessions start
+after it. Open rows (including those retaining an old duration after their end was cleared) and
+straddling rows contribute no time; virtual recurrence projections and running/frozen timers are excluded.
+Remaining work subtracts logged seconds from the estimate; unscheduled work also subtracts scheduled seconds. Round only the final hours (two decimal places)
+and progress percentage (one decimal place), preserving negative balances and progress above 100%.
+
+Zero/missing estimates and recurring tasks have unbounded balances; a recurring estimate describes
+one occurrence, not the entire series. Progress is `None`/JSON `null` for non-positive or missing
+estimates in both interfaces. Negative estimates otherwise keep the inspector's legacy balances and
+`is_unbounded` behavior; this does not change intentional negative balances from overspending.
+
 ## Testing and checks
 
 Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed
