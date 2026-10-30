@@ -125,6 +125,15 @@ const taskKnowledge = (() => {
         refresh,
         changed,
         viewResult,
+        async recurrenceFor(taskId) {
+            if (!taskId) return false;
+            let task = this.get(taskId);
+            if (task && typeof task.is_recurring === 'boolean') return task.is_recurring;
+            // Absence (even in a fresh list) or a title-only fallback is not nonrecurrence.
+            await load(true);
+            task = this.get(taskId);
+            return task && typeof task.is_recurring === 'boolean' ? task.is_recurring : null;
+        },
         get: id => tasks[id] || fallbacks.get(id) || null,
         values: () => Object.values(tasks),
         state: () => ({ status, generation, failed: metadataFailed, loading: Boolean(pending && pending.generation === generation) }),

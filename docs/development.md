@@ -176,8 +176,23 @@ draft-card refresh. Completion-policy prompts still use the existing keep/clear 
 Refresh failures keep last-known data and show a non-blocking **Retry refresh** notice. The retry
 loads metadata/views only: it never repeats the saved write. Calendar source failures report back
 to this notice because FullCalendar's `refetchEvents()` does not return a completion promise.
-There is no cross-tab/CLI detection or background metadata polling. Missing-link and unknown-
-recurrence safeguards are the separate follow-up ticket, not guarantees of this freshness change.
+There is no cross-tab/CLI detection or background metadata polling.
+
+Session editing preserves the daemon's `task_id` independently of metadata availability, including
+successfully empty lists and partial fallback labels. Explicit detach or an authoritative session
+row with a cleared link can remove it; a registry miss cannot. Ordinary attachment/drop fallbacks
+still work offline without queuing writes. Attachment-chip titles are rendered as text.
+
+`taskKnowledge.recurrenceFor(taskId)` returns explicit `true`/`false`, or `null` when recurrence
+remains unknown after a metadata lookup. Only an explicit boolean establishes non/recurrence;
+last-known booleans remain usable, but a title or leaked preset label does not. Resize and scoped
+delete decisions first obtain missing knowledge. If still unknown, resize reverts and delete
+stops before confirmation, with an action-specific retry message. Retry the action to look up
+metadata again; no write is queued or replayed. Moves and ordinary session saves remain available.
+Known virtual/series identities retain their scope choices even without metadata, and synthetic
+IDs still materialize server-side. A deletion request token prevents late lookups/confirmations
+from replacing a newer target; canceling, closing or reopening the session editor invalidates it.
+Server-side recurrence scope/history validation remains authoritative.
 
 Verification uses Node VM caller/workflow tests in `tests/test_task_knowledge.cjs` and the existing
 calendar/tag regressions. Browser checks on an isolated daemon covered dashboard create/rename,
@@ -187,6 +202,18 @@ transient recovery, stale-registry task editing, and real draft accept/undo/reap
 synthetic data (no model invocation), including failed draft-card reads. Stats, habits and AI
 settings includes were checked too. Drag/status-manager gestures, multi-item draft batches and
 completion-policy interaction were not manually exercised in that check.
+
+Ticket 06 additionally checked an isolated daemon on port 18016 with synthetic tasks, sessions and
+service-created draft rows (no model invocation). Browser checks covered empty-metadata session
+open/save, explicit detach, unsaved notes across refresh, virtual resize cancel/materialization,
+unknown resize/delete blocking and retry, all-future duration without estimate changes, and
+AI accept/undo/reapply metadata failure/retry with unchanged task links/notes and exactly one write
+per action. All seven page templates/includes were checked. Node regressions also cover partial/
+failed metadata, late delete lookup cancellation/supersession, safe fallback-title rendering,
+materialized IDs, and server-rejected resizes. Physical drag gestures, series deletion/history,
+completion-policy prompts and multi-item draft batches were not manually exercised in this pass;
+existing Python recurrence tests cover server-side history and scope safeguards.
+No typechecker is configured or installed; use Node syntax checks and the runtime regressions.
 
 ## Testing and checks
 

@@ -103,13 +103,10 @@ function formatCalEventFromSession(s, idx = 0) {
     };
 }
 
-function isRecurringCalendarEvent(event) {
-    if (!event) return false;
+async function isRecurringCalendarEvent(event) {
     const props = event.extendedProps || {};
-    if (props.isVirtual) return true;
-    const taskId = props.taskId;
-    if (!taskId || !taskKnowledge.get(taskId)) return false;
-    return Boolean(taskKnowledge.get(taskId).is_recurring);
+    if (props.isVirtual || props.seriesTaskId || String(event.id).startsWith('virt:')) return true;
+    return taskKnowledge.recurrenceFor(props.taskId);
 }
 
 /**
@@ -132,10 +129,16 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
         end_time: endIso
     };
 
-    const wasVirtual = Boolean(event.extendedProps && event.extendedProps.isVirtual);
+    const wasVirtual = Boolean(event.extendedProps && event.extendedProps.isVirtual) || String(event.id).startsWith('virt:');
     let scope = 'only_this';
 
-    if (changeType === 'resize' && isRecurringCalendarEvent(event)) {
+    const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
+    if (recurring === null) {
+        if (info && typeof info.revert === 'function') info.revert();
+        alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
+        return;
+    }
+    if (recurring) {
         const choice = typeof showRecurringResizeScopePrompt === 'function'
             ? await showRecurringResizeScopePrompt()
             : 'only_this';

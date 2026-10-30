@@ -156,6 +156,7 @@ function setupModalKeyboardListeners() {
 function openEditSessionModal(sessionId) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
+    closeRecurringDeleteModal();
 
     document.getElementById('edit_session_id').value = session.id;
     const titleEl = document.getElementById('session_modal_title');
@@ -176,7 +177,7 @@ function openEditSessionModal(sessionId) {
     document.getElementById('session_modal_start').value = formatIsoLocal(startDate);
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
-    if (session.task_id && taskKnowledge.get(session.task_id)) {
+    if (session.task_id) {
         attachTaskById(session.task_id, true);
     } else {
         detachTask();
@@ -199,6 +200,7 @@ function openEditSessionModal(sessionId) {
 
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
     try {
+        closeRecurringDeleteModal();
         const editIdEl = document.getElementById('edit_session_id');
         if (editIdEl) editIdEl.value = "";
 
@@ -238,7 +240,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
         if (taskId) {
             if (typeof attachTaskById === 'function') {
-                attachTaskById(taskId, true);
+                attachTaskById(taskId, true, taskTitle);
             }
             if (!attachedTaskObj || !attachedTaskObj.tags || !attachedTaskObj.tags.trim()) {
                 if (typeof setTagChips === 'function') setTagChips("");
@@ -269,6 +271,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 }
 
 function closeSessionModal() {
+    closeRecurringDeleteModal();
     const modal = document.getElementById('session_modal');
     if (modal) modal.classList.add('hidden');
     if (typeof calendar !== 'undefined' && calendar) {

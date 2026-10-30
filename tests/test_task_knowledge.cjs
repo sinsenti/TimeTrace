@@ -32,10 +32,298 @@ function page(api) {
     load('task_attach.js');
     return { context, run, load, elements, element, alerts, logs };
 }
+function sessionPage(api = {}) {
+    const writes = [];
+    const p = page({
+        get: async () => { throw Error('offline'); },
+        async put(url, payload) {
+            writes.push({ url, payload });
+            return { id: 'session-1', ...payload };
+        },
+        ...api
+    });
+    for (const id of ['edit_session_id', 'session_modal_title', 'session_modal_start_now_btn',
+        'session_modal_delete_btn', 'session_modal_start', 'session_modal_end', 'session_modal_task_id',
+        'session_modal_tags_input', 'session_modal_task_search', 'task_chip_container', 'session_modal_notes',
+        'session_modal', 'recurring_delete_modal']) p.elements.set(id, p.element());
+    p.load('utils.js');
+    p.load('tags_engine.js');
+    p.load('session_modal.js');
+    p.load('calendar.js');
+    p.context.confirm = () => false;
+    p.context.allSessions = [{ id: 'session-1', task_id: 'missing-id',
+        start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:45:00Z', tags: '#kept', notes: 'Keep notes' }];
+    return { ...p, writes };
+}
+
 function deferred() {
     let resolve, reject;
     const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
     return { promise, resolve, reject };
+}
+
+test('session open/save retains its task ID when metadata is unavailable', async () => {
+    const p = sessionPage();
+    await p.run('fetchAllTasksRegistry()');
+    p.run('openEditSessionModal("session-1")');
+    assert.equal(p.elements.get('session_modal_task_id').value, 'missing-id');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes[0].payload.task_id, 'missing-id');
+    assert.equal(p.writes[0].payload.notes, 'Keep notes');
+    assert.equal(p.writes[0].payload.tags, '#kept');
+});
+
+for (const metadata of [[], [{ id: 'missing-id', title: 'Title only' }]]) {
+    test(`session link survives ${metadata.length ? 'partial' : 'successfully empty'} metadata and later refresh`, async () => {
+        const p = sessionPage({ get: async () => metadata });
+        await p.run('fetchAllTasksRegistry()');
+        p.run('openEditSessionModal("session-1")');
+        p.elements.get('session_modal_notes').value = 'Unsaved edit';
+        await p.run('taskKnowledge.changed()');
+        await p.run('saveSessionFromModal()');
+        assert.equal(p.writes[0].payload.task_id, 'missing-id');
+        assert.equal(p.writes[0].payload.notes, 'Unsaved edit');
+        assert.equal(p.writes[0].payload.end_time, '2026-01-01T10:45:00.000Z');
+    });
+}
+
+test('only explicit detach or an authoritative session row clears a session link', async () => {
+    const p = sessionPage();
+    p.run('openEditSessionModal("session-1"); detachTask()');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes[0].payload.task_id, null);
+    p.context.allSessions[0].task_id = 'missing-id';
+    p.run('openEditSessionModal("session-1")');
+    assert.equal(p.elements.get('session_modal_task_id').value, 'missing-id');
+    // A subsequent daemon session read, unlike a metadata miss, is authoritative.
+    p.context.allSessions[0].task_id = null;
+    p.run('openEditSessionModal("session-1")');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes[1].payload.task_id, null);
+});
+
+test('ordinary title-only attachment and creation replace the previous link without requiring metadata', async () => {
+    const p = sessionPage();
+    p.run('openEditSessionModal("session-1")');
+    p.run('openCreateSessionModal(new Date("2026-01-02T10:00Z"), null, "other-id", "Dragged title")');
+    assert.equal(p.elements.get('session_modal_task_id').value, 'other-id');
+    assert.match(p.elements.get('task_chip_container').children.at(-1).children[0].textContent, /Dragged title/);
+    p.run('attachTaskById("third-id", true)');
+    assert.equal(p.elements.get('session_modal_task_id').value, 'third-id');
+});
+
+function resizeEvent(props = { taskId: 'missing-id' }, id = 'session-1') {
+    return { id, start: new Date('2026-01-01T10:00Z'), end: new Date('2026-01-01T11:00Z'), extendedProps: props };
+}
+
+test('resize resolves unknown recurrence before offering a scope', async () => {
+    const p = sessionPage({ get: async () => [{ id: 'missing-id', title: 'Recurring', is_recurring: true }] });
+    p.context.event = resizeEvent();
+    p.context.showRecurringResizeScopePrompt = async () => 'all_future';
+    await p.run('handleCalendarEventUpdate(event, "resize")');
+    assert.equal(p.writes[0].url, '/sessions/session-1?scope=all_future');
+    assert.deepEqual(Object.keys(p.writes[0].payload).sort(), ['end_time', 'start_time']);
+});
+
+test('delete resolves unknown recurrence before offering series scopes', async () => {
+    const p = sessionPage({ get: async () => [{ id: 'missing-id', title: 'Recurring', is_recurring: true }] });
+    p.elements.get('recurring_delete_modal').classList.add('hidden');
+    await p.run('promptDeleteSession("session-1")');
+    assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), false);
+});
+
+for (const result of ['offline', 'missing', 'partial']) {
+    test(`unresolved ${result} recurrence blocks only resize, reverts, and can be retried`, async () => {
+        let recover = false;
+        const p = sessionPage({ get: async () => {
+            if (recover) return [{ id: 'missing-id', title: 'Known ordinary', is_recurring: false }];
+            if (result === 'offline') throw Error('offline');
+            return result === 'partial' ? [{ id: 'missing-id', title: 'Title only', recurrence_rule: 'daily' }] : [];
+        } });
+        p.context.event = resizeEvent();
+        let reverted = 0;
+        p.context.info = { revert() { reverted++; } };
+        p.run('openEditSessionModal("session-1")');
+        await p.run('handleCalendarEventUpdate(event, "resize", info)');
+        assert.equal(p.writes.length, 0);
+        assert.equal(reverted, 1);
+        assert.match(p.alerts[0], /recurrence.*retry/i);
+        assert.equal(p.elements.get('session_modal_task_id').value, 'missing-id');
+        assert.equal(p.elements.get('session_modal_notes').value, 'Keep notes');
+        // Moving this occurrence needs no recurrence scope decision and still works offline.
+        await p.run('handleCalendarEventUpdate(event, "move", info)');
+        assert.equal(p.writes.length, 1);
+        recover = true;
+        await p.run('handleCalendarEventUpdate(event, "resize", info)');
+        assert.equal(p.writes.length, 2, 'retry must not queue/replay the blocked write');
+        assert.equal(p.writes[1].url, '/sessions/session-1?scope=only_this');
+    });
+}
+
+for (const choice of ['only_this', 'all_future', null]) {
+    test(`known virtual resize keeps scope choice ${choice} even without task metadata`, async () => {
+        const p = sessionPage();
+        const id = 'virt:missing-id:20260101T100000Z';
+        p.context.event = resizeEvent({}, id);
+        p.context.showRecurringResizeScopePrompt = async () => choice;
+        let reverted = 0;
+        let refreshed = 0;
+        p.context.info = { revert() { reverted++; } };
+        p.context.calendar = { refetchEvents() { refreshed++; } };
+        await p.run('handleCalendarEventUpdate(event, "resize", info)');
+        assert.equal(reverted, choice === null ? 1 : 0);
+        assert.equal(p.writes.length, choice === null ? 0 : 1);
+        if (choice) {
+            assert.equal(p.writes[0].url, `/sessions/${encodeURIComponent(id)}?scope=${choice}`);
+            assert.equal(refreshed, 1, 'a synthetic ID materializes and needs a range refresh');
+        }
+        assert.equal(p.alerts.length, 0);
+    });
+}
+
+test('known ordinary and stale recurring metadata retain their distinct resize behavior', async () => {
+    for (const recurring of [false, true]) {
+        let offline = false;
+        const p = sessionPage({ get: async () => {
+            if (offline) throw Error('offline');
+            return [{ id: 'missing-id', title: 'Known', is_recurring: recurring, estimated_minutes: 35 }];
+        } });
+        await p.run('fetchAllTasksRegistry()');
+        offline = true;
+        await p.run('taskKnowledge.changed()');
+        let prompts = 0;
+        p.context.showRecurringResizeScopePrompt = async () => { prompts++; return 'only_this'; };
+        p.context.event = resizeEvent();
+        await p.run('handleCalendarEventUpdate(event, "resize")');
+        assert.equal(prompts, recurring ? 1 : 0);
+        assert.equal(p.writes.length, 1);
+        assert.equal(p.writes[0].url, '/sessions/session-1?scope=only_this');
+        assert.equal(p.run('taskKnowledge.get("missing-id").estimated_minutes'), 35);
+    }
+});
+
+test('a rejected recurring resize reverts instead of trying a different scope', async () => {
+    const p = sessionPage({ put: async () => { throw Error('scope rejected by server'); } });
+    p.context.event = resizeEvent({ isVirtual: true });
+    p.context.showRecurringResizeScopePrompt = async () => 'all_future';
+    let reverted = 0;
+    p.context.info = { revert() { reverted++; } };
+    await p.run('handleCalendarEventUpdate(event, "resize", info)');
+    assert.equal(reverted, 1);
+    assert.equal(p.logs.length, 1);
+});
+
+for (const result of ['offline', 'missing', 'partial']) {
+    test(`delete with ${result} recurrence stops before confirmation and retries without replay`, async () => {
+        let recover = false;
+        const deleted = [];
+        let confirmations = 0;
+        const p = sessionPage({
+            get: async () => {
+                if (recover) return [{ id: 'missing-id', title: 'Resolved recurring', is_recurring: true }];
+                if (result === 'offline') throw Error('offline');
+                return result === 'partial' ? [{ id: 'missing-id', title: 'Title only' }] : [];
+            },
+            delete: async url => deleted.push(url)
+        });
+        p.context.confirm = () => { confirmations++; return true; };
+        p.elements.get('recurring_delete_modal').classList.add('hidden');
+        await p.run('promptDeleteSession("session-1")');
+        assert.equal(confirmations, 0);
+        assert.equal(deleted.length, 0);
+        assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), true);
+        assert.match(p.alerts[0], /recurrence.*retry/i);
+        recover = true;
+        await p.run('promptDeleteSession("session-1")');
+        assert.equal(deleted.length, 0, 'recovery only offers scopes, never replays a delete');
+        assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), false);
+        await p.run('confirmRecurringDelete("following")');
+        assert.deepEqual(deleted, ['/sessions/session-1?scope=following']);
+    });
+}
+
+for (const identity of ['synthetic', 'virtual', 'materialized']) {
+    test(`known ${identity} occurrence deletion offers scopes even with unavailable task metadata`, async () => {
+        const deleted = [];
+        const p = sessionPage({ delete: async url => deleted.push(url) });
+        const id = identity === 'synthetic' ? 'virt:missing-id:20260101T100000Z' : 'session-1';
+        if (identity === 'synthetic') p.context.allSessions = [];
+        if (identity === 'virtual') p.context.allSessions[0].is_virtual = true;
+        if (identity === 'materialized') p.context.allSessions[0].series_task_id = 'missing-id';
+        p.context.sid = id;
+        p.elements.get('recurring_delete_modal').classList.add('hidden');
+        await p.run('promptDeleteSession(sid)');
+        assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), false);
+        p.run('closeRecurringDeleteModal()');
+        await p.run('confirmRecurringDelete("all")');
+        assert.deepEqual(deleted, [], 'cancellation must not delete');
+        await p.run('promptDeleteSession(sid); confirmRecurringDelete("only_this")');
+        assert.deepEqual(deleted, [`/sessions/${encodeURIComponent(id)}?scope=only_this`]);
+    });
+}
+
+test('deleting an uncached session uses its authoritative daemon link and known nonrecurrence', async () => {
+    const deleted = [];
+    const p = sessionPage({
+        get: async url => url === '/sessions/session-1' ? { id: 'session-1', task_id: null } : [],
+        delete: async url => deleted.push(url)
+    });
+    p.context.allSessions = [];
+    p.context.confirm = () => true;
+    await p.run('promptDeleteSession("session-1")');
+    assert.deepEqual(deleted, ['/sessions/session-1?scope=only_this']);
+});
+
+test('session save accepts authoritative detachment and materialized IDs returned by the daemon', async () => {
+    const p = sessionPage({ put: async (url, payload) => ({ id: 'real-id', ...payload, task_id: null }) });
+    const id = 'virt:missing-id:20260101T100000Z';
+    p.context.allSessions[0].id = id;
+    p.context.sid = id;
+    p.run('openEditSessionModal(sid)');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.elements.get('edit_session_id').value, 'real-id');
+    assert.deepEqual(p.context.allSessions.map(s => s.id), ['real-id']);
+    p.run('openEditSessionModal("real-id")');
+    assert.equal(p.elements.get('session_modal_task_id').value, '');
+});
+
+test('fallback attachment titles are displayed as text, never executable markup', () => {
+    const p = sessionPage();
+    const title = '<img src=x onerror=alert(1)>';
+    p.context.fallbackTitle = title;
+    p.run('openCreateSessionModal(new Date("2026-01-02T10:00Z"), null, "fallback-id", fallbackTitle)');
+    const chip = p.elements.get('task_chip_container').children.at(-1);
+    assert.equal(chip.children[0].textContent, `✓ ${title}`);
+    assert.doesNotMatch(chip.innerHTML, /<img/);
+});
+
+test('a delayed delete lookup cannot replace a newer occurrence target', async () => {
+    const lookup = deferred();
+    const deleted = [];
+    const p = sessionPage({ get: () => lookup.promise, delete: async url => deleted.push(url) });
+    const old = p.run('promptDeleteSession("session-1")');
+    p.context.allSessions.push({ id: 'virt:other-id:20260101T100000Z', task_id: 'other-id', is_virtual: true });
+    await p.run('promptDeleteSession("virt:other-id:20260101T100000Z")');
+    lookup.resolve([{ id: 'missing-id', title: 'Old target', is_recurring: true }]);
+    await old;
+    await p.run('confirmRecurringDelete("all")');
+    assert.deepEqual(deleted, ['/sessions/virt%3Aother-id%3A20260101T100000Z?scope=all']);
+});
+
+for (const cancel of ['closeRecurringDeleteModal()', 'closeSessionModal()']) {
+    test(`canceling a pending delete via ${cancel} ignores its late lookup`, async () => {
+        const lookup = deferred();
+        const deleted = [];
+        const p = sessionPage({ get: () => lookup.promise, delete: async url => deleted.push(url) });
+        p.elements.get('recurring_delete_modal').classList.add('hidden');
+        const action = p.run('promptDeleteSession("session-1")');
+        p.run(cancel);
+        lookup.resolve([{ id: 'missing-id', title: 'Canceled task', is_recurring: true }]);
+        await action;
+        assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), true);
+        await p.run('confirmRecurringDelete("all")');
+        assert.deepEqual(deleted, []);
+    });
 }
 
 test('successfully empty metadata is cached instead of repeatedly loaded', async () => {

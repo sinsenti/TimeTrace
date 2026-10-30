@@ -8,6 +8,7 @@ let defaultPalette = [
 ];
 let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_duration') || '15');
 let pendingDeleteSessionId = null;
+let deleteSessionRequest = 0;
 
 function parseDurationToMinutes(val) {
     if (val === null || val === undefined) return 15;
@@ -295,15 +296,25 @@ window.addEventListener('keydown', function(e) {
 
 async function promptDeleteSession(sessionId) {
     if (!sessionId) return;
-    pendingDeleteSessionId = sessionId;
-
-    let isRecurring = false;
-    if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-        const s = allSessions.find(item => String(item.id) === String(sessionId));
-        if (s && s.task_id && typeof taskKnowledge !== 'undefined' && taskKnowledge.get(s.task_id)) {
-            isRecurring = Boolean(taskKnowledge.get(s.task_id).is_recurring);
+    closeRecurringDeleteModal();
+    const request = deleteSessionRequest;
+    let session = typeof allSessions !== 'undefined' && Array.isArray(allSessions)
+        ? allSessions.find(item => String(item.id) === String(sessionId)) : null;
+    let isRecurring = true;
+    if (!String(sessionId).startsWith('virt:') && !(session && (session.is_virtual || session.series_task_id))) {
+        try {
+            if (!session) session = await api.get(`/sessions/${encodeURIComponent(sessionId)}`);
+            isRecurring = session ? await taskKnowledge.recurrenceFor(session.task_id) : null;
+        } catch (err) {
+            isRecurring = null;
         }
     }
+    if (request !== deleteSessionRequest) return;
+    if (isRecurring === null) {
+        alert('Cannot verify task recurrence. Try Delete again to retry the lookup. No changes were saved.');
+        return;
+    }
+    pendingDeleteSessionId = sessionId;
 
     if (isRecurring) {
         const modal = document.getElementById('recurring_delete_modal');
@@ -314,12 +325,16 @@ async function promptDeleteSession(sessionId) {
     }
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log?");
+    if (request !== deleteSessionRequest) return;
     if (confirmed) {
-        confirmRecurringDelete('only_this');
+        await confirmRecurringDelete('only_this');
+    } else {
+        closeRecurringDeleteModal();
     }
 }
 
 function closeRecurringDeleteModal() {
+    deleteSessionRequest++;
     const modal = document.getElementById('recurring_delete_modal');
     if (modal) modal.classList.add('hidden');
     pendingDeleteSessionId = null;

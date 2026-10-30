@@ -56,9 +56,11 @@ function highlightTaskSuggestionItem(items) {
     });
 }
 
-function attachTaskById(taskId, preventFocus = false) {
-    const t = taskKnowledge.get(taskId);
-    if (!t) return;
+function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
+    if (!taskId) return;
+    const known = taskKnowledge.get(taskId);
+    // The relationship is independent of metadata availability; only detachTask clears it.
+    const t = { ...known, id: taskId, title: (known && known.title) || taskTitle || 'Task information unavailable' };
     attachedTask = t;
 
     const taskIdEl = document.getElementById('session_modal_task_id');
@@ -117,9 +119,11 @@ function renderTaskChip() {
         chip.className = 'task-chip-item px-2.5 py-1 rounded text-xs font-bold text-white flex items-center space-x-1.5 shadow-sm shrink-0';
         chip.style.backgroundColor = attachedTask.color || '#7c3aed';
         chip.innerHTML = `
-            <span>✓ ${attachedTask.title}</span>
             <button type="button" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
         `;
+        const label = document.createElement('span');
+        label.textContent = `✓ ${attachedTask.title}`;
+        chip.insertBefore(label, chip.firstChild);
         container.insertBefore(chip, input);
         input.placeholder = "Attached! Type to change task...";
     } else {
