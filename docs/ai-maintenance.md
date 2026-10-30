@@ -45,6 +45,20 @@ days, daily caps, and scheduling windows.
 - Do not enable LangSmith tracing or add provider/network calls to tests.
 - Fernet keys and provider configuration must remain masked in API responses and UI output.
 
+## Chat-turn lifecycle
+
+`AIChatService._run_turn` owns preparation, bounded history replay, eager batch creation,
+agent execution, transcript persistence, final-message association and failure cleanup for both
+public turn methods. `run_turn` returns the completed response; `run_turn_stream` serializes live
+status/tokens and the completed draft/instruction/message events. Streaming reconstructs the
+transcript from graph updates in that same execution, never a second model invocation.
+
+Preserve `message_start` before batch/model setup, assistant-only text tokens and terminal event
+ordering. Empty batches are deleted on success or handled failure; batches with draft items survive
+provider/tool failure, while remembered-instruction proposals are marked failed. Initialization
+failures leave only the user message; invocation failures also persist a sanitized assistant error.
+The gateway still receives the original user text for intent gating and opens its own tool sessions.
+
 ## Domain traps
 
 - Recurring occurrence writes go through `SessionService`; support synthetic `virt:` IDs and record

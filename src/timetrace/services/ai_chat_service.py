@@ -356,16 +356,51 @@ class AIChatService:
     # -- chat turns ------------------------------------------------------------------------
 
     async def run_turn(self, conversation_id: str, user_text: str) -> AIChatTurnResponse:
-        logger.info("AI turn start: conversation=%s input_chars=%d", conversation_id, len(user_text))
-        conv = self.get_conversation(conversation_id)
-        provider_config = self._resolve_provider_config(conv)
+        async for event in self._run_turn(conversation_id, user_text, stream=False):
+            if isinstance(event, AIChatTurnResponse):
+                return event
+        raise RuntimeError("AI turn ended without a result")
+
+    async def run_turn_stream(self, conversation_id: str, user_text: str) -> AsyncIterator[str]:
+        """Adapt the shared turn lifecycle to the existing SSE delivery contract."""
+        async for event in self._run_turn(conversation_id, user_text, stream=True):
+            if not isinstance(event, AIChatTurnResponse):
+                yield _sse(*event)
+                continue
+            if event.draft_batch is not None:
+                yield _sse("draft", json.loads(event.draft_batch.model_dump_json()))
+            if event.instruction_proposal is not None:
+                yield _sse("instruction_proposal", json.loads(event.instruction_proposal.model_dump_json()))
+            yield _sse("message_end", json.loads(event.message.model_dump_json()))
+
+    async def _run_turn(
+        self, conversation_id: str, user_text: str, *, stream: bool
+    ) -> AsyncIterator[tuple[str, dict[str, Any]] | AIChatTurnResponse]:
+        """Own preparation, batch lifetime and persistence for either delivery mode.
+
+        Streaming accumulates graph updates from the same execution that emits tokens; it
+        never invokes the agent again to assemble a result. Only delivery and error reporting
+        differ between modes.
+        """
+        try:
+            conv = self.get_conversation(conversation_id)
+            provider_config = self._resolve_provider_config(conv)
+        except TimeTraceError as exc:
+            if not stream:
+                raise
+            yield "error", {"message": str(exc)}
+            return
+
+        mode_label = " (stream)" if stream else ""
+        logger.info("AI turn start%s: conversation=%s input_chars=%d", mode_label, conversation_id, len(user_text))
         sanitized_text = self._sanitize_for_provider(user_text, provider_config)
         logger.info("AI turn provider: %s/%s", provider_config.provider, provider_config.model)
-
         user_msg = self.add_message(conversation_id, role="user", content=sanitized_text)
+        # Keep this before eager batch creation/model initialization, as in the original SSE path.
+        if stream:
+            yield "message_start", {"conversation_id": conversation_id, "user_message_id": user_msg.id}
 
-        draft_service = AIDraftService(self.db)
-        batch = draft_service.create_batch(
+        batch = AIDraftService(self.db).create_batch(
             conversation_id=conversation_id,
             source_message_id=user_msg.id,
             intent=conv.intent,
@@ -381,7 +416,6 @@ class AIChatService:
             source_message_text=user_text,
             data_scope=AISettingsService(self.db).get_data_scope(),
         )
-
         history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
         input_messages = self._history_to_langchain(history) + [HumanMessage(content=sanitized_text)]
 
@@ -398,15 +432,49 @@ class AIChatService:
                 "AI turn failed building agent: conversation=%s error_type=%s", conversation_id, type(exc).__name__
             )
             self._finalize_batch(batch.id, None)
-            raise
+            if not stream:
+                raise
+            yield "error", {"message": "Failed to initialize the AI provider."}
+            return
 
         start = time.monotonic()
+        new_messages: list[Any] = []
+        if stream:
+            yield "status", {"message": "thinking"}
         try:
-            result = await agent.ainvoke({"messages": input_messages}, context=AIAgentContext(gateway=gateway))
+            if stream:
+                async for event in agent.astream(
+                    {"messages": input_messages},
+                    context=AIAgentContext(gateway=gateway),
+                    stream_mode=["messages", "updates"],
+                    version="v2",
+                ):
+                    # This LangGraph pin emits multi-mode events as dicts, not tuples.
+                    mode, data = event["type"], event["data"]
+                    if mode == "messages":
+                        chunk, _metadata = data
+                        # Raw ToolMessage chunks are tool results, not assistant tokens.
+                        if not isinstance(chunk, AIMessage):
+                            continue
+                        text = _stringify_content(getattr(chunk, "content", None))
+                        if text:
+                            yield "token", {"text": text}
+                    elif mode == "updates":
+                        for node_name, node_update in (data or {}).items():
+                            logger.info("AI turn step: conversation=%s node=%s", conversation_id, node_name)
+                            yield "status", {"message": "running tools" if node_name == "tools" else "thinking"}
+                            if isinstance(node_update, dict):
+                                msgs = node_update.get("messages")
+                                if msgs:
+                                    new_messages.extend(msgs)
+            else:
+                result = await agent.ainvoke({"messages": input_messages}, context=AIAgentContext(gateway=gateway))
+                new_messages = result.get("messages", [])[len(input_messages) :]
         except Exception as exc:
             latency_ms = int((time.monotonic() - start) * 1000)
             logger.warning(
-                "AI turn failed: conversation=%s batch=%s latency_ms=%d error_type=%s",
+                "AI turn failed%s: conversation=%s batch=%s latency_ms=%d error_type=%s",
+                mode_label,
                 conversation_id,
                 batch.id,
                 latency_ms,
@@ -419,17 +487,17 @@ class AIChatService:
                 provider=provider_config.provider,
                 model=provider_config.model,
                 latency_ms=latency_ms,
-                # Provider exceptions can contain response bodies, prompt fragments, or other
-                # sensitive data. Keep only a stable generic marker in the conversation record;
-                # the log above records the exception class, never its text.
+                # Never persist provider exception text, which can contain prompts or secrets.
                 error="AI provider call failed.",
             )
             AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
             self._finalize_batch(batch.id, None)
-            raise AIProviderError("AI provider call failed.") from exc
-        latency_ms = int((time.monotonic() - start) * 1000)
+            if not stream:
+                raise AIProviderError("AI provider call failed.") from exc
+            yield "error", {"message": "AI provider call failed."}
+            return
 
-        new_messages = result.get("messages", [])[len(input_messages) :]
+        latency_ms = int((time.monotonic() - start) * 1000)
         final_msg = self._persist_new_messages(conversation_id, new_messages, provider_config, latency_ms)
         if final_msg is None:
             final_msg = self.add_message(
@@ -441,176 +509,25 @@ class AIChatService:
                 latency_ms=latency_ms,
                 error="model produced no response",
             )
-
         finalized_batch = self._finalize_batch(batch.id, final_msg)
-        conv = self.get_conversation(conversation_id)
         draft_batch_resp = self.get_draft_batch_detail(finalized_batch.id) if finalized_batch else None
         instruction_proposal = AIInstructionService(self.db).get_for_source_message(user_msg.id)
         logger.info(
-            "AI turn done: conversation=%s batch=%s latency_ms=%d draft_items=%d",
+            "AI turn done%s: conversation=%s batch=%s latency_ms=%d draft_items=%d",
+            mode_label,
             conversation_id,
             finalized_batch.id if finalized_batch else None,
             latency_ms,
             finalized_batch.item_count if finalized_batch else 0,
         )
-
-        return AIChatTurnResponse(
-            conversation=AIConversationResponse.model_validate(conv),
+        yield AIChatTurnResponse(
+            conversation=AIConversationResponse.model_validate(self.get_conversation(conversation_id)),
             message=AIChatMessageResponse.model_validate(final_msg),
             draft_batch=draft_batch_resp,
             instruction_proposal=(
                 _instruction_proposal_response(instruction_proposal) if instruction_proposal is not None else None
             ),
         )
-
-    async def run_turn_stream(self, conversation_id: str, user_text: str) -> AsyncIterator[str]:
-        """SSE event stream: `message_start`, `status`, `token`, `draft` (once, fully-formed),
-        `message_end`, `error` (spec S7). Built on
-        `agent.astream(input, stream_mode=["messages","updates"], version="v2")` (spec S3):
-        `"messages"` mode yields `(chunk, metadata)` token pairs for `token` events; `"updates"`
-        mode yields `{node_name: state_update}` dicts, and this graph's `AgentState` keeps new
-        messages under an `add_messages`-reduced `"messages"` key on every node's state update --
-        so accumulating `update["messages"]` off every `"updates"` event reconstructs exactly the
-        same final message list `run_turn`'s `agent.ainvoke(...)` would have returned, without a
-        second model call.
-        """
-        try:
-            conv = self.get_conversation(conversation_id)
-            provider_config = self._resolve_provider_config(conv)
-        except TimeTraceError as exc:
-            yield _sse("error", {"message": str(exc)})
-            return
-
-        logger.info("AI turn start (stream): conversation=%s input_chars=%d", conversation_id, len(user_text))
-        sanitized_text = self._sanitize_for_provider(user_text, provider_config)
-        logger.info("AI turn provider: %s/%s", provider_config.provider, provider_config.model)
-        user_msg = self.add_message(conversation_id, role="user", content=sanitized_text)
-        yield _sse("message_start", {"conversation_id": conversation_id, "user_message_id": user_msg.id})
-
-        draft_service = AIDraftService(self.db)
-        batch = draft_service.create_batch(
-            conversation_id=conversation_id,
-            source_message_id=user_msg.id,
-            intent=conv.intent,
-            request_text=sanitized_text,
-            provider=provider_config.provider,
-            model=provider_config.model,
-        )
-        logger.info("AI turn batch created: batch=%s", batch.id)
-        gateway = DbAIToolGateway(
-            batch_id=batch.id,
-            conversation_id=conversation_id,
-            source_message_id=user_msg.id,
-            source_message_text=user_text,
-            data_scope=AISettingsService(self.db).get_data_scope(),
-        )
-
-        history = self._recent_history(conversation_id, exclude_message_id=user_msg.id)
-        input_messages = self._history_to_langchain(history) + [HumanMessage(content=sanitized_text)]
-
-        try:
-            model = self._build_model(provider_config)
-            agent = build_agent(
-                model,
-                sanitization_level=provider_config.sanitization_level,
-                extra_system_context=self._turn_context(),
-                custom_instructions=AISettingsService(self.db).get_settings().custom_instructions,
-            )
-        except AIProviderError:
-            self._finalize_batch(batch.id, None)
-            yield _sse("error", {"message": "Failed to initialize the AI provider."})
-            return
-
-        start = time.monotonic()
-        new_messages: list[Any] = []
-        yield _sse("status", {"message": "thinking"})
-        try:
-            async for event in agent.astream(
-                {"messages": input_messages},
-                context=AIAgentContext(gateway=gateway),
-                stream_mode=["messages", "updates"],
-                version="v2",
-            ):
-                # This installed langgraph version emits multi-mode stream events as
-                # {"type": mode, "ns": namespace, "data": payload} dicts, not (mode, data)
-                # tuples -- the module's docstring paraphrase is stale for this pin.
-                mode, data = event["type"], event["data"]
-                if mode == "messages":
-                    chunk, _metadata = data
-                    # "messages" mode streams every message chunk flowing through the graph,
-                    # including ToolMessage chunks carrying a tool's raw return value (JSON) --
-                    # confirmed live: without this filter a propose_* tool's JSON result renders
-                    # as if the assistant had said it. Only AI message chunks are real assistant
-                    # text.
-                    if not isinstance(chunk, AIMessage):
-                        continue
-                    text = _stringify_content(getattr(chunk, "content", None))
-                    if text:
-                        yield _sse("token", {"text": text})
-                elif mode == "updates":
-                    for node_name, node_update in (data or {}).items():
-                        logger.info("AI turn step: conversation=%s node=%s", conversation_id, node_name)
-                        yield _sse("status", {"message": "running tools" if node_name == "tools" else "thinking"})
-                        if isinstance(node_update, dict):
-                            msgs = node_update.get("messages")
-                            if msgs:
-                                new_messages.extend(msgs)
-        except Exception as exc:
-            latency_ms = int((time.monotonic() - start) * 1000)
-            logger.warning(
-                "AI turn failed (stream): conversation=%s batch=%s latency_ms=%d error_type=%s",
-                conversation_id,
-                batch.id,
-                latency_ms,
-                type(exc).__name__,
-            )
-            self.add_message(
-                conversation_id,
-                role="assistant",
-                content="",
-                provider=provider_config.provider,
-                model=provider_config.model,
-                latency_ms=latency_ms,
-                error="AI provider call failed.",
-            )
-            AIInstructionService(self.db).mark_failed_for_source(user_msg.id)
-            self._finalize_batch(batch.id, None)
-            yield _sse("error", {"message": "AI provider call failed."})
-            return
-
-        latency_ms = int((time.monotonic() - start) * 1000)
-        final_msg = self._persist_new_messages(conversation_id, new_messages, provider_config, latency_ms)
-        if final_msg is None:
-            final_msg = self.add_message(
-                conversation_id,
-                role="assistant",
-                content="",
-                provider=provider_config.provider,
-                model=provider_config.model,
-                latency_ms=latency_ms,
-                error="model produced no response",
-            )
-
-        finalized_batch = self._finalize_batch(batch.id, final_msg)
-        if finalized_batch:
-            draft_resp = self.get_draft_batch_detail(finalized_batch.id)
-            yield _sse("draft", json.loads(draft_resp.model_dump_json()))
-
-        instruction_proposal = AIInstructionService(self.db).get_for_source_message(user_msg.id)
-        if instruction_proposal is not None:
-            yield _sse(
-                "instruction_proposal",
-                json.loads(_instruction_proposal_response(instruction_proposal).model_dump_json()),
-            )
-
-        logger.info(
-            "AI turn done (stream): conversation=%s batch=%s latency_ms=%d draft_items=%d",
-            conversation_id,
-            finalized_batch.id if finalized_batch else None,
-            latency_ms,
-            finalized_batch.item_count if finalized_batch else 0,
-        )
-        yield _sse("message_end", json.loads(AIChatMessageResponse.model_validate(final_msg).model_dump_json()))
 
     # -- draft-adjacent reads (kept here; see module docstring) -----------------------------
 

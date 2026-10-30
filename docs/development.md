@@ -114,7 +114,10 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   allowed days, breaks, daily caps, the placement window, and explicit AI data scope are stored in
   `AISettings`. AI tool calls use their own short-lived DB
   sessions because tools may run concurrently; never share a request's SQLModel session across
-  parallel tool calls. Remembered-instruction release hardening now has fake-agent coverage for
+  parallel tool calls. JSON and SSE chat share one internal turn lifecycle in `AIChatService`;
+  delivery adapters preserve live token/status events without executing the agent twice. See the
+  [chat lifecycle maintenance notes](ai-maintenance.md#chat-turn-lifecycle).
+  Remembered-instruction release hardening now has fake-agent coverage for
   both chat modes, server-side original-message intent gating, one-proposal uniqueness, draft-batch
   retention, failure redaction, and instruction/API lifecycle edge cases. The browser drawer
   checklist remains a manual acceptance checklist; there is intentionally no browser framework.
@@ -167,8 +170,10 @@ Coverage includes timer/idle state, UTC conversion, task title syntax, task HTTP
 creation, legacy tag fan-out, substantial pure/service recurrence tests, AI privacy boundaries, and
 fake-agent remembered-instruction chat/API lifecycle tests. Provider-construction tests replace
 LangChain adapters and Pi inference with fakes, covering routing/options, saved/inline probe caps,
-key decryption, and real-agent JSON/SSE chat initialization. Draft lifecycle, gateway, and other provider
-coverage remains partial outside these slices. There is no browser test suite. Add coverage
+key decryption, and real-agent JSON/SSE chat initialization. Fake-agent chat lifecycle tests cover
+ordered tool transcripts/usage, bounded history, sanitization/instructions, empty replies, eager-batch
+cleanup, retained drafts and failed instruction proposals, including failure after streamed tokens.
+Draft lifecycle, gateway, and other provider coverage remains partial outside these slices. There is no browser test suite. Add coverage
 where changing behavior; passing the existing suite does not establish those areas are correct.
 
 **Observed baseline at this documentation check:** 192 tests passed with 85 reported SQLite
