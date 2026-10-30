@@ -114,7 +114,11 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   allowed days, breaks, daily caps, the placement window, and explicit AI data scope are stored in
   `AISettings`. AI tool calls use their own short-lived DB
   sessions because tools may run concurrently; never share a request's SQLModel session across
-  parallel tool calls. JSON and SSE chat share one internal turn lifecycle in `AIChatService`;
+  parallel tool calls. `DbAIToolGateway._read_context` owns scoped read sessions; domain services
+  remain independently usable by human-local insights. Scope is tool-level, not strict field-level
+  isolation: task progress exposes session aggregates, while sessions-only listing/validation can
+  expose linked task metadata. See [read-context maintenance notes](ai-maintenance.md#model-facing-read-context).
+  JSON and SSE chat share one internal turn lifecycle in `AIChatService`;
   delivery adapters preserve live token/status events without executing the agent twice. See the
   [chat lifecycle maintenance notes](ai-maintenance.md#chat-turn-lifecycle).
   Remembered-instruction release hardening now has fake-agent coverage for

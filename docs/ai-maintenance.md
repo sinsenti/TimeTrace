@@ -59,6 +59,37 @@ provider/tool failure, while remembered-instruction proposals are marked failed.
 failures leave only the user message; invocation failures also persist a sanitized assistant error.
 The gateway still receives the original user text for intent gating and opens its own tool sessions.
 
+## Model-facing read context
+
+`DbAIToolGateway._read_context` owns scoped read execution and the lifetime of each private
+SQLModel session. Static domain requirements are declared at the read's execution site; statistics,
+rating targets and optional reflection timer context retain explicit payload-dependent checks in
+the gateway before execution. Do not move authorization into `AIInsightsService` or the deterministic
+domain services: human-local insight endpoints deliberately use those services independently.
+Each concurrent tool call must still open and close its own session, including on failure.
+
+This is the existing tool-visibility contract, **not** strict field-level domain isolation:
+
+- Task-only `get_task_progress` includes recorded-session aggregates and session counts.
+- Sessions-only `list_sessions` includes linked task IDs and projected occurrences' task metadata;
+  `validate_schedule` can resolve linked tasks and expose their titles in diagnostics.
+- Conflict, daily and weekly reads require both sessions and tasks. Day summaries additionally
+  require reviews; task reviews require reviews and tasks.
+- Statistics require the source domain (`habit_logs` → habits, `day_reviews` → reviews,
+  `rating_entries` → ratings). Session task/category/status/priority grouping or filtering and
+  `has_task` filtering also require tasks; ordinary session tag statistics do not. Task/session
+  average ratings additionally require ratings; session average ratings cannot use tag grouping
+  or filtering.
+- Rating entries require ratings plus the explicit task/session/habit target's domain. An unfiltered
+  target requires all three domains; day targets do not. Reflection requires sessions, tasks,
+  habits, reviews and ratings, plus timer only when requested.
+
+Habits, reviews, ratings and timer remain default-deny/explicit-opt-in. PII redaction is a separate
+step, not authorization or a guarantee that permitted aggregates hide linked domain information.
+`tests/test_ai_read_context.py` characterizes these exceptions, ordered scope errors, source/payload
+requirements, and concurrent DB connection isolation/cleanup. Never tighten visibility as part of
+an internal read-context refactor.
+
 ## Domain traps
 
 - Recurring occurrence writes go through `SessionService`; support synthetic `virt:` IDs and record

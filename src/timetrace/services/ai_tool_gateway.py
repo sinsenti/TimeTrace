@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import json
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 
@@ -200,8 +202,19 @@ class DbAIToolGateway:
                 f"AI data scope '{domain}' is disabled. Enable it in Settings > AI before using this tool."
             )
 
-    def _require_stats_scope(self, source: QuerySource) -> None:
-        self._require_scope(_STATS_DOMAIN[source])
+    @contextmanager
+    def _read_context(self, *domains: str) -> Iterator[Session]:
+        """Authorize a model-facing read and own its private, short-lived DB session.
+
+        Static requirements live at each read's execution site. Payload-dependent requirements
+        (statistics, rating targets and optional timer context) are checked explicitly in the
+        same gateway, before execution. Do not pass a request session into concurrent tools or
+        move these checks into deterministic services also used by human-local callers.
+        """
+        for domain in domains:
+            self._require_scope(domain)
+        with Session(engine) as db:
+            yield db
 
     def list_tasks(
         self,
@@ -219,9 +232,8 @@ class DbAIToolGateway:
         the closest available proxy for "most recently touched". `tag` matches as a substring
         against the CSV `tags` field (mirrors how tags are stored elsewhere in this codebase).
         """
-        self._require_scope("tasks")
-        limit = max(1, min(limit, 200))
-        with Session(engine) as db:
+        with self._read_context("tasks") as db:
+            limit = max(1, min(limit, 200))
             stmt = select(Task)
             if status:
                 stmt = stmt.where(Task.status == status)
@@ -239,8 +251,7 @@ class DbAIToolGateway:
 
     def get_task(self, task_id: str) -> dict[str, Any]:
         """Fetches one task by id. Raises `EntityNotFoundError` if it doesn't exist."""
-        self._require_scope("tasks")
-        with Session(engine) as db:
+        with self._read_context("tasks") as db:
             task = db.get(Task, task_id)
             if not task:
                 raise EntityNotFoundError("Task", task_id)
@@ -252,12 +263,11 @@ class DbAIToolGateway:
         invent an id. Returns `[]` when nothing matches; returns more than one candidate when
         the match is ambiguous, so the caller can ask the user to disambiguate rather than
         guessing."""
-        self._require_scope("tasks")
-        q = (query or "").strip().lower()
-        if not q:
-            return []
-        limit = max(1, min(limit, 20))
-        with Session(engine) as db:
+        with self._read_context("tasks") as db:
+            q = (query or "").strip().lower()
+            if not q:
+                return []
+            limit = max(1, min(limit, 20))
             stmt = (
                 select(Task).where(func.lower(Task.title).like(f"%{q}%")).order_by(Task.created_at.desc()).limit(limit)
             )
@@ -275,9 +285,8 @@ class DbAIToolGateway:
         """Lists sessions overlapping `[start, end)`, real rows merged with projected occurrences
         of recurring tasks (delegates to `SessionService.list_sessions`, the app's single merge
         funnel for the two)."""
-        self._require_scope("sessions")
-        limit = max(1, min(limit, 500))
-        with Session(engine) as db:
+        with self._read_context("sessions") as db:
+            limit = max(1, min(limit, 500))
             rows = SessionService(db).list_overlapping_sessions(start=start, end=end, include_virtual=True)
         if task_id:
             rows = [r for r in rows if r.get("task_id") == task_id]
@@ -309,10 +318,9 @@ class DbAIToolGateway:
         `working_hours_only` applies the saved local hours, allowed days, break, and daily-cap
         preferences from `AISettings`.
         """
-        self._require_scope("sessions")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("sessions") as db:
             return AIInsightsService(db).find_free_slots(
                 start,
                 end,
@@ -345,7 +353,7 @@ class DbAIToolGateway:
             source_enum = QuerySource(source)
         except (TypeError, ValueError) as exc:
             raise ValidationError(f"get_time_stats: unsupported source {source!r}") from exc
-        self._require_stats_scope(source_enum)
+        self._require_scope(_STATS_DOMAIN[source_enum])
         capabilities = _STATS_CAPABILITIES[source_enum]
         if measure not in {item.value for item in capabilities["measures"]}:
             raise ValidationError(
@@ -424,7 +432,7 @@ class DbAIToolGateway:
         except PydanticValidationError as exc:
             raise ValidationError(f"get_time_stats: invalid query: {exc}") from exc
 
-        with Session(engine) as db:
+        with self._read_context() as db:
             response = QueryService(db).run(analytics_query, QueryContextRequest())
         return response.model_dump(mode="json")
 
@@ -438,10 +446,9 @@ class DbAIToolGateway:
         include_done: bool = False,
         limit: int = 10,
     ) -> list[dict[str, Any]]:
-        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("tasks") as db:
             return AIInsightsService(db).search_tasks(
                 query,
                 status=status,
@@ -459,11 +466,9 @@ class DbAIToolGateway:
         include_pending: bool = True,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
-        self._require_scope("sessions")
-        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("sessions", "tasks") as db:
             return AIInsightsService(db).find_conflicts(
                 start,
                 end,
@@ -473,36 +478,30 @@ class DbAIToolGateway:
             )
 
     def get_task_progress(self, task_id: str) -> dict[str, Any]:
-        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("tasks") as db:
             return AIInsightsService(db).get_task_progress(task_id)
 
     def validate_schedule(self, proposed_sessions: list[dict[str, Any]]) -> dict[str, Any]:
-        self._require_scope("sessions")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("sessions") as db:
             return AIInsightsService(db).validate_schedule(
                 proposed_sessions,
                 batch_id=self.batch_id,
             )
 
     def get_daily_briefing(self, date: str | None = None) -> dict[str, Any]:
-        self._require_scope("sessions")
-        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("sessions", "tasks") as db:
             return AIInsightsService(db).get_daily_briefing(date, batch_id=self.batch_id)
 
     def get_weekly_review(self, *, start: datetime, end: datetime) -> dict[str, Any]:
-        self._require_scope("sessions")
-        self._require_scope("tasks")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context("sessions", "tasks") as db:
             return AIInsightsService(db).get_weekly_review(start, end)
 
     def list_habits(
@@ -514,10 +513,9 @@ class DbAIToolGateway:
         include_logs: bool = True,
         limit: int = 50,
     ) -> dict[str, Any]:
-        self._require_scope("habits")
         from timetrace.services.habit_service import HabitService
 
-        with Session(engine) as db:
+        with self._read_context("habits") as db:
             return HabitService(db).list_habits_for_ai(
                 start_date=start_date,
                 end_date=end_date,
@@ -527,21 +525,17 @@ class DbAIToolGateway:
             )
 
     def get_habit_progress(self, *, habit_id: str, start_date: str, end_date: str) -> dict[str, Any]:
-        self._require_scope("habits")
         from timetrace.services.habit_service import HabitService
 
-        with Session(engine) as db:
+        with self._read_context("habits") as db:
             return HabitService(db).get_habit_progress_for_ai(
                 habit_id=habit_id, start_date=start_date, end_date=end_date
             )
 
     def get_day_summary(self, date_str: str) -> dict[str, Any]:
-        self._require_scope("sessions")
-        self._require_scope("tasks")
-        self._require_scope("reviews")
         from timetrace.services.revision_service import RevisionService
 
-        with Session(engine) as db:
+        with self._read_context("sessions", "tasks", "reviews") as db:
             return RevisionService(db).get_day_summary(date_str)
 
     def list_day_reviews(
@@ -552,10 +546,9 @@ class DbAIToolGateway:
         include_skipped: bool = False,
         limit: int = 100,
     ) -> dict[str, Any]:
-        self._require_scope("reviews")
         from timetrace.services.revision_service import RevisionService
 
-        with Session(engine) as db:
+        with self._read_context("reviews") as db:
             return RevisionService(db).list_day_reviews(
                 start_date=start_date,
                 end_date=end_date,
@@ -564,11 +557,9 @@ class DbAIToolGateway:
             )
 
     def get_task_review(self, task_id: str) -> dict[str, Any]:
-        self._require_scope("reviews")
-        self._require_scope("tasks")
         from timetrace.services.task_service import TaskService
 
-        with Session(engine) as db:
+        with self._read_context("reviews", "tasks") as db:
             return TaskService(db).get_task_review_for_ai(task_id)
 
     def list_task_reviews(
@@ -579,20 +570,17 @@ class DbAIToolGateway:
         task_id: str | None = None,
         limit: int = 100,
     ) -> dict[str, Any]:
-        self._require_scope("reviews")
-        self._require_scope("tasks")
         from timetrace.services.task_service import TaskService
 
-        with Session(engine) as db:
+        with self._read_context("reviews", "tasks") as db:
             return TaskService(db).list_task_reviews_for_ai(
                 start_date=start_date, end_date=end_date, task_id=task_id, limit=limit
             )
 
     def list_rating_definitions(self) -> list[dict[str, Any]]:
-        self._require_scope("ratings")
         from timetrace.services.rating_service import RatingService
 
-        with Session(engine) as db:
+        with self._read_context("ratings") as db:
             return RatingService(db).list_definitions_for_ai()
 
     def list_rating_entries(
@@ -621,7 +609,7 @@ class DbAIToolGateway:
                 )
         from timetrace.services.rating_service import RatingService
 
-        with Session(engine) as db:
+        with self._read_context() as db:
             return RatingService(db).list_entries_for_ai(
                 target_type=target_type,
                 target_id=target_id,
@@ -632,10 +620,9 @@ class DbAIToolGateway:
             )
 
     def get_timer_status(self) -> dict[str, Any]:
-        self._require_scope("timer")
         from timetrace.services.timer_service import TimerService
 
-        with Session(engine) as db:
+        with self._read_context("timer") as db:
             return TimerService(db).get_status()
 
     def get_reflection_context(
@@ -651,7 +638,7 @@ class DbAIToolGateway:
             self._require_scope("timer")
         from timetrace.services.ai_insights_service import AIInsightsService
 
-        with Session(engine) as db:
+        with self._read_context() as db:
             return AIInsightsService(db).get_reflection_context(
                 start_date=start_date,
                 end_date=end_date,
