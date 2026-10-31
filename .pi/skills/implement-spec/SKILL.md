@@ -20,7 +20,7 @@ Communication to and from subagents should be sparse. Communicate primarily thro
 
 ## Steps
 
-1. Read the spec and tickets to understand the task graph.
+1. Read the spec and tickets to understand the task graph. Record the starting commit before implementation as the fixed base for the final whole-delivery review.
 
 2. (optional) Use an **exploration subagent** to conduct any exploration required by the tickets - relevant codebase files or external documentation. Ensure the exploration subagent can save files - it should save its markdown notes in a directory outside the repo, accessible by all future subagents. This lets **implementer subagents** focus on implementation rather than exploration.
 
@@ -35,8 +35,13 @@ Communication to and from subagents should be sparse. Communicate primarily thro
 
 6. If this changes the **frontier** of available tickets, kick off more **implementer subagents** to work on the new tickets. This allows for maximum concurrency.
 
-7. Once all tickets are complete, call the Skill tool with `code-review` on the integration branch. Fix all issues raised by the code review in a single fresh **implementer subagent**.
+7. **Whole-delivery review — required before reporting completion.** Once all tickets are implemented:
+   - Run the project's full automated checks on the integrated result, reporting baseline failures and unverified checks separately.
+   - Call the Skill tool with `code-review` against the recorded starting commit, covering **all tickets together**, their tests and delivery documentation. Per-ticket reviews do not replace this review.
+   - Ask the reviewers to trace affected workflows through all relevant callers, including pre-existing renderers or handlers newly reached by the changes. Where affected, check alternate entry points, interrupted initialization, delayed/failed reads and preservation of unsaved input.
+   - Fix confirmed findings in a single fresh **implementer subagent**, adding caller-visible regressions for behavior fixes. Re-run the applicable automated checks and obtain an independent re-review of the amendments. Repeat until no confirmed findings remain unresolved.
+   - Proceed only when the final integrated result has passed review and required checks. Otherwise report **blocked** or **verification incomplete**, with the outstanding items, rather than declaring the delivery finished.
 
-8. If a draft PR exists, mark it ready for review. Otherwise, resolve each ticket the way the issue tracker closes work, and report the integration branch.
+8. If a draft PR exists, mark it ready for review. Otherwise, resolve each ticket the way the issue tracker closes work, and report the integration branch. Include the reviewed base and final commit, findings resolved/outstanding, exact check results and deferred manual acceptance. Distinguish implementation/review completion from human acceptance; passing this review does not authorize a merge, push or release.
 
 9. Clean up all **implementer subagent** worktrees.
