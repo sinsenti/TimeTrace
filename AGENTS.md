@@ -42,6 +42,7 @@ Shared working instructions for coding assistants in this repository.
    [.claude/skills/merge-review/SKILL.md](.claude/skills/merge-review/SKILL.md): automated checks,
    adversarial review, then explicit human review/approval. Passing tests is not merge permission.
 6. No new emoji in UI copy or code unless matching an existing convention in that file.
+7. When drafting commit messages, follow [docs/commit-conventions.md](docs/commit-conventions.md).
 
 ## Commands
 
