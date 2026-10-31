@@ -326,6 +326,51 @@ for (const cancel of ['closeRecurringDeleteModal()', 'closeSessionModal()']) {
     });
 }
 
+for (const kind of ['unknown', 'materialized', 'virtual', 'ordinary']) {
+    test(`keyboard Delete uses recurrence protection for ${kind} sessions`, async () => {
+        const deleted = [];
+        let lookups = 0;
+        let confirmations = 0;
+        let recover = false;
+        const p = sessionPage({
+            get: async () => {
+                lookups++;
+                if (kind === 'unknown' && !recover) throw Error('metadata offline');
+                return [{ id: 'missing-id', title: 'Task', is_recurring: kind !== 'ordinary' }];
+            },
+            delete: async url => deleted.push(url)
+        });
+        p.load('vim_engine.js');
+        p.context.showCustomConfirm = async () => { confirmations++; return true; };
+        p.elements.get('recurring_delete_modal').classList.add('hidden');
+        if (kind === 'materialized') p.context.allSessions[0].series_task_id = 'missing-id';
+        if (kind === 'virtual') p.context.allSessions[0].id = 'virt:missing-id:20260101T100000Z';
+        p.run('cursorStart = new Date("2026-01-01T10:15Z")');
+
+        await p.run('handleDeleteUnderCursor()');
+        if (kind === 'unknown') {
+            assert.equal(lookups, 1);
+            assert.equal(confirmations, 0);
+            assert.deepEqual(deleted, []);
+            assert.match(p.alerts[0], /recurrence.*retry/i);
+            recover = true;
+            await p.run('handleDeleteUnderCursor()');
+        }
+        if (kind === 'ordinary') {
+            assert.equal(confirmations, 1);
+            assert.deepEqual(deleted, ['/sessions/session-1?scope=only_this']);
+        } else {
+            assert.equal(confirmations, 0);
+            assert.deepEqual(deleted, []);
+            assert.equal(p.elements.get('recurring_delete_modal').classList.contains('hidden'), false);
+            await p.run('confirmRecurringDelete("following")');
+            const id = kind === 'virtual' ? 'virt%3Amissing-id%3A20260101T100000Z' : 'session-1';
+            assert.deepEqual(deleted, [`/sessions/${id}?scope=following`]);
+            if (kind !== 'unknown') assert.equal(lookups, 0, 'series identity needs no metadata lookup');
+        }
+    });
+}
+
 test('successfully empty metadata is cached instead of repeatedly loaded', async () => {
     let reads = 0;
     const p = page({ get: async () => { reads++; return []; } });
@@ -405,7 +450,7 @@ test('failed cold loads are unavailable; refresh retry keeps last-known metadata
     assert.equal(p.elements.has('task_metadata_notice'), false);
 });
 
-function workflowPage(title = 'Original') {
+function workflowPage(title = 'Original', acceptedChanges = {}) {
     let rows = [{ id: 'task-1', title, status: 'To Do', estimated_minutes: 15 }];
     let failBoard = false;
     let failRegistry = false;
@@ -435,7 +480,7 @@ function workflowPage(title = 'Original') {
             writes.push(url);
             if (url.startsWith('/api/ai/drafts/')) {
                 const title = url.endsWith('/undo') || url.endsWith('/drafts/undo') ? 'Original' : 'AI renamed';
-                rows = rows.map(t => ({ ...t, title }));
+                rows = rows.map(t => ({ ...t, title, ...acceptedChanges }));
                 return { completion_policies: [] };
             }
             const task = { id: 'task-2', ...payload };
@@ -462,6 +507,63 @@ function workflowPage(title = 'Original') {
     p.run('var activeTasks = [], allSessions = []');
     return { ...p, writes, rendered: () => rendered, failBoard: val => { failBoard = val; },
         failRegistry: val => { failRegistry = val; } };
+}
+
+// A bounded select double: unlike plain objects, an absent option cannot retain a value.
+// This covers option selection semantics, not a browser/manual acceptance check.
+function taskSelect() {
+    let markup = '';
+    let options = [];
+    let selectedIndex = -1;
+    return {
+        get innerHTML() { return markup; },
+        set innerHTML(value) {
+            markup = value;
+            options = [...value.matchAll(/<option value="([^"]*)">([^]*?)<\/option>/g)]
+                .map(match => ({ value: match[1], textContent: match[2] }));
+            selectedIndex = options.length ? 0 : -1;
+        },
+        get options() { return options; },
+        get selectedIndex() { return selectedIndex; },
+        get value() { return options[selectedIndex]?.value || ''; },
+        set value(value) { selectedIndex = options.findIndex(option => option.value === value); }
+    };
+}
+
+for (const missing of ['completed', 'filtered', 'unavailable']) {
+    test(`AI refresh preserves an excluded (${missing}) unsaved timer selection through Start`, async () => {
+        const p = workflowPage('Original', { status: 'Done' });
+        p.load('ai_drafts.js');
+        p.load('timer_control.js');
+        const select = taskSelect();
+        p.elements.set('timer_task_select', select);
+        await p.run('taskKnowledge.refresh()');
+        select.value = 'task-1';
+        assert.equal(select.value, 'task-1');
+        const get = p.context.api.get;
+        p.context.api.get = async url => {
+            if (missing === 'unavailable' && url === '/api/tasks?status=all') return [];
+            if (missing !== 'completed' && url.startsWith('/api/tasks?status=all&sort=')) return [];
+            if (url === '/timer/status') return null;
+            return get(url);
+        };
+        const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
+        await card.children.flatMap(n => n.children).find(n => n.textContent === 'Accept').click();
+        assert.equal(select.value, 'task-1', 'refresh must not detach an unsaved timer task');
+        const post = p.context.api.post;
+        let started;
+        p.context.api.post = async (url, payload) => {
+            if (url === '/timer/start') { started = payload; return {}; }
+            return post(url, payload);
+        };
+        await p.run('toggleTimer()');
+        assert.equal(started.task_id, 'task-1');
+        // Explicit user detach must remain possible.
+        select.value = '';
+        await p.run('toggleTimer()');
+        assert.equal(started.task_id, null);
+        assert.equal(p.writes.length, 1, 'only one AI acceptance write');
+    });
 }
 
 test('task rename/create/delete updates calendar, sidebar, kanban and visible attachment suggestions', async () => {
@@ -509,6 +611,110 @@ test('the selected revision task display refreshes without replacing unsaved rev
     assert.equal(p.elements.get('task_rev_went_well').value, 'Unsaved review');
     assert.equal(p.elements.get('task_custom_ratings_container').innerHTML, 'Unsaved rating');
 });
+
+for (const replacementFails of [false, true]) {
+    test(`AI refresh during task selection ${replacementFails ? 'blocks Save until retry' : 'saves only the selected task review'}`, async () => {
+        const p = workflowPage();
+        p.load('ratings_config.js');
+        p.load('task_inspector.js');
+        p.load('ai_drafts.js');
+        for (const id of ['task_inspector_body', 'inspect_task_title', 'inspect_task_desc', 'inspect_task_status_badge',
+            'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
+            p.elements.set(id, p.element());
+        }
+        const old = deferred();
+        const get = p.context.api.get;
+        let reads = 0;
+        let fail = replacementFails;
+        p.context.api.get = async url => {
+            if (url === '/api/tasks/task-2/stats') {
+                if (++reads === 1) return old.promise;
+                if (fail) throw Error('replacement stats offline');
+                return { task: { id: 'task-2', title: 'Task B', status: 'To Do' }, sessions: [],
+                    task_review: { difficulty: 4, what_went_well: 'B review', blockers: 'B blocker', key_takeaways: 'B lesson' } };
+            }
+            if (url === '/api/tasks/task-1/stats') return { task: { id: 'task-1', title: 'Task A', status: 'To Do' },
+                sessions: [], task_review: { difficulty: 2, what_went_well: 'A review' } };
+            return get(url);
+        };
+        const saved = [];
+        const post = p.context.api.post;
+        p.context.api.post = async (url, payload) => {
+            if (url === '/api/task-reviews') { saved.push(payload); return {}; }
+            return post(url, payload);
+        };
+        await p.run('loadTaskInspectorStats("task-1")');
+        const selecting = p.run('loadTaskInspectorStats("task-2")');
+        const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
+        await card.children.flatMap(n => n.children).find(n => n.textContent === 'Accept').click();
+        old.resolve({ task: { id: 'task-2', title: 'Old B', status: 'To Do' }, sessions: [],
+            task_review: { difficulty: 1, what_went_well: 'Stale B review' } });
+        await selecting;
+        if (replacementFails) {
+            await p.run('saveTaskReviewForm()');
+            assert.equal(saved.length, 0);
+            assert.ok(p.elements.has('task_metadata_notice'));
+            fail = false;
+            await p.elements.get('task_metadata_notice').children[1].click();
+        }
+        assert.equal(p.elements.get('inspect_task_title').innerText, 'Task B');
+        assert.equal(p.elements.get('task_rev_went_well').value, 'B review');
+        assert.equal(p.elements.get('task_rev_blockers').value, 'B blocker');
+        assert.equal(p.elements.get('task_rev_takeaways').value, 'B lesson');
+        await p.run('saveTaskReviewForm()');
+        assert.equal(saved.length, 1);
+        assert.equal(saved[0].task_id, 'task-2');
+        assert.equal(saved[0].what_went_well, 'B review');
+        assert.equal(saved[0].difficulty, 4);
+        assert.equal(p.writes.length, 1, 'only one AI acceptance');
+    });
+}
+
+for (const nextTask of ['task-2', 'task-3']) {
+    test(`late rating definitions cannot replace initialized review inputs for ${nextTask}`, async () => {
+        const p = workflowPage();
+        p.load('ratings_config.js');
+        p.load('task_inspector.js');
+        for (const id of ['task_inspector_body', 'inspect_task_title', 'inspect_task_desc', 'inspect_task_status_badge',
+            'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
+            p.elements.set(id, p.element());
+        }
+        const definitions = deferred();
+        const started = deferred();
+        const defs = [{ id: 'rating-1', name: 'Quality', min_score: 1, max_score: 5 }];
+        let statsReads = 0;
+        let ratingReads = 0;
+        let saves = 0;
+        p.context.api.get = async url => {
+            if (url.startsWith('/api/tasks/') && url.endsWith('/stats')) {
+                const taskId = url.split('/')[3];
+                const latest = ++statsReads > 1;
+                return { task: { id: taskId, title: taskId, status: 'To Do' }, sessions: [],
+                    task_review: { difficulty: 3, what_went_well: latest ? 'Current review' : 'Old review' },
+                    custom_ratings: [{ rating_definition_id: 'rating-1', score: latest ? 5 : 2 }] };
+            }
+            if (url === '/rating-definitions?target_type=task') {
+                if (++ratingReads === 1) { started.resolve(); return definitions.promise; }
+                return defs;
+            }
+            throw Error(`Unexpected GET ${url}`);
+        };
+        p.context.api.post = async () => { saves++; return {}; };
+        const oldSelection = p.run('loadTaskInspectorStats("task-2")');
+        await started.promise;
+        await p.run('saveTaskReviewForm()');
+        assert.equal(saves, 0, 'Save is blocked until review and rating inputs are ready');
+        await p.run(`loadTaskInspectorStats("${nextTask}")`);
+        p.elements.get('task_rev_went_well').value = 'Unsaved current review';
+        const currentRatings = p.elements.get('task_custom_ratings_container').innerHTML;
+        assert.match(currentRatings, /value="5"/);
+        definitions.resolve(defs);
+        await oldSelection;
+        assert.equal(p.elements.get('task_rev_went_well').value, 'Unsaved current review');
+        assert.equal(p.elements.get('task_custom_ratings_container').innerHTML, currentRatings);
+        assert.equal(p.elements.get('task_inspector_body').classList.contains('hidden'), false);
+    });
+}
 
 test('a superseded inspector failure cannot mark the newly selected task stale', async () => {
     const p = workflowPage();
@@ -629,6 +835,139 @@ test('inspector display refresh preserves unsaved properties, including after su
     await p.run('toggleSubtaskCompletion("task-1", "To Do")');
     assert.equal(p.run('taskKnowledge.get("task-1").status'), 'Done');
     assert.equal(p.elements.get('inspector_edit_title').value, 'Unsaved inspector title');
+});
+
+for (const view of ['task_card_list', 'kanban_columns_container', 'task_suggestions_dropdown',
+    'timer_task_select', 'task_quick_chips_bar', 'task_inspector_dropdown', 'subtasks_tree_container',
+    'parent_task_banner', 'task_breadcrumbs', 'weekly_totals_list', 'breakdown_filter_chip']) {
+    test(`AI Accept keeps hostile task text inert in ${view}`, async () => {
+        const title = '\"><img src=x onerror=alert`title`>';
+        const description = '<svg onload=alert`description`> & **literal text** [link](javascript:alert`link`)';
+        const p = workflowPage('Original', { title, description, priority: '<img src=x onerror=alert`priority`>',
+            category: '<svg onload=alert`category`>', assigned_date: '<svg onload=alert`date`>',
+            color: '#123456" onpointerenter="alert`color`' });
+        p.load('ai_drafts.js');
+        p.load('ratings_config.js');
+        p.load('task_inspector.js');
+        p.load('subtasks.js');
+        for (const id of ['task_quick_chips_bar', 'task_inspector_dropdown', 'task_inspector_search',
+            'task_inspector_body', 'inspect_task_title', 'inspect_task_desc', 'inspect_task_status_badge',
+            'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways',
+            'subtasks_tree_container', 'inspector_task_id', 'parent_task_banner', 'task_breadcrumbs',
+            'weekly_totals_list', 'breakdown_filter_chip']) p.elements.set(id, p.element());
+        p.elements.set('timer_task_select', taskSelect());
+        p.elements.get('inspector_task_id').value = 'task-1';
+        let parses = 0;
+        p.context.marked = { parse() { parses++; return '<img src=x onerror=alert`markdown`>'; } };
+        const get = p.context.api.get;
+        p.context.api.get = async url => {
+            if (url === '/api/tasks/task-1/tree') {
+                const task = await get('/api/tasks/task-1');
+                return { ...task, parent_id: 'task-1', subtasks: [{ ...task, id: 'child-1', subtasks: [] }] };
+            }
+            return get(url);
+        };
+        await p.run('taskKnowledge.refresh();');
+        p.run('renderTaskSuggestions(""); renderTaskInspectorSuggestions(""); toggleBreakdownFilter("task", "task-1")');
+        const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
+        await card.children.flatMap(n => n.children).find(n => n.textContent === 'Accept').click();
+        const markup = p.elements.get(view).innerHTML;
+        assert.doesNotMatch(markup, /<(?:img|svg)\b/i, 'model text must not become markup');
+        assert.doesNotMatch(markup, /" onpointerenter="/, 'color text must not create an event attribute');
+        assert.match(markup, /&lt;img src=x onerror=alert`title`&gt;/, 'task title remains visible as text');
+        if (view === 'task_card_list') assert.match(markup, /data-task-title="&quot;&gt;&lt;img/);
+        assert.equal(parses, 0, 'task previews must not interpret model text as Markdown/HTML');
+        assert.equal(p.writes.length, 1);
+        assert.deepEqual(p.alerts, []);
+    });
+}
+
+for (const linked of [true, false]) {
+    test(`AI Accept keeps calendar event text inert (${linked ? 'linked task' : 'direct session'})`, async () => {
+        let accepted = false;
+        let writes = 0;
+        const title = '<img src=x onerror=alert`calendar-title`>';
+        const notes = '<svg onload=alert`calendar-notes`>';
+        const tags = '<img src=x onerror=alert`calendar-tags`>';
+        const p = page({
+            async get(url) {
+                if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do' }];
+                if (url.startsWith('/sessions?')) return [{ id: 'session-1', task_id: linked ? 'task-1' : null,
+                    start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:30:00Z',
+                    notes: accepted ? notes : '', tags: accepted ? tags : '' }];
+                throw Error('draft cards offline');
+            },
+            async post() { writes++; accepted = true; return { completion_policies: [] }; }
+        });
+        p.elements.set('calendar', p.element());
+        p.context.URLSearchParams = URLSearchParams;
+        p.context.location = { search: '' };
+        p.context.getUserSettings = () => ({ defaultView: 'timeGridDay', slotDuration: 15 });
+        p.context.setupModalKeyboardListeners = () => {};
+        p.context.setupVimKeyboardListeners = () => {};
+        p.context.applyUserSettings = async () => {};
+        let ready;
+        p.context.document.addEventListener = (name, callback) => { if (name === 'DOMContentLoaded') ready = callback; };
+        let markup;
+        let calendarOptions;
+        p.context.FullCalendar = { Calendar: class {
+            constructor(element, options) {
+                calendarOptions = options;
+                this.view = { type: 'timeGridDay', activeStart: new Date('2026-01-01'), activeEnd: new Date('2026-01-02') };
+            }
+            render() {}
+            refetchEvents() {
+                return calendarOptions.events({ start: this.view.activeStart, end: this.view.activeEnd }, events => {
+                    markup = events.map(event => calendarOptions.eventContent({ event, view: this.view }).html).join('');
+                }, error => { throw error; });
+            }
+        } };
+        for (const file of ['utils.js', 'calendar.js', 'sidebar_totals.js', 'dashboard.js']) p.load(file);
+        await ready();
+        p.load('ai_drafts.js');
+        const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
+        await card.children.flatMap(n => n.children).find(n => n.textContent === 'Accept').click();
+        assert.doesNotMatch(markup, /<(?:img|svg)\b/i);
+        assert.match(markup, /&lt;svg onload=alert`calendar-notes`&gt;/);
+        assert.match(markup, /&lt;img src=x onerror=alert`calendar-tags`&gt;/);
+        if (linked) assert.match(markup, /&lt;img src=x onerror=alert`calendar-title`&gt;/);
+        assert.equal(writes, 1);
+    });
+}
+
+test('AI Accept keeps session notes and tags inert in refreshed task histories and breakdowns', async () => {
+    const p = workflowPage();
+    p.load('ai_drafts.js');
+    p.load('ratings_config.js');
+    p.load('task_inspector.js');
+    p.load('subtasks.js');
+    for (const id of ['task_inspector_body', 'inspect_task_title', 'inspect_task_desc', 'inspect_task_status_badge',
+        'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways',
+        'inspect_task_sessions_list', 'detail_task_sessions_list', 'inspector_task_id', 'activity_totals_list']) {
+        p.elements.set(id, p.element());
+    }
+    p.elements.get('activity_totals_list').insertAdjacentHTML = () => {};
+    p.elements.get('inspector_task_id').value = 'task-1';
+    const get = p.context.api.get;
+    const notes = '<svg onload=alert`notes`>';
+    const tags = '#tag\');alert`tag`;//';
+    p.context.api.get = async url => {
+        const result = await get(url);
+        if (url.startsWith('/sessions?')) return result.map(row => ({ ...row, notes, tags }));
+        if (url.endsWith('/stats')) return { ...result, sessions: [{ id: 'session-1', notes, tags }] };
+        return result;
+    };
+    await p.run('loadTaskInspectorStats("task-1")');
+    const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
+    await card.children.flatMap(n => n.children).find(n => n.textContent === 'Accept').click();
+    for (const id of ['inspect_task_sessions_list', 'detail_task_sessions_list']) {
+        assert.doesNotMatch(p.elements.get(id).innerHTML, /<svg\b/i);
+        assert.match(p.elements.get(id).innerHTML, /&lt;svg onload=alert`notes`&gt;/);
+    }
+    const breakdown = p.elements.get('activity_totals_list').innerHTML;
+    assert.match(breakdown, /data-breakdown-tag="#tag&#39;/);
+    assert.doesNotMatch(breakdown, /onclick="[^"]*alert/);
+    assert.equal(p.writes.length, 1);
 });
 
 for (const [status, action, expected] of [

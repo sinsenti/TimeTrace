@@ -76,28 +76,9 @@ function handleOpenSessionBefore() {
 
 async function handleDeleteUnderCursor() {
     const s = getSessionUnderCursor();
-    if (s && s.id) {
-        const seriesTask = s.task_id ? taskKnowledge.get(s.task_id) : null;
-        if (s.is_virtual || (seriesTask && seriesTask.is_recurring)) {
-            // Recurring occurrence: needs the scope prompt, not a plain yes/no delete.
-            if (typeof promptDeleteSession === 'function') promptDeleteSession(s.id);
-            return;
-        }
-        const label = s.notes || s.tags;
-        const message = label
-            ? `Delete session "${label}"? Press Enter to confirm.`
-            : "Delete this session? Press Enter to confirm.";
-        const confirmed = await showCustomConfirm("Delete Session", message);
-        if (confirmed) {
-            try {
-                await api.delete(`/sessions/${encodeURIComponent(s.id)}`);
-                if (typeof calendar !== 'undefined' && calendar) {
-                    calendar.refetchEvents();
-                }
-            } catch (err) {
-                console.error("Failed to delete session under cursor:", err);
-            }
-        }
+    if (s && s.id && typeof promptDeleteSession === 'function') {
+        // Share metadata lookup, series scope choices and cancellation with mouse deletion.
+        await promptDeleteSession(s.id);
     }
 }
 

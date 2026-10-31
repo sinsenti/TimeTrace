@@ -217,16 +217,6 @@ function initSidebarResizers() {
     });
 }
 
-function escapeTaskCardText(value) {
-    return String(value ?? '').replace(/[&<>"']/g, char => ({
-        '&': '&amp;',
-        '<': '&lt;',
-        '>': '&gt;',
-        '"': '&quot;',
-        "'": '&#39;'
-    })[char]);
-}
-
 async function fetchTasks() {
     const generation = taskKnowledge.state().generation;
     try {
@@ -252,8 +242,15 @@ async function fetchTasks() {
                 const st = (t.status || '').toLowerCase();
                 return st !== 'done' && st !== 'completed';
             });
-            select.innerHTML = '<option value="">-- Attach Task --</option>' + 
-                openTasks.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+            if (selectedTask && !openTasks.some(t => t.id === selectedTask)) {
+                // Filtering/completion is not an instruction to detach an unsaved timer task.
+                openTasks.push(activeTasks.find(t => t.id === selectedTask) || taskKnowledge.get(selectedTask) || {
+                    id: selectedTask,
+                    title: select.options[select.selectedIndex]?.textContent || 'Task information unavailable'
+                });
+            }
+            select.innerHTML = '<option value="">-- Attach Task --</option>' +
+                openTasks.map(t => `<option value="${escapeHtml(t.id)}">${escapeHtml(t.title)}</option>`).join('');
             select.value = selectedTask;
         }
 
@@ -272,7 +269,7 @@ async function fetchTasks() {
                         ? taskKnowledge.get(t.parent_id)
                         : null;
                     const parentTaskLinkHTML = t.parent_id
-                        ? `<div class="text-[10px] truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeTaskCardText(parentTask ? parentTask.title : 'Parent task')}</a></div>`
+                        ? `<div class="text-[10px] truncate mt-1">Subtask of: <a href="/task-inspector/${encodeURIComponent(t.parent_id)}" onclick="event.stopPropagation()" class="font-bold hover:underline" title="Open parent task">${escapeHtml(parentTask ? parentTask.title : 'Parent task')}</a></div>`
                         : '';
 
                     // Recurring tasks carry the next projected occurrence in next_occurrence_date (derived,
@@ -281,31 +278,31 @@ async function fetchTasks() {
                     let dueBadgeHTML = '';
                     if (dateBadge) {
                         dueBadgeHTML = dateBadge.isUrgent
-                            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dateBadge.label}</span>`
-                            : `<span class="text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded shrink-0">${dateBadge.label}</span>`;
+                            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${escapeHtml(dateBadge.label)}</span>`
+                            : `<span class="text-[9px] font-bold bg-black/60 text-white px-1.5 py-0.5 rounded shrink-0">${escapeHtml(dateBadge.label)}</span>`;
                     }
 
                     return `
-                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${t.title}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${color}" style="background-color: ${color}; color: ${getContrastingTextColor(color)};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} cursor-pointer">
+                        <div onclick="window.location.href='/task-inspector/${t.id}'" data-task-id="${t.id}" data-task-title="${escapeHtml(t.title)}" data-task-est="${t.estimated_minutes || 15}" data-task-color="${escapeHtml(color)}" style="background-color: ${escapeHtml(color)}; color: ${getContrastingTextColor(color)};" class="task-card p-3 rounded-lg shadow-md transition transform hover:-translate-y-0.5 hover:brightness-110 flex flex-col justify-between ${t.parent_id ? 'min-h-[7rem]' : 'h-24'} cursor-pointer">
                             <div>
                                 <div class="flex justify-between items-start">
-                                    <span class="font-semibold text-sm tracking-wide leading-snug truncate hover:underline">${t.title}</span>
+                                    <span class="font-semibold text-sm tracking-wide leading-snug truncate hover:underline">${escapeHtml(t.title)}</span>
                                     ${!isOngoing ? `<span class="text-[9px] font-bold bg-black/60 px-1.5 py-0.5 rounded ml-1 shrink-0 text-white">${estBadge}</span>` : ''}
                                 </div>
                                 <div class="text-[11px] truncate flex items-center space-x-1 mt-0.5">
                                     ${dueBadgeHTML}
-                                    <span class="truncate">${t.description || ''}</span>
+                                    <span class="truncate">${escapeHtml(t.description || '')}</span>
                                 </div>
                                 ${parentTaskLinkHTML}
                             </div>
                             <div class="flex justify-between items-center text-[10px] font-semibold">
                                 <div class="flex items-center space-x-1">
-                                    <span class="bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${t.category || 'work'}</span>
+                                    <span class="bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${escapeHtml(t.category || 'work')}</span>
                                     ${isRecurring ? '<span class="text-[9px] font-bold text-white">↻</span>' : ''}
                                     ${hasAttachments ? '<span class="text-[9px] font-bold text-white">📎</span>' : ''}
                                 </div>
                                 <div class="flex items-center space-x-1">
-                                    <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${prioLabel}</span>
+                                    <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${escapeHtml(prioLabel)}</span>
                                     <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[9px] text-white">Edit</button>
                                 </div>
                             </div>
@@ -393,7 +390,7 @@ function renderBreakdownFilterChip() {
 
     chip.classList.remove('hidden');
     chip.innerHTML = `
-        <span class="text-purple-200">Filtered: ${label}</span>
+        <span class="text-purple-200">Filtered: ${escapeHtml(label)}</span>
         <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">&times;</button>
     `;
 }
@@ -410,8 +407,8 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const pct = lastGrandTotalSecs > 0 ? ((secs / lastGrandTotalSecs) * 100).toFixed(1) : '0.0';
                 return `
-                    <div onclick="toggleBreakdownFilter('tag', '${tag}')" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
-                        <span class="text-xs font-bold text-emerald-400">${tag}</span>
+                    <div data-breakdown-tag="${escapeHtml(tag)}" onclick="toggleBreakdownFilter('tag', this.dataset.breakdownTag)" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                        <span class="text-xs font-bold text-emerald-400">${escapeHtml(tag)}</span>
                         <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h <span class="text-slate-500 font-medium">(${pct}%)</span></span>
                     </div>
                 `;
@@ -435,8 +432,8 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const hrs = (secs / 3600).toFixed(1);
                 return `
-                    <div onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${color};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
-                        <span class="font-bold text-xs truncate">${title}</span>
+                    <div onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${escapeHtml(color)};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                        <span class="font-bold text-xs truncate">${escapeHtml(title)}</span>
                         <span class="text-sm font-black">${hrs}h</span>
                     </div>
                 `;

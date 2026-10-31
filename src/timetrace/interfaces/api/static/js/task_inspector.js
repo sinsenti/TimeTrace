@@ -3,6 +3,8 @@
  */
 
 let selectedInspectedTaskId = null;
+let initializedTaskReviewId = null;
+let taskInspectorRequest = 0;
 let activeTaskInspectorSearchIdx = -1;
 
 async function loadTaskInspectorRegistry() {
@@ -37,9 +39,9 @@ function renderTaskQuickChipsBar() {
     bar.innerHTML = tasks.map((t, idx) => {
         const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
         return `
-            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${color};">
-                <span>${t.title}</span>
-                <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${t.status}</span>
+            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${escapeHtml(color)};">
+                <span>${escapeHtml(t.title)}</span>
+                <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${escapeHtml(t.status)}</span>
             </button>
         `;
     }).join('');
@@ -109,10 +111,10 @@ function renderTaskInspectorSuggestions(query) {
     dropdown.innerHTML = filtered.map((t, idx) => `
         <div onclick="selectTaskInspectorById('${t.id}')" class="task-inspect-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
             <div>
-                <span class="font-bold text-white block">${t.title}</span>
-                <span class="text-[10px] text-slate-400 block">${t.description || 'No description'}</span>
+                <span class="font-bold text-white block">${escapeHtml(t.title)}</span>
+                <span class="text-[10px] text-slate-400 block">${escapeHtml(t.description || 'No description')}</span>
             </div>
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white uppercase" style="background-color: ${t.color && t.color !== 'auto' ? t.color : '#7c3aed'}">${t.status}</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white uppercase" style="background-color: ${escapeHtml(t.color && t.color !== 'auto' ? t.color : '#7c3aed')}">${escapeHtml(t.status)}</span>
         </div>
     `).join('');
 
@@ -146,7 +148,15 @@ function selectTaskInspectorById(taskId) {
 
 async function loadTaskInspectorStats(taskId, preserveEdits = false) {
     const generation = taskKnowledge.state().generation;
+    const request = ++taskInspectorRequest;
+    const keepEdits = preserveEdits && initializedTaskReviewId === taskId;
     const body = document.getElementById('task_inspector_body');
+    if (!keepEdits) {
+        initializedTaskReviewId = null;
+        if (body) body.classList.add('hidden');
+    }
+    const isCurrent = () => request === taskInspectorRequest &&
+        generation === taskKnowledge.state().generation && selectedInspectedTaskId === taskId;
     if (!taskId) {
         if (body) body.classList.add('hidden');
         return;
@@ -156,10 +166,8 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 
     try {
         const data = await api.get(`/api/tasks/${taskId}/stats`);
-        if (generation !== taskKnowledge.state().generation || selectedInspectedTaskId !== taskId) return null;
+        if (!isCurrent()) return null;
         const task = data.task;
-
-        if (body) body.classList.remove('hidden');
 
         document.getElementById('inspect_task_title').innerText = task.title;
         document.getElementById('inspect_task_desc').innerText = task.description || 'No description provided';
@@ -204,26 +212,29 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>
                             </div>
-                            ${s.notes ? `<div class="text-white font-semibold">${s.notes}</div>` : ''}
+                            ${s.notes ? `<div class="text-white font-semibold">${escapeHtml(s.notes)}</div>` : ''}
                         </div>
                     `;
                 }).join('');
             }
         }
 
-        if (!preserveEdits) {
+        if (!keepEdits) {
             const rev = data.task_review;
             document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
             document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
             document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
             document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
 
-            await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings);
+            await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings, isCurrent);
+            if (!isCurrent()) return null;
+            initializedTaskReviewId = taskId;
         }
+        if (body) body.classList.remove('hidden');
         taskKnowledge.viewResult('inspector-registry', true);
         return true;
     } catch (e) {
-        if (generation !== taskKnowledge.state().generation || selectedInspectedTaskId !== taskId) return null;
+        if (!isCurrent()) return null;
         taskKnowledge.viewResult('inspector-registry', false);
         console.error("Failed to load task inspector stats:", e);
         return false;
@@ -232,6 +243,10 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 
 async function saveTaskReviewForm() {
     if (!selectedInspectedTaskId) return;
+    if (initializedTaskReviewId !== selectedInspectedTaskId) {
+        alert('Task review is not ready. Wait for it to load, or use Retry refresh before saving.');
+        return;
+    }
 
     const taskId = selectedInspectedTaskId;
 

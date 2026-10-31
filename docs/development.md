@@ -149,6 +149,8 @@ Zero/missing estimates and recurring tasks have unbounded balances; a recurring 
 one occurrence, not the entire series. Progress is `None`/JSON `null` for non-positive or missing
 estimates in both interfaces. Negative estimates otherwise keep the inspector's legacy balances and
 `is_unbounded` behavior; this does not change intentional negative balances from overspending.
+The owner explicitly approved null progress for negative estimates on 2026-10-31; negative estimates
+remain accepted and are not rewritten or reclassified as unbounded.
 
 ## Same-page task metadata
 
@@ -166,8 +168,12 @@ loaded or establish that an absent task was deleted. Overlapping equivalent load
 
 After a successful same-page task write, call `await taskKnowledge.changed()`. It invalidates and
 refreshes existing calendar, sidebar, kanban, attachment and inspector display paths independently.
-Inspector refreshes preserve editable fields, including selected revision-task reviews and ratings;
-attachment refreshes update labels without reattaching or changing IDs, tags, notes or times.
+Inspector refreshes preserve editable fields only when they have been initialized for the selected
+task, including revision-task reviews and ratings. Interrupted selection initializes the new task's
+fields; Save is blocked until its review/rating inputs are ready. Late statistics and rating-definition
+responses cannot replace a newer selection or refresh. Timer option refresh retains a selected task
+even when completion, filtering or unavailable metadata excludes it; only an explicit detach clears it.
+Attachment refreshes update labels without reattaching or changing IDs, tags, notes or times.
 Every successful metadata load also updates local labels, so transient recovery cannot clear a
 warning while leaving old attachment text behind. Task editors fetch current task data rather
 than using stale registry entries or title-only fallbacks as editable snapshots. AI accept/undo/reapply (including undo-all) use this path before
@@ -181,7 +187,11 @@ There is no cross-tab/CLI detection or background metadata polling.
 Session editing preserves the daemon's `task_id` independently of metadata availability, including
 successfully empty lists and partial fallback labels. Explicit detach or an authoritative session
 row with a cleared link can remove it; a registry miss cannot. Ordinary attachment/drop fallbacks
-still work offline without queuing writes. Attachment-chip titles are rendered as text.
+still work offline without queuing writes. Attachment-chip titles are rendered as text. Task text in refreshed sidebar/kanban cards, suggestions,
+revision chips, task-tree labels, calendar event labels and breakdowns is escaped for its HTML context.
+Malformed target-date fallback labels are escaped too. Session history notes
+and tags are escaped too; dynamic tag/status values use data attributes, not inline JavaScript strings.
+Kanban descriptions are literal text previews, not Markdown/HTML; the unused Marked include was removed.
 
 `taskKnowledge.recurrenceFor(taskId)` returns explicit `true`/`false`, or `null` when recurrence
 remains unknown after a metadata lookup. Only an explicit boolean establishes non/recurrence;
@@ -190,7 +200,7 @@ delete decisions first obtain missing knowledge. If still unknown, resize revert
 stops before confirmation, with an action-specific retry message. Retry the action to look up
 metadata again; no write is queued or replayed. Moves and ordinary session saves remain available.
 Known virtual/series identities retain their scope choices even without metadata, and synthetic
-IDs still materialize server-side. A deletion request token prevents late lookups/confirmations
+IDs still materialize server-side. Keyboard Delete uses the same guarded deletion path as mouse actions. A deletion request token prevents late lookups/confirmations
 from replacing a newer target; canceling, closing or reopening the session editor invalidates it.
 Server-side recurrence scope/history validation remains authoritative.
 
@@ -214,6 +224,24 @@ materialized IDs, and server-rejected resizes. Physical drag gestures, series de
 completion-policy prompts and multi-item draft batches were not manually exercised in this pass;
 existing Python recurrence tests cover server-side history and scope safeguards.
 No typechecker is configured or installed; use Node syntax checks and the runtime regressions.
+
+### Review-repair verification (2026-10-31)
+
+Review repairs cover accepted-text rendering (including calendar labels and malformed target-date
+badges), guarded keyboard deletion, retained unsaved timer selection, and initialized ownership of
+review/rating fields. Kanban descriptions now remain literal text previews, not Markdown/HTML.
+The owner approved null progress for negative estimates and later reported the app working in their
+manual testing, then authorized committing the repairs. No itemized manual checklist was supplied;
+that report does not establish every deferred gesture or real-DOM rating submission as tested.
+
+Automated checks: 341 Python tests passed with 85 existing SQLite warnings; 73 Node tests passed
+(25 added). All 9 changed JS files and the CJS regression file passed syntax checks. Ruff retains
+18 baseline violations in three unchanged Python files; all 11 original implementation-range Python
+files pass. A fresh isolated daemon passed health, ORM task-list and HTTP template/asset reads and
+was stopped. Independent read-only repair review and date-badge/calendar delta reviews found no
+introduced defects; reviewers did not execute tests. Browser execution, actual keyboard event dispatch
+and real-DOM rating submissions were not verified by the agent. No new schema/migration is involved,
+and no existing-DB migration test, personal data, provider call, push or merge is part of this repair.
 
 ## Testing and checks
 

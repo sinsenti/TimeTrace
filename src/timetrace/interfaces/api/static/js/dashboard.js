@@ -118,9 +118,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                 return {
                     html: `
                         <div style="color: ${eventTextColor};" class="fc-event-custom flex flex-col h-full w-full overflow-hidden leading-tight p-0.5">
-                            <div class="font-semibold text-[11px] truncate shrink-0">${displayTitle}</div>
-                            ${displayDesc ? `<div class="text-[10px] overflow-hidden line-clamp-2 shrink-0">${displayDesc}</div>` : ''}
-                            ${showTags ? `<div class="text-[9px] font-mono truncate shrink-0 mt-auto">${tags}</div>` : ''}
+                            <div class="font-semibold text-[11px] truncate shrink-0">${escapeHtml(displayTitle)}</div>
+                            ${displayDesc ? `<div class="text-[10px] overflow-hidden line-clamp-2 shrink-0">${escapeHtml(displayDesc)}</div>` : ''}
+                            ${showTags ? `<div class="text-[9px] font-mono truncate shrink-0 mt-auto">${escapeHtml(tags)}</div>` : ''}
                         </div>
                     `
                 };

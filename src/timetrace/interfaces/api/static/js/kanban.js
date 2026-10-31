@@ -85,31 +85,31 @@ function renderKanbanCard(task) {
     let dueBadgeHTML = '';
     if (dateBadge) {
         dueBadgeHTML = dateBadge.isUrgent
-            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${dateBadge.label}</span>`
-            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${dateBadge.label}</span>`;
+            ? `<span class="text-[9px] font-black bg-red-900/90 text-red-200 border border-red-600 px-1.5 py-0.5 rounded uppercase shrink-0">${escapeHtml(dateBadge.label)}</span>`
+            : `<span class="text-[9px] font-bold bg-black/40 text-slate-300 px-1.5 py-0.5 rounded shrink-0">${escapeHtml(dateBadge.label)}</span>`;
     }
 
     let descContentHTML = '';
     if (task.description && task.description.trim()) {
-        const rawParsed = typeof marked !== 'undefined' ? marked.parse(task.description.trim()) : task.description;
-        descContentHTML = `<div class="kanban-markdown text-[11px] text-slate-300 line-clamp-3 font-normal leading-snug overflow-hidden">${rawParsed}</div>`;
+        // Task descriptions can come from accepted model output. Keep previews literal.
+        descContentHTML = `<div class="text-[11px] text-slate-300 line-clamp-3 font-normal leading-snug overflow-hidden">${escapeHtml(task.description.trim())}</div>`;
     }
 
     return `
         <div data-task-id="${task.id}" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
-                <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${task.title}</span>
+                <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${escapeHtml(task.title)}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
             </div>
             ${dueBadgeHTML ? `<div class="pt-0.5">${dueBadgeHTML}</div>` : ''}
             ${descContentHTML}
             <div class="flex justify-between items-center pt-1 border-t border-[#1a1c26] text-[10px]">
                 <div class="flex items-center space-x-1.5">
-                    <span class="text-purple-400 font-semibold uppercase">${task.category || 'work'}</span>
+                    <span class="text-purple-400 font-semibold uppercase">${escapeHtml(task.category || 'work')}</span>
                     ${isRecurring ? '<span class="text-[9px] text-emerald-400 font-bold" title="Recurrent Task">↻</span>' : ''}
                 </div>
                 <div class="flex items-center space-x-1.5">
-                    <span class="font-bold text-slate-400 bg-black/30 px-1.5 py-0.5 rounded">${prioLabel}</span>
+                    <span class="font-bold text-slate-400 bg-black/30 px-1.5 py-0.5 rounded">${escapeHtml(prioLabel)}</span>
                     <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${task.id}');" class="bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/80 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
                 </div>
             </div>

@@ -2,11 +2,12 @@
  * Custom Rating Definitions & Entry Binding Engine
  */
 
-async function renderCustomRatingsInputs(targetType, targetId, containerId, existingEntries = []) {
+async function renderCustomRatingsInputs(targetType, targetId, containerId, existingEntries = [], isCurrent = () => true) {
     const container = document.getElementById(containerId);
     if (!container) return;
 
     const defs = await api.get(`/rating-definitions?target_type=${targetType}`) || [];
+    if (!isCurrent()) return;
 
     if (!defs || defs.length === 0) {
         container.innerHTML = '';

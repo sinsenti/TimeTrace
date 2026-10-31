@@ -23,10 +23,10 @@ function renderTaskSuggestions(query) {
     dropdown.innerHTML = filtered.map((t, idx) => `
         <div onclick="attachTaskById('${t.id}')" class="task-suggestion-item px-3 py-2 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between border-b border-[#1a1c26] last:border-b-0 transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
             <div>
-                <span class="font-bold text-white block">${t.title}</span>
-                <span class="text-[10px] text-slate-400 truncate block">${t.description || ''}</span>
+                <span class="font-bold text-white block">${escapeHtml(t.title)}</span>
+                <span class="text-[10px] text-slate-400 truncate block">${escapeHtml(t.description || '')}</span>
             </div>
-            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${t.color || '#7c3aed'}">${(t.category || 'work').toUpperCase()}</span>
+            <span class="text-[10px] font-bold px-1.5 py-0.5 rounded text-white" style="background-color: ${escapeHtml(t.color || '#7c3aed')}">${escapeHtml((t.category || 'work').toUpperCase())}</span>
         </div>
     `).join('');
 

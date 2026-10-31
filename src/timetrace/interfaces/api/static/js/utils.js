@@ -10,6 +10,16 @@ let defaultDurationMinutes = parseInt(localStorage.getItem('timetrace_slot_durat
 let pendingDeleteSessionId = null;
 let deleteSessionRequest = 0;
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    })[char]);
+}
+
 function parseDurationToMinutes(val) {
     if (val === null || val === undefined) return 15;
     const clean = String(val).trim().toLowerCase();

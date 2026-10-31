@@ -97,7 +97,12 @@ After a successful accept/undo/reapply or undo-all, `ai_drafts.js` calls
 batch-detail read must not prevent calendar/task/attachment views from refreshing, and display
 failures must not be reported as a failed write. The shared task-knowledge module is included on
 every drawer page; it retains last-known metadata and provides a refresh-only retry notice.
-It must not reopen forms or overwrite unsaved fields. See the
+It must not reopen forms or overwrite unsaved fields. Preserve review/rating edits only after those
+fields have been initialized for the selected task; block Save until initialization finishes and
+ignore superseded statistics/rating reads. Keep an excluded timer selection during option refresh.
+Accepted task text must stay inert in every refreshed renderer (cards/date badges, calendar event
+labels, suggestions, chips, task trees, history and breakdowns), not just draft cards. Use text nodes or context-appropriate HTML escaping;
+Kanban description previews deliberately do not interpret Markdown/HTML. See the
 [same-page metadata reference](development.md#same-page-task-metadata) for ownership and Node/browser
 verification. These are display changes only; server-side approval, conflict and audit rules stay
 in `AIDraftService`.
@@ -117,7 +122,8 @@ in `AIDraftService`.
   but never persist domain rows.
 - Task progress consumes `TaskService.get_work_accounting` and its recorded-session SQL totals.
   Keep it separate from the richer task inspector: do not load session history, reviews or ratings
-  for AI progress. Non-positive/missing estimates return null progress; existing balances, counts
+  for AI progress. Non-positive/missing estimates return null progress (explicit owner approval for
+  negative estimates on 2026-10-31); existing balances, counts
   and recurring per-occurrence semantics remain unchanged. See
   [task work accounting](development.md#task-work-accounting).
 - Timer controls and habit/rating/review writes remain out of scope. Day-review create/update is

@@ -88,8 +88,8 @@ async function loadTaskDetailTree(preserveEdits = false) {
                         <div class="bg-purple-950/40 border border-purple-800/80 rounded-xl p-3 flex justify-between items-center text-xs shadow-md mb-4">
                             <div class="flex items-center space-x-2">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-extrabold uppercase bg-purple-900/80 text-purple-300 border border-purple-700">Subtask Of</span>
-                                <a href="/task-inspector/${parentTask.id}" class="font-black text-sm text-white hover:underline hover:text-purple-300">${parentTask.title}</a>
-                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/40 text-slate-300 uppercase">${parentTask.status}</span>
+                                <a href="/task-inspector/${parentTask.id}" class="font-black text-sm text-white hover:underline hover:text-purple-300">${escapeHtml(parentTask.title)}</a>
+                                <span class="px-1.5 py-0.5 rounded text-[10px] font-bold bg-black/40 text-slate-300 uppercase">${escapeHtml(parentTask.status)}</span>
                             </div>
                             <a href="/task-inspector/${parentTask.id}" class="text-purple-300 hover:text-white font-bold underline text-[11px] flex items-center space-x-1">
                                 <span>Go to Parent Task</span>
@@ -103,7 +103,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
                         <button type="button" onclick="navigateBack()" class="h-8 px-3.5 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] rounded-lg font-bold text-xs flex items-center space-x-1">&larr; Back <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
                         <span class="text-slate-600">|</span>
                         <span class="text-slate-400">Subtask of:</span>
-                        <a href="/task-inspector/${parentTask.id}" class="hover:underline font-bold text-purple-400">${parentTask.title}</a>
+                        <a href="/task-inspector/${parentTask.id}" class="hover:underline font-bold text-purple-400">${escapeHtml(parentTask.title)}</a>
                     `;
                 }
             } catch(e) {
@@ -248,8 +248,8 @@ async function loadTaskDetailTree(preserveEdits = false) {
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>
                             </div>
-                            ${s.notes ? `<div class="text-white font-semibold">${s.notes}</div>` : ''}
-                            ${s.tags ? `<div class="text-[10px] text-purple-300 font-mono">${s.tags}</div>` : ''}
+                            ${s.notes ? `<div class="text-white font-semibold">${escapeHtml(s.notes)}</div>` : ''}
+                            ${s.tags ? `<div class="text-[10px] text-purple-300 font-mono">${escapeHtml(s.tags)}</div>` : ''}
                         </div>
                     `;
                 }).join('');
@@ -392,10 +392,10 @@ function renderSubtaskCardHTML(node) {
         <div onclick="window.location.href='/task-inspector/${node.id}'" class="subtask-node bg-[#0f1016] hover:bg-[#151724] p-3 rounded-lg border border-[var(--border-muted)] hover:border-purple-500/80 space-y-2 cursor-pointer transition">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-2">
-                    <input type="checkbox" ${isDone ? 'checked' : ''} onclick="event.stopPropagation();" onchange="toggleSubtaskCompletion('${node.id}', '${node.status}')" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
-                    <span class="font-bold text-xs text-left ${isDone ? 'line-through text-slate-500' : 'text-white'} hover:text-purple-300 hover:underline cursor-pointer">${node.title}</span>
+                    <input type="checkbox" ${isDone ? 'checked' : ''} onclick="event.stopPropagation();" data-task-status="${escapeHtml(node.status)}" onchange="toggleSubtaskCompletion('${node.id}', this.dataset.taskStatus)" class="w-4 h-4 accent-emerald-600 cursor-pointer rounded">
+                    <span class="font-bold text-xs text-left ${isDone ? 'line-through text-slate-500' : 'text-white'} hover:text-purple-300 hover:underline cursor-pointer">${escapeHtml(node.title)}</span>
                     <span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded">${formatMinutesToDuration(node.estimated_minutes)}</span>
-                    <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${node.status}</span>
+                    <span class="text-[10px] font-bold bg-black/30 px-1.5 py-0.5 rounded text-slate-400">${escapeHtml(node.status)}</span>
                 </div>
                 <div class="flex items-center space-x-2 text-xs">
                     <button type="button" onclick="event.stopPropagation(); openSubtaskEditModal('${node.id}')" class="text-slate-400 hover:text-white font-bold" title="Quick edit modal">Quick Edit</button>
