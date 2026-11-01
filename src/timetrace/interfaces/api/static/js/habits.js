@@ -6,6 +6,8 @@ let allHabits = [];
 let matrixDates = [];
 let habitCharts = {};
 
+document.addEventListener('timetrace:appearance', () => applyChartAppearance(Object.values(habitCharts)));
+
 let currentWeekOffset = 0;
 let selectedInspectorHabitIds = new Set();
 
@@ -384,7 +386,7 @@ async function renderSelectedHabitCharts() {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } } }
+            plugins: { legend: { position: 'bottom', labels: { color: chartAppearanceColors().legend, boxWidth: 12 } } }
         }
     });
 
@@ -408,8 +410,8 @@ async function renderSelectedHabitCharts() {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b', precision: 0 }, grid: { color: '#1a1c26' } }
+                x: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
+                y: { ticks: { color: chartAppearanceColors().ticks, precision: 0 }, grid: { color: chartAppearanceColors().grid } }
             }
         }
     });
@@ -504,10 +506,10 @@ async function renderGoalProgressionChart(habit) {
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12 } } },
+            plugins: { legend: { position: 'bottom', labels: { color: chartAppearanceColors().legend, boxWidth: 12 } } },
             scales: {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
+                x: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
+                y: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } }
             }
         }
     });

@@ -36,7 +36,7 @@
         .fc-scrollgrid-section-header > th, .fc-scrollgrid-section-header > td { border-top: none !important; border-left: none !important; border-right: none !important; }
         .fc-scrollgrid-section-body > td { border-left: none !important; border-right: none !important; border-bottom: none !important; }
         .fc-theme-standard td, .fc-theme-standard th { border-color: var(--border-color) !important; }
-        .fc-timegrid-slot { height: 2.2em !important; border-bottom: 1px dashed var(--border-color) !important; }
+        .fc-timegrid-slot { height: var(--calendar-slot-height, 22px) !important; line-height: 1 !important; border-bottom: 1px dashed var(--border-color) !important; }
         
         .fc-timegrid-slot-label { 
             font-size: 0.72rem !important; 
@@ -85,8 +85,9 @@
             background-color: #a855f7;
         }
     </style>
+    <link rel="stylesheet" href="/static/css/appearance.css">
 </head>
-<body class="h-screen flex flex-col overflow-hidden">
+<body class="calendar-page h-screen flex flex-col overflow-hidden">
 
     <!-- Top Navigation Bar -->
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
@@ -102,7 +103,14 @@
             </div>
         </div>
 
-        <div class="flex items-center space-x-2 shrink-0">
+    </header>
+
+    <div class="planning-header">
+        <div class="planning-task-tools">
+            <div class="flex items-center justify-between"><strong>Tasks</strong><button type="button" onclick="openNewTaskModal()">+ Task</button></div>
+            <input id="planning_task_search" type="search" aria-label="Find a planning task" placeholder="Find a task…" oninput="filterPlanningTasks(this.value)">
+        </div>
+        <div class="calendar-tools">
             <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">Filter</button>
 
             <!-- Export Button to trigger Export Modal -->
@@ -133,15 +141,24 @@
                 <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
             </div>
         </div>
-    </header>
+        <div class="calendar-panel-controls">
+            <button type="button" id="btn_toggle_left_sidebar" aria-controls="left_sidebar" aria-expanded="true" onclick="toggleCalendarPanel('left')">Hide Tasks</button>
+            <button type="button" id="btn_toggle_right_sidebar" aria-controls="right_sidebar" aria-expanded="false" onclick="toggleCalendarPanel('right')">Show Totals</button>
+            <button type="button" onclick="createPlanningSession()">+ Session</button>
+            <label>Hour height <select id="calendar_density" onchange="setCalendarDensity(this.value)">
+                <option value="56">Compact</option><option value="72">Comfortable</option><option value="88" selected>Spacious</option>
+            </select></label>
+        </div>
+        <div id="breakdown_filter_chip" class="hidden" role="status"></div>
+    </div>
 
-    <div class="flex-1 flex overflow-hidden">
+    <div class="planning-area flex-1 flex overflow-hidden">
         <!-- Left Sidebar (Tasks) -->
         <aside id="left_sidebar" class="bg-[var(--bg-sidebar)] p-3 flex flex-col shrink-0" style="width: 256px;">
             <div class="flex justify-between items-center mb-2">
-                <span class="text-xs font-bold uppercase tracking-wider text-slate-400">Tasks</span>
-                <div class="flex items-center space-x-2">
-                    <span id="selected_tasks_count" class="text-xs text-slate-500">0 tasks</span>
+                <span class="sr-only">Planning tasks</span>
+                <div class="flex items-center justify-between w-full gap-2">
+                    <span id="selected_tasks_count" aria-live="polite" class="text-xs text-slate-500">0 tasks</span>
                     <button onclick="openSidebarTabsConfigModal()" class="text-slate-400 hover:text-purple-300 text-xs font-bold" title="Configure visible status tabs">⚙ Tabs</button>
                 </div>
             </div>
@@ -173,7 +190,6 @@
                 <span id="side_total_hours" class="text-xs font-black text-purple-400">0.0h</span>
             </div>
 
-            <div id="breakdown_filter_chip" class="hidden flex items-center bg-purple-900/50 border border-purple-700/60 px-2.5 py-1.5 rounded-lg text-[11px] font-bold"></div>
 
             <div>
                 <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">By Activity (#tags)</span>

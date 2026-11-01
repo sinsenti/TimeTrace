@@ -46,6 +46,8 @@ const LAST_DASHBOARD_KEY = 'tt_last_dashboard_id';
 const LEGACY_WIDGETS_KEY = 'tt_custom_widgets_v1';
 
 let dashboardCharts = {};
+
+document.addEventListener('timetrace:appearance', () => applyChartAppearance(Object.values(dashboardCharts)));
 let dashboardList = [];
 let currentDashboardId = null;
 let currentDashboardData = null;
@@ -579,12 +581,12 @@ function renderChartWidget(widget, result, seed) {
             maintainAspectRatio: false,
             plugins: {
                 legend: (chartType === 'doughnut')
-                    ? { position: 'right', labels: { color: '#94a3b8', boxWidth: 12 } }
-                    : { display: hasComparison, labels: { color: '#94a3b8', boxWidth: 12 } }
+                    ? { position: 'right', labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
+                    : { display: hasComparison, labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
             },
             scales: chartType !== 'doughnut' ? {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
+                x: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
+                y: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } }
             } : undefined,
             onClick: clickable ? (evt, elements) => {
                 if (!elements.length) return;

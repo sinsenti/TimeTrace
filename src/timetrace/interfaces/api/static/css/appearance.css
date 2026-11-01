@@ -1,0 +1,140 @@
+/* Shared appearance adoption. Dark palette definitions remain owned by existing pages.
+   Light utility overrides deliberately exclude user-colored cards/events and grade backgrounds. */
+:root { --calendar-slot-height: 22px; }
+:root[data-appearance="light"] {
+    color-scheme: light;
+    --bg-main: #f5f7f6; --bg-header: #ffffff; --bg-card: #ffffff; --bg-sidebar: #f3f5f3;
+    --text-main: #29342e; --text-muted: #526158; --border-color: #dce3de; --border-muted: #7b897f;
+    --accent-primary: #456b55; --accent-soft: #e8f0e9; --focus-color: #3c6750;
+    --nav-bg: #f2f5f2; --nav-text: #29342e; --nav-selected: #e2ebe3; --nav-selected-text: #365940;
+}
+:root[data-appearance="light"][data-light-theme="stone"] {
+    --bg-main: #f1f1ed; --bg-header: #fffefa; --bg-card: #fffefa; --bg-sidebar: #f0f0eb;
+    --text-main: #30382f; --text-muted: #596153; --border-color: #d9ddd4; --border-muted: #7f8976;
+    --accent-primary: #525e48; --accent-soft: #e7ecdf; --focus-color: #515e42;
+    --nav-bg: #353c35; --nav-text: #f7f8ef; --nav-selected: #e4eadb; --nav-selected-text: #35432a;
+}
+:root[data-appearance="light"][data-light-theme="porcelain"] {
+    --bg-main: #f4f6f8; --bg-header: #ffffff; --bg-card: #ffffff; --bg-sidebar: #f7f8fa;
+    --text-main: #273442; --text-muted: #515e6c; --border-color: #e0e5eb; --border-muted: #7c8794;
+    --accent-primary: #364454; --accent-soft: #eaf0f5; --focus-color: #435d7e;
+    --nav-bg: #ffffff; --nav-text: #273442; --nav-selected: #eef1f5; --nav-selected-text: #2d3d50;
+}
+:root[data-appearance="dark"] { color-scheme: dark; --text-muted: #94a3b8; --focus-color: #c084fc; }
+body { background: var(--bg-main); color: var(--text-main); }
+button, a, input, select, textarea { touch-action: manipulation; }
+:focus-visible { outline: 2px solid var(--focus-color, #c084fc) !important; outline-offset: 3px; }
+body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
+.app-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; flex: 1; }
+.app-brand { font-size: 16px; font-weight: 800; letter-spacing: -.04em; color: var(--text-main); }
+.app-navigation nav { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
+.app-navigation nav a { padding: 8px 10px; border-radius: 7px; font-size: 12px; font-weight: 600; }
+.app-navigation nav a[aria-current="page"] { background: var(--nav-selected, #303347); color: var(--nav-selected-text, #fff); text-decoration: underline; text-underline-offset: 5px; }
+.app-navigation :is(button, select), .calendar-panel-controls :is(button, select) {
+    min-height: 32px; border: 1px solid var(--border-muted); border-radius: 7px; padding: 4px 9px;
+    background: var(--bg-card); color: var(--text-main); font-size: 12px;
+}
+.appearance-controls { display: flex; gap: 4px; margin-left: auto; }
+:root[data-appearance="light"] body > header { background: var(--nav-bg); color: var(--nav-text); }
+:root[data-appearance="light"] .app-brand { color: var(--nav-text); }
+:root[data-appearance="light"] .app-navigation nav a { color: var(--nav-text); }
+:root[data-appearance="light"] .app-navigation nav a[aria-current] { color: var(--nav-selected-text); }
+:root[data-appearance="light"][data-light-theme="stone"] .app-navigation nav a:focus-visible { outline-color: #eff5df !important; }
+
+/* Bridge legacy utility surfaces during incremental page adoption; never rewrite stored colors. */
+:root[data-appearance="light"] [class*="bg-[#"]:not([style*="background"]) { background-color: var(--bg-card) !important; }
+:root[data-appearance="light"] :is([class*="text-slate-"], [class*="text-purple-"], .text-white):not(:where(.task-card *, .fc-event *, [style*="background"], [style*="background"] *, [class*="bg-black/"], [class*="bg-purple-600"], [class*="bg-red-"], [class*="bg-emerald-"], [class*="bg-orange-"], [class*="bg-amber-"], [class*="bg-lime-"])) { color: var(--text-main) !important; }
+:root[data-appearance="light"] :is(input, select, textarea) { background: var(--bg-card) !important; color: var(--text-main) !important; border-color: var(--border-muted) !important; }
+:root[data-appearance="light"] :is(input, textarea)::placeholder { color: var(--text-muted); opacity: 1; }
+:root[data-appearance="light"] :is(.bg-purple-600, .bg-purple-500) { background: var(--accent-primary) !important; color: #fff !important; }
+:root[data-appearance="light"] :is(.text-emerald-400, .text-emerald-300) { color: #176442; }
+:root[data-appearance="light"] :is(.text-red-400, .text-red-300) { color: #a32e36; }
+:root[data-appearance="light"] :is(.text-orange-400, .text-orange-300) { color: #954215; }
+:root[data-appearance="light"] :is(.text-amber-400, .text-amber-300) { color: #795700; }
+:root[data-appearance="light"] :is(.text-lime-400, .text-lime-300) { color: #4b651d; }
+/* Grade badge backgrounds keep five distinct ordered red → green steps. */
+:root[data-appearance="light"] [class*="bg-red-9"]:not([style*="background"]) { background: #fbe9e9; color: #a32e36 !important; }
+:root[data-appearance="light"] [class*="bg-orange-9"]:not([style*="background"]) { background: #f9ebdf; color: #954215 !important; }
+:root[data-appearance="light"] [class*="bg-amber-9"]:not([style*="background"]) { background: #f5efd6; color: #795700 !important; }
+:root[data-appearance="light"] [class*="bg-lime-9"]:not([style*="background"]) { background: #eaf1d8; color: #4b651d !important; }
+:root[data-appearance="light"] [class*="bg-emerald-9"]:not([style*="background"]) { background: #e0f1e8; color: #176442 !important; }
+:root[data-appearance="light"] .fc-timegrid-slot-label { color: var(--text-muted) !important; }
+:root[data-appearance="light"] :is(#ai_drawer, .ai-settings-section, .ai-drawer-header, .ai-drawer-toolbar, .ai-composer, .ai-message, .ai-conversation-list, .ai-draft-card, .ai-insight-card) { background: var(--bg-card); color: var(--text-main); border-color: var(--border-color); }
+:root[data-appearance="light"] :is(.ai-drawer-title, .ai-settings-title, .ai-settings-hint, .ai-toggle-row-hint, .ai-message-content, .ai-draft-title, .ai-draft-description, .ai-insight-body) { color: var(--text-main); }
+:root[data-appearance="light"] :is(.ai-btn, .ai-icon-btn, .ai-launcher-btn) { background: var(--accent-soft); color: var(--text-main); border-color: var(--border-muted); }
+
+/* Aligned tool strip: planning tools over Tasks, date/view controls over the real calendar. */
+.calendar-page .planning-header { display: grid; grid-template-columns: var(--planning-tasks-width, 256px) minmax(0, 1fr); background: var(--bg-header); border-bottom: 1px solid var(--border-color); }
+.calendar-page .planning-task-tools { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 12px; border-right: 1px solid var(--border-color); font-size: 13px; }
+.calendar-page .planning-task-tools input { width: 100%; min-width: 0; background: var(--bg-main); border: 1px solid var(--border-muted); border-radius: 7px; padding: 7px 9px; }
+.calendar-page .calendar-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px 4px; min-width: 0; }
+.calendar-page .calendar-tools > div { flex-shrink: 0; }
+.calendar-page .calendar-tools button { min-height: 30px; }
+.calendar-page .calendar-panel-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 12px 10px; }
+.calendar-page .calendar-panel-controls label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.calendar-page #breakdown_filter_chip { grid-column: 1 / -1; padding: 8px 12px; background: var(--accent-soft, #303347); font-size: 12px; }
+.calendar-page #breakdown_filter_chip button { border: 1px solid var(--border-muted); border-radius: 5px; padding: 3px 8px; }
+.calendar-page main { min-width: 0; }
+.calendar-page #left_sidebar { border-right: 1px solid var(--border-color); }
+.calendar-page #right_sidebar { border-left: 1px solid var(--border-color); }
+.calendar-page #active_timer_pill { height: 32px; font-size: 11px; }
+:root[data-tasks-open="false"] .planning-header { grid-template-columns: minmax(0, 1fr); }
+:root[data-tasks-open="false"] .planning-task-tools { display: none; }
+@media (max-width: 1100px) {
+    .calendar-page #right_sidebar { width: 220px !important; }
+    .app-navigation { gap: 6px; }
+}
+@media (max-width: 800px) {
+    body > header { padding: 8px !important; gap: 8px !important; }
+    .app-navigation nav { order: 3; width: 100%; }
+    .app-navigation nav a { padding: 7px 9px; }
+    .appearance-controls { margin-left: 0; }
+    .calendar-page .planning-header { display: flex; flex-wrap: wrap; }
+    .calendar-page .planning-task-tools { flex-direction: row; align-items: center; width: 100%; border-right: 0; padding: 6px 10px; }
+    .calendar-page .planning-task-tools > div { gap: 10px; white-space: nowrap; }
+    .calendar-page .planning-task-tools input { flex: 1; }
+    .calendar-page .planning-area { flex-direction: column; }
+    .calendar-page #left_sidebar { width: 100% !important; padding: 6px 10px; max-height: 160px; }
+    .calendar-page #task_card_list { display: flex; gap: 8px; overflow-x: auto; min-height: 80px; }
+    .calendar-page #task_card_list .task-card { flex: 0 0 220px; height: auto; margin: 0; }
+    .calendar-page #left_sidebar > .mt-3 { display: none; }
+    .calendar-page #left_resizer, .calendar-page #right_resizer { display: none; }
+    .calendar-page #right_sidebar { width: 100% !important; max-height: 170px; }
+    .calendar-page #breakdown_filter_chip { width: 100%; }
+    .calendar-page .calendar-tools, .calendar-page .calendar-panel-controls { padding: 4px 10px; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
+.calendar-page .planning-header { flex-shrink: 0; }
+.calendar-page :is(#activity_totals_list, #weekly_totals_list) > button { width: 100%; text-align: left; }
+/* Shared Assistant/AI settings keep their workflows; these are appearance-only bridges. */
+:root[data-appearance="light"] :is(.ai-drawer-composer, .ai-quick-actions, .ai-weekly-review-panel, .ai-weekly-review-card, .ai-weekly-kpi, .ai-weekly-breakdown, .ai-provider-card, .ai-provider-help, .ai-quickadd-strip, .ai-msg-assistant, .ai-msg-tool, .ai-draft-batch, .ai-draft-item, .ai-instruction-proposal, .ai-instruction-proposal-text) { background: var(--bg-card); border-color: var(--border-muted); color: var(--text-main); }
+:root[data-appearance="light"] :is(.ai-settings-section, #ai_drawer, .ai-quickadd-strip) :is(label, h2, [class*="-hint"], [class*="-label"], [class*="-title"], [class*="-meta"], [class*="-summary"], [class*="-description"], [class*="-explanation"], [class*="-status"], [class*="-range"], [class*="-timezone"], [class*="-detail"], [class*="-value"], .ai-scope-option, .ai-thread-empty, .ai-secret-note) { color: var(--text-main); }
+:root[data-appearance="light"] :is(.ai-msg-error, .ai-test-result-fail, .ai-weekly-review-error, .ai-draft-item-flag-error) { color: #a32e36; }
+:root[data-appearance="light"] :is(.ai-scope-warning, .ai-weekly-overlap-warning, .ai-draft-item-flag-stale) { color: #795700; }
+:root[data-appearance="light"] :is(.ai-quick-action, .ai-msg-user) { background: var(--accent-soft); color: var(--text-main); border-color: var(--border-muted); }
+:root[data-appearance="light"] #ai_composer_send { background: var(--accent-primary); color: #fff; }
+:root[data-appearance="light"] .ai-test-result-ok { color: #176442; }
+.calendar-page #task_card_list .task-card[hidden] { display: none; }
+.calendar-page .planning-schedule { min-height: 28px; }
+:root[data-appearance="light"] #vim_mode_indicator {
+    background: var(--accent-soft) !important; color: var(--text-main) !important; border-color: var(--border-muted) !important;
+}
+@media (max-width: 800px) {
+    /* Navigation and the secondary timer own separate rows; neither can squeeze the other. */
+    .calendar-page > header { align-items: stretch; }
+    .calendar-page > header > .app-navigation { flex-basis: 100%; }
+    .calendar-page > header > div:last-child { width: 100%; justify-content: flex-end; }
+    .app-navigation nav { flex-wrap: nowrap; overflow-x: auto; }
+    .app-navigation nav a { flex-shrink: 0; }
+}
+/* Legacy fixed surfaces/badges participate in light adoption; explicit inline user paints do not. */
+:root[data-appearance="light"] .kanban-card:not([style*="background"]) { background-color: var(--bg-card); }
+:root[data-appearance="light"] :is([class*="bg-purple-9"], [class*="bg-slate-8"], [class*="bg-slate-9"]):not([style*="background"]) { background-color: var(--accent-soft) !important; color: var(--text-main) !important; }
+:root[data-appearance="light"] :is(.text-blue-300, .text-blue-400) { color: #245b94; }
+:root[data-appearance="light"] [class*="bg-blue-9"]:not([style*="background"]) { background-color: #e4edf9; color: #245b94; }
+:root[data-appearance="light"] .bg-emerald-600 { background-color: #176442 !important; color: #fff !important; }
+:root[data-appearance="light"] body > header > .app-page-title { color: var(--nav-text) !important; }
+:root[data-appearance="light"] .tz-header-label { color: var(--text-muted) !important; }
+/* Empty lane cells must not impose a 16px text line on Compact's 14px quarter-hour row. */
+.calendar-page .fc-timegrid-slot-lane { line-height: 0 !important; }
+:root[data-appearance="light"] .kanban-card:not([style*="background"]) [class*="bg-black/"] { background-color: var(--accent-soft); color: var(--text-main); }

@@ -43,10 +43,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     const durationSelect = document.getElementById('config_slot_duration');
     if (durationSelect) durationSelect.value = userSettings.slotDuration;
 
+    let initialCalendarContext = true;
     const calendarEl = document.getElementById('calendar');
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: userSettings.defaultView === 'auto' ? (userSettings.lastSelectedView || 'timeGridWeek') : userSettings.defaultView,
+            initialView: ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'].includes(seedParams.get('view'))
+                ? seedParams.get('view') : userSettings.defaultView === 'auto' ? userSettings.lastSelectedView : userSettings.defaultView,
+            initialDate: seedParams.get('date') || undefined,
             firstDay: userSettings.firstDayOfWeek,
             height: '100%',
             headerToolbar: false,
@@ -214,6 +217,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 updateViewButtons(info.view.type);
                 fetchRangeTotals();
                 injectTimezoneLabel();
+                syncCalendarContext(initialCalendarContext);
+                initialCalendarContext = false;
 
                 const settings = typeof getUserSettings === 'function' ? getUserSettings() : null;
                 if (settings && settings.lastSelectedView !== info.view.type) {
@@ -224,11 +229,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
         calendar.render();
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const targetDate = urlParams.get('date');
-        if (targetDate) {
-            calendar.gotoDate(targetDate);
-        }
+        window.addEventListener('popstate', restoreCalendarContext);
     }
 
     const taskCardList = document.getElementById('task_card_list');
@@ -261,7 +262,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     await applyUserSettings(userSettings, true);
 
-    if (userSettings.autoScrollNow && !window.location.search.includes('date=')) {
+    if (userSettings.autoScrollNow && !seedParams.has('date')) {
         scrollToCurrentTime();
     }
 

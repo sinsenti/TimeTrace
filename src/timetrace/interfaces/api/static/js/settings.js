@@ -29,6 +29,11 @@ const THEME_PALETTES = {
 
 const DEFAULT_SETTINGS = {
     theme: 'midnight',
+    appearance: 'light',
+    lightTheme: 'refined',
+    calendarDensity: 88,
+    totalsVisible: false,
+    taskView: 'kanban',
     colorSeed: 0,
     defaultView: 'auto',
     lastSelectedView: 'timeGridWeek',
@@ -57,10 +62,88 @@ function getUserSettings() {
     try {
         const raw = localStorage.getItem(SETTINGS_KEY);
         if (!raw) return { ...DEFAULT_SETTINGS };
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        const saved = JSON.parse(raw);
+        if (!saved || typeof saved !== 'object' || Array.isArray(saved)) return { ...DEFAULT_SETTINGS };
+        const s = { ...DEFAULT_SETTINGS, ...saved };
+        const validPalette = Object.hasOwn(THEME_PALETTES, saved.theme);
+        if (!['light', 'dark'].includes(s.appearance)) s.appearance = validPalette ? 'dark' : 'light';
+        if (!Object.hasOwn(saved, 'appearance') && validPalette) s.appearance = 'dark';
+        if (!validPalette) s.theme = DEFAULT_SETTINGS.theme;
+        const choices = {
+            lightTheme: ['refined', 'stone', 'porcelain'],
+            calendarDensity: [56, 72, 88],
+            taskView: ['kanban', 'grouped', 'outline'],
+            defaultView: ['auto', 'timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'],
+            lastSelectedView: ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'],
+            firstDayOfWeek: [0, 1],
+            slotDuration: ['auto', 15, 30, 45, 60],
+            lastSelectedSlot: [15, 30, 45, 60],
+            hideLeftSidebar: ['auto', 'true', 'false', true, false],
+            hideRightSidebar: ['auto', 'true', 'false', true, false]
+        };
+        for (const [key, values] of Object.entries(choices)) {
+            if (!values.includes(s[key])) s[key] = DEFAULT_SETTINGS[key];
+        }
+        for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+            if (typeof value === 'boolean' && typeof s[key] !== 'boolean') s[key] = value;
+        }
+        if (!Number.isInteger(s.colorSeed) || s.colorSeed < 0) s.colorSeed = 0;
+        if (!Object.hasOwn(saved, 'totalsVisible')) {
+            const legacy = saved.hideRightSidebar;
+            if ([true, false, 'true', 'false'].includes(legacy)) {
+                s.totalsVisible = legacy === false || legacy === 'false';
+            } else if (legacy === 'auto' && typeof saved.lastHideRightSidebar === 'boolean') {
+                s.totalsVisible = !saved.lastHideRightSidebar;
+            }
+        }
+        return s;
     } catch (e) {
         return { ...DEFAULT_SETTINGS };
     }
+}
+
+// Appearance updates are token-only: never reload data or replace an open editor.
+function applyAppearance(s = getUserSettings()) {
+    document.documentElement.setAttribute('data-appearance', s.appearance);
+    document.documentElement.setAttribute('data-light-theme', s.lightTheme);
+    document.documentElement.setAttribute('data-theme', s.appearance === 'light' ? 'light' : s.theme);
+    const select = document.getElementById('appearance_light_theme');
+    if (select) select.value = s.lightTheme;
+    const button = document.getElementById('appearance_toggle');
+    if (button) {
+        button.textContent = s.appearance === 'light' ? 'Dark' : 'Light';
+        button.setAttribute('aria-label', `Switch to ${s.appearance === 'light' ? 'dark' : 'light'} appearance`);
+    }
+    document.dispatchEvent(new Event('timetrace:appearance'));
+}
+
+function chartAppearanceColors() {
+    if (getUserSettings().appearance === 'dark') return { legend: '#94a3b8', ticks: '#64748b', grid: '#1a1c26' };
+    const style = getComputedStyle(document.documentElement);
+    const text = style.getPropertyValue('--text-muted').trim();
+    return { legend: text, ticks: text, grid: style.getPropertyValue('--border-color').trim() };
+}
+
+function applyChartAppearance(charts) {
+    const colors = chartAppearanceColors();
+    for (const chart of charts) {
+        if (chart.options.plugins?.legend?.labels) chart.options.plugins.legend.labels.color = colors.legend;
+        for (const axis of Object.values(chart.options.scales || {})) {
+            if (axis.ticks) axis.ticks.color = colors.ticks;
+            if (axis.grid) axis.grid.color = colors.grid;
+        }
+        chart.update('none');
+    }
+}
+
+function setAppearancePreference(key, value) {
+    if (key === 'appearance' && !['light', 'dark'].includes(value)) return;
+    if (key === 'lightTheme' && !['refined', 'stone', 'porcelain'].includes(value)) return;
+    if (!['appearance', 'lightTheme'].includes(key)) return;
+    const s = getUserSettings();
+    s[key] = value;
+    saveUserSettings(s);
+    applyAppearance(s);
 }
 
 function saveUserSettings(settings) {
@@ -85,7 +168,17 @@ function setupSettingsKeyboardShortcuts() {
     document.addEventListener('keydown', function(e) {
         const modal = document.getElementById('settings_modal');
         if (modal && !modal.classList.contains('hidden')) {
-            if (e.ctrlKey && e.key === 'Enter') {
+            if (e.key === 'Tab') {
+                const focusable = modal.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
+                const first = focusable[0], last = focusable[focusable.length - 1];
+                if (e.shiftKey && document.activeElement === first) {
+                    e.preventDefault();
+                    last?.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                    e.preventDefault();
+                    first?.focus();
+                }
+            } else if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 saveSettingsFromModal();
             } else if (e.key === 'Escape') {
@@ -96,8 +189,15 @@ function setupSettingsKeyboardShortcuts() {
     });
 }
 
+let settingsReturnFocus = null;
+
 function openSettingsModal() {
+    settingsReturnFocus = document.activeElement;
     const s = getUserSettings();
+    const appearanceSelect = document.getElementById('setting_appearance');
+    if (appearanceSelect) appearanceSelect.value = s.appearance;
+    const lightSelect = document.getElementById('setting_light_theme');
+    if (lightSelect) lightSelect.value = s.lightTheme;
     
     const themeSelect = document.getElementById('setting_theme');
     if (themeSelect) themeSelect.value = s.theme || 'midnight';
@@ -140,6 +240,7 @@ function openSettingsModal() {
 function closeSettingsModal() {
     const modal = document.getElementById('settings_modal');
     if (modal) modal.classList.add('hidden');
+    settingsReturnFocus?.focus();
 }
 
 async function saveSettingsFromModal() {
@@ -149,6 +250,8 @@ async function saveSettingsFromModal() {
 
     const newSettings = {
         ...current,
+        appearance: document.getElementById('setting_appearance')?.value || current.appearance,
+        lightTheme: document.getElementById('setting_light_theme')?.value || current.lightTheme,
         theme: document.getElementById('setting_theme') ? document.getElementById('setting_theme').value : 'midnight',
         enableVimMotions: document.getElementById('setting_enable_vim') ? document.getElementById('setting_enable_vim').checked : true,
         enableSessionReview: document.getElementById('setting_enable_session_review') ? document.getElementById('setting_enable_session_review').checked : true,
@@ -157,10 +260,12 @@ async function saveSettingsFromModal() {
         slotDuration: parsedSlot,
         idleDetectorEnabled: document.getElementById('setting_idle_detector') ? document.getElementById('setting_idle_detector').checked : true,
         hideLeftSidebar: document.getElementById('setting_hide_left_sidebar') ? document.getElementById('setting_hide_left_sidebar').value : 'auto',
-        hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').value : 'auto',
+        hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').value : current.hideRightSidebar,
         autoScrollNow: document.getElementById('setting_auto_scroll') ? document.getElementById('setting_auto_scroll').checked : true
     };
 
+    const rightChoice = newSettings.hideRightSidebar;
+    if (rightChoice !== 'auto') newSettings.totalsVisible = rightChoice === 'false' || rightChoice === false;
     saveUserSettings(newSettings);
     closeSettingsModal();
     
@@ -171,7 +276,7 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
     if (!s) s = getUserSettings();
 
     const themeName = s.theme || 'midnight';
-    document.documentElement.setAttribute('data-theme', themeName);
+    applyAppearance(s);
     
     if (typeof defaultPalette !== 'undefined') {
         defaultPalette = THEME_PALETTES[themeName] || THEME_PALETTES.midnight;
@@ -196,18 +301,15 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
 
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.setOption('firstDay', s.firstDayOfWeek);
-        if (!isInitialBoot) {
-            const effectiveView = (s.defaultView === 'auto' || !s.defaultView) ? (s.lastSelectedView || 'timeGridWeek') : s.defaultView;
-            calendar.changeView(effectiveView);
-        }
         calendar.refetchEvents();
     }
 
     const hideLeft = (s.hideLeftSidebar === 'auto' || s.hideLeftSidebar === undefined) ? (s.lastHideLeftSidebar || false) : (s.hideLeftSidebar === 'true' || s.hideLeftSidebar === true);
-    const hideRight = (s.hideRightSidebar === 'auto' || s.hideRightSidebar === undefined) ? (s.lastHideRightSidebar || false) : (s.hideRightSidebar === 'true' || s.hideRightSidebar === true);
+    const hideRight = !s.totalsVisible;
 
     setSidebarVisibility('left_sidebar', !hideLeft);
     setSidebarVisibility('right_sidebar', !hideRight);
+    setCalendarDensity(s.calendarDensity, false);
 
     if (typeof updateSessionReviewTabVisibility === 'function') {
         updateSessionReviewTabVisibility();
@@ -216,6 +318,38 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
     if (typeof fetchTasks === 'function') {
         fetchTasks();
     }
+}
+
+function setCalendarDensity(height, persist = true) {
+    if (![56, 72, 88].includes(Number(height))) return;
+    const s = getUserSettings();
+    s.calendarDensity = Number(height);
+    if (persist) saveUserSettings(s);
+    const minutes = s.slotDuration === 'auto' ? s.lastSelectedSlot : s.slotDuration;
+    document.documentElement.style.setProperty('--calendar-slot-height', `${s.calendarDensity * minutes / 60}px`);
+    const select = document.getElementById('calendar_density');
+    if (select) select.value = String(s.calendarDensity);
+    if (typeof calendar !== 'undefined' && calendar) calendar.updateSize();
+}
+
+function toggleCalendarPanel(side) {
+    if (!['left', 'right'].includes(side)) return;
+    const s = getUserSettings();
+    const panel = document.getElementById(`${side}_sidebar`);
+    if (!panel) return;
+    // Read the effective preference, not responsive CSS visibility.
+    const visible = side === 'right' ? !s.totalsVisible
+        : (s.hideLeftSidebar === 'auto' ? s.lastHideLeftSidebar : [true, 'true'].includes(s.hideLeftSidebar));
+    if (side === 'right') {
+        s.totalsVisible = visible;
+        s.lastHideRightSidebar = !visible;
+        s.hideRightSidebar = 'auto';
+    } else {
+        s.lastHideLeftSidebar = !visible;
+        s.hideLeftSidebar = 'auto';
+    }
+    saveUserSettings(s);
+    setSidebarVisibility(`${side}_sidebar`, visible);
 }
 
 function setSidebarVisibility(id, visible) {
@@ -228,11 +362,14 @@ function setSidebarVisibility(id, visible) {
         el.classList.add('hidden');
     }
 
+    const handle = document.getElementById(id === 'left_sidebar' ? 'left_resizer' : 'right_resizer');
+    if (handle) handle.classList.toggle('hidden', !visible);
+    if (id === 'left_sidebar') document.documentElement.setAttribute('data-tasks-open', String(visible));
     const btnId = id === 'left_sidebar' ? 'btn_toggle_left_sidebar' : 'btn_toggle_right_sidebar';
     const btn = document.getElementById(btnId);
     if (btn) {
-        const isHidden = el.classList.contains('hidden');
-        btn.innerText = (id === 'left_sidebar') ? (isHidden ? 'Show Tasks' : 'Hide Tasks') : (isHidden ? 'Show Totals' : 'Hide Totals');
+        btn.innerText = (id === 'left_sidebar') ? (visible ? 'Hide Tasks' : 'Show Tasks') : (visible ? 'Hide Totals' : 'Show Totals');
+        btn.setAttribute('aria-expanded', String(visible));
     }
 
     if (typeof calendar !== 'undefined' && calendar) {

@@ -2,6 +2,65 @@
  * FullCalendar Engine & View Event Handlers
  */
 
+let restoringCalendarContext = false;
+
+function syncCalendarContext(replace = false) {
+    if (restoringCalendarContext || typeof calendar === 'undefined' || !calendar || !window.location?.href) return;
+    const url = new URL(window.location.href);
+    const date = calendar.getDate();
+    const localDay = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    url.searchParams.set('date', localDay);
+    url.searchParams.set('view', calendar.view.type);
+    url.searchParams.delete('tag');
+    url.searchParams.delete('task');
+    if (typeof breakdownFilter !== 'undefined' && breakdownFilter) {
+        url.searchParams.set(breakdownFilter.type, breakdownFilter.value);
+    }
+    if (url.href !== window.location.href) {
+        if (replace) history.replaceState(null, '', url);
+        else history.pushState(null, '', url);
+    }
+}
+
+function restoreCalendarContext() {
+    if (typeof calendar === 'undefined' || !calendar) return;
+    const params = new URLSearchParams(window.location.search);
+    const tag = params.get('tag');
+    const task = params.get('task');
+    breakdownFilter = tag ? { type: 'tag', value: tag } : task ? { type: 'task', value: task } : null;
+    const settings = getUserSettings();
+    const view = params.get('view');
+    const validView = ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'].includes(view);
+    restoringCalendarContext = true;
+    try {
+        calendar.changeView(validView ? view : settings.lastSelectedView, params.get('date') || undefined);
+        renderBreakdownLists();
+        renderBreakdownFilterChip();
+        calendar.refetchEvents();
+    } finally {
+        restoringCalendarContext = false;
+    }
+}
+
+function createPlanningSession(taskId = null) {
+    if (!calendar) return;
+    const date = new Date(calendar.getDate());
+    const now = new Date();
+    date.setHours(now.getHours(), Math.floor(now.getMinutes() / 15) * 15, 0, 0);
+    openCreateSessionModal(date, null, taskId);
+}
+
+function filterPlanningTasks(query) {
+    const text = query.trim().toLocaleLowerCase();
+    let visible = 0;
+    document.querySelectorAll('#task_card_list .task-card').forEach(card => {
+        card.hidden = !card.dataset.taskTitle.toLocaleLowerCase().includes(text);
+        if (!card.hidden) visible++;
+    });
+    const count = document.getElementById('selected_tasks_count');
+    if (count) count.textContent = text && !visible ? 'No matching tasks' : `${visible} task${visible === 1 ? '' : 's'}`;
+}
+
 function switchView(viewName) {
     if (!calendar) return;
     calendar.changeView(viewName);
@@ -28,6 +87,9 @@ function updateViewButtons(activeViewType) {
     if (btnThreeDay) btnThreeDay.className = (activeViewType === 'timeGridThreeDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
     if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
+    for (const [button, view] of [[btnDay, 'timeGridDay'], [btnThreeDay, 'timeGridThreeDay'], [btnWeek, 'timeGridWeek'], [btnMonth, 'dayGridMonth']]) {
+        if (button) button.setAttribute('aria-pressed', String(view === activeViewType));
+    }
 }
 
 function navigateCalendarPrev() {

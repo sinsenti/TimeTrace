@@ -151,6 +151,7 @@ function initSidebarResizers() {
     
     if (savedLeftWidth && leftSidebar) {
         leftSidebar.style.width = `${savedLeftWidth}px`;
+        document.documentElement.style.setProperty('--planning-tasks-width', `${savedLeftWidth}px`);
     }
     if (savedRightWidth && rightSidebar) {
         rightSidebar.style.width = `${savedRightWidth}px`;
@@ -186,6 +187,7 @@ function initSidebarResizers() {
             newWidth = Math.max(160, Math.min(newWidth, maxLeftWidth));
             
             leftSidebar.style.width = `${newWidth}px`;
+            document.documentElement.style.setProperty('--planning-tasks-width', `${newWidth}px`);
             localStorage.setItem('timetrace_left_sidebar_width', newWidth);
         }
 
@@ -303,6 +305,7 @@ async function fetchTasks() {
                                 </div>
                                 <div class="flex items-center space-x-1">
                                     <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${escapeHtml(prioLabel)}</span>
+                                    <button type="button" aria-label="Schedule ${escapeHtml(t.title)}" onclick="event.stopPropagation(); createPlanningSession('${t.id}');" class="planning-schedule bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[11px] text-white">Schedule</button>
                                     <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[9px] text-white">Edit</button>
                                 </div>
                             </div>
@@ -312,6 +315,9 @@ async function fetchTasks() {
             }
         }
 
+        if (typeof filterPlanningTasks === 'function') {
+            filterPlanningTasks(document.getElementById('planning_task_search')?.value || '');
+        }
         fetchRangeTotals();
         taskKnowledge.viewResult("sidebar", true);
         return true;
@@ -358,6 +364,7 @@ function toggleBreakdownFilter(type, value) {
     }
     renderBreakdownLists();
     renderBreakdownFilterChip();
+    if (typeof syncCalendarContext === 'function') syncCalendarContext();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
 
@@ -365,6 +372,7 @@ function clearBreakdownFilter() {
     breakdownFilter = null;
     renderBreakdownLists();
     renderBreakdownFilterChip();
+    if (typeof syncCalendarContext === 'function') syncCalendarContext();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
 
@@ -391,7 +399,7 @@ function renderBreakdownFilterChip() {
     chip.classList.remove('hidden');
     chip.innerHTML = `
         <span class="text-purple-200">Filtered: ${escapeHtml(label)}</span>
-        <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">&times;</button>
+        <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">Clear filter</button>
     `;
 }
 
@@ -407,10 +415,10 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const pct = lastGrandTotalSecs > 0 ? ((secs / lastGrandTotalSecs) * 100).toFixed(1) : '0.0';
                 return `
-                    <div data-breakdown-tag="${escapeHtml(tag)}" onclick="toggleBreakdownFilter('tag', this.dataset.breakdownTag)" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                    <button type="button" data-breakdown-tag="${escapeHtml(tag)}" onclick="toggleBreakdownFilter('tag', this.dataset.breakdownTag)" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
                         <span class="text-xs font-bold text-emerald-400">${escapeHtml(tag)}</span>
                         <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h <span class="text-slate-500 font-medium">(${pct}%)</span></span>
-                    </div>
+                    </button>
                 `;
             }).join('');
             activityList.insertAdjacentHTML('beforeend', '<p class="text-[10px] text-slate-500 pt-1">Multi-tag sessions are counted in full under each tag, so totals overlap.</p>');
@@ -432,10 +440,10 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const hrs = (secs / 3600).toFixed(1);
                 return `
-                    <div onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${escapeHtml(color)};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                    <button type="button" onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${escapeHtml(color)}; color: ${getContrastingTextColor(color)};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
                         <span class="font-bold text-xs truncate">${escapeHtml(title)}</span>
                         <span class="text-sm font-black">${hrs}h</span>
-                    </div>
+                    </button>
                 `;
             }).join('');
         }

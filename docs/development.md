@@ -243,6 +243,38 @@ introduced defects; reviewers did not execute tests. Browser execution, actual k
 and real-DOM rating submissions were not verified by the agent. No new schema/migration is involved,
 and no existing-DB migration test, personal data, provider call, push or merge is part of this repair.
 
+## Shared appearance and Calendar shell
+
+Ticket 01 of the approved UI redesign adopts shared navigation/appearance without replacing the
+other pages' workflows. Preferences still has a working modal on every page; Settings links to the
+existing `/settings/ai` page until ticket 19 supplies `/settings`. Additional task views remain later
+slices. The shared stylesheet is `static/css/appearance.css`; each of the seven templates includes it.
+
+Browser preferences stay in `timetrace_user_settings`. Existing `theme` names still select the dark
+appearance and automatic task-color palette; valid old selections are adopted as dark, not replaced.
+New `appearance` (`light`/`dark`) and `lightTheme` (`refined`/`stone`/`porcelain`) are independent.
+A new browser uses Refined Archive/light. `calendarDensity` accepts 56/72/88 pixels per hour (default
+88), independently of slot intervals; `totalsVisible` defaults false and adopts valid legacy right
+sidebar choices. `taskView` adoption accepts `kanban`/`grouped`/`outline`, with Kanban fallback;
+selectors/compositions belong to their subsequent tickets. Invalid/missing individual keys default
+without deleting valid neighboring or unrelated settings. Explicit task/status/habit colors and
+color seeds are not rewritten. There is no OS-auto appearance switch.
+
+`setAppearancePreference()` only updates presentation and emits `timetrace:appearance`. Existing
+Stats/Habit charts use that event for neutral label/grid colors, not dataset/query/config changes;
+open editors and timers are not reinitialized. Calendar date/view/tag/task context is kept in its
+URL and restored on Back/Forward; the filter chip remains outside collapsible Totals. Schedule
+buttons open the existing task-attached session popup as an alternative to drag/drop.
+
+Caller regressions are in `tests/test_calendar_shell.cjs` and `tests/test_calendar_shell.py`.
+The four `tests/browser_{calendar_density,calendar_shell_layout,shared_appearance,chart_appearance}.js`
+files are dependency-free **manual probes**, not an installed browser runner. Evaluate each async
+function with an existing Playwright page and an isolated daemon base URL, after seeding a synthetic
+task through the public API. Each creates/closes its own context. Never point them at personal
+storage/the default daemon. Their bounded geometry/contrast samples are not accessibility certification.
+The ticket receipt in `.scratch/ui-redesign/ticket-01-evidence.md` separates observed browser results,
+failed probes, deferred manual coverage and pending independent review/integration gates.
+
 ## Testing and checks
 
 Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed

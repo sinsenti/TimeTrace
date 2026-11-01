@@ -256,6 +256,7 @@ function getTaskDateBadge(dueDateStr, assignedDateStr) {
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
         let closedAny = false;
+        const focusBeforeClose = document.activeElement;
 
         const modalOrder = [
             // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
@@ -299,7 +300,10 @@ window.addEventListener('keydown', function(e) {
 
         if (closedAny) {
             if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
-            if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
+            // Keep a dialog's explicitly restored launcher; only blur unchanged, now-hidden fields.
+            if (document.activeElement === focusBeforeClose && typeof focusBeforeClose?.blur === 'function') {
+                focusBeforeClose.blur();
+            }
         }
     }
 }, true);
@@ -538,6 +542,7 @@ function setSlotDuration(val, updateSettings = true) {
         if (typeof saveUserSettings === 'function') saveUserSettings(s);
     }
     defaultDurationMinutes = mins;
+    if (typeof setCalendarDensity === 'function') setCalendarDensity(getUserSettings().calendarDensity, false);
     localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
     if (typeof calendar !== 'undefined' && calendar) {
         const durStr = `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`;
