@@ -7,5 +7,10 @@ before coding. Keep it code-grounded and concise: problem, observable behavior, 
 time and identifier semantics, edge cases, exclusions, and verification. Small bug fixes, copy changes,
 and behavior-preserving refactors do not need a spec.
 
-There are currently no active feature specs. Use the `spec-driven-workflow` skill and follow
-`AGENTS.md` for the implementation and testing policy.
+## Active specifications
+
+- [Whole-UI redesign](ui-redesign.md) — **Approved**, not Built. Implementation requested;
+  [25-ticket backlog](../.scratch/ui-redesign/README.md) and
+  [integration execution record](../.scratch/ui-redesign/implementation.md). Current frontier: 01.
+
+Use the `spec-driven-workflow` skill and follow `AGENTS.md` for the implementation and testing policy.
