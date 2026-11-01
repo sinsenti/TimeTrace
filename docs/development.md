@@ -275,6 +275,38 @@ storage/the default daemon. Their bounded geometry/contrast samples are not acce
 The ticket receipt in `.scratch/ui-redesign/ticket-01-evidence.md` separates observed browser results,
 failed probes, deferred manual coverage and pending independent review/integration gates.
 
+### Ticket 01 review repairs
+
+Preferences Save and color reshuffle no longer reload Revision's active editor just to update the
+Session Review tab. Disabling Session Review still hides its entry and redirects an active Sessions
+tab to Overview. Calendar startup reads current browser preferences after task metadata, and late
+idle-toggle responses cannot restore stale density/panel choices.
+
+The Settings link is a no-op on AI Settings. Its new cross-page departure checks initialized editor
+snapshots for Preferences, Revision/day and task reviews, task details and task/session dialogs.
+Canceling departure retains drafts; explicit leave does not autosave. AI Settings also guards other
+page departure and browser unload. Browser Preferences, AI behavior and provider saves remain separate;
+successful saves clean only their owner, failed saves remain dirty, and reverted fields are clean.
+This is not a replacement router or the ticket-19 tabbed Settings implementation. Delayed session
+popup initial focus now yields to immediate interaction, moved focus, closure or a newer popup;
+normal create-search/edit-Notes focus remains intact. Controlled-timer caller tests and immediate
+browser checks cover canceled Settings departure without masking the race with sleeps.
+
+Habit chart registries remove disposed charts, and shared appearance updates tolerate absent/disposed
+Chart.js instances. Populated AI provider names and instruction headings adopt readable light
+foregrounds; the retained dark palette is not redesigned. The existing dark provider metadata/item
+button contrast remains a separately documented baseline limitation, not a light-adoption regression.
+
+Additional manual probes under `tests/` are `browser_populated_ai_appearance.js`,
+`browser_revision_preferences.js`, `browser_dirty_ai_settings.js`, `browser_dirty_settings_callers.js`,
+`browser_delayed_calendar_startup.js` and `browser_habit_chart_lifecycle.js`.
+They use fresh browser contexts and synthetic public-API fixtures;
+provider catalogs/conversational proposals and deliberate failure responses are faked explicitly.
+They do not call providers, infer model output, or test real credentials. The populated probe returns
+measured issues, including baseline dark samples, rather than asserting whole-dark compliance.
+See the appended review-repair evidence in `.scratch/ui-redesign/ticket-01-evidence.md` for actual
+execution results and remaining gates.
+
 ## Testing and checks
 
 Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed

@@ -296,6 +296,8 @@ async function renderSelectedHabitCharts() {
         if (kpiSummary) kpiSummary.innerHTML = '';
         if (habitCharts.doughnut) habitCharts.doughnut.destroy();
         if (habitCharts.bar) habitCharts.bar.destroy();
+        delete habitCharts.doughnut;
+        delete habitCharts.bar;
         hideGoalProgressionChart();
         return;
     }
@@ -428,7 +430,7 @@ function hideGoalProgressionChart() {
     if (card) card.classList.add('hidden');
     if (habitCharts.goalProgression) {
         habitCharts.goalProgression.destroy();
-        habitCharts.goalProgression = null;
+        delete habitCharts.goalProgression;
     }
 }
 

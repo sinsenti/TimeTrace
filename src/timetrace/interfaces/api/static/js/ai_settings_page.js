@@ -45,6 +45,27 @@ function aiSetupSettingsPage() {
 
     const settingsSaveBtn = document.getElementById('ai_settings_save_btn');
     if (settingsSaveBtn) settingsSaveBtn.addEventListener('click', aiSaveBehaviorSettings);
+
+    // Keep this page's independent saves independent; never autosave on departure.
+    let leaving = false;
+    document.addEventListener('click', event => {
+        const link = event.target.closest('a[href]');
+        if (!link || event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || link.target === '_blank') return;
+        const destination = new URL(link.href, window.location.href);
+        if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.search === window.location.search) {
+            if (!destination.hash) event.preventDefault();
+            return;
+        }
+        if (hasSettingsDrafts() && !window.confirm('Leave this page and discard unsaved changes?')) event.preventDefault();
+        else leaving = true;
+    });
+    window.addEventListener('beforeunload', event => {
+        if (!leaving && hasSettingsDrafts()) {
+            event.preventDefault();
+            event.returnValue = '';
+        }
+        leaving = false;
+    });
 }
 
 document.addEventListener('DOMContentLoaded', aiSetupSettingsPage);
@@ -267,6 +288,7 @@ function aiOpenProviderForm(provider) {
 
     document.getElementById('ai_provider_test_result').textContent = '';
     aiRefreshModelSelectOptions();
+    rememberSettingsDraft('ai_provider_form_section');
     if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -398,6 +420,7 @@ async function aiLoadBehaviorSettings() {
         document.getElementById('ai_setting_scheduling_days').value = (s.scheduling_days || []).join(', ');
         document.getElementById('ai_setting_preferred_tags').value = (s.preferred_tags || []).join(', ');
         document.getElementById('ai_setting_custom_instructions').value = s.custom_instructions || '';
+        rememberSettingsDraft('ai_behavior_settings');
     } catch (err) {
         console.error('Failed to load AI behavior settings:', err);
     }
@@ -431,8 +454,10 @@ async function aiSaveBehaviorSettings() {
             .split(',').map(value => value.trim().toLowerCase()).filter(Boolean),
         custom_instructions: document.getElementById('ai_setting_custom_instructions').value
     };
+    const markSaved = settingsDraftCheckpoint('ai_behavior_settings');
     try {
         await api.put('/api/ai/settings', payload);
+        markSaved();
         if (statusEl) {
             statusEl.className = 'ai-test-result ai-test-result-ok';
             statusEl.textContent = 'Saved.';

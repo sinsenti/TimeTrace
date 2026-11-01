@@ -3,6 +3,7 @@
  */
 
 const SETTINGS_KEY = 'timetrace_user_settings';
+const SUPPORTED_CALENDAR_VIEWS = Object.freeze(['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth']);
 
 const THEME_PALETTES = {
     midnight: [
@@ -73,8 +74,8 @@ function getUserSettings() {
             lightTheme: ['refined', 'stone', 'porcelain'],
             calendarDensity: [56, 72, 88],
             taskView: ['kanban', 'grouped', 'outline'],
-            defaultView: ['auto', 'timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'],
-            lastSelectedView: ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'],
+            defaultView: ['auto', ...SUPPORTED_CALENDAR_VIEWS],
+            lastSelectedView: SUPPORTED_CALENDAR_VIEWS,
             firstDayOfWeek: [0, 1],
             slotDuration: ['auto', 15, 30, 45, 60],
             lastSelectedSlot: [15, 30, 45, 60],
@@ -127,6 +128,8 @@ function chartAppearanceColors() {
 function applyChartAppearance(charts) {
     const colors = chartAppearanceColors();
     for (const chart of charts) {
+        // Chart.js clears canvas/ctx on destroy; absence is a normal chart lifecycle state.
+        if (!chart || chart.canvas === null || chart.ctx === null) continue;
         if (chart.options.plugins?.legend?.labels) chart.options.plugins.legend.labels.color = colors.legend;
         for (const axis of Object.values(chart.options.scales || {})) {
             if (axis.ticks) axis.ticks.color = colors.ticks;
@@ -189,6 +192,45 @@ function setupSettingsKeyboardShortcuts() {
     });
 }
 
+// Only the new Settings departure needs this guard; existing routing stays owned by each page.
+const settingsDrafts = new Map();
+
+function settingsDraftSnapshot(root, selector) {
+    const fields = Array.from(root.querySelectorAll(selector)).map(el => [
+        el.id, el.type === 'checkbox' ? el.checked : el.value,
+        el.classList?.contains('custom-rating-input') ? el.disabled : null
+    ]);
+    if (root.id === 'session_modal' && typeof currentTagChips !== 'undefined') fields.push(['tags', [...currentTagChips]]);
+    return JSON.stringify(fields);
+}
+
+function settingsDraftCheckpoint(id, selector = 'input, select, textarea') {
+    const root = document.getElementById(id);
+    if (!root?.querySelectorAll) return () => {};
+    const saved = { selector, snapshot: settingsDraftSnapshot(root, selector) };
+    return () => settingsDrafts.set(id, saved);
+}
+
+function rememberSettingsDraft(id, selector) {
+    settingsDraftCheckpoint(id, selector)();
+}
+
+function hasSettingsDrafts(ids = [...settingsDrafts.keys()]) {
+    return ids.some(id => {
+        const root = document.getElementById(id);
+        const saved = settingsDrafts.get(id);
+        return root && saved && !root.classList.contains('hidden') &&
+            settingsDraftSnapshot(root, saved.selector) !== saved.snapshot;
+    });
+}
+
+function followSettingsLink(event) {
+    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return true;
+    const path = new URL(window.location.href).pathname;
+    if (path === '/settings/ai' || path === '/settings') return false;
+    return !hasSettingsDrafts() || window.confirm('Leave this page and discard unsaved changes?');
+}
+
 let settingsReturnFocus = null;
 
 function openSettingsModal() {
@@ -233,6 +275,7 @@ function openSettingsModal() {
     if (modal) {
         modal.classList.remove('hidden');
         const firstFocus = document.getElementById('setting_theme');
+        rememberSettingsDraft('settings_modal');
         if (firstFocus) firstFocus.focus();
     }
 }
@@ -294,6 +337,8 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         } catch(e) {}
     }
 
+    // An idle-toggle response can arrive after newer interactive browser preferences.
+    s = getUserSettings();
     const effectiveSlot = (s.slotDuration === 'auto' || !s.slotDuration) ? (s.lastSelectedSlot || 15) : parseInt(s.slotDuration);
     if (typeof setSlotDuration === 'function') {
         setSlotDuration(effectiveSlot, false);

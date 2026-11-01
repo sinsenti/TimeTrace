@@ -104,6 +104,7 @@ function openNewTaskModal() {
 
     const modal = document.getElementById('task_modal');
     if (modal) modal.classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_modal');
 
     setTimeout(() => {
         if (titleInput) {
@@ -197,6 +198,7 @@ async function openEditTaskModal(id) {
 
     const modal = document.getElementById('task_modal');
     if (modal) modal.classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_modal');
 
     setTimeout(() => {
         if (titleInput) {

@@ -43,3 +43,20 @@
   draft/focus preservation passed, while multiline Notes remains ticket 02. No provider/personal
   data, schema change, push or dev merge. Criteria remain unchecked pending independent acceptance;
   this comment records implementation evidence, not completion of this ticket or the graph.
+
+- 2026-11-01 independent-review repair delivery: separate axes retained (Standards two P2;
+  Spec three P1 + two P2), with Habit lifecycle one shared defect. Fresh repair from reviewed
+  `4a723fc` fixes five accepted behavior defects plus the small shared supported-view constant;
+  parent also confirmed and authorized a narrow delayed session-focus interaction repair from
+  actual browser evidence. TDD includes controlled timers and populated-renderer RED evidence.
+  Final Python 352 passed / 85 baseline warnings; all Node 93 passed; 21 changed JS/CJS syntax
+  checks, scoped Ruff/format and whitespace passed; repository Ruff exactly matches 18 baseline
+  diagnostics. Parent browser gate passed actual populated AI, Revision Preferences Save with
+  grade/custom score/dismissal, independent dirty Settings saves/navigation, delayed metadata,
+  real Habit chart disposal/recreation and the original reuse matrix. Four immediate runs retain
+  Notes focus without sleep/readiness masking. Dark metadata/item-button contrast remains an
+  unchanged 3.98986:1 baseline limitation; the exact cause of an earlier uninstrumented session
+  assertion failure remains inconclusive and its raw receipt is retained. See the appended
+  [evidence](../ticket-01-evidence.md) and parent receipt for exact boundaries, failures and limits.
+  **Status remains ready-for-agent/unclosed**: fresh repair-commit and combined-ticket two-axis
+  reviews, parent merger/integration/closure still apply. No push or dev merge.

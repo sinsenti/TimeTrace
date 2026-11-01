@@ -30,7 +30,7 @@ function restoreCalendarContext() {
     breakdownFilter = tag ? { type: 'tag', value: tag } : task ? { type: 'task', value: task } : null;
     const settings = getUserSettings();
     const view = params.get('view');
-    const validView = ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'].includes(view);
+    const validView = SUPPORTED_CALENDAR_VIEWS.includes(view);
     restoringCalendarContext = true;
     try {
         calendar.changeView(validView ? view : settings.lastSelectedView, params.get('date') || undefined);

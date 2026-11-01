@@ -165,6 +165,7 @@ function openNewRatingDefModal() {
     document.getElementById('modal_rating_desc').value = '';
     document.getElementById('modal_rating_delete_btn').classList.add('hidden');
     document.getElementById('rating_def_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('rating_def_modal');
 
     setTimeout(() => {
         const nameInput = document.getElementById('modal_rating_name');
@@ -186,6 +187,7 @@ function openEditRatingDefModal(id) {
     document.getElementById('modal_rating_desc').value = d.description || '';
     document.getElementById('modal_rating_delete_btn').classList.remove('hidden');
     document.getElementById('rating_def_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('rating_def_modal');
 
     setTimeout(() => {
         const nameInput = document.getElementById('modal_rating_name');

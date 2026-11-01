@@ -23,12 +23,11 @@ async function resolveCalendarDropTask(taskId, taskTitle) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    const userSettings = getUserSettings();
-
     if (typeof fetchAllTasksRegistry === 'function') {
         await fetchAllTasksRegistry();
     }
 
+    const userSettings = getUserSettings();
     const seedParams = new URLSearchParams(window.location.search);
     const seedTag = seedParams.get('tag');
     const seedTask = seedParams.get('task');
@@ -47,7 +46,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const calendarEl = document.getElementById('calendar');
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek', 'dayGridMonth'].includes(seedParams.get('view'))
+            initialView: SUPPORTED_CALENDAR_VIEWS.includes(seedParams.get('view'))
                 ? seedParams.get('view') : userSettings.defaultView === 'auto' ? userSettings.lastSelectedView : userSettings.defaultView,
             initialDate: seedParams.get('date') || undefined,
             firstDay: userSettings.firstDayOfWeek,
@@ -260,9 +259,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupVimKeyboardListeners();
     setupExportModalKeyboardShortcuts();
 
-    await applyUserSettings(userSettings, true);
+    await applyUserSettings(getUserSettings(), true);
 
-    if (userSettings.autoScrollNow && !seedParams.has('date')) {
+    if (getUserSettings().autoScrollNow && !seedParams.has('date')) {
         scrollToCurrentTime();
     }
 

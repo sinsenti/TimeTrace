@@ -144,6 +144,7 @@ async function openSessionReviewModal(sessionId) {
         await renderCustomRatingsInputs('session', sessionId, 'session_custom_ratings_container', entries || []);
 
         document.getElementById('session_review_modal').classList.remove('hidden');
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_review_modal');
 
         setTimeout(() => {
             const tagsInput = document.getElementById('session_rev_modal_tags');

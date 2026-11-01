@@ -40,7 +40,14 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function updateSessionReviewTabVisibility() {
-    switchRevisionTab(currentActiveRevTab, false);
+    const enabled = getUserSettings().enableSessionReview !== false;
+    const button = document.getElementById('rev_tab_btn_sessions');
+    if (button) {
+        if (enabled) button.classList.remove('hidden');
+        else button.classList.add('hidden');
+    }
+    // Settings changes must not reload the active editor's text or ratings.
+    if (!enabled && currentActiveRevTab === 'sessions') switchRevisionTab('overview', false);
 }
 
 function handleHashChange() {

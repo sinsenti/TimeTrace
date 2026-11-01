@@ -153,6 +153,30 @@ function setupModalKeyboardListeners() {
     }
 }
 
+let sessionModalFocusVersion = 0;
+
+function scheduleSessionModalFocus(inputId) {
+    const modal = document.getElementById('session_modal');
+    if (!modal) return;
+    const version = ++sessionModalFocusVersion;
+    const previousFocus = document.activeElement;
+    let interacted = false;
+    const markInteraction = () => { interacted = true; };
+    const events = ['focusin', 'input', 'pointerdown', 'keydown'];
+    events.forEach(name => modal.addEventListener(name, markInteraction));
+    setTimeout(() => {
+        events.forEach(name => modal.removeEventListener(name, markInteraction));
+        // Initial focus yields to immediate editing, dismissal and newer popup instances.
+        if (version !== sessionModalFocusVersion || interacted || modal.classList.contains('hidden') ||
+            document.activeElement !== previousFocus) return;
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }, 50);
+}
+
 function openEditSessionModal(sessionId) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
@@ -188,14 +212,9 @@ function openEditSessionModal(sessionId) {
 
     updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal');
 
-    setTimeout(() => {
-        const notesInput = document.getElementById('session_modal_notes');
-        if (notesInput) {
-            notesInput.focus();
-            notesInput.select();
-        }
-    }, 50);
+    scheduleSessionModalFocus('session_modal_notes');
 }
 
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
@@ -257,20 +276,16 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
         const modal = document.getElementById('session_modal');
         if (modal) modal.classList.remove('hidden');
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal');
 
-        setTimeout(() => {
-            const taskSearchInput = document.getElementById('session_modal_task_search');
-            if (taskSearchInput) {
-                taskSearchInput.focus();
-                taskSearchInput.select();
-            }
-        }, 50);
+        scheduleSessionModalFocus('session_modal_task_search');
     } catch (err) {
         console.error("Error opening session modal:", err);
     }
 }
 
 function closeSessionModal() {
+    sessionModalFocusVersion++;
     closeRecurringDeleteModal();
     const modal = document.getElementById('session_modal');
     if (modal) modal.classList.add('hidden');

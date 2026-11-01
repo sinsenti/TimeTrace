@@ -902,6 +902,7 @@ for (const linked of [true, false]) {
         p.elements.set('calendar', p.element());
         p.context.URLSearchParams = URLSearchParams;
         p.context.location = { search: '' };
+        p.load('settings.js'); // Shared supported views load before Calendar in the real page.
         p.context.getUserSettings = () => ({ defaultView: 'timeGridDay', slotDuration: 15 });
         p.context.setupModalKeyboardListeners = () => {};
         p.context.setupVimKeyboardListeners = () => {};
@@ -1008,3 +1009,46 @@ for (const [status, action, expected] of [
         assert.equal(p.elements.has('task_metadata_notice'), false);
     });
 }
+
+test('session initial focus respects immediate editing and closed/reopened popup lifecycles', () => {
+    const p = sessionPage();
+    const timers = [];
+    p.context.setTimeout = callback => timers.push(callback);
+    const modal = p.elements.get('session_modal');
+    modal.removeEventListener = (name, callback) => {if (modal[name] === callback) delete modal[name];};
+    const notes = p.elements.get('session_modal_notes');
+    const search = p.elements.get('session_modal_task_search');
+    let selectedNotes = 0;
+    notes.select = () => selectedNotes++;
+    for (const field of [notes,search]) field.focus = () => {
+        p.context.document.activeElement = field;
+        modal.focusin?.({target:field});
+    };
+    const openCreate = () => p.run('openCreateSessionModal(new Date("2026-11-01T10:00Z"), new Date("2026-11-01T10:30Z"))');
+    const flush = () => {while (timers.length) timers.shift()();};
+    p.context.document.activeElement = {};
+    openCreate(); flush();
+    assert.equal(p.context.document.activeElement,search,'normal create focuses task search');
+    p.run('closeSessionModal(); openEditSessionModal("session-1")'); flush();
+    assert.equal(p.context.document.activeElement,notes,'normal edit focuses Notes');
+    p.run('closeSessionModal()');
+    p.context.document.activeElement = {};
+    openCreate();
+    notes.focus(); notes.value = 'Immediate Notes draft';
+    flush();
+    assert.equal(p.context.document.activeElement,notes,'delayed create autofocus must not steal user Notes focus');
+    assert.equal(notes.value,'Immediate Notes draft');
+    p.run('closeSessionModal()');
+    p.context.document.activeElement = {};
+    openCreate(); p.run('closeSessionModal()'); flush();
+    assert.notEqual(p.context.document.activeElement,search,'closed popup cannot receive delayed focus');
+    p.run('openEditSessionModal("session-1"); closeSessionModal()');
+    openCreate(); flush();
+    assert.equal(p.context.document.activeElement,search,'superseded edit focus cannot replace new create focus');
+    p.run('closeSessionModal(); openEditSessionModal("session-1")');
+    const selectedBefore = selectedNotes;
+    notes.value = 'Typed without another focus change';
+    modal.input?.({target:notes});
+    flush();
+    assert.equal(selectedNotes,selectedBefore,'typing must not be selected over by delayed initialization');
+});

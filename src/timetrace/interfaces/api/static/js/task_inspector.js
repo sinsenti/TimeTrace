@@ -229,6 +229,7 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
             await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings, isCurrent);
             if (!isCurrent()) return null;
             initializedTaskReviewId = taskId;
+            if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_inspector_body', '[id^="task_rev_"], .custom-rating-input');
         }
         if (body) body.classList.remove('hidden');
         taskKnowledge.viewResult('inspector-registry', true);
@@ -265,7 +266,10 @@ async function saveTaskReviewForm() {
         key_takeaways: document.getElementById('task_rev_takeaways') ? document.getElementById('task_rev_takeaways').value || "" : ""
     };
 
+    const markSaved = typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint('task_inspector_body', '[id^="task_rev_"], .custom-rating-input') : () => {};
     await api.post('/api/task-reviews', payload);
     await submitCustomRatings('task', taskId);
+    markSaved();
     loadTaskInspectorStats(taskId);
 }

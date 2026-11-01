@@ -35,3 +35,5 @@ def test_calendar_has_aligned_planning_tools_and_filter_context_outside_totals(c
     assert 'id="btn_toggle_right_sidebar"' in html
     assert 'id="calendar_density"' in html
     assert html.index('id="breakdown_filter_chip"') < html.index('id="right_sidebar"')
+    assert html.index("/static/js/settings.js") < html.index("/static/js/calendar.js")
+    assert html.index("/static/js/settings.js") < html.index("/static/js/dashboard.js")

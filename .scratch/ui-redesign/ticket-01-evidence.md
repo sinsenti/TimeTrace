@@ -120,3 +120,142 @@ not a substitute for every gesture. The bounded DOM scan excludes pixel-canvas t
 configuration was checked through Chart's real public interface. Later tickets and final whole-app
 verification still apply. Parent independent Standards/Spec review, integration and ticket closure
 remain pending; no push, PR, release or dev merge was performed.
+
+## Independent review disposition and fresh repair (2026-11-01)
+
+Repair base is the exact reviewed implementation `4a723fc03ee2b47b40c89b56635060209a65f421`
+on `feat/ui-redesign-01-review-fixes`, with integration `2f978dc` verified as ancestor. This is a
+fresh scoped implementer; the original implementation remains separate history and unmerged.
+Owner checkout and its environment were read-only. Ticket 01 remains **ready-for-agent**, unclosed;
+this repair does not advance the graph or claim full-spec completion.
+
+Separate review axes are retained: **Standards: two P2** (one behavior, one duplication heuristic);
+**Spec: three P1 and two P2**. Both axes identified the same Habit lifecycle defect; that is one
+actual bug, not two. The accepted assignment is five caller-visible behavior repairs plus one small
+shared supported-view constant, not a redesign or a later-ticket implementation.
+
+- Revision's visibility updater no longer reloads the active text/rating editor on Preferences
+  Save, color reshuffle, initial application or irrelevant settings. Disabling Session Review still
+  hides its tab and redirects an active Sessions view to Overview.
+- The new Settings link is non-destructive on its active AI page and confirms dirty departure from
+  initialized Preferences, Revision/day/task-review, task-detail and task/session editor owners.
+  The parent explicitly confirmed these other callers are in scope because the old Settings action
+  stayed in-page. Subtask/rating dialogs use the same small snapshot hook. AI Settings additionally
+  guards other link departure and browser unload. Reverting is clean, successful Save checkpoints
+  only its owner, failed Save stays dirty, Cancel/close discards that dialog explicitly, and explicit
+  leave navigates without autosave/deletion. Modifier navigation can still open another tab.
+- Populated AI provider names/instruction headings and light item-button foregrounds now participate
+  in the existing light tokens. Provider/model/instruction strings stay inert. Dark CSS is unchanged.
+- Calendar reads current preferences after held metadata and again for late settings application;
+  a failed/late idle-toggle response cannot restore stale density/panels. Explicit URL date/view/tag/
+  task precedence and history behavior remain in the existing Calendar boundary.
+- Habit disposal removes registry entries; shared appearance updates skip valid absent/disposed
+  Chart.js instances while still surfacing malformed-live-chart failures. Data/editor state is not
+  rebuilt by appearance changes.
+- `SUPPORTED_CALENDAR_VIEWS` is one frozen constant in already-shared `settings.js`, used by
+  adoption, Calendar initialization and history restoration. HTTP tests verify include ordering.
+
+No framework, dependency, model/schema, migration, service/API semantics or provider inference was
+added. Browser Preferences, daemon AI behavior and provider saves remain separate. Existing explicit
+Preferences Save may apply idle configuration through `/idle/toggle`; this is not a task/day/rating
+mutation and was not removed to make a traffic assertion pass.
+
+### Repair TDD and automation
+
+Public seams are the approved Preferences/navigation/real-daemon editor, Calendar startup and real
+chart/renderer seams, plus executable Node caller regressions. Red-before-green receipts under
+`/tmp/timetrace-ui-implementation.rZwJP1/ticket-01-repair-red-{revision,navigation,startup,habits}.log`
+retain the overwritten day draft, absent navigation guard, stale light snapshot and null-chart failure.
+The parent measured populated-renderer RED before the CSS change (receipt below). The initial startup
+harness lacked `restoreCalendarContext`; that harness error was corrected before recording the actual
+stale-preference assertion failure. An interim existing Node fixture lacked the newly shared settings
+include; it now loads the real include before Calendar, matching the daemon's template order.
+
+Seven new Node caller cases (focused suite 12 → 19) cover actual Preferences Save/reshuffle/application,
+dirty navigation/revert, delayed successful/failed metadata, Habit selection/disposal/recreation,
+supported view adoption/history, failed Save/successful Save with failed refresh owner independence,
+and late failed idle-toggle preferences. Six dependency-free manual browser probes add populated AI,
+real Revision grade/custom-score/dismissal, independent dirty Settings saves, existing task/session
+callers, held metadata and real Chart.js lifecycle coverage. No browser runner dependency was installed.
+
+Current complete automated check receipts are execution-directory `ticket-01-repair-final-*` files:
+352 Python tests passed / 85 existing SQLite warnings; all Node regressions passed 93/93; 19 focused
+Calendar-shell Node tests, 72 task-knowledge caller tests and 11 HTTP/template tests passed. All 21 changed production/test JS/CJS and
+new manual probes passed syntax. Scoped Python Ruff/format and whitespace checks passed. Repository
+Ruff retains the identical 18 baseline diagnostics (16 E501, two E741), plus its existing invalid-noqa
+warning; concise diagnostic comparison with `baseline-results/ruff-concise.stdout` passed. No unrelated
+autofix was performed. These checks do not replace the independent review gates.
+
+### Parent browser gate and final narrow focus repair
+
+Actual parent execution receipt:
+`/tmp/timetrace-ui-implementation.rZwJP1/ticket-01-repair-parent-browser-receipt.md`.
+Parent used existing Playwright MCP, inspected each probe, and created/closed fresh Chromium contexts.
+Scratch `http://127.0.0.1:18142`, PID 501081, DB
+`/tmp/timetrace-ui01-repair.GHWSFT/timetrace.db`; own source/venv verified. Real synthetic public API
+fixtures only, except explicit fake catalog/conversation/instruction responses and deliberate failed
+metadata/settings responses. No provider activation, Test/connectivity, inference, personal storage,
+real credentials or paid calls. Fixture cleanup is separate from observed page-triggered traffic.
+
+| New regression | Parent observed result |
+| --- | --- |
+| Populated AI RED | All three lights: provider names 1.222–1.233:1; instruction headings 1.349–1.361:1 |
+| Populated AI final GREEN | 13 samples per choice; minima Refined 11.1216, Stone 10.0794, Porcelain 11.0384; inert strings; zero page errors/writes |
+| Retained dark comparison | Exactly unchanged: provider metadata and three item buttons remain 3.989858597:1; existing below-4.5 limitation, not whole-dark compliance |
+| Revision real Preferences Save | Literal day text, grade 5, custom score 4 and dismissal retained; cancel/explicit leave work; domain/navigation writes zero |
+| AI Settings dirty navigation | Self-link no reload/prompt; cancel/leave, clean/reverted/successful/failed saves correct; behavior/provider owners remain independent |
+| Other Settings callers | Detail text/attachment/revert, task popup, session Notes/UUID attachment and Preferences Open AI Settings protected; no writes/errors |
+| Held metadata startup | Both success and 503 preserve Dark/Porcelain, 56 density/14px slots, visible Totals, persisted preferences and URL date/view/tag |
+| Real Habit Chart.js lifecycle | Numeric goal: 3 charts → second selection: 2 → deselect: 0 → reselect: 3; appearance keeps data/editor draft; no writes/errors |
+
+The Settings-caller probe passed initially, then an **uninstrumented** run failed its combined
+session note/attachment assertion. Its exact data cause remains **inconclusive**, not silently erased
+by subsequent passes. Four enriched immediate runs independently exposed a confirmed focus bug:
+existing 50ms create autofocus moved Notes focus to task search after canceled Settings confirmation.
+Parent authorized a narrow fix, not a wait/sleep masking the behavior and not ticket-02 editing/layout.
+The controlled-timer caller test first reproduced focus theft, then passed after the delayed initial
+focus yielded to interaction, moved focus, closed popup and superseded popup generations. Normal
+create-search/edit-Notes initialization remains tested. Red/green receipts:
+`ticket-01-repair-{red,green}-session-focus.log`.
+
+After that code repair, **four immediate enriched browser runs**, without arbitrary sleep/readiness
+workarounds, retained Notes focus before/after canceled departure, literal Notes and task UUID,
+all four caller confirmations, zero writes/errors. Receipts `ticket-01-repair-callers-focus-fixed-run1.json`
+through `run4.json`. The normal scoped workflow passed 18 checks without a readiness workaround;
+Revision and populated AI were rerun after the focus repair and passed. The earlier uninstrumented
+failure remains in `ticket-01-repair-browser_dirty_settings_callers-round2.json`.
+
+Original reusable matrix, all against 18142: 12 exact density/slot cases; 12 layout cases; 21 shared
+page/theme cases with 1,113 sampled observations and no issues; three chart choices plus dark restore
+with unchanged draft/data and zero writes; 80 fresh checks; 116 adoption/alias checks; 18 scoped
+workflow checks. Do not sum overlapping suites into a unique assertion total. Other original suites
+ran before the final isolated focus fix; the relevant caller/workflow/Revision/AI checks reran after it.
+Raw receipts use the `ticket-01-repair-reuse-*-result.json` names and
+`ticket-01-repair-final-workflow-no-readiness-workaround.json` in the execution directory.
+
+Two helper failures are also retained rather than hidden: Revision originally counted the existing
+explicit idle configuration apply as a domain write; the assertion now separates `/idle/toggle`
+from task/review/rating writes and requires zero departure writes. The initial reused workflow
+searched for a different synthetic fixture title and hid its Schedule button; correcting that test
+fixture restored the existing flow. Neither required an idle-policy or product-search redesign.
+
+Latest integration `2f978dc` merged before final checks: **Already up to date**. Final full Python
+352/85 warnings and all Node 93 (including the new controlled-timer caller) passed. No schema changes
+or existing-DB copy/migration experiments were made; the fresh scratch daemon applied the existing
+chain through `0013_ai_data_scope`, and its foreign-key check was empty. Final scratch cleanup and
+commit are recorded below after shutdown verification. Independent Standards/Spec review of the
+repair **and combined ticket 01**, parent integration/closure and all later graph gates remain required.
+Physical touch, screen readers, other engines, unsampled zoom/reduced-motion/exhaustive colors and
+all gestures remain uncertified; the retained dark contrast and inconclusive original failure stay
+explicitly disclosed.
+
+Final cleanup: public-API shell fixture DELETE returned 204; synthetic timers are stopped with no
+pending idle gap; idle detection was restored false before shutdown. PID 501081 received SIGINT,
+disappeared, and port 18142 closed. Daemon logs confirm application shutdown/finished process.
+Receipts: `ticket-01-repair-final-{timer.json,db-state.log,shutdown.log}`. Final checks after the last
+source edit/shutdown returned Python 0, Node 0, syntax 0 (21 files), scoped Ruff 0, format 0,
+repository Ruff 1 (unchanged baseline), exact baseline comparison 0 and diff-check 0. The single
+focused repair commit uses the authorized subject
+`fix(ui): preserve drafts and appearance lifecycle [ui-redesign/01]`; its exact SHA is in the
+external delivery report, avoiding a self-referential commit hash here. No staged files are left
+at delivery. No push, PR, integration merge or dev merge was performed by this repair worker.

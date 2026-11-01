@@ -61,7 +61,8 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 :root[data-appearance="light"] .fc-timegrid-slot-label { color: var(--text-muted) !important; }
 :root[data-appearance="light"] :is(#ai_drawer, .ai-settings-section, .ai-drawer-header, .ai-drawer-toolbar, .ai-composer, .ai-message, .ai-conversation-list, .ai-draft-card, .ai-insight-card) { background: var(--bg-card); color: var(--text-main); border-color: var(--border-color); }
 :root[data-appearance="light"] :is(.ai-drawer-title, .ai-settings-title, .ai-settings-hint, .ai-toggle-row-hint, .ai-message-content, .ai-draft-title, .ai-draft-description, .ai-insight-body) { color: var(--text-main); }
-:root[data-appearance="light"] :is(.ai-btn, .ai-icon-btn, .ai-launcher-btn) { background: var(--accent-soft); color: var(--text-main); border-color: var(--border-muted); }
+:root[data-appearance="light"] :is(.ai-provider-card-name, .ai-instruction-proposal-heading) { color: var(--text-main); }
+:root[data-appearance="light"] :is(.ai-btn, .ai-icon-btn, .ai-launcher-btn, .ai-btn-item) { background: var(--accent-soft); color: var(--text-main); border-color: var(--border-muted); }
 
 /* Aligned tool strip: planning tools over Tasks, date/view controls over the real calendar. */
 .calendar-page .planning-header { display: grid; grid-template-columns: var(--planning-tasks-width, 256px) minmax(0, 1fr); background: var(--bg-header); border-bottom: 1px solid var(--border-color); }

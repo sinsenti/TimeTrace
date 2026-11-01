@@ -173,6 +173,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
 
             const attachInput = document.getElementById('inspector_edit_attachments');
             if (attachInput) attachInput.value = tree.attachments || '';
+            if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_properties_editor');
         }
 
         const stats = await api.get(`/api/tasks/${taskId}/stats`);
@@ -328,8 +329,10 @@ async function saveInspectorTaskProperties(event) {
     // A non-recurring task never sends a preset -- that is how "daily" leaked onto every task.
     if (payload.recurrence_rule === 'custom' || !payload.is_recurring) delete payload.recurrence_rule;
 
+    const markSaved = typeof settingsDraftCheckpoint === 'function' ? settingsDraftCheckpoint('task_properties_editor') : () => {};
     try {
         const updatedTask = await api.put(`/api/tasks/${taskId}`, payload);
+        markSaved();
         if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
         await taskKnowledge.changed();
         if (!updatedTask || !updatedTask.completion_policy) {
@@ -447,6 +450,7 @@ function openSubtaskCreationModal(parentId = null) {
     }
 
     document.getElementById('subtask_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('subtask_modal');
 
     setTimeout(() => {
         const input = document.getElementById('modal_subtask_title');
@@ -477,6 +481,7 @@ function openSubtaskEditModal(subtaskId) {
     }
 
     document.getElementById('subtask_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('subtask_modal');
 
     setTimeout(() => {
         const input = document.getElementById('modal_subtask_title');

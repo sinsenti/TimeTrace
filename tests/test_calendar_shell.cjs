@@ -8,11 +8,12 @@ const js = path.resolve(__dirname, '../src/timetrace/interfaces/api/static/js');
 function browser(seed = {}, elements = {}) {
     const storage = new Map(Object.entries(seed));
     const attrs = {};
+    const styles = {};
     const listeners = {};
     const context = vm.createContext({
         localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)) },
         document: {
-            documentElement: { setAttribute: (k, v) => attrs[k] = v, style: { setProperty() {} } },
+            documentElement: { setAttribute: (k, v) => attrs[k] = v, style: { setProperty: (k, v) => styles[k] = v } },
             getElementById: id => elements[id] || null,
             querySelectorAll: () => [],
             addEventListener: (name, fn) => (listeners[name] ||= []).push(fn),
@@ -22,7 +23,7 @@ function browser(seed = {}, elements = {}) {
         window: { location: { href: 'http://localhost/dashboard', search: '' }, addEventListener() {} }
     });
     vm.runInContext(fs.readFileSync(path.join(js, 'settings.js'), 'utf8'), context);
-    return { context, storage, attrs, listeners, run: code => vm.runInContext(code, context) };
+    return { context, storage, attrs, styles, listeners, run: code => vm.runInContext(code, context) };
 }
 
 test('a new browser starts Refined Archive/light with Spacious density and closed totals', () => {
@@ -223,4 +224,174 @@ test('chart appearance changes neutral labels only and restores existing dark st
     assert.equal(chart.options.plugins.legend.labels.color, '#94a3b8');
     assert.equal(chart.options.scales.x.ticks.color, '#64748b');
     assert.equal(chart.options.scales.x.grid.color, '#1a1c26');
+});
+
+test('Revision day drafts survive real Preferences Save, color reshuffle and irrelevant settings application', async () => {
+    const fields = Object.fromEntries(['day_form_rating', 'day_form_highlights', 'day_form_friction', 'day_form_notes'].map(id => [id, {value:'', style:{}}]));
+    fields.day_review_date_input = {value:'2026-11-01'};
+    fields.setting_appearance = {value:'dark'};
+    fields.rev_tab_btn_sessions = panel();
+    const b = browser({}, fields);
+    b.context.api = {get: async () => ({day_review:null, custom_ratings:[], sessions:[], task_breakdown:[], tag_breakdown:[]})};
+    for (const file of ['revision_nav.js', 'ratings_config.js', 'day_review.js']) vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), b.context);
+    b.run("currentActiveRevTab = 'day'");
+    await b.run('loadDayReviewData()');
+    fields.day_form_notes.value = 'Unsaved day reflection';
+    fields.day_form_rating.value = '5';
+    await b.run('saveSettingsFromModal()');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fields.day_form_notes.value, 'Unsaved day reflection');
+    assert.equal(fields.day_form_rating.value, '5');
+    b.run('reshuffleAutoColors()');
+    await b.run('applyUserSettings()');
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(fields.day_form_notes.value, 'Unsaved day reflection');
+    assert.equal(fields.day_form_rating.value, '5');
+    b.run("saveUserSettings({...getUserSettings(), enableSessionReview:false}); updateSessionReviewTabVisibility()");
+    assert.equal(fields.rev_tab_btn_sessions.classList.contains('hidden'), true);
+});
+
+test('Settings self navigation is inert; dirty Preferences cancel/leave/revert preserves separate owners', () => {
+    const appearance = {value:'light', type:'select-one'};
+    const modal = panel(); modal.querySelectorAll = () => [appearance];
+    const b = browser({}, {settings_modal:modal, setting_appearance:appearance});
+    b.context.window.location.href = 'http://localhost/settings/ai';
+    let confirmations = 0;
+    b.context.window.confirm = () => { confirmations++; return false; };
+    b.run('openSettingsModal()');
+    appearance.value = 'dark';
+    assert.equal(b.run('followSettingsLink({})'), false);
+    assert.equal(b.run('followSettingsLink({metaKey:true})'), true);
+    assert.equal(confirmations, 0);
+    b.context.window.location.href = 'http://localhost/revision';
+    assert.equal(b.run('followSettingsLink({})'), false);
+    assert.equal(appearance.value, 'dark');
+    assert.equal(confirmations, 1);
+    b.context.window.confirm = () => true;
+    assert.equal(b.run('followSettingsLink({})'), true);
+    appearance.value = 'light';
+    b.context.window.confirm = () => { throw Error('reverted forms are clean'); };
+    assert.equal(b.run('followSettingsLink({})'), true);
+    assert.equal(b.storage.size, 0);
+});
+
+test('Calendar delayed metadata startup adopts current preferences without reversing URL precedence', async () => {
+    for (const failed of [false, true]) {
+        const right = panel();
+        const b = browser({}, {calendar:{}, right_sidebar:right});
+        b.context.window.location.search = '?date=2026-10-17&view=timeGridDay&tag=%23synthetic';
+        b.context.window.location.href += b.context.window.location.search;
+        let release;
+        b.context.fetchAllTasksRegistry = () => new Promise(resolve => release = () => resolve(failed ? null : []));
+        const calendars = [];
+        b.context.FullCalendar = {Calendar: class {
+            constructor(_element, options) { this.options = options; calendars.push(this); }
+            render() {} setOption(key, value) { this.options[key] = value; } refetchEvents() {} updateSize() {}
+        }};
+        for (const name of ['fetchCalendarEvents', 'setupModalKeyboardListeners', 'setupVimKeyboardListeners', 'fetchTasks', 'scrollToCurrentTime']) b.context[name] = () => {};
+        b.context.getInitialScrollTime = () => '09:00:00';
+        vm.runInContext('let breakdownFilter = null;', b.context);
+        vm.runInContext(fs.readFileSync(path.join(js, 'calendar.js'), 'utf8'), b.context);
+        vm.runInContext(fs.readFileSync(path.join(js, 'dashboard.js'), 'utf8'), b.context);
+        const startup = b.listeners.DOMContentLoaded[1]();
+        b.run("setAppearancePreference('appearance', 'dark'); setCalendarDensity(56); toggleCalendarPanel('right'); saveUserSettings({...getUserSettings(), firstDayOfWeek:0})");
+        release();
+        await startup;
+        assert.equal(b.attrs['data-appearance'], 'dark');
+        assert.equal(b.styles['--calendar-slot-height'], '14px');
+        assert.equal(right.classList.contains('hidden'), false);
+        assert.equal(calendars[0].options.firstDay, 0);
+        assert.equal(calendars[0].options.initialView, 'timeGridDay');
+        assert.equal(calendars[0].options.initialDate, '2026-10-17');
+        assert.equal(b.run('breakdownFilter.value'), '#synthetic');
+        assert.equal(b.run('getUserSettings().calendarDensity'), 56);
+        assert.equal(b.run('getUserSettings().totalsVisible'), true);
+    }
+});
+
+test('Habit chart selection, hidden goal, deselect and recreate tolerate appearance events', async () => {
+    const elements = Object.fromEntries(['completeness_table_body','inspector_kpi_summary','goal_progression_card','inspector_habit_chips'].map(id => [id,panel()]));
+    for (const id of ['chart_habit_doughnut','chart_habit_bar','chart_habit_goal_progression']) elements[id] = {getContext: () => ({canvas:{}})};
+    const b = browser({}, elements);
+    b.context.getComputedStyle = () => ({getPropertyValue: key => key === '--text-muted' ? '#526158' : '#dce3de'});
+    const charts = [];
+    b.context.Chart = class {
+        constructor(ctx, config) { this.ctx = ctx; this.canvas = ctx.canvas; this.options = config.options; this.data = config.data; charts.push(this); }
+        destroy() { this.canvas = null; this.ctx = null; }
+        update() { assert.ok(this.canvas, 'destroyed charts must not receive updates'); }
+    };
+    b.context.api = {get: async () => ({goal_history:[{effective_from:'2026-11-01',target_value:3}],history:[]})};
+    vm.runInContext(fs.readFileSync(path.join(js, 'habits.js'), 'utf8'), b.context);
+    b.run("allHabits = [{id:'one',habit_type:'numeric',name:'Numeric',logs:{}},{id:'two',habit_type:'boolean',name:'Second',logs:{}}]; toggleHabitInspectorSelection('one')");
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(charts.length, 3);
+    b.run("toggleHabitInspectorSelection('two'); setAppearancePreference('appearance','dark')");
+    b.run("deselectAllHabits(); setAppearancePreference('appearance','light')");
+    assert.equal(charts.filter(chart => chart.canvas).length, 0);
+    b.run("toggleHabitInspectorSelection('one')");
+    await new Promise(resolve => setImmediate(resolve));
+    b.run("setAppearancePreference('lightTheme','stone')");
+    const live = charts.filter(chart => chart.canvas);
+    assert.equal(live.length, 3);
+    assert.equal(live[0].options.plugins.legend.labels.color, '#526158');
+    // Valid missing/disposed lifecycle entries are harmless; malformed live charts still throw.
+    b.context.disposed = charts[0];
+    b.run('applyChartAppearance([null, undefined, disposed])');
+    assert.throws(() => b.run('applyChartAppearance([{}])'));
+});
+
+test('supported Calendar views stay aligned across preference adoption and history restoration', () => {
+    for (const view of ['timeGridDay','timeGridThreeDay','timeGridWeek','dayGridMonth','invalid']) {
+        const b = browser({timetrace_user_settings:JSON.stringify({defaultView:view,lastSelectedView:view})});
+        b.context.window.location.search = `?view=${view}`;
+        vm.runInContext('let breakdownFilter = null; let calendar = {changeView(view) {this.view = view;},refetchEvents(){}}; function renderBreakdownLists(){} function renderBreakdownFilterChip(){}', b.context);
+        vm.runInContext(fs.readFileSync(path.join(js, 'calendar.js'), 'utf8'), b.context);
+        b.run('restoreCalendarContext()');
+        assert.equal(b.run('calendar.view'), view === 'invalid' ? 'timeGridWeek' : view);
+        assert.equal(b.run('getUserSettings().lastSelectedView'), view === 'invalid' ? 'timeGridWeek' : view);
+        assert.equal(b.run('getUserSettings().defaultView'), view === 'invalid' ? 'auto' : view);
+    }
+});
+
+test('Revision failed Save stays dirty and successful Save clears only its own draft even if the refresh fails', async () => {
+    const fields = Object.fromEntries(['day_form_rating','day_form_highlights','day_form_friction','day_form_notes'].map(id => [id,{id,value:'',style:{}}]));
+    fields.day_review_date_input = {value:'2026-11-01'};
+    fields.rev_tab_day = {...panel(),id:'rev_tab_day',querySelectorAll: () => Object.values(fields).filter(el => el.id?.startsWith('day_form_'))};
+    fields.settings_modal = {...panel(),id:'settings_modal',querySelectorAll: () => [fields.setting_appearance]};
+    fields.setting_appearance = {id:'setting_appearance',value:'light'};
+    const b = browser({}, fields);
+    b.context.window.location.href = 'http://localhost/revision';
+    b.context.window.confirm = () => false;
+    let failed = false;
+    b.context.api = {get: async () => {if (failed) throw Error('synthetic refresh failure'); return {day_review:null,custom_ratings:[]};},post: async () => {if (failed) throw Error('synthetic save failure');}};
+    for (const file of ['revision_nav.js','ratings_config.js','day_review.js']) vm.runInContext(fs.readFileSync(path.join(js,file),'utf8'),b.context);
+    await b.run('loadDayReviewData()');
+    fields.day_form_notes.value = 'Unsaved review';
+    failed = true;
+    await assert.rejects(b.run('saveDayReviewForm()'),/synthetic save failure/);
+    assert.equal(b.run('followSettingsLink({})'),false);
+    b.run('openSettingsModal()');
+    fields.setting_appearance.value = 'dark';
+    b.context.api.post = async () => {};
+    await b.run('saveDayReviewForm()');
+    assert.equal(b.run('followSettingsLink({})'),false); // Preferences still belongs to its own Save.
+    b.run('closeSettingsModal()');
+    assert.equal(b.run('followSettingsLink({})'),true); // Failed read did not repeat/undo the successful Save.
+});
+
+test('late failed idle-toggle response cannot reverse newer browser density or totals', async () => {
+    const right = panel();
+    const b = browser({}, {right_sidebar:right});
+    let reject;
+    b.context.api = {post: () => new Promise((_resolve,no) => reject = no)};
+    b.run('let idleDetectionEnabled = true; saveUserSettings({...getUserSettings(), idleDetectorEnabled:false})');
+    const applying = b.run('applyUserSettings()');
+    b.run("setCalendarDensity(72); toggleCalendarPanel('right'); setAppearancePreference('appearance','dark')");
+    reject(Error('synthetic idle-toggle failure'));
+    await applying;
+    assert.equal(b.attrs['data-appearance'],'dark');
+    assert.equal(b.styles['--calendar-slot-height'],'18px');
+    assert.equal(right.classList.contains('hidden'),false);
+    assert.equal(b.run('getUserSettings().calendarDensity'),72);
+    assert.equal(b.run('getUserSettings().totalsVisible'),true);
 });

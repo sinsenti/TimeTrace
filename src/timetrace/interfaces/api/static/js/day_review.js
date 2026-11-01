@@ -115,6 +115,7 @@ async function loadDayReviewData() {
 
         await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings);
 
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('rev_tab_day', '[id^="day_form_"], .custom-rating-input');
         renderDayBreakdown();
         renderDaySessionsTimeline();
 
@@ -265,8 +266,11 @@ async function saveDayReviewForm() {
         review_skipped: false
     };
 
+    const markSaved = typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint('rev_tab_day', '[id^="day_form_"], .custom-rating-input') : () => {};
     await api.post('/revision/day-review', payload);
     await submitCustomRatings('day', dateStr);
+    markSaved();
     loadDayReviewData();
 }
 
