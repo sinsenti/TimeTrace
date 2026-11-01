@@ -259,3 +259,117 @@ focused repair commit uses the authorized subject
 `fix(ui): preserve drafts and appearance lifecycle [ui-redesign/01]`; its exact SHA is in the
 external delivery report, avoiding a self-referential commit hash here. No staged files are left
 at delivery. No push, PR, integration merge or dev merge was performed by this repair worker.
+
+## Fresh draft-ownership lifecycle repair (2026-11-01)
+
+**Start:** `054d9373a199e862811bb99d2e2b75c1dc9349c1`, clean branch
+`feat/ui-redesign-01-draft-ownership`. Integration remains ancestor
+`2f978dcf4a3aef21f0d4a5438ba026db1b2e0fe2`; latest integration merge reports **Already up to date**.
+Ticket 01 remains ready-for-agent/unclosed. Fresh independent per-commit **and combined01**
+Standards/Spec review and a parent merger are still required. This is not review acceptance or merge
+permission, nor completion of any other UI ticket.
+
+The two fresh reports were read completely. Their separate axes are preserved: Standards amendment
+one P1/one P2, combined two P1/one P2; Spec amendment/combined one P1/one P2, overlapping defects,
+not duplicate independent bugs. This repair addresses the source-confirmed initialization, alternate
+writer and missing-owner findings only. Previous Revision Preferences, Calendar startup, chart disposal,
+light foregrounds, self-link/independent saves and narrow session-focus repairs remain intact.
+
+### Ownership changes and audit
+
+- Day text/grade checkpoint immediately when initialized, before rating definitions; custom-rating
+  controls own a separate baseline. Initial unknown Save does not write, failed loads show retry state,
+  and superseded reads cannot initialize another date. Same-day failed-summary retry and held rating
+  hydration preserve already-initialized text/rating drafts instead of absorbing them.
+- Successful day POST checkpoints text/grade immediately, including Dismiss, independently of summary
+  refresh. Each successful custom-rating POST checkpoints only that input; partial failure leaves
+  the failed rating dirty. No review/dismissal/required-rating/exemption/completion/scheduling policy changes.
+- AI behavior fields register before initial GET and keep intervening typing through success/503/retry.
+  Unknown Save does not send defaults. Accepted instructions/conflict reload update only a known-clean
+  instruction field; unrelated behavior/provider drafts and already-unsaved instruction text survive.
+  Server hash checks, explicit approval, inert text and domain services are unchanged.
+- Habit definitions and structured/SQL widget forms register at initialized open. Capabilities failure
+  keeps the unknown widget editor closed with an honest reopen/retry message. SQL metadata checkpoints
+  only clean column inputs, retains known saved choices and never consumes title edits.
+- The owner audit additionally found explicit-Save Add Status, inline AI proposal PATCH editors,
+  standing-instruction proposal text and the unsent composer. Parent explicitly authorized minimal hooks
+  at those existing owners. Drawer close retains protection; failed send restores text without replacing
+  concurrently typed composer text. Successful inline PATCH checkpoints submitted fields before refresh.
+- Full owner/exclusion inventory is in `docs/development.md`: existing task/session/detail/subtask,
+  Revision review/definition, Preferences, AI behavior/provider and drawer forms remain distinct.
+  View/date/search/filter/export/chart/tab/batch selections are read/navigation controls; status rows and
+  Habit log amounts already write on change. Blocking name prompts cannot expose Settings mid-edit.
+  No routing framework, persisted draft store, schema/API/product-policy change or future layout work.
+
+### Caller-visible TDD and process limits
+
+New `tests/test_draft_ownership.cjs` runs real feature handlers and the real API client with synthetic
+held/failed HTTP boundaries, not merely imagined helper snapshots. Final **22 added tests** cover
+held/503 day definitions and AI settings, unknown Save, instruction accept/conflict and field ownership,
+Habit new/edit/revert/Cancel/save, structured/SQL widget initialization and metadata, Add Status,
+closed-drawer proposal/composer edits, failed/successful PATCH, Dismiss/failed refresh, partial rating
+Save, failed-summary retry and capability failure/reopen.
+
+Raw receipts are in `/tmp/timetrace-draft-ownership.zAKOeP/`: `day-red.log` (two intended failures),
+`ai-read-red.log` (two), `instruction-red.log` (three), `habit-red.log` (two), `widget-red.log` (two),
+`additional-red.log` (three owner callers), `inline-red.log` (one), `partial-day-red.log` (one),
+`retry-day-red.log` (one), `sql-preview-red.log` (one), followed by green logs and final aggregate checks.
+The first all-CJS run also caught a new helper compatibility issue with root-ID-less DOM fixtures;
+corrected before final green. Those failed receipts remain retained.
+
+**Chronology deviation:** the paired Day Dismiss checkpoint was implemented alongside initial Day
+ownership repair before its separate Dismiss regression was added. There is **no claimed separate
+pre-green Dismiss RED**. Its later automated regression and actual parent browser case passed;
+this does not retroactively certify a test-first sequence for that subcase. Capability-failure and
+held same-owner hydration supplemental cases were also added after their paired lifecycle fixes;
+only the explicit red receipts above are claimed as pre-green evidence.
+
+### Parent browser gate: actual execution, not inferred from source
+
+Parent receipt (including final re-gate):
+`/tmp/timetrace-ui-implementation.rZwJP1/draft-ownership-parent-browser-receipt.md`.
+Own scratch daemon `http://127.0.0.1:18143`; NEW DB
+`/tmp/timetrace-draft-ownership.zAKOeP/timetrace.db`; uv/server PIDs `530766`/`530771`.
+Own `.venv` and source imports verified; tracing/idle off, no personal DB/storage/credentials/provider
+Test/Activate/inference/paid calls. Fresh DB applied existing migrations through `0013_ai_data_scope`.
+
+Parent inspected and actually executed these dependency-free probes with fresh Chromium contexts:
+
+| Probe | Observed result |
+| --- | --- |
+| `browser_draft_initialization.js` | Held day definitions success and 503 retain Notes/grade; canceled Settings writes zero. Real Dismiss POST + public summary readback persists text/grade/skipped; following refresh 503 cleans text only, independently dirty custom rating stays protected and reversion is clean. |
+| `browser_ai_draft_ownership.js` | Held/503/retry keeps instruction/tag drafts; unknown Save writes zero; server-value reversion clean. Fake accept/409 boundaries preserve separate owners and unsaved instructions; clean acceptance clean. |
+| `browser_editor_draft_ownership.js` | Actual Habit new/edit cancel/revert and real PUT/readback; widget held capabilities, real structured POST/readback, optional SQL fake preview/dirty cancel, Add Status draft/Cancel; no departure writes/errors. |
+| `browser_drawer_draft_ownership.js` | Fake conversation/batch/PATCH/503-message boundaries: closed-drawer proposal edits guarded, failed PATCH dirty/success clean, unsent/concurrent/failed-send composer text protected; no inference. |
+| `browser_draft_retry_hydration.js` | Failed-summary + explicit Save retry preserves existing Notes/custom rating; held same-owner definitions preserve intervening rating, zero writes/errors. Fake saved SQL/capabilities/schema/SELECT: capability 503/reopen and repeated held preview preserve known columns, title dirty then reverted clean. |
+
+Original editor probe failed **only its helper**: X and Cancel both matched `closeWidgetBuilder()`.
+Parent corrected the selector to semantic footer Cancel; the exact correction is in committed probe.
+Raw failure is retained; no production change was made for that helper error. Parent reran complete
+initialization/editor probes after final Day/widget fixes, both PASS. AI/drawer initial passes are not
+misrepresented as reruns. Raw first/final files use `draft-ownership-browser_*-round1.json`,
+`draft-ownership-editor-cancel-scoped-result.json`, and `draft-ownership-final-browser_*.json` in the
+execution directory. Synthetic definition/Habit/dashboard fixtures were deleted via public APIs;
+a synthetic today review remains only in the disposable DB because there is no delete-review API.
+
+Parent also reused six existing suites, all PASS: Revision Preferences, dirty AI Settings, task-detail/
+task/session/Preferences Settings callers (Notes focus retained), delayed Calendar success/503,
+real Habit chart disposal/recreation, and chart appearance. Revision explicit Preferences Save's
+existing `/idle/toggle` configuration apply is counted separately: domain/navigation writes zero,
+not falsely zero total traffic. No overlapping suites are summed into invented unique assertions.
+
+### Final checks / remaining gates
+
+Full Python **352 passed, 85 existing warnings**, exit 0; all Node **115 passed** (93 existing +22
+new), exit 0. All **39 combined-range JS/CJS files** (including these 15 changed/new scripts),
+**41 focused Node** and **11 focused HTTP/template Python** tests, scoped Ruff/format checks on
+`tests/test_calendar_shell.py`, and whitespace checks passed. No Python source changed, so changed-Python Ruff/format is not applicable;
+repository Ruff exits 1 with exactly the existing 18 diagnostics (16 E501/two E741) and old invalid-noqa
+warning. Exact concise baseline comparison exits 0; no unrelated autofix. Final logs and daemon logs
+are under the scratch directory; exact shutdown/commit SHA/status are in the external delivery report.
+
+Physical touch, screen readers, other engines, unsampled zoom/reduced-motion/exhaustive gestures/colors
+remain unverified. Unchanged retained-dark contrast 3.98986:1 and the exact inconclusive cause of the
+older uninstrumented session assertion remain disclosed; the separately confirmed focus race was
+previously fixed and still passes. Independent review is required before integration/closure. One
+focused authorized repair commit only; no push, PR, dev merge or integration-branch write.

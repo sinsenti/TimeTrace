@@ -536,6 +536,7 @@ function openNewHabitModal() {
     document.getElementById('modal_habit_delete_btn').classList.add('hidden');
     toggleHabitTypeFields();
     document.getElementById('habit_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('habit_modal');
 
     setTimeout(() => {
         const nameInput = document.getElementById('modal_habit_name');
@@ -559,6 +560,7 @@ function openEditHabitModal(id) {
     document.getElementById('modal_habit_delete_btn').classList.remove('hidden');
     toggleHabitTypeFields();
     document.getElementById('habit_modal').classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('habit_modal');
 
     setTimeout(() => {
         const nameInput = document.getElementById('modal_habit_name');

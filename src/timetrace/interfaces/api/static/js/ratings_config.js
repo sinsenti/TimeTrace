@@ -111,6 +111,8 @@ async function submitCustomRatings(targetType, targetId) {
         if (input) {
             const isDismissed = input.disabled;
             const parsedScore = parseInt(input.value);
+            const markSaved = targetType === 'day' && typeof settingsDraftCheckpoint === 'function'
+                ? settingsDraftCheckpoint('day_custom_ratings_container', `#${input.id}`) : () => {};
             await api.post('/rating-entries', {
                 rating_definition_id: defId,
                 target_type: targetType,
@@ -118,6 +120,7 @@ async function submitCustomRatings(targetType, targetId) {
                 score: isDismissed || isNaN(parsedScore) ? 0 : parsedScore,
                 dismissed: isDismissed
             });
+            markSaved();
         }
     }
 }

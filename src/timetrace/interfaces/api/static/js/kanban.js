@@ -288,6 +288,7 @@ function openAddStatusModal() {
     const modal = document.getElementById('add_status_modal');
     if (modal) {
         modal.classList.remove('hidden');
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('add_status_modal');
         setTimeout(() => {
             if (nameInput) {
                 nameInput.focus();

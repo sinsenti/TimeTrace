@@ -60,3 +60,13 @@
   [evidence](../ticket-01-evidence.md) and parent receipt for exact boundaries, failures and limits.
   **Status remains ready-for-agent/unclosed**: fresh repair-commit and combined-ticket two-axis
   reviews, parent merger/integration/closure still apply. No push or dev merge.
+
+- 2026-11-01 fresh owner-lifecycle repair: initial/failed reads no longer absorb or omit Day/AI
+  drafts; Dismiss, partial rating saves and accepted-instruction synchronization checkpoint only
+  actually persisted fields. Habit/widget, Add Status and shared drawer proposal/composer owners
+  are covered by the new Settings departure guard without new layout/API/policy. Parent inspected
+  and executed five new browser suites plus six reused regressions; final targeted retry/hydration
+  re-gate passed. Full Python352/85 warnings and Node115 pass; Ruff exactly matches18 baseline
+  diagnostics. Evidence preserves the explicit Dismiss test-first chronology deviation and the
+  failed probe-selector receipt. **Status remains ready-for-agent/unclosed** pending fresh
+  per-commit and combined01 two-axis review and parent integration/closure; no later ticket built.

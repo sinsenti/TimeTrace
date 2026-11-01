@@ -193,6 +193,8 @@ function aiAddEditField(container, label, inputEl) {
     container.appendChild(field);
 }
 
+let aiDraftEditorSequence = 0;
+
 /** Structured edit form for a pending draft item -- session and task proposals get their real
  * fields (datetime pickers, a task dropdown, a priority select), never a raw JSON textarea.
  * `PATCH /drafts/items/{id}` MERGES `proposed` into the existing snapshot (never replaces it
@@ -205,6 +207,7 @@ function aiToggleInlineEdit(row, item, batch) {
     }
     editBox = document.createElement('div');
     editBox.className = 'ai-inline-edit-box mt-1.5 pt-1.5';
+    editBox.id = `ai_draft_editor_${++aiDraftEditorSequence}`;
 
     const proposed = item.proposed || {};
     const fieldsWrap = document.createElement('div');
@@ -247,12 +250,13 @@ function aiToggleInlineEdit(row, item, batch) {
         const taskSelect = document.createElement('select');
         taskSelect.disabled = true;
         const noneOpt = document.createElement('option');
-        noneOpt.value = '';
+        noneOpt.value = proposed.task_id || '';
         noneOpt.textContent = 'Loading tasks...';
         taskSelect.appendChild(noneOpt);
         aiAddEditField(fieldsWrap, 'Task', taskSelect);
         addCollector('task_id', () => taskSelect.value || null);
         api.get('/api/tasks').then((tasks) => {
+            const selected = taskSelect.value;
             taskSelect.textContent = '';
             const emptyOpt = document.createElement('option');
             emptyOpt.value = '';
@@ -265,6 +269,13 @@ function aiToggleInlineEdit(row, item, batch) {
                 if (t.id === proposed.task_id) opt.selected = true;
                 taskSelect.appendChild(opt);
             });
+            if (selected && !(tasks || []).some(task => task.id === selected)) {
+                const fallback = document.createElement('option');
+                fallback.value = selected;
+                fallback.textContent = `(task ${selected})`;
+                taskSelect.appendChild(fallback);
+            }
+            taskSelect.value = selected;
             if (hasField('task_id')) taskSelect.disabled = false;
         }).catch((err) => {
             console.error('Failed to load tasks for the draft-item edit form:', err);
@@ -403,11 +414,14 @@ function aiToggleInlineEdit(row, item, batch) {
             hint.style.color = '#f87171';
             return;
         }
+        const markSaved = typeof settingsDraftCheckpoint === 'function' ? settingsDraftCheckpoint(editBox) : () => {};
         try {
             await api.request(`/api/ai/drafts/items/${encodeURIComponent(item.id)}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ proposed: updates })
             });
+            markSaved();
+            if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts([editBox.id])) return;
             if (typeof aiRefreshCurrentBatchView === 'function') aiRefreshCurrentBatchView(batch.id);
         } catch (err) {
             hint.textContent = 'Save failed: ' + (err.message || err);
@@ -424,6 +438,7 @@ function aiToggleInlineEdit(row, item, batch) {
     editBox.appendChild(btnRow);
 
     row.appendChild(editBox);
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(editBox);
 }
 
 function aiBatchStatusBadge(status) {

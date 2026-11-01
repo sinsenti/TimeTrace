@@ -371,3 +371,41 @@ review the result, including data movement and SQLite table rebuilds, before app
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id
 references such as `RatingEntry.target_id` when changing identifiers or relationship structure.
+
+### Settings departure: initialized draft ownership
+
+The ticket-01 guard keeps a baseline per initialized field, not one current-DOM snapshot after
+unrelated reads. A successful writer checkpoints only its submitted fields. Day text/grade and custom
+ratings have separate roots; each successful rating POST checkpoints its own input. Dismiss checkpoints
+only day text/grade before refresh. Same-day retries and late rating reads retain existing drafts.
+Unknown day/AI settings Save performs no write: finish/retry loading first. AI load failures offer
+**Retry load**; widget capability failures keep the unknown form closed and explain reopening to retry.
+Accepted instructions (or an authoritative conflict reload) synchronize only a clean instruction field,
+without clearing other behavior/provider drafts or replacing unsaved instructions.
+
+Current owner audit for the **new Settings link** (not a retrofit of every historical navigation path):
+
+| Existing persisted/consumed editor | Baseline / completion boundary |
+| --- | --- |
+| Preferences | Open; explicit browser Save; existing idle side effect unchanged |
+| Calendar/Tasks task and session dialogs | Initialized open; explicit Save/Cancel; session focus guard retained |
+| Task details / subtask dialog | Initialized properties/open; own Save/Cancel |
+| Revision | Day text/grade and custom ratings independently; task post-mortem, session review and rating-definition dialogs retain their initialized owners |
+| Habits | New/edit definition form; own Save/Cancel (no entry-layout/policy redesign) |
+| Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
+| Tasks Add Status | Open; explicit Save/Cancel (existing status rows still write on change) |
+| AI Settings | Initial behavior baseline before GET, preserve edits through load/retry; provider form remains a separate owner |
+| Shared Assistant | Unsent composer, standing-instruction proposal text and inline proposal editor; successful send/approval/PATCH consumes only its own submitted data; failed actions retain drafts |
+
+Closing the drawer is not discard: its retained composer/proposal fields remain guarded. Explicit
+Cancel removes/closes the corresponding form without writing. Dashboard/conversation name prompts are
+blocking immediate actions, not background drafts. Date/view/search/filter/export controls, task-tab
+visibility, inspector/chart selections and batch-selection checkboxes are navigation/read/selection
+state, not unsaved domain forms. Habit log amounts and existing status-manager rows already write on
+change; this guard adds no autosave or changed domain policy to those paths.
+
+Caller coverage: `tests/test_draft_ownership.cjs` uses real feature handlers and `api_client.js` with
+held/failed HTTP fixtures; five `tests/browser_*draft*ownership.js` / initialization/retry probes are
+manual async functions for the existing browser bridge. See ticket-01 evidence for their exact names,
+actual parent execution, fake boundaries and remaining review/manual limits. No browser framework,
+API/schema change, persisted draft store or later-ticket layout is introduced.

@@ -4,6 +4,17 @@
 
 let currentDaySummary = null;
 let dayBreakdownFilter = null; // { type: 'tag'|'task', value } or null
+let dayReviewDate = null;
+let dayReviewTextReady = false;
+let dayReviewRatingsReady = false;
+let dayReviewLoadGeneration = 0;
+let dayReviewLoading = false;
+let dayReviewReadFailed = false;
+
+function dayTextCheckpoint() {
+    return typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint('rev_tab_day', '[id^="day_form_"]') : () => {};
+}
 
 function setDayReviewToday() {
     const dateInput = document.getElementById('day_review_date_input');
@@ -45,8 +56,27 @@ async function loadDayReviewData() {
     }
 
     const dateStr = dateInput.value;
+    const generation = ++dayReviewLoadGeneration;
+    const sameDay = dayReviewDate === dateStr;
+    const keepText = sameDay && dayReviewTextReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['rev_tab_day']);
+    const keepRatings = sameDay && dayReviewRatingsReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']);
+    if (!sameDay) {
+        const ratings = document.getElementById('day_custom_ratings_container');
+        if (ratings) ratings.innerHTML = '';
+    }
+    dayReviewDate = dateStr;
+    if (!sameDay) {
+        dayReviewTextReady = false;
+        dayReviewRatingsReady = false;
+    }
+    dayReviewLoading = true;
+    dayReviewReadFailed = false;
+    const textFields = ['rating', 'highlights', 'friction', 'notes'].map(name => document.getElementById(`day_form_${name}`));
+    textFields.forEach(el => { if (el) el.disabled = true; });
+    if (typeof rememberSettingsDraft === 'function' && !sameDay) rememberSettingsDraft('rev_tab_day', '[id^="day_form_"]');
     try {
         const data = await api.get(`/revision/day-summary?date_str=${dateStr}`);
+        if (generation !== dayReviewLoadGeneration) return;
         currentDaySummary = data;
         dayBreakdownFilter = null;
 
@@ -107,20 +137,38 @@ async function loadDayReviewData() {
         }
 
         const review = data.day_review;
-        document.getElementById('day_form_rating').value = review ? review.rating : 3;
-        document.getElementById('day_form_highlights').value = review ? (review.highlights || "") : "";
-        document.getElementById('day_form_friction').value = review ? (review.friction || "") : "";
-        document.getElementById('day_form_notes').value = review ? (review.notes || "") : "";
+        if (!keepText) {
+            document.getElementById('day_form_rating').value = review ? review.rating : 3;
+            document.getElementById('day_form_highlights').value = review ? (review.highlights || "") : "";
+            document.getElementById('day_form_friction').value = review ? (review.friction || "") : "";
+            document.getElementById('day_form_notes').value = review ? (review.notes || "") : "";
+            dayTextCheckpoint()();
+        }
+        textFields.forEach(el => { if (el) el.disabled = false; });
+        dayReviewTextReady = true;
         applyDayRatingColor();
-
-        await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings);
-
-        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('rev_tab_day', '[id^="day_form_"], .custom-rating-input');
         renderDayBreakdown();
         renderDaySessionsTimeline();
 
+        if (!keepRatings) {
+            let hydrated = false;
+            await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings, () => {
+                hydrated = generation === dayReviewLoadGeneration && !(sameDay && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']));
+                return hydrated;
+            });
+            if (generation !== dayReviewLoadGeneration) return;
+            if (hydrated && typeof rememberSettingsDraft === 'function') rememberSettingsDraft('day_custom_ratings_container', '.custom-rating-input');
+        }
+        dayReviewRatingsReady = true;
+
     } catch (e) {
+        if (generation !== dayReviewLoadGeneration) return;
+        dayReviewReadFailed = true;
+        const saveBtn = document.getElementById('day_form_save_btn');
+        if (saveBtn) saveBtn.innerText = 'Load failed — retry before saving';
         console.error("Failed to load day review:", e);
+    } finally {
+        if (generation === dayReviewLoadGeneration) dayReviewLoading = false;
     }
 }
 
@@ -249,6 +297,11 @@ async function saveDayReviewForm() {
     if (!dateInput || !dateInput.value) return;
 
     const dateStr = dateInput.value;
+    if (dayReviewLoading) return;
+    if (dayReviewReadFailed || !dayReviewTextReady || !dayReviewRatingsReady || dayReviewDate !== dateStr) {
+        await loadDayReviewData();
+        return;
+    }
 
     if (!validateRequiredCustomRatings('day', dateStr)) {
         return;
@@ -266,17 +319,20 @@ async function saveDayReviewForm() {
         review_skipped: false
     };
 
-    const markSaved = typeof settingsDraftCheckpoint === 'function'
-        ? settingsDraftCheckpoint('rev_tab_day', '[id^="day_form_"], .custom-rating-input') : () => {};
+    const markSaved = dayTextCheckpoint();
     await api.post('/revision/day-review', payload);
-    await submitCustomRatings('day', dateStr);
     markSaved();
+    await submitCustomRatings('day', dateStr);
     loadDayReviewData();
 }
 
 async function dismissDayReview() {
     const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput || !dateInput.value) return;
+    if (!dateInput || !dateInput.value || dayReviewLoading) return;
+    if (dayReviewReadFailed || !dayReviewTextReady || dayReviewDate !== dateInput.value) {
+        await loadDayReviewData();
+        return;
+    }
 
     const dateStr = dateInput.value;
 
@@ -298,7 +354,9 @@ async function dismissDayReview() {
             review_skipped: true
         };
 
+        const markSaved = dayTextCheckpoint();
         await api.post('/revision/day-review', payload);
+        markSaved();
         loadDayReviewData();
     }
 }

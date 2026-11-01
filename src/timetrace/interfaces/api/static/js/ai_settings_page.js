@@ -400,9 +400,27 @@ function aiUpdateDataScopeWarning(providers) {
             : 'Sensitive domains are sent only to the active provider when enabled.';
 }
 
+let aiBehaviorReady = false;
+let aiBehaviorLoading = false;
+let aiBehaviorInitialFields = null;
+
 async function aiLoadBehaviorSettings() {
+    if (aiBehaviorLoading) return;
+    const root = document.getElementById('ai_behavior_settings');
+    const fields = Array.from(root.querySelectorAll('input, select, textarea'));
+    const valueOf = el => el.type === 'checkbox' ? el.checked : el.value;
+    if (!aiBehaviorInitialFields) {
+        aiBehaviorInitialFields = new Map(fields.map(el => [el.id, valueOf(el)]));
+        rememberSettingsDraft('ai_behavior_settings');
+    }
+    aiBehaviorLoading = true;
+    const status = document.getElementById('ai_settings_save_status');
+    if (status) status.textContent = 'Loading behavior settings…';
     try {
         const s = await api.get('/api/ai/settings');
+        const drafts = fields.filter(el => aiBehaviorReady
+            ? hasSettingsDrafts(['ai_behavior_settings'], `#${el.id}`)
+            : valueOf(el) !== aiBehaviorInitialFields.get(el.id)).map(el => [el, valueOf(el)]);
         document.getElementById('ai_setting_quickadd_fallback').checked = Boolean(s.quickadd_fallback_enabled);
         document.getElementById('ai_setting_redact_before_send').checked = Boolean(s.redact_before_send);
         document.getElementById('ai_setting_preview_on_calendar').checked = Boolean(s.preview_on_calendar);
@@ -421,12 +439,29 @@ async function aiLoadBehaviorSettings() {
         document.getElementById('ai_setting_preferred_tags').value = (s.preferred_tags || []).join(', ');
         document.getElementById('ai_setting_custom_instructions').value = s.custom_instructions || '';
         rememberSettingsDraft('ai_behavior_settings');
+        drafts.forEach(([el, value]) => { if (el.type === 'checkbox') el.checked = value; else el.value = value; });
+        aiBehaviorReady = true;
+        if (status) status.textContent = '';
     } catch (err) {
+        if (status) {
+            status.textContent = 'Could not load behavior settings. Your edits are retained. ';
+            const retry = document.createElement('button');
+            retry.type = 'button';
+            retry.textContent = 'Retry load';
+            retry.addEventListener('click', aiLoadBehaviorSettings);
+            status.appendChild(retry);
+        }
         console.error('Failed to load AI behavior settings:', err);
+    } finally {
+        aiBehaviorLoading = false;
     }
 }
 
 async function aiSaveBehaviorSettings() {
+    if (!aiBehaviorReady || aiBehaviorLoading) {
+        if (!aiBehaviorLoading) await aiLoadBehaviorSettings();
+        return;
+    }
     const statusEl = document.getElementById('ai_settings_save_status');
     const payload = {
         quickadd_fallback_enabled: document.getElementById('ai_setting_quickadd_fallback').checked,

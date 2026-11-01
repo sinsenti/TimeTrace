@@ -18,6 +18,7 @@ let wbSqlSchemaLoaded = false;
 let wbMode = 'structured';
 let wbEditing = null;             // { dashboardId, widgetId } when editing, else null
 let wbDashboardId = null;
+let wbOpenGeneration = 0;
 
 async function _ensureCapabilitiesLoaded() {
     if (capabilitiesBySource) return capabilitiesBySource;
@@ -61,6 +62,10 @@ function _wbShowError(message) {
 }
 
 function _wbResetForm() {
+    _wbPendingColumns = null;
+    _wbSqlColumns = [];
+    _wbSetValue('wb_sql_label_column', '');
+    _wbSetValue('wb_sql_value_column', '');
     _wbSetValue('wb_title', '');
     _wbSetValue('wb_width', 'half');
     _wbSetValue('wb_chart', 'bar');
@@ -91,7 +96,16 @@ async function openWidgetBuilder(dashboardId) {
 
     _wbResetForm();
 
-    const caps = await _ensureCapabilitiesLoaded();
+    const generation = ++wbOpenGeneration;
+    modal.classList.add('hidden');
+    let caps;
+    try {
+        caps = await _ensureCapabilitiesLoaded();
+    } catch (err) {
+        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
+        return;
+    }
+    if (generation !== wbOpenGeneration) return;
     document.getElementById('wb_mode_tabs').classList.toggle('hidden', !sqlWidgetsEnabled);
     _fillSelect(document.getElementById('wb_source'),
         Object.keys(caps).map(src => ({ value: src, label: src.replace(/_/g, ' ') })));
@@ -99,6 +113,7 @@ async function openWidgetBuilder(dashboardId) {
     wbSwitchMode('structured');
 
     modal.classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('widget_builder_modal');
 }
 
 async function openWidgetEditor(dashboardId, widgetId) {
@@ -115,7 +130,16 @@ async function openWidgetEditor(dashboardId, widgetId) {
 
     _wbResetForm();
 
-    const caps = await _ensureCapabilitiesLoaded();
+    const generation = ++wbOpenGeneration;
+    modal.classList.add('hidden');
+    let caps;
+    try {
+        caps = await _ensureCapabilitiesLoaded();
+    } catch (err) {
+        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
+        return;
+    }
+    if (generation !== wbOpenGeneration) return;
     document.getElementById('wb_mode_tabs').classList.toggle('hidden', !sqlWidgetsEnabled);
     _fillSelect(document.getElementById('wb_source'),
         Object.keys(caps).map(src => ({ value: src, label: src.replace(/_/g, ' ') })));
@@ -168,9 +192,11 @@ async function openWidgetEditor(dashboardId, widgetId) {
     }
 
     modal.classList.remove('hidden');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('widget_builder_modal');
 }
 
 function closeWidgetBuilder() {
+    ++wbOpenGeneration;
     document.getElementById('widget_builder_modal').classList.add('hidden');
 }
 
@@ -203,6 +229,7 @@ document.addEventListener('DOMContentLoaded', setupWidgetBuilderKeyboard);
 
 function wbSwitchMode(mode) {
     wbMode = (mode === 'sql' && sqlWidgetsEnabled) ? 'sql' : 'structured';
+    _wbSetValue('wb_mode', wbMode);
     document.getElementById('wb_pane_structured').classList.toggle('hidden', wbMode !== 'structured');
     document.getElementById('wb_pane_sql').classList.toggle('hidden', wbMode !== 'sql');
 
@@ -308,6 +335,7 @@ function wbToggleSchema() {
 }
 
 async function wbRunSqlPreview() {
+    const generation = wbOpenGeneration;
     const errorBox = document.getElementById('wb_error');
     errorBox.classList.add('hidden');
     const meta = document.getElementById('wb_sql_meta');
@@ -316,11 +344,16 @@ async function wbRunSqlPreview() {
     try {
         result = await api.post('/analytics/sql', _wbSqlSpec());
     } catch (err) {
+        if (generation !== wbOpenGeneration) return null;
         meta.innerText = '';
         _wbShowError(err.message || 'That query could not be run.');
         return null;
     }
 
+    if (generation !== wbOpenGeneration) return null;
+    const columnDrafts = ['wb_sql_label_column', 'wb_sql_value_column'].map(id => ({
+        id, value: _wbValue(id), dirty: typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['widget_builder_modal'], `#${id}`)
+    }));
     _wbSqlColumns = result.columns || [];
     const head = document.getElementById('wb_sql_preview_head');
     const body = document.getElementById('wb_sql_preview_body');
@@ -349,6 +382,7 @@ async function wbRunSqlPreview() {
     const notes = [`${result.row_count} row(s) in ${result.elapsed_ms}ms`].concat(result.warnings || []);
     meta.innerText = notes.join(' - ');
 
+    const pendingColumns = _wbPendingColumns;
     const colOptions = _wbSqlColumns.map(c => ({ value: c, label: c }));
     _fillSelect(document.getElementById('wb_sql_label_column'), colOptions, 'None');
     _fillSelect(document.getElementById('wb_sql_value_column'), colOptions, 'None');
@@ -357,6 +391,10 @@ async function wbRunSqlPreview() {
         _wbSetValue('wb_sql_value_column', _wbPendingColumns.value || '');
         _wbPendingColumns = null;
     }
+    columnDrafts.forEach(({id, value, dirty}) => {
+        if (dirty || (!pendingColumns && _wbSqlColumns.includes(value))) _wbSetValue(id, value);
+        if (!dirty && typeof rememberSettingsDraft === 'function') rememberSettingsDraft('widget_builder_modal', `#${id}`);
+    });
     wbOnSqlChartChange();
     return result;
 }

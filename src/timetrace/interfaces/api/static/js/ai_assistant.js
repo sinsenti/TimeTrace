@@ -12,6 +12,7 @@ let aiConversationsCache = [];
 let aiConversationsLoadPromise = null;
 let aiConversationCreatePromise = null;
 let aiStreamInFlight = false;
+let aiInstructionEditorSequence = 0;
 
 function aiSetQuickActionsDisabled(disabled) {
     const quickActions = document.getElementById('ai_quick_actions');
@@ -300,12 +301,17 @@ function aiInstructionTextBlock(label, value, className = 'ai-instruction-propos
 function aiSyncCustomInstructions(settings) {
     if (!settings || typeof settings.custom_instructions !== 'string') return;
     const textarea = document.getElementById('ai_setting_custom_instructions');
-    if (textarea) textarea.value = settings.custom_instructions;
+    if (!textarea || (typeof aiBehaviorReady !== 'undefined' && !aiBehaviorReady)) return;
+    const selector = '#ai_setting_custom_instructions';
+    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['ai_behavior_settings'], selector)) return;
+    textarea.value = settings.custom_instructions;
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('ai_behavior_settings', selector);
 }
 
 function aiBuildInstructionProposalNode(proposal, options = {}) {
     const card = document.createElement('section');
     card.className = 'ai-instruction-proposal';
+    card.id = `ai_instruction_editor_${++aiInstructionEditorSequence}`;
     card.dataset.proposalId = proposal.id;
 
     const heading = document.createElement('div');
@@ -404,6 +410,7 @@ function aiBuildInstructionProposalNode(proposal, options = {}) {
             }
         });
     }
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(card);
     return card;
 }
 
@@ -489,7 +496,8 @@ async function aiSendMessage(prompt = null) {
     if (aiStreamInFlight) return;
     const input = document.getElementById('ai_composer_input');
     if (!input) return;
-    const text = prompt === null ? input.value.trim() : String(prompt).trim();
+    const composerText = input.value;
+    const text = prompt === null ? composerText.trim() : String(prompt).trim();
     if (!text) return;
 
     // Set the in-flight guard before the first await. This covers both the conversation lookup
@@ -502,6 +510,7 @@ async function aiSendMessage(prompt = null) {
     let statusNode = null;
     let assistantBubble = null;
     let assistantText = '';
+    let sendFailed = false;
 
     const setStatus = (label) => {
         if (!statusNode) {
@@ -518,7 +527,7 @@ async function aiSendMessage(prompt = null) {
             return;
         }
 
-        if (prompt === null) {
+        if (prompt === null && input.value === composerText) {
             input.value = '';
             aiAutoGrowComposer(input);
         }
@@ -567,6 +576,7 @@ async function aiSendMessage(prompt = null) {
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     break;
                 case 'error': {
+                    sendFailed = true;
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     const msg = (evt.data && (evt.data.error || evt.data.message)) || 'The assistant hit an error.';
                     aiAppendMessageBubble('error', String(msg));
@@ -577,10 +587,15 @@ async function aiSendMessage(prompt = null) {
             }
         });
     } catch (err) {
+        sendFailed = true;
         console.error('AI chat stream failed:', err);
         if (statusNode) { statusNode.remove(); statusNode = null; }
         aiAppendMessageBubble('error', 'Failed to reach the assistant: ' + (err.message || err));
     } finally {
+        if (sendFailed && prompt === null && !input.value) {
+            input.value = composerText;
+            aiAutoGrowComposer(input);
+        }
         aiStreamInFlight = false;
         aiSetQuickActionsDisabled(false);
         if (sendBtn) sendBtn.disabled = false;
@@ -731,6 +746,7 @@ function aiAutoGrowComposer(el) {
 }
 
 function aiSetupDrawer() {
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('ai_drawer', '#ai_composer_input');
     aiRestoreDrawerWidth();
     aiSetupDrawerResize();
 

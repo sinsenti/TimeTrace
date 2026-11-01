@@ -195,32 +195,41 @@ function setupSettingsKeyboardShortcuts() {
 // Only the new Settings departure needs this guard; existing routing stays owned by each page.
 const settingsDrafts = new Map();
 
-function settingsDraftSnapshot(root, selector) {
-    const fields = Array.from(root.querySelectorAll(selector)).map(el => [
-        el.id, el.type === 'checkbox' ? el.checked : el.value,
-        el.classList?.contains('custom-rating-input') ? el.disabled : null
-    ]);
-    if (root.id === 'session_modal' && typeof currentTagChips !== 'undefined') fields.push(['tags', [...currentTagChips]]);
-    return JSON.stringify(fields);
+function settingsDraftFieldSnapshot(el) {
+    return JSON.stringify([el.type === 'checkbox' ? el.checked : el.value,
+        el.classList?.contains('custom-rating-input') ? el.disabled : null]);
 }
 
+// Capture the submitted values before a write; checkpoint only those fields after success.
 function settingsDraftCheckpoint(id, selector = 'input, select, textarea') {
-    const root = document.getElementById(id);
+    const root = typeof id === 'string' ? document.getElementById(id) : id;
+    if (typeof id !== 'string') id = root?.id;
     if (!root?.querySelectorAll) return () => {};
-    const saved = { selector, snapshot: settingsDraftSnapshot(root, selector) };
-    return () => settingsDrafts.set(id, saved);
+    const fields = Array.from(root.querySelectorAll(selector));
+    const saved = fields.map(el => [el.id || el, settingsDraftFieldSnapshot(el)]);
+    const tags = root.id === 'session_modal' && typeof currentTagChips !== 'undefined' ? JSON.stringify(currentTagChips) : null;
+    return () => {
+        const owner = settingsDrafts.get(id) || { fields: new Map(), tags: null };
+        saved.forEach(([key, value]) => owner.fields.set(key, value));
+        if (tags !== null) owner.tags = tags;
+        settingsDrafts.set(id, owner);
+    };
 }
 
 function rememberSettingsDraft(id, selector) {
     settingsDraftCheckpoint(id, selector)();
 }
 
-function hasSettingsDrafts(ids = [...settingsDrafts.keys()]) {
+function hasSettingsDrafts(ids = [...settingsDrafts.keys()], selector = 'input, select, textarea') {
     return ids.some(id => {
         const root = document.getElementById(id);
         const saved = settingsDrafts.get(id);
-        return root && saved && !root.classList.contains('hidden') &&
-            settingsDraftSnapshot(root, saved.selector) !== saved.snapshot;
+        if (!root || !saved || root.classList.contains('hidden')) return false;
+        const fields = Array.from(root.querySelectorAll(selector));
+        return fields.some(el => {
+            const baseline = saved.fields.get(el.id || el);
+            return baseline !== undefined && settingsDraftFieldSnapshot(el) !== baseline;
+        }) || (saved.tags !== null && JSON.stringify(currentTagChips) !== saved.tags);
     });
 }
 
