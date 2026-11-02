@@ -2,7 +2,20 @@
  * TimeTrace Global Task Modal Engine
  */
 
-let sessionModalStateBackup = null;
+let suspendedSessionModal = null;
+
+function resumeSessionModalFromTask(task = null) {
+    if (!suspendedSessionModal) return;
+    const { returnFocus } = suspendedSessionModal;
+    suspendedSessionModal = null;
+    const modal = document.getElementById('session_modal');
+    if (!modal) return;
+    if (task) attachTaskById(task.id, true, task.title, true);
+    modal.classList.remove('hidden');
+    delete modal.dataset.settingsDraftRetained;
+    // Resume the initialized DOM and its original baseline, not a new Session editor.
+    returnFocus?.focus();
+}
 
 function toggleRecurrenceRuleSelect(isRecurring) {
     const container = document.getElementById('recurrence_rule_container');
@@ -106,12 +119,10 @@ function openNewTaskModal() {
     if (modal) modal.classList.remove('hidden');
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_modal');
 
-    setTimeout(() => {
-        if (titleInput) {
-            titleInput.focus();
-            titleInput.select();
-        }
-    }, 50);
+    if (titleInput) {
+        titleInput.focus();
+        titleInput.select();
+    }
 }
 
 async function openEditTaskModal(id) {
@@ -200,23 +211,23 @@ async function openEditTaskModal(id) {
     if (modal) modal.classList.remove('hidden');
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_modal');
 
-    setTimeout(() => {
-        if (titleInput) {
-            titleInput.focus();
-            titleInput.select();
-        }
-    }, 50);
+    if (titleInput) {
+        titleInput.focus();
+        titleInput.select();
+    }
 }
 
-function closeTaskModal() {
+function closeTaskModal(resumeSession = true) {
     const modal = document.getElementById('task_modal');
     if (modal) modal.classList.add('hidden');
+    if (resumeSession) resumeSessionModalFromTask();
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.unselect();
     }
 }
 
 async function saveTask() {
+    const suspendedOwner = suspendedSessionModal;
     try {
         const idEl = document.getElementById('edit_task_id');
         const id = idEl ? idEl.value : '';
@@ -268,24 +279,12 @@ async function saveTask() {
             createdTask = await api.post('/api/tasks', payload);
         }
 
-        closeTaskModal();
+        closeTaskModal(false);
 
         await taskKnowledge.changed();
 
-        if (sessionModalStateBackup && createdTask && createdTask.id) {
-            const backup = sessionModalStateBackup;
-            sessionModalStateBackup = null;
-
-            const startDt = backup.startVal ? new Date(backup.startVal) : new Date();
-            const taskEst = createdTask.estimated_minutes || 15;
-            const sessionMins = taskEst > 120 ? 30 : taskEst;
-            const endDt = backup.endVal ? new Date(backup.endVal) : new Date(startDt.getTime() + sessionMins * 60000);
-
-            openCreateSessionModal(startDt, endDt, createdTask.id, createdTask.title);
-            if (backup.notesVal) {
-                const notesInput = document.getElementById('session_modal_notes');
-                if (notesInput) notesInput.value = backup.notesVal;
-            }
+        if (suspendedOwner && suspendedSessionModal === suspendedOwner && createdTask?.id) {
+            resumeSessionModalFromTask(createdTask);
         }
     } catch (err) {
         console.error("Failed to save task:", err);
@@ -307,13 +306,12 @@ async function deleteTask() {
 }
 
 function openTaskModalFromSessionModal() {
-    sessionModalStateBackup = {
-        startVal: document.getElementById('session_modal_start') ? document.getElementById('session_modal_start').value : '',
-        endVal: document.getElementById('session_modal_end') ? document.getElementById('session_modal_end').value : '',
-        notesVal: document.getElementById('session_modal_notes') ? document.getElementById('session_modal_notes').value : '',
-        tags: typeof currentTagChips !== 'undefined' ? [...currentTagChips] : []
-    };
+    const modal = document.getElementById('session_modal');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const returnFocus = document.activeElement;
     closeSessionModal();
+    suspendedSessionModal = { returnFocus };
+    modal.dataset.settingsDraftRetained = 'true';
     openNewTaskModal();
 }
 

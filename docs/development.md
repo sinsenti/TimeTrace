@@ -423,3 +423,23 @@ Canceled departures must produce no writes, including config writes. The shared-
 keeps immediate samples as diagnostics and asserts contrast only after finite browser animations
 and rendering completion (eight batches maximum, two-second per-batch deadline). It changes no CSS,
 threshold or idle policy and certifies neither transient/all-frame contrast nor whole accessibility.
+
+### Settings departure: suspended Session and late Day writers
+
+Session → **+ Task** suspends the initialized Session DOM and its original draft baseline. The hidden
+owner stays guarded through nested Task editing and successful Task-write/metadata-refresh gaps.
+Nested Task Cancel resumes the Session; successful creation attaches the new Task without replacing
+Session Notes, timestamps or tags. Session Save is still explicit. Session Cancel or an unrelated
+Session opening ends the suspension; ordinary standalone Task Cancel remains discard. Task create/edit
+focus the title when initialization finishes, without deferred focus/select callbacks that can steal
+subsequent Tags typing or act after closure/reopening.
+
+Day reads/writers validate both selected date and editor identity before applying late continuations.
+Leaving and returning to the same date creates a different owner; same-day refreshes retain the owner.
+Stale Save/Dismiss responses cannot checkpoint another editor, submit its ratings or refresh it.
+Dismiss also validates ownership after confirmation; pending rating writes validate again before
+checkpointing/continuing. Already committed writes remain committed. No rating/domain policy changed.
+
+Caller coverage is in `test_draft_ownership.cjs` and the manual native-browser
+`browser_owner_transitions.js` probe. The appended ticket-01 evidence distinguishes actual browser
+checks from controlled timer/HTTP seams, retained failures and remaining independent review gates.

@@ -10,6 +10,12 @@ let dayReviewRatingsReady = false;
 let dayReviewLoadGeneration = 0;
 let dayReviewLoading = false;
 let dayReviewReadFailed = false;
+// Same-day reads may refresh one editor; leaving and returning creates a different owner.
+let dayReviewEditor = null;
+
+function isCurrentDayReviewEditor(editor) {
+    return editor === dayReviewEditor && editor?.date === document.getElementById('day_review_date_input')?.value;
+}
 
 function dayTextCheckpoint() {
     return typeof settingsDraftCheckpoint === 'function'
@@ -61,9 +67,11 @@ async function loadDayReviewData() {
     const keepText = sameDay && dayReviewTextReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['rev_tab_day']);
     const keepRatings = sameDay && dayReviewRatingsReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']);
     if (!sameDay) {
+        dayReviewEditor = { date: dateStr };
         const ratings = document.getElementById('day_custom_ratings_container');
         if (ratings) ratings.innerHTML = '';
     }
+    const editor = dayReviewEditor;
     dayReviewDate = dateStr;
     if (!sameDay) {
         dayReviewTextReady = false;
@@ -76,7 +84,7 @@ async function loadDayReviewData() {
     if (typeof rememberSettingsDraft === 'function' && !sameDay) rememberSettingsDraft('rev_tab_day', '[id^="day_form_"]');
     try {
         const data = await api.get(`/revision/day-summary?date_str=${dateStr}`);
-        if (generation !== dayReviewLoadGeneration) return;
+        if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
         currentDaySummary = data;
         dayBreakdownFilter = null;
 
@@ -153,16 +161,16 @@ async function loadDayReviewData() {
         if (!keepRatings) {
             let hydrated = false;
             await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings, () => {
-                hydrated = generation === dayReviewLoadGeneration && !(sameDay && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']));
+                hydrated = generation === dayReviewLoadGeneration && isCurrentDayReviewEditor(editor) && !(sameDay && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']));
                 return hydrated;
             });
-            if (generation !== dayReviewLoadGeneration) return;
+            if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
             if (hydrated && typeof rememberSettingsDraft === 'function') rememberSettingsDraft('day_custom_ratings_container', '.custom-rating-input');
         }
         dayReviewRatingsReady = true;
 
     } catch (e) {
-        if (generation !== dayReviewLoadGeneration) return;
+        if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
         dayReviewReadFailed = true;
         const saveBtn = document.getElementById('day_form_save_btn');
         if (saveBtn) saveBtn.innerText = 'Load failed — retry before saving';
@@ -319,11 +327,13 @@ async function saveDayReviewForm() {
         review_skipped: false
     };
 
+    const editor = dayReviewEditor;
     const markSaved = dayTextCheckpoint();
     await api.post('/revision/day-review', payload);
+    if (!isCurrentDayReviewEditor(editor)) return;
     markSaved();
-    await submitCustomRatings('day', dateStr);
-    loadDayReviewData();
+    await submitCustomRatings('day', dateStr, () => isCurrentDayReviewEditor(editor));
+    if (isCurrentDayReviewEditor(editor)) loadDayReviewData();
 }
 
 async function dismissDayReview() {
@@ -335,13 +345,14 @@ async function dismissDayReview() {
     }
 
     const dateStr = dateInput.value;
+    const editor = dayReviewEditor;
 
     const confirmed = await showCustomConfirm(
         "Dismiss Day Review",
         `Mark day review for ${dateStr} as dismissed?`
     );
 
-    if (confirmed) {
+    if (confirmed && isCurrentDayReviewEditor(editor)) {
         const ratingEl = document.getElementById('day_form_rating');
         const parsedRating = ratingEl ? parseInt(ratingEl.value) : 3;
 
@@ -356,6 +367,7 @@ async function dismissDayReview() {
 
         const markSaved = dayTextCheckpoint();
         await api.post('/revision/day-review', payload);
+        if (!isCurrentDayReviewEditor(editor)) return;
         markSaved();
         loadDayReviewData();
     }

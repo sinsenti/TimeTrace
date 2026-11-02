@@ -83,3 +83,16 @@
   First helper/full-suite fixture failures remain recorded in [evidence](../ticket-01-evidence.md).
   **Still unclosed/ready-for-agent** pending fresh amendment+combined01 two-axis review and parent
   integration/closure; no later-ticket or whole-spec completion implied.
+
+- 2026-11-02 owner-transition repair, recovered without discarding interrupted partial work:
+  retained Session→+Task ownership spans Cancel/Save/metadata gaps, and late Day Save/Dismiss/rating
+  continuations cannot mutate/clean a different date/editor. Parent additionally authorized minimal
+  Task create/edit initial-focus repair after actual Tags focus theft. Fresh6focus RED→GREEN;
+  final Python352/85warnings, Node146, ownership53,42syntax; exact18baseline Ruff. Parent independently
+  ran hardened13-case browser suite and affected Settings/Revision callers, approved one-commit gate.
+  Prior opaque Task-readback mismatch remains undiagnosed; PromiseGC is a traced bridge-observation
+  limit, not exact Chromium diagnosis. Seeded shared-appearance4.33light failure and four dark3.98986
+  samples remain disclosed; no visual/all-accessibility PASS or color fix. [Evidence](../ticket-01-evidence.md)
+  distinguishes pre/post-focus runs, actual/supplemental TDD, synthetic503 pageerrors and manual limits.
+  **Still ready-for-agent/unclosed** pending fresh amendment+combined01 two-axis review and fresh merger;
+  no integration/dev merge or later ticket implemented.

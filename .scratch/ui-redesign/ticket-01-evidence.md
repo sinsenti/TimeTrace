@@ -502,3 +502,93 @@ key check empty. Timer stopped/no pending idle gap, idle restoredfalse; no real 
 Test/activate/message requests in daemon audit. Owned server53127 and shell53122 absent after SIGINT,
 port18153closed, normal application shutdown (`R/shutdown.json`, `db-final.json`, `daemon.log`).
 One focused repair commit follows; exact SHA belongs in the external report, not a self-reference.
+
+## Owner-transition repair and same-tool recovery (2026-11-02)
+
+The two accepted combined01 P1 findings from reviewed06c5a86 are repaired, not a new feature slice:
+
+- Session → +Task retains the actual initialized Session DOM/baseline while hidden, including the
+  successful Task write → awaited metadata refresh gap. Nested Cancel resumes it; successful Task
+  creation attaches the new Task without replacing Session Notes/times/tags. No implicit Session
+  write. Explicit Session Cancel/unrelated Session open consumes retention; reverted/clean and
+  standalone Cancel remain clean. Resuming the actual editor also preserves an existing edit ID,
+  attachment and original guard baseline rather than rebuilding a falsely clean create form.
+- Day Save/Dismiss continuations validate captured editor identity and selected date before
+  checkpointing, rating submission/continuation or refresh. A→B→A is not the old editor; unrelated
+  same-day reads do not invalidate legitimate successful writer checkpoints. Dismiss validates again
+  after asynchronous confirmation. Already committed A writes remain committed, without rollback/retry.
+  The optional rating-continuation predicate preserves the existing task/session caller defaults.
+- Parent explicitly authorized one additional narrow lifecycle repair from positive browser evidence:
+  existing Task create/edit50ms focus/select callbacks stole focus from already-edited Tags. Both
+  entrypoints now focus/select immediately after visible initialization, with no stale callback to
+  act on interaction, closure or reopening. No generic modal framework or ticket02/04 layout work.
+  This observed race is **not proven to have caused** the earlier opaque Task-readback mismatch below.
+
+### Preserved first failures / TDD / recovery boundary
+
+Persistent root `R=/home/user/.local/state/timetrace-ui-redesign/evidence/owner-transitions-repair/`.
+Original worker was interrupted by a harness update, not normally completed: HEAD06c5a86 plus six
+tracked edits and one untracked probe were preserved byte-for-byte and continued, without reset/stash.
+Original daemon was already dead; no retrospective normal-shutdown claim. All new receipts are `R/recovery/`.
+
+Original actual pre-fix caller REDs remain `R/session-red.log` (3 Notes/time/tag-only handoffs) and
+`R/day-red.log` (Save and Dismiss different editor); original green47/fullNode140 are preliminary
+pre-interruption measurements, not final evidence. Additional lifecycle cases were supplemental,
+not invented individual test-first cycles. `R/ownership-first-full.log` also records an initial failed
+metadata-refresh fixture case; later original greens remain available. Recovery's fresh Task-focus
+TDD is `recovery/task-focus-red.log` (6 intended assertions fail), then `task-focus-green.log` (6 pass).
+Final focused ownership53/fullNode146 include23 cases added to the prior30/123 baselines.
+
+Original browser attempt1 timed out: route glob missed query-bearing task metadata GET, no complete
+receipt/no inferred passes. Attempt2 failed returning a held Save promise directly through Playwright:
+`Resulting promise was garbage collected`. Recovery reproduced it unchanged, tracing completed HTTP,
+no navigation/pageerrors, retained dirty Session, and **resolved actual saveTask/metadata promises**.
+An explicit async evaluate wrapper awaiting that same Save and returning primitive true passes.
+Classified bridge/DevTools result-observation boundary, not an unresolved app Save; exact Chromium GC
+internals are unproven. Diagnostic/control/negative receipts and detailed classification are retained.
+
+`recovery/browser-owner-corrected.json` then failed the opaque `Real Task created` readback assertion.
+That first message omitted body details; HTTP201/200/no daemon exception do not explain the mismatch.
+Focused diagnostic, hardened13-case suite and parent independent run subsequently pass exact POST/GET
+identity/title/tags checks, but the **original mismatch stays undiagnosed**, not dismissed as helper-only
+or declared fixed by the timer change. One bounded pre-fix focus/input/key/request/readback timeline
+proved the separate Task focus theft; no blind sleep, CSS disable, ignored error or lowered assertion.
+
+### Genuine browser, checks and gate
+
+NEW `/tmp/timetrace-owner-recovery.NVvM4E/timetrace.db`, port18155, own source/.venv verified before
+imports/tests/runtime; tracing off, credentials unset, synthetic/fake boundaries only. No personal
+DB/copy/keys, real provider catalog/Test/activation/inference/paid calls or new dependency/framework.
+`recovery/browser-owner-focus-final.json` is ONE post-focus-change13-case native Chromium execution:
+Notes/time/tags-only handoffs, keyboard +/actual button, nested Save held/503 metadata gaps and real
+Task readbacks, create/edit focus lifecycle, Save/Dismiss B Notes/grade and pending Day/rating writes.
+Actual Settings link focus/Enter target/exact discard-confirm message are asserted. Two focus cases
+explicitly advance the browser clock100ms at the timer seam (not a readiness sleep); Node additionally
+covers roundtrip dates, confirmation, changed input before read, same-day refresh and failure/reopen.
+All13 asserted paths pass,0pageerrors; no claim every Node scenario was separately browser exercised.
+
+Parent independently ran all13 against verified NEWDB (`recovery/parent-owner-final.json`) and reran
+Settings callers and Revision Preferences **after** the focus change: draft/attachment/Notes-focus
+retention, no domain/departure writes/errors. Parent inspected exact source/probe hashes and approved
+browser/one-commit gate. Source/tests remained unchanged after approval. Prior15 reused returned suites
+(including8 guard-edge cases) were run **before** final focus repair; not relabeled post-focus checks.
+The two partial-review guard cases each intentionally expose ONE fake503 pageerror; no blanket
+zero-error claim or ticket16/17 polished error-UI delivery.
+
+Reused shared-appearance first failed its missing-task prerequisite. Seeded execution then **FAILS**
+settled dashboard fixture-title contrast4.33:1 in3light themes (auto #0284c7/#111827), not animation.
+Read-only82fabdc/2f978dc/06c5a86 ancestry proves identical palette/color helpers/card text path; the
+new light bridge exempts Task-card descendants. This is a pre-delivery color-helper hole, **not** a
+baseline-browser proof or a visual PASS. No fixture recoloring/color fix bundled. Parent records
+04/25 follow-up coverage separately. Populated AI also retains four dark3.98986:1 observations.
+Transient/all-frame contrast, whole accessibility, physical touch, screen readers, other engines,
+unsampled zoom/reduced motion/colors and exhaustive gestures remain unverified.
+
+Final pre-documentation checks: Python352/85 existing warnings, Node146, ownership53, all42combined
+JS/CJS syntax and diffcheck pass. Full Ruff exits1 with18baseline diagnostics +old invalid-noqa warning;
+stdout/stderr byte comparisons with fresh fixed-base receipt both0 (`*focus-final*` logs).
+No Python/schema/API changes; Python format/scoped lint and personal existing-DB migration N/A.
+Post-documentation/own-branch ancestry rechecks, exact repair SHA, final fixture/timer audit and owned
+PID/socket shutdown are recorded in the authoritative external recovery worker report. Independent
+fresh amendment+combined01 Standards/Spec reviews and fresh merger still required. No integration/dev
+merge, push/PR, ticket01 closure, later-ticket implementation or whole-spec completion claimed.

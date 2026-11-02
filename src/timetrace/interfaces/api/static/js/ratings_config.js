@@ -103,12 +103,13 @@ function validateRequiredCustomRatings(targetType, targetId) {
     return true;
 }
 
-async function submitCustomRatings(targetType, targetId) {
+async function submitCustomRatings(targetType, targetId, isCurrent = () => true) {
     const container = document.getElementById(`${targetType}_custom_ratings_container`);
     const cards = container ? container.querySelectorAll('[data-rating-def-id]') : [];
     const ownerId = targetType === 'task' ? 'task_inspector_body'
         : targetType === 'session' ? 'session_review_modal' : 'day_custom_ratings_container';
     for (let card of cards) {
+        if (!isCurrent()) return;
         const defId = card.getAttribute('data-rating-def-id');
         const input = card.querySelector('.custom-rating-input');
         if (input) {
@@ -123,7 +124,7 @@ async function submitCustomRatings(targetType, targetId) {
                 score: isDismissed || isNaN(parsedScore) ? 0 : parsedScore,
                 dismissed: isDismissed
             });
-            if (document.getElementById(input.id) === input) markSaved();
+            if (isCurrent() && document.getElementById(input.id) === input) markSaved();
         }
     }
 }

@@ -56,7 +56,7 @@ function highlightTaskSuggestionItem(items) {
     });
 }
 
-function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
+function attachTaskById(taskId, preventFocus = false, taskTitle = '', preserveSessionFields = false) {
     if (!taskId) return;
     const known = taskKnowledge.get(taskId);
     // The relationship is independent of metadata availability; only detachTask clears it.
@@ -68,13 +68,14 @@ function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
 
     renderTaskChip();
 
-    if (t.tags && typeof setTagChips === 'function') {
+    // Nested Task creation changes the attachment, not the retained Session draft.
+    if (!preserveSessionFields && t.tags && typeof setTagChips === 'function') {
         setTagChips(t.tags);
     }
 
     const startInput = document.getElementById('session_modal_start');
     const endInput = document.getElementById('session_modal_end');
-    if (startInput && endInput && startInput.value) {
+    if (!preserveSessionFields && startInput && endInput && startInput.value) {
         const startDt = new Date(startInput.value);
         const endDt = endInput.value ? new Date(endInput.value) : null;
         if (!endDt || isNaN(endDt.getTime()) || endDt <= startDt) {

@@ -180,7 +180,7 @@ function scheduleSessionModalFocus(inputId) {
 function openEditSessionModal(sessionId) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
-    closeRecurringDeleteModal();
+    closeSessionModal();
 
     document.getElementById('edit_session_id').value = session.id;
     const titleEl = document.getElementById('session_modal_title');
@@ -219,7 +219,7 @@ function openEditSessionModal(sessionId) {
 
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
     try {
-        closeRecurringDeleteModal();
+        closeSessionModal();
         const editIdEl = document.getElementById('edit_session_id');
         if (editIdEl) editIdEl.value = "";
 
@@ -288,7 +288,11 @@ function closeSessionModal() {
     sessionModalFocusVersion++;
     closeRecurringDeleteModal();
     const modal = document.getElementById('session_modal');
-    if (modal) modal.classList.add('hidden');
+    if (modal) {
+        modal.classList.add('hidden');
+        delete modal.dataset.settingsDraftRetained;
+    }
+    if (typeof suspendedSessionModal !== 'undefined') suspendedSessionModal = null;
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.unselect();
     }

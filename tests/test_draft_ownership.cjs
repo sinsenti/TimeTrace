@@ -11,7 +11,7 @@ function node(id = '', value = '', tag = 'input') {
     return {id, value, tagName:tag.toUpperCase(), type:'text', style:{}, dataset:{}, children, listeners, disabled:false,
         classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)), remove:(...xs)=>xs.forEach(x=>classes.delete(x)), contains:x=>classes.has(x), toggle(x, on = !classes.has(x)) {on ? classes.add(x) : classes.delete(x);}},
         appendChild(el) {children.push(el); return el;}, addEventListener:(name, fn)=>listeners[name]=fn,
-        focus(){}, select(){}, setAttribute(){}, remove(){this.removed = true;}, replaceWith(el){this.replacement = el;},
+        focus(){}, select(){}, setAttribute(){}, removeEventListener(){}, remove(){this.removed = true;}, replaceWith(el){this.replacement = el;},
         querySelectorAll(selector) {return children.flatMap(el => [el, ...el.querySelectorAll(selector)]).filter(el => selector.split(',').some(s => {
             s = s.trim();
             if (s.includes(':not')) return el.id !== 'ai_setting_custom_instructions';
@@ -26,7 +26,7 @@ function browser(elements, files, respond) {
     const writes = [], confirmations = [], events = {};
     const context = vm.createContext({URL, Intl, Event, TextDecoder, console:{error(){}}, setTimeout:fn=>fn(),
         localStorage:{getItem:()=>null,setItem(){}},
-        document:{getElementById:id=>elements[id] || null, createElement:tag=>node('', '', tag), querySelectorAll:()=>[], querySelector:()=>null,
+        document:{body:node('body'), getElementById:id=>elements[id] || null, createElement:tag=>node('', '', tag), querySelectorAll:()=>[], querySelector:()=>null,
             addEventListener:(name, fn)=>(events[name] ||= []).push(fn), documentElement:{style:{setProperty(){}},setAttribute(){}}},
         window:{location:{href:'http://localhost/revision'},addEventListener(){},confirm:message=>{confirmations.push(message);return false;}},
         fetch:async (url, options)=>{
@@ -396,4 +396,183 @@ test('Session review partial success cleans submitted text and first rating, fai
     assert.equal(text.value,'Next draft');assert.equal(fields.session_review_modal.classList.contains('hidden'),false);
     assert.equal(b.run('followSettingsLink({})'),false);
     text.value='Submitted notes';assert.equal(b.run('followSettingsLink({})'),true);
+});
+
+function sessionTaskElements() {
+    const ids=['session_modal','edit_session_id','session_modal_start','session_modal_end','session_modal_notes',
+        'session_modal_task_id','session_modal_task_search','session_modal_tags_input','task_modal','edit_task_id',
+        'modal_input_title','modal_input_desc','modal_input_tags','modal_input_est'];
+    const fields=Object.fromEntries(ids.map(id=>[id,node(id)]));
+    fields.session_modal.children.push(...ids.filter(id=>id.startsWith('session_modal_')).map(id=>fields[id]));
+    fields.task_modal.children.push(...ids.filter(id=>id.startsWith('modal_input_')).map(id=>fields[id]));
+    return fields;
+}
+function sessionTaskBrowser(fields, respond) {
+    const b=browser(fields,['utils.js','task_knowledge.js','tags_engine.js','task_attach.js','session_modal.js','task_modal.js'],respond);
+    b.context.closeRecurringDeleteModal=()=>{};
+    b.context.alert=()=>{};
+    b.run("openCreateSessionModal(new Date('2026-10-01T10:00:00'),new Date('2026-10-01T10:30:00')); setupModalKeyboardListeners()");
+    return b;
+}
+for(const edit of ['notes','time','tags']) test(`Session +Task keyboard handoff retains ${edit}-only ownership; nested Cancel resumes and explicit Cancel discards`,()=>{
+    const f=sessionTaskElements(),b=sessionTaskBrowser(f,()=>({json:[]}));
+    assert.equal(b.run('followSettingsLink({})'),true);
+    if(edit==='notes') f.session_modal_notes.value='Retained Notes';
+    if(edit==='time') f.session_modal_start.value='2026-10-01T09:45';
+    if(edit==='tags') b.run("addTagChip('#retained')");
+    f.session_modal_task_search.listeners.keydown({key:'+',preventDefault(){}});
+    assert.equal(b.run('followSettingsLink({})'),false,'clean Task must not hide retained Session draft');
+    b.run('closeTaskModal()');
+    assert.equal(f.session_modal.classList.contains('hidden'),false,'nested Cancel resumes original editor');
+    assert.equal(b.run('followSettingsLink({})'),false,'resumption must not replace the original baseline');
+    if(edit==='notes') f.session_modal_notes.value='';
+    if(edit==='time') f.session_modal_start.value='2026-10-01T10:00';
+    if(edit==='tags') b.run("setTagChips('')");
+    assert.equal(b.run('followSettingsLink({})'),true,'reversion remains clean');
+    f.session_modal_notes.value='Explicit discard';b.run('closeSessionModal()');
+    assert.equal(b.run('followSettingsLink({})'),true);assert.equal(b.writes.length,0);
+});
+
+for(const action of ['saveDayReviewForm','dismissDayReview']) test(`Late Day ${action} cannot clean or refresh a different initialized editor`,async()=>{
+    const f=dayElements(),held=deferred(),reads=[];
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>{
+        if(options.method==='POST') return held.promise;
+        reads.push(url);return {json:url.startsWith('/rating-definitions') ? [] : {day_review:null,custom_ratings:[]}};
+    });
+    await b.run('loadDayReviewData()');f.day_form_notes.value='X';f.day_form_rating.value='5';
+    const saving=b.run(`${action}()`);await tick();assert.equal(b.writes.length,1);
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
+    f.day_form_notes.value='X';f.day_form_rating.value='5';const before=reads.length;
+    held.resolve({json:{}});await saving;await tick();
+    assert.equal(b.run('followSettingsLink({})'),false,'B matching submitted A values must still be dirty');
+    assert.equal(f.day_form_notes.value,'X');assert.equal(f.day_form_rating.value,'5');
+    assert.equal(reads.length,before,'stale A must not start B refresh');assert.equal(b.writes.length,1);
+    assert.equal(b.writes[0].body.date_str,'2026-11-01');
+});
+
+for(const failRefresh of [false,true]) test(`Task Save retains Session through ${failRefresh?'failed':'held'} metadata refresh and resumes unchanged fields without a Session write`,async()=>{
+    const f=sessionTaskElements(),held=deferred();let refreshing=false;
+    const task={id:'created-task',title:'Created nested',estimated_minutes:60,tags:'#tasktag'};
+    const b=sessionTaskBrowser(f,(url,options)=>{
+        if(options.method==='POST') return {json:task};
+        refreshing=true;return held.promise;
+    });
+    f.session_modal_notes.value='Retained';f.session_modal_start.value='2026-10-01T09:45';
+    b.run("addTagChip('#sessiontag'); openTaskModalFromSessionModal()");f.modal_input_title.value=task.title;
+    const saving=b.run('saveTask()');await tick();assert.equal(refreshing,true);
+    assert.equal(f.session_modal.classList.contains('hidden'),true);assert.equal(f.task_modal.classList.contains('hidden'),true);
+    assert.equal(b.run('followSettingsLink({})'),false,'owner remains guarded while both forms are hidden');
+    held.resolve(failRefresh?{status:503,json:{detail:'Synthetic metadata failure'}}:{json:[task]});await saving;
+    assert.equal(f.session_modal.classList.contains('hidden'),false);assert.equal(f.session_modal_notes.value,'Retained');
+    assert.equal(f.session_modal_start.value,'2026-10-01T09:45');assert.equal(f.session_modal_end.value,'2026-10-01T10:30');
+    assert.equal(b.run('currentTagChips.join(" ")'),'#sessiontag');assert.equal(f.session_modal_task_id.value,task.id);
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(b.writes.length,1);assert.equal(b.writes[0].url,'/api/tasks');
+    b.run('closeSessionModal()');assert.equal(b.run('followSettingsLink({})'),true);
+});
+
+test('Failed nested Task Save retains owner; Cancel then unrelated Task Save cannot resurrect stale Session',async()=>{
+    const f=sessionTaskElements();let fail=true;
+    const b=sessionTaskBrowser(f,(url,options)=>({status:fail&&options.method==='POST'?503:200,json:options.method==='POST'?{id:'standalone',title:'Standalone'}:[]}));
+    f.session_modal_notes.value='Keep';b.run('openTaskModalFromSessionModal()');f.modal_input_title.value='Failed task';
+    await b.run('saveTask()');assert.equal(b.run('followSettingsLink({})'),false);
+    b.run('closeTaskModal(); closeSessionModal(); openNewTaskModal()');f.modal_input_title.value='Standalone';fail=false;
+    await b.run('saveTask()');assert.equal(f.session_modal.classList.contains('hidden'),true);
+    assert.equal(b.run('followSettingsLink({})'),true);assert.equal(f.session_modal_task_id.value,'');
+});
+
+test('Clean/reverted suspension and standalone Task Cancel stay clean; unrelated Session reopen cancels late resumption',async()=>{
+    const f=sessionTaskElements(),held=deferred();
+    const b=sessionTaskBrowser(f,(url,options)=>options.method==='POST'?{json:{id:'created',title:'Nested'}}:held.promise);
+    f.session_modal_notes.value='Reverted';f.session_modal_notes.value='';b.run('openTaskModalFromSessionModal()');
+    assert.equal(b.run('followSettingsLink({})'),true);f.modal_input_title.value='Nested';
+    const saving=b.run('saveTask()');await tick();
+    b.run("openCreateSessionModal(new Date('2026-10-02T10:00:00'),new Date('2026-10-02T10:30:00'))");
+    f.session_modal_notes.value='Different session';held.resolve({json:[{id:'created',title:'Nested'}]});await saving;
+    assert.equal(f.session_modal_notes.value,'Different session');assert.equal(f.session_modal_task_id.value,'');
+    b.run('closeSessionModal(); openNewTaskModal()');f.modal_input_title.value='Discard';b.run('closeTaskModal()');
+    assert.equal(b.run('followSettingsLink({})'),true);
+});
+
+for(const action of ['saveDayReviewForm','dismissDayReview']) test(`Day ${action} A→B→A is a new editor even with the same date`,async()=>{
+    const f=dayElements(),held=deferred();let reads=0;
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>{
+        if(options.method==='POST') return held.promise;
+        reads++;return {json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}};
+    });
+    await b.run('loadDayReviewData()');f.day_form_notes.value='X';const saving=b.run(`${action}()`);await tick();
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
+    f.day_review_date_input.value='2026-11-01';await b.run('loadDayReviewData()');f.day_form_notes.value='X';
+    const before=reads;held.resolve({json:{}});await saving;await tick();
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(reads,before);assert.equal(f.day_form_notes.value,'X');
+});
+
+test('Day Dismiss confirmation must still belong to its editor before collecting payload',async()=>{
+    const f=dayElements(),held=deferred();
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],url=>({json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}}));
+    await b.run('loadDayReviewData()');b.context.showCustomConfirm=()=>held.promise;
+    const dismissing=b.run('dismissDayReview()');f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
+    f.day_form_notes.value='B private draft';held.resolve(true);await dismissing;
+    assert.equal(b.writes.length,0);assert.equal(b.run('followSettingsLink({})'),false);
+});
+
+for(const boundary of ['write','read']) test(`Changing Day input before its next read completes invalidates old ${boundary} continuation`,async()=>{
+    const f=dayElements(),held=deferred();let hold=false;
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>hold&&(boundary==='read'||options.method==='POST')?held.promise:{json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}});
+    await b.run('loadDayReviewData()');f.day_form_notes.value='A';hold=true;
+    const pending=b.run(boundary==='read'?'loadDayReviewData()':'saveDayReviewForm()');
+    f.day_review_date_input.value='2026-11-02';f.day_form_notes.value='B selected, not read';
+    held.resolve({json:{day_review:{rating:5,notes:'Late A'},custom_ratings:[]}});await pending;
+    assert.equal(f.day_form_notes.value,'B selected, not read');assert.equal(b.run('followSettingsLink({})'),false);
+    assert.equal(b.writes.length,boundary==='write'?1:0);
+});
+
+test('Same-day refresh does not invalidate a legitimate successful Day writer checkpoint',async()=>{
+    const f=dayElements(),held=deferred();let saved=false;
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>options.method==='POST'?held.promise:{json:url.startsWith('/rating-definitions')?[]:{day_review:saved?{rating:3,notes:'X'}:null,custom_ratings:[]}});
+    await b.run('loadDayReviewData()');f.day_form_notes.value='X';const saving=b.run('saveDayReviewForm()');
+    await b.run('loadDayReviewData()');saved=true;held.resolve({json:{}});await saving;await tick();
+    assert.equal(b.run('followSettingsLink({})'),true);assert.equal(f.day_form_notes.value,'X');assert.equal(b.writes.length,1);
+});
+
+function mountDayRatings(f,values=[3,3]) {
+    const inputs=values.map((value,i)=>{const input=node(`rating_range_input_${i}`,value);input.classList.add('custom-rating-input');f[input.id]=input;return input;});
+    f.day_custom_ratings_container.children.splice(0,Infinity,...inputs);
+    const query=f.day_custom_ratings_container.querySelectorAll.bind(f.day_custom_ratings_container);
+    f.day_custom_ratings_container.querySelectorAll=s=>s==='[data-rating-def-id]'?inputs.map((input,i)=>({getAttribute:()=>String(i),querySelector:()=>input})):query(s);
+    return inputs;
+}
+for(const phase of ['day POST','rating POST']) test(`Day Save cannot post another editor's rating values or refresh after pending ${phase}`,async()=>{
+    const f=dayElements(),held=deferred();let hold=true,reads=0;
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>{
+        if(options.method==='POST') return hold&&url===(phase==='day POST'?'/revision/day-review':'/rating-entries')?held.promise:{json:{}};
+        reads++;return {json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}};
+    });
+    await b.run('loadDayReviewData()');const a=mountDayRatings(f);b.run("rememberSettingsDraft('day_custom_ratings_container','.custom-rating-input')");a[0].value=5;
+    const saving=b.run('saveDayReviewForm()');await tick();
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');const inputs=mountDayRatings(f);
+    b.run("rememberSettingsDraft('day_custom_ratings_container','.custom-rating-input')");inputs[0].value=5;inputs[1].value=1;
+    const before=reads;hold=false;held.resolve({json:{}});await saving;await tick();
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(reads,before);
+    assert.equal(b.writes.length,phase==='day POST'?1:2,'no subsequent ratings from stale editor');
+    assert.ok(b.writes.filter(w=>w.url==='/rating-entries').every(w=>w.body.target_id==='2026-11-01'&&w.body.score===5));
+});
+
+for(const entry of ['create','edit']) for(const phase of ['interaction','close','reopen']) test(`Task ${entry} initial focus yields after ${phase} without a stale title selection`,async()=>{
+    const f=sessionTaskElements(),timers=[];
+    const b=browser(f,['utils.js','task_knowledge.js','task_modal.js'],()=>({json:{id:'existing',title:'Existing task',tags:'#original',estimated_minutes:30}}));
+    b.context.setTimeout=fn=>timers.push(fn);
+    for(const el of Object.values(f)) el.focus=()=>{b.context.document.activeElement=el;};
+    let selections=0;f.modal_input_title.select=()=>selections++;
+    const open=()=>b.run(entry==='create'?'openNewTaskModal()':'openEditTaskModal("existing")');
+    const flush=()=>{while(timers.length) timers.shift()();};
+    await open();flush();
+    assert.equal(b.context.document.activeElement,f.modal_input_title,'normal initialized Task focuses title');
+    await open();
+    if(phase==='close') b.run('closeTaskModal()');
+    if(phase==='reopen') {b.run('closeTaskModal()');await open();}
+    f.modal_input_tags.focus();f.modal_input_tags.value='#typed';const before=selections;
+    flush();
+    assert.equal(b.context.document.activeElement,f.modal_input_tags,'late initial focus must not steal interaction or focus a closed editor');
+    assert.equal(selections,before,'late callback must not select title after interaction');
+    assert.equal(f.modal_input_tags.value,'#typed');assert.equal(b.writes.length,0);
 });
