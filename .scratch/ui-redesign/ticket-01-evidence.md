@@ -1,8 +1,13 @@
-# Ticket 01 — implementation evidence, review pending
+# Ticket 01 — implementation evidence and bounded local closure
 
-Status remains **ready-for-agent**. Implementation and bounded browser verification are delivered;
-independent per-commit Standards/Spec review and parent integration/closure are still required.
-This is not completion of the graph, whole-app accessibility certification or permission to merge to dev.
+Status: **completed** after reviewed code `2f3024a701ac1ee0a9e79fdc77abdba868baf998` was locally
+fast-forwarded into integration. See [current closure](#local-integration-and-bounded-closure-2026-11-02)
+for fresh evidence, criterion mapping and retained failures/manual limits. The new docs-only closure
+commit still needs parent Standards/Spec review before dependent writers start. Spec **Approved, not
+Built**; no whole-app/accessibility/human acceptance or dev-merge permission.
+
+All earlier sections below are chronological checkpoint history. Their review-pending/unclosed
+wording, counts and ephemeral paths remain historical, not the current status or fresh merger receipts.
 
 ## Scope and adoption
 
@@ -592,3 +597,110 @@ Post-documentation/own-branch ancestry rechecks, exact repair SHA, final fixture
 PID/socket shutdown are recorded in the authoritative external recovery worker report. Independent
 fresh amendment+combined01 Standards/Spec reviews and fresh merger still required. No integration/dev
 merge, push/PR, ticket01 closure, later-ticket implementation or whole-spec completion claimed.
+
+## Local integration and bounded closure (2026-11-02)
+
+**Current state:** ticket01 **completed** per authorized local lifecycle, manual acceptance separately
+limited below. Spec remains **Approved, not Built**. Tickets02–24 remain ready subject to graph;
+25 is not done. Newly unblocked **02,03,04,10,11,15,18,19,21,24**; first parallel02/04/11 only after
+parent fresh Standards/Spec review of the documentation-only closure commit. No dependent writers
+started by this merger, no delegation/push/PR/dev merge/release or whole-delivery claim.
+
+### Identity and review
+
+Fresh merger owned clean `feat/ui-redesign-integration` at
+`2f978dcf4a3aef21f0d4a5438ba026db1b2e0fe2`; verified clean read-only source worktree/ref at
+`2f3024a701ac1ee0a9e79fdc77abdba868baf998` and ancestor relationship. Actual
+`git merge --ff-only feat/ui-redesign-01-owner-transitions` reached **exactly** reviewed code tip,
+zero merge commits. Reviewed tree `5406346c7f5f42085347c4e0acf627321fac2d70`;
+combined5472-line diff SHA256 `4fe9da485115fe07c0befd65be3db74f95e11077667ca8675e3bc3cc2e1520ba`
+independently matches pinned review artifacts. No source changes in integration/closure.
+
+Final amendment `06c5a86...2f3024a` **and** combined01 `2f978dc...2f3024a` independently received
+Standards **0 documented breaches / 0 smells**, Spec **0 P0/P1/P2, OK with notes**. Earlier four
+code commits and their repairs also had independent reviews; failed earlier dispositions remain
+above/in prior reports. No confirmed review finding remains unresolved. These code reviews do not
+approve this new closure documentation, whole delivery, accessibility or human acceptance.
+
+Persistent external root `R=/home/user/.local/state/timetrace-ui-redesign`:
+
+- Final review axes: `R/evidence/prior-reviews/2f3024a-standards.md`, `2f3024a-spec.md`;
+  disposition `R/review-ticket-01-owner-transitions/summary.md`; worker `2f3024a-worker.md`.
+- Prior same-code parent gate: `R/evidence/owner-transitions-repair/recovery/parent-browser-gate.md`,
+  `parent-owner-final.json` (13 cases), `parent-browser_dirty_settings_callers.json`,
+  `parent-browser_revision_preferences.json`. Not rerun/relabelled as merger evidence.
+- Fresh integration root `E=R/evidence/integrated-ticket-01/`: authoritative `merger-report.md`,
+  `ancestry-before.txt`, `fast-forward.txt`, `code-identity.txt`, `reviewed-combined.diff/.sha256`,
+  `source-runtime.txt`, full raw check logs and runtime receipts below. Machine-local links;
+  tracked summary here remains portable. Lost original `/tmp` raw evidence is unavailable, not recreated.
+
+### Acceptance-criterion evidence map (same order as ticket)
+
+| Criterion | Implemented/automated seam | Runtime evidence and boundary |
+| --- | --- | --- |
+| 1. Aligned shell, planning/filter/density/totals adoption | `dashboard.html`, `calendar.js`, `sidebar_totals.js`, `settings.js`; `test_calendar_shell.cjs/.py` | Fresh `browser-layout.json`:12 width/theme cases; `browser-basic-workflow-corrected.json`: fresh88 density, persistent hashtag chip/history, attached Session keyboard Save/readback/render. Earlier density probe12 exact slot combinations is retained prior evidence, not freshly rerun. |
+| 2. Three light themes, shared dark, selective per-browser adoption | Shared `appearance.css`/navbar/settings; Node fresh/existing/invalid/missing/reload fixtures in `test_calendar_shell.cjs` | Fresh12 light layout cases and manual-dark/timer-navigation smoke; prior same-code adoption/appearance receipts retained with known failures. No color-compliance certification. |
+| 3. Retained Calendar/session/timer workflows | Existing FullCalendar/session/timer/recurrence contracts unchanged; full Python/Node regression suites | Fresh native Day/3-day/Week, Back/Forward, Escape no-write, Ctrl+Enter exactly one Session write, exact UUID/Notes/tags/3600s/render; timer start/status, theme/page retention, stop/Session readback. Physical drag/overlap/overnight/touch/exhaustive gestures not freshly exercised/certified; existing paths retained, broad gestures remain manual. |
+| 4. Aliases/direct/history/dirty/old-new coexistence | Seven template includes, Node caller ownership/init/partial-write/keyboard regressions; reviewed source | Fresh10 route/alias browser loads and history. Prior parent's exact-code13-case owner gate plus two affected callers assert actual drafts, key focus/target, exact dialog and real writes/readbacks. `/settings` replacement remains ticket19; existing `/settings/ai` retained. |
+| 5. Adoption and representative narrow/light/dark real app | Source-named adoption regressions and HTTP/template tests | Fresh390/768/1024/1440 three-light geometry/Vim badge sampling;390px browser scheduling/dark/navigation/timer smoke. Not every theme×page×state or other engine/human visual acceptance. |
+| 6. Shared safety/regressions/honest unrun record | Exact pinned code reviews and full checks below; separate synthetic/fake runtime | Fresh isolation, migration/health/FK, fixture/timer/PID/socket cleanup audited. Known failures and manual limits retained; no personal data/credentials/provider calls. This checked item records scoped evidence and disclosure, not every shared whole-app acceptance test passed. |
+
+### Actual fresh integrated checks
+
+All app commands/imports/tests used `E/runtime.env` first: NEW absolute
+`/tmp/timetrace-integrated-01.ixSJY3/timetrace.db`, own integration `.venv` and source, non8002
+loopback18157 verified free; tracing disabled, credentials unset, idle disabled. Browser contexts
+fresh/separate, provider catalog fake in all contexts; synthetic data only, no provider Test/Activate/
+inference/paid calls or personal DB/copy/key use. No unknown `.tt-env` sourced or new dependency.
+
+| Actual command/check | Result / fresh receipt |
+| --- | --- |
+| `uv run python -P -m pytest -q` | **352 passed /85 existing SQLite warnings**, exit0; `pytest.stdout/.stderr/.exit` |
+| `node --test tests/*.cjs tests/test_tags_engine.js` | **146 passed /0 failed**, exit0; `node.stdout/.stderr/.exit` |
+| `node --check` every `2f978dc..2f3024a` JS/CJS | **42 passed**; `syntax-files.txt`, `syntax.txt` |
+| `uv run ruff check . --no-cache --output-format concise` | exit1, **18 baseline diagnostics** + old invalid-noqa warning; `ruff.stdout/.stderr/.exit` |
+| `cmp` both Ruff streams with `R/evidence/fresh-verification/run.zoEyTE/baseline-ruff.*` | both exit0, byte-identical; `ruff-comparison.txt`; no cleanup/autofix |
+| Scoped Ruff + `ruff format --check tests/test_calendar_shell.py` | pass, already formatted; `scoped-python-checks.txt`. No production Python/amendment/closure Python edits. |
+| `git diff --check 2f978dc HEAD` | pass; `whitespace.txt` |
+| Fresh actual daemon `timetrace.main:daemon_app` startup/health/FK | healthy exact DB/18157, migrations through0013, FK empty; `daemon.log`, `health.json`, `db-final.json` |
+| Native runner `tests/browser_calendar_shell_layout.js` | **12 cases returned/pass**,390/768/1024/1440 ×three lights, bounded geometry/Vim contrast only; `browser-layout.json` |
+| Native runner custom `basic-workflow.js` | first render-wait timeout **FAIL retained**; one parent-authorized harness correction, then **26 assertions/10 routes/0pageerrors PASS**; `browser-basic-workflow{,-corrected}.json` |
+
+No schema/db changes, so personal existing-DB migration-copy check **N/A**, not run; fresh migration
+chain was actually exercised without stamp/create-all fallback. Parent broad visual/ownership suites
+were not all rerun. Prior15 reused suite matrix predates final Task focus change; two deliberate
+partial-review503 pageerrors remain disclosed, not a blanket zero-error statement.
+
+The first custom smoke used literal `?tag=merger` against fixture `#merger`: exact token filtering
+excluded the real saved Session. Its keyboard201+GET UUID/Notes/duration succeeded, but render wait
+timed out; no inferred full pass. Parent source-traced `seedTag`/history and exact hashtag-token
+`sessionMatchesBreakdownFilter`, authorized ONE harness-only correction to `tag=%23merger`.
+Original probe retained as `basic-workflow-original-failed.js`. Corrected run asserts actual filter
+value `#merger`, exact saved/readback tags and matching predicate before real event rendering,
+plus all prior readback/write-count assertions. Then timer/theme/navigation/stop path passed in that
+single corrected full run. No production edit, assertion lowering or repeated green hunting.
+
+### Cleanup and retained residuals
+
+Fresh smoke deleted its two created Sessions and Task via public APIs; first failed attempt's own
+fixtures also deleted in finally. DB final domain/AI counts0, seeded5statuses/1dashboard/9widgets/
+1AISettings and FTS bookkeeping remain. `db-final.json` migration0013/FK empty; `timer-final.json`
+stopped, not frozen, no pending gap, idlefalse. Siblings only disposable DB/active_timer.json.
+Owned daemon237941 cwd/socket verified, SIGINT normal shutdown, PID absent/18157closed/health
+curl7 (`process-before-shutdown.txt`, `shutdown.txt`, `daemon.log`). Provider-call audit empty.
+Worktrees retained for parent review; original owner checkout and unrelated session-retro untouched.
+
+Retained known **FAIL**: seeded shared-appearance Task title **4.33:1 in three light Calendar cases**
+(auto#0284c7/text#111827). Helper/palette/card ancestry identical82/2f/06 and lightCSS exemption show
+pre-delivery source hole, **not baseline-browser proof or all-palette compliance**. Four AI dark
+**3.98986:1** observations are separate. No recoloring, threshold change or out-of-scope color fix;
+parent04/25 follow-up remains `R/research/frontier-regressions.md`.
+
+Original opaque Task readback mismatch **undiagnosed**; later passes and separately repaired focus
+theft prove neither its cause nor flake-free behavior. PromiseGC traced actual Save RESOLVED/direct
+bridge observation boundary, exact Chromium internal cause unknown. Historical unavailable raw
+`/tmp` receipts and supplemental TDD/Dismiss chronology limitations remain as documented above.
+Physical touch, screen readers, other engines, exhaustive gestures, unsampled zoom/reduced-motion/
+colors, whole accessibility and human visual acceptance remain **unverified**. Completion is bounded
+implementation/review/evidence lifecycle only; no later-ticket layout (02 multiline/04 queue/15
+workspace/19 tabbed Settings), whole25 completion or futuredev/human approval implied.

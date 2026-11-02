@@ -2,7 +2,7 @@
 
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
-**Current frontier:** 01, Calendar shell and shared appearance. All 25 tickets are ready-for-agent subject to technical blockers; none is completed. Implementation is now requested; this seed is documentation only.
+**Current frontier:** 02, 03, 04, 10, 11, 15, 18, 19, 21, 24 after bounded ticket 01 completion. Tickets 02–24 remain ready-for-agent subject to the graph; 25 is not done. First recommended parallel lanes: **02 / 04 / 11**, only after parent fresh Standards/Spec review of the closure commit. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
 **Execution record:** [Implementation and review gates](implementation.md), including the fixed base and external reference evidence.
 
 ## Approval record and readiness
@@ -15,12 +15,17 @@ On 2026-11-01, after the full eight-part questionnaire, the owner explicitly ans
 “yes to all answer. and final approve as well”. This accepts every recommendation, resolves O1–O8
 and approves the final production spec and verification plan. Tickets are now **ready-for-agent**.
 This status means specified work, not completed work or permission to ignore technical blockers.
-Ticket **01** is the sole current unblocked frontier; all other tickets still wait for prerequisites.
+At that historical approval checkpoint, ticket **01** was the sole unblocked frontier. The current
+frontier above follows its local integration/recorded implementation completion; other blockers remain.
 
 Those approval records did not themselves authorize implementation or commits. The owner has since
 requested implementation with local branches/commits and integration merges, as recorded in
 [implementation.md](implementation.md). Later review gates remain required; no push, PR or `dev`
-merge is authorized. No production code, app runtime or provider calls are part of this seed.
+merge is authorized. No production code, app runtime or provider calls were part of the historical seed.
+Ticket 01 is now integrated at reviewed code `2f3024a701ac1ee0a9e79fdc77abdba868baf998`;
+[closure evidence](ticket-01-evidence.md#local-integration-and-bounded-closure-2026-11-02)
+records fresh integrated checks, retained failures and deferred manual acceptance. No dependent writer
+starts before the parent's independent closure-commit review.
 Ticket approval paragraphs and Comments retain their historical checkpoint wording; the execution
 record supplies current authorization without rewriting ticket identities, criteria or history.
 

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start when implementation is requested).
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **Approved decisions:** O8, O1, O2, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,12 +12,17 @@
 
 ## Acceptance criteria
 
-- [ ] Use the Aligned tool strip, planning task controls, persistent tag/task filter chip, fresh Spacious 88px/hour density and independently collapsible totals; honor the approved adoption policy instead of resetting existing preferences.
-- [ ] Offer all three light themes; brand-new browsers start Refined Archive/light. Manual light/dark switching uses existing dark appearance for every light option, preserves existing users' appearance/colors and adds no automatic OS switching. Persist theme, task view, density and totals per browser across reloads; default only missing/invalid individual settings.
-- [ ] Retain Day/3-day/Week, navigation, overlap/overnight display, drag/drop and keyboard/touch alternatives; session and timer workflows remain usable through existing components.
-- [ ] Preserve aliases, direct entry, Back/Forward, dirty editors and old/new page coexistence without duplicate shortcuts or missing shared components.
-- [ ] Verify fresh, existing, invalid and missing preferences plus real-daemon navigation and representative light/dark narrow-screen workflows.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+Checked items record bounded implementation and the traceable automated/runtime evidence in
+[the closure mapping](../ticket-01-evidence.md#local-integration-and-bounded-closure-2026-11-02),
+not physical-touch, exhaustive-gesture, color-compliance or human acceptance. Historical unchecked/
+unclosed comments below describe their own checkpoints and are retained unchanged.
+
+- [x] Use the Aligned tool strip, planning task controls, persistent tag/task filter chip, fresh Spacious 88px/hour density and independently collapsible totals; honor the approved adoption policy instead of resetting existing preferences.
+- [x] Offer all three light themes; brand-new browsers start Refined Archive/light. Manual light/dark switching uses existing dark appearance for every light option, preserves existing users' appearance/colors and adds no automatic OS switching. Persist theme, task view, density and totals per browser across reloads; default only missing/invalid individual settings.
+- [x] Retain Day/3-day/Week, navigation, overlap/overnight display, drag/drop and keyboard/touch alternatives; session and timer workflows remain usable through existing components.
+- [x] Preserve aliases, direct entry, Back/Forward, dirty editors and old/new page coexistence without duplicate shortcuts or missing shared components.
+- [x] Verify fresh, existing, invalid and missing preferences plus real-daemon navigation and representative light/dark narrow-screen workflows.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -96,3 +101,21 @@
   distinguishes pre/post-focus runs, actual/supplemental TDD, synthetic503 pageerrors and manual limits.
   **Still ready-for-agent/unclosed** pending fresh amendment+combined01 two-axis review and fresh merger;
   no integration/dev merge or later ticket implemented.
+
+- 2026-11-02 local integration/closure: fresh merger verified clean integration `2f978dc` and exact
+  source `2f3024a701ac1ee0a9e79fdc77abdba868baf998`, ancestry and independent final amendment +
+  combined01 Standards/Spec zero-finding axes, then **fast-forward only**, no merge commit. Status
+  is now **completed** per the authorized implementation lifecycle, with criterion-by-criterion
+  [recorded evidence](../ticket-01-evidence.md#local-integration-and-bounded-closure-2026-11-02).
+  Fresh integrated352Python/85warnings,146Node,42syntax, scoped test lint/format and whitespace pass;
+  full Ruff retains exact18baseline diagnostics+warning. Fresh0013health/FK,12native layout cases
+  and26-assertion corrected scheduling/timer/navigation smoke pass; original custom-probe filter
+  mismatch failure retained with parent-authorized single harness correction, not a product fix.
+  All own fixtures cleaned; timer stopped/idlefalse, PID237941 absent/18157closed. Final parent
+  13-case+two-caller browser gate remains prior same-source evidence, not merger execution.
+  Seeded3light4.33FAIL, four dark3.98986 observations, opaque Task mismatch undiagnosed, exact GC
+  internals unknown, lost historical raw evidence and supplemental TDD chronology limits remain.
+  Physical touch/screen reader/other engines/exhaustive gestures/whole-a11y/human visual acceptance
+  remain deferred; no blanket visual PASS. Spec **Approved, not Built**. Newly unblocked:
+  02,03,04,10,11,15,18,19,21,24; first02/04/11 wait for parent fresh two-axis closure-commit review.
+  No later ticket or whole-spec completion, push/PR/dev merge/release/human approval is claimed.
