@@ -8,8 +8,8 @@ no-start/no-commit wording in approval records describes the earlier approval-on
 a current implementation blocker. Preserve that approval history; do not reopen O1–O8 or treat the
 spec as Built. The parent owns the task graph, worktree orchestration and every review; seed workers
 do not delegate. The historical seed was one authorized documentation-only planning commit, not
-production implementation. Ticket 01 has since been locally integrated and completed with bounded
-evidence below; this does not complete the spec.
+production implementation. Tickets01 and11 have since been locally integrated and completed with
+bounded evidence below; this does not complete the spec.
 
 - Fixed pre-delivery base: `82fabdc652c59da87de0f57d7770d0aa32fb7f64` (before this seed).
 - Integration branch: `feat/ui-redesign-integration`.
@@ -20,9 +20,13 @@ evidence below; this does not complete the spec.
 - Graph: [published backlog](README.md), 25 unchanged ticket identities/dependencies/criteria/history.
 - Ticket **01 completed**, reviewed code `2f3024a701ac1ee0a9e79fdc77abdba868baf998`, locally
   fast-forwarded from seed `2f978dcf4a3aef21f0d4a5438ba026db1b2e0fe2` without a merge commit.
-- Newly unblocked frontier: **02, 03, 04, 10, 11, 15, 18, 19, 21, 24**. First recommended parallel
-  lanes **02 / 04 / 11** wait for fresh parent Standards/Spec review of the one docs-only closure
-  commit. Tickets 02–24 retain `ready-for-agent` subject to remaining edges; 25 is not done.
+- Ticket **11 completed**, reviewed code `9cf076cc5297cc10e6b157257a35362f18893a20`, locally
+  fast-forwarded from `7ed9bf330677fb317793aa4371c4f36f407a2595` without a merge commit.
+- Computed frontier: **02, 03, 04, 10, 12, 13, 14, 15, 18, 19, 21, 24**. Only01+11 completed;
+  all others remain pending (`ready-for-agent`) subject to remaining edges;25 is not done.
+  Reservation **11 → 02 → 04** remains; paused02/04 dirty uncommitted checkpoints are preserved
+  read-only and continuations **HOLD** until fresh parent Standards/Spec review of the new ticket11
+  docs-only closure commit.12/13/14 are technically unblocked, not launched.
 - No push, PR, release or merge into `dev` is authorized. Do not reset/stash or overwrite owner edits.
 
 ## Review and completion obligations
@@ -33,8 +37,9 @@ The parent arranges both axes and handles confirmed findings/re-review before su
 This record does not substitute for those reviews. The final code amendment `06c5a86...2f3024a`
 and combined ticket `2f978dc...2f3024a` each have independent Standards 0 documented breaches /
 0 smells and Spec 0 P0/P1/P2 (OK with notes). Every earlier code commit was reviewed too; prior
-findings and repairs remain in [ticket evidence](ticket-01-evidence.md). The new documentation-only
-closure commit still requires fresh parent two-axis review before dependent writers start.
+findings and repairs remain in [ticket evidence](ticket-01-evidence.md). The prior documentation-only
+ticket01 closure commit has passed its parent gate; the new ticket11 documentation-only closure
+commit requires fresh parent two-axis review before paused continuations resume.
 
 After all 25 tickets are implemented, run the full integrated automated checks and independent
 whole-delivery two-axis review against the fixed base above, covering **all tickets together**, tests
@@ -72,7 +77,7 @@ local ticket worktrees can read them at this root; a clone on another machine ca
 checkout unchanged for reviews; any future reference archive/relocation needs an explicit scoped
 handoff, not silent copying. Historical preview ports/URLs do not promise a running server.
 
-## Current integrated verification and closure
+## Ticket01 integrated verification and closure (historical run)
 
 Fresh merger verified clean integration/ref/source ancestry and fast-forwarded to **exactly** reviewed
 `2f3024a701ac1ee0a9e79fdc77abdba868baf998` (code tree `5406346c7f5f42085347c4e0acf627321fac2d70`;
@@ -114,6 +119,50 @@ not baseline-browser proof), four dark **3.98986:1** observations, original opaq
 screen-reader/other-engine/exhaustive-gesture/whole-accessibility/human-visual gaps remain disclosed.
 Ticket 01 completion records bounded implementation/review/evidence only; whole-delivery review at
 fixed `82fabdc` and human/dev-merge gates remain mandatory. Spec stays **Approved, not Built**.
+
+## Ticket11 current integrated verification and closure
+
+Fresh merger verified clean expected integration `7ed9bf330677fb317793aa4371c4f36f407a2595`,
+clean read-only source worktree/ref `9cf076cc5297cc10e6b157257a35362f18893a20` and ancestry;
+`git merge --ff-only feat/ui-redesign-11-review-fixes` reached that exact reviewed code. No merge
+commit or source/test correction. Independent amendment and combined 11 Standards/Spec reviews
+both report zero findings; the initial unique obsolete-Retry P1 is repaired, not waived.
+
+Fresh own integration source/venv execution: **356 Python passed / 101 warnings** (16 existing
+SQLite adapter warnings exposed by the four added API tests); **167 Node passed**, **57 explicitly
+listed JS/CJS syntax passes**, scoped new Python Ruff/format and whitespace pass. Full concise
+`ruff check --no-cache` exits1 with 18 baseline findings; separate stdout and stderr each byte-match
+`evidence/fresh-verification/run.zoEyTE/baseline-ruff.*`. No schema changes; existing-DB migration-copy
+verification N/A, no personal copy made. NEW `/tmp/timetrace-integrated-11.NRiJbl/timetrace.db`
+set before imports/tests/runtime, own `.venv`/source, free loopback18169, idle/tracing off,
+credentials unset, fresh browser contexts and fake provider catalog. Actual `main:daemon_app`
+startup migrated through `0013_ai_data_scope`; health exact DB/port, FK empty.
+
+Fresh full native Chromium `tests/browser_dashboard_canvas.js`: **89 assertions / zero pageerrors**,
+real CRUD/edit/reorder/remove/persistence, independent failure/retry and stale A/B identity/focus,
+legacy committed-lost-response/reconciliation, seed/reset/deletion, 16 scoped geometry/color samples.
+Minimum sampled description 5.689:1/control 12.011:1, no sampled horizontal overflow; not whole-a11y.
+SQL enabled/schema/preview HTTP-faked, not sandbox certification; backend Python suite rerun.
+Prior worker/parent gates remain prior runs, not relabeled merger evidence. No new product/test
+failure; cleanup inspection mistakenly requested `/api/timer/status` (404) and named nonexistent
+`routers/idle.py` in grep. Stopped and received parent authorization for one corrected read-only
+`/timer/status` audit: inactive, not frozen, no pending gap, idle false. Original errors preserved.
+Own PID 362541 stopped, 18169 closed, post-stop health curl7, only owned inactive timer file removed.
+Final scratch counts: no task/session/habit/review/rating/provider/conversation/draft/audit rows;
+one default Overview/nine widgets, AI settings/default statuses/FTS bookkeeping remain.
+
+Durable receipts:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-11/merger-report.md`
+and sibling raw logs. Reviewed source reports:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/ticket-11-repair/review-9cf076c-{standards,spec}.md`.
+Portable criteria/history/limits: [ticket 11 evidence](ticket-11-evidence.md#local-integration-and-bounded-closure-2026-11-02).
+This one docs-only closure has parent exactly 9cf076c; source/tests identical. Its fresh parent
+Standards/Spec review remains required before 02/04 continuations. Physical touch, screen-reader,
+other engines, zoom/reduced-motion, exhaustive contrast/accessibility and human visual acceptance
+remain deferred. Known three light 4.33 failures/four dark AI 3.98986 samples are not fixed or waived;
+pre-delivery ancestry is not baseline-browser proof. Legacy cross-tab/idempotency uncertainty remains.
+No 12/13/14 adoption, whole-spec completion, human approval, push/PR/dev merge. Spec **Approved, not Built**;
+final whole-delivery review against 82fabdc and later human/dev-merge gates remain separate.
 
 ## Historical seed validation and safety
 

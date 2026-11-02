@@ -2,7 +2,7 @@
 
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
-**Current frontier:** 02, 03, 04, 10, 11, 15, 18, 19, 21, 24 after bounded ticket 01 completion. Tickets 02–24 remain ready-for-agent subject to the graph; 25 is not done. First recommended parallel lanes: **02 / 04 / 11**, only after parent fresh Standards/Spec review of the closure commit. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
+**Current frontier:** 02, 03, 04, 10, 12, 13, 14, 15, 18, 19, 21, 24 after bounded tickets **01 + 11 completed**. All other tickets remain pending (`ready-for-agent`) subject to the graph; 25 is not done. Reservation order **11 → 02 → 04**: paused02/04 dirty, uncommitted checkpoints remain preserved, and continuations are **HOLD** until fresh parent Standards/Spec review of the new ticket11 docs-only closure commit. Tickets12/13/14 are technically unblocked, not launched. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
 **Execution record:** [Implementation and review gates](implementation.md), including the fixed base and external reference evidence.
 
 ## Approval record and readiness
@@ -16,7 +16,7 @@ On 2026-11-01, after the full eight-part questionnaire, the owner explicitly ans
 and approves the final production spec and verification plan. Tickets are now **ready-for-agent**.
 This status means specified work, not completed work or permission to ignore technical blockers.
 At that historical approval checkpoint, ticket **01** was the sole unblocked frontier. The current
-frontier above follows its local integration/recorded implementation completion; other blockers remain.
+frontier above follows local integration/recorded implementation completion of01 and11; other blockers remain.
 
 Those approval records did not themselves authorize implementation or commits. The owner has since
 requested implementation with local branches/commits and integration merges, as recorded in
@@ -24,8 +24,10 @@ requested implementation with local branches/commits and integration merges, as 
 merge is authorized. No production code, app runtime or provider calls were part of the historical seed.
 Ticket 01 is now integrated at reviewed code `2f3024a701ac1ee0a9e79fdc77abdba868baf998`;
 [closure evidence](ticket-01-evidence.md#local-integration-and-bounded-closure-2026-11-02)
-records fresh integrated checks, retained failures and deferred manual acceptance. No dependent writer
-starts before the parent's independent closure-commit review.
+records fresh integrated checks, retained failures and deferred manual acceptance. Ticket11 is now integrated at reviewed code `9cf076cc5297cc10e6b157257a35362f18893a20`;
+[closure evidence](ticket-11-evidence.md#local-integration-and-bounded-closure-2026-11-02)
+records fresh integrated checks, criterion mapping, retained first failures and manual limits.
+No paused continuation starts before the parent's fresh independent ticket11 closure-commit review.
 Ticket approval paragraphs and Comments retain their historical checkpoint wording; the execution
 record supplies current authorization without rewriting ticket identities, criteria or history.
 

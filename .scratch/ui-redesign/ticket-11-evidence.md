@@ -1,6 +1,6 @@
 # Ticket 11 — Widget canvas implementation evidence
 
-Status: feature review found one unique P1; scoped repair delivered and **parent repair browser gate passed; fresh independent repair/combined review, integration and closure pending**.
+Status: **completed** after repaired code passed both independent axes and fresh local integration checks; new docs-only closure requires fresh parent Standards/Spec review before paused continuations. Historical checkpoints below retain their original pending gates; current closure is appended at the end. Manual acceptance remains separately deferred; spec Approved, not Built.
 Base: `7ed9bf330677fb317793aa4371c4f36f407a2595`, branch `feat/ui-redesign-11-dashboard-canvas`.
 This is ticket 11 only, not whole-spec completion, manual acceptance or merge permission.
 
@@ -116,3 +116,103 @@ Prior bounded/manual limits remain: no physical touch/screen-reader/non-Chromium
 comprehensive contrast, cross-tab detection or transport idempotency. Known light4.33:1 and four
 dark AI3.98986 samples are not fixed or waived. No schema/migration or existing-DB migration test.
 This receipt does not close ticket11, mark the spec Built or authorize integration/dev merge.
+
+## Local integration and bounded closure (2026-11-02)
+
+### Exact scope, history and review disposition
+
+Fresh merger owned clean `feat/ui-redesign-integration` at expected
+`7ed9bf330677fb317793aa4371c4f36f407a2595`. Verified the clean **read-only** source worktree and
+`feat/ui-redesign-11-review-fixes` ref both exactly
+`9cf076cc5297cc10e6b157257a35362f18893a20`, source ancestry and bounded eight-file combined diff.
+`git merge --ff-only feat/ui-redesign-11-review-fixes` reached **exactly 9cf076c**, no merge commit.
+This delivers feature `badbd787e4967c775d67e6da2d021c526d9a7394` plus repair 9cf076c, not new code.
+
+Both independent review axes report zero findings for **both** amendment `badbd787…9cf076c`
+and combined 11 `7ed9bf3…9cf076c`. Earlier unique obsolete-Retry P1 is repaired, not waived;
+initial failed reviews/first failures and prior 83/89 worker/parent gates remain historical evidence.
+Fresh closure review is separate: this one docs-only commit has parent exactly 9cf076c and changes
+only ticket 11, this evidence, backlog README/implementation and the narrow Statistics development
+paragraph. Source/tests identical to reviewed9cf076c; no builder/settings/seeds/backend/schema edits.
+No ticket12/13/14 adoption or whole-B5/whole-spec completion is claimed.
+
+### Fresh integrated mechanical and native evidence
+
+Raw receipts are durable **external machine-local** files under
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-11/`:
+
+| Check | Actual fresh result / receipt |
+| --- | --- |
+| Exact preflight / ff-only | `preflight.txt`, `reviewed-integration.diff`, `ff.txt`; clean expected refs, exact 9cf076c |
+| Own source/venv | `uv-sync.*`, `source.txt`, `env.sh`; integration `.venv` and integration source |
+| `uv run python -P -m pytest -q` | **356 passed,101 warnings**,6.92s; `pytest.stdout/.stderr`. Four new API tests expose 16 existing SQLite adapter warnings; baseline 85 otherwise |
+| `node --test tests/*.cjs tests/test_tags_engine.js` | **167 passed**,0 failures; `node.stdout/.stderr` (21 dedicated canvas callers) |
+| All source/test JS/CJS `node --check` | **57 explicit paths, each exit0**, total/exit receipt `syntax.txt` |
+| New `tests/test_dashboard_canvas.py` Ruff/format | Both pass; `scoped-ruff.*`, `scoped-format.*` |
+| Full `ruff check --no-cache --output-format concise .` | **exit1,18 existing findings**; `ruff.stdout/.stderr` each `cmp` exit0 against `fresh-verification/run.zoEyTE/baseline-ruff.*`, including invalid-noqa warning; `check-exits.txt` |
+| Whitespace / source identity | `git diff --check` pass; frozen repair hashes pass `gate-hashes.txt`; final identity/scope/status receipts accompany report |
+| Actual `timetrace.main:daemon_app` | `daemon.log`, `health.json`, `db-audit-before.txt`: new DB migrated through 0013_ai_data_scope, exact DB/18169, FK empty |
+| Full native Chromium canvas probe | `browser.json/.stdout/.stderr`, `browser-summary.json`: **89 assertions,0 pageerrors,16 presentation samples** |
+
+NEW absolute DB `/tmp/timetrace-integrated-11.NRiJbl/timetrace.db` configured **before any app
+import/test/runtime**; own source/venv, verified-free 127.0.0.1:18169, idle/tracing off and credential
+environment unset. Timer/key siblings isolated; fresh browser contexts; provider catalog fake.
+No personal DB/copy/credentials, provider Test/Activate/inference or paid calls. No schema changes;
+existing-DB migration-copy N/A, not silently replaced by metadata.create_all.
+
+Native 89 covers real CRUD, structured-builder edit/reorder/remove/reload persistence, saved comparison
+and query context, independent held/failed card/retry without healthy requery, stale selection and
+actual obsolete UI/captured callbacks preserving healthy B identity/card/chart/focus/heading with zero
+requests, legitimate read-only retry, acknowledged-write/read failure, legacy **real committed POST
+with aborted response** plus explicit reconciliation, source archive, seed/reset/deletion.16 samples:
+390/768/1024/1440 × Refined/Stone/Porcelain/dark; no sampled page overflow, controls≥32×32,
+minimum sampled description contrast5.6894776581/control 12.0118006727. Not whole-palette/a11y proof.
+
+Explicit fakes: provider catalog; one query503/held query; detail503; held old detail; list503;
+legacy response-abort (server write real); optional SQL enabled flag/schema/preview **HTTP fake,
+not sandbox certification**. Full Python suite covers unchanged backend SQL. Prior parent gates
+are not this merger's execution; historical unavailable/tmp receipts were not recreated.
+
+### First failures and cleanup
+
+No new product/test/browser failure or source correction. During cleanup inspection, mistaken
+`curl -fsS /api/timer/status` returned 404 (curl22); grep also named nonexistent `routers/idle.py`.
+Stopped **before correction**, obtained explicit parent authorization for ONE corrected read-only
+`/timer/status` audit, retained `first-audit-command-error.txt` and original session output.
+Corrected audit200: inactive/not frozen/no pending gap/idle false (`timer-status.json`). Original404
+is not relabeled PASS. Existing worker API-fixture comparison-sort/elapsed_ms corrections, six RED
+slices, browser measure typo/broad Rename selector/null helper vs actual stale-create/resize-overflow
+repairs, native stale-Retry RED and mistaken `test_tags.js` path remain separately recorded above.
+No retry-until-green or new repair here.
+
+`pre-cleanup-audit.txt`: head0013, FK empty; task/session/habit/review/rating/provider/conversation/
+draft/audit counts 0; one default Overview/nine widgets, one AI settings row, five statuses and FTS
+bookkeeping remain. No test-created domain fixtures beyond default seeds remain. `process.txt` pins
+owned PID **362541**/socket 18169. `cleanup.txt`: normal TERM, PID absent,18169 ECONNREFUSED/socket
+closed, post-stop health curl7; only this scratch inactive `active_timer.json` removed. DB/logs retained.
+No other daemon, worktree or 02/04 checkpoint modified.
+
+### Criterion mapping and remaining boundaries
+
+| Ticket11 criterion | Bounded completion evidence |
+| --- | --- |
+| Canvas, responsive CRUD/edit/reorder/remove | Native 89 real UI/API persistence and keyboard focus;16 geometry samples;21 caller regressions |
+| Preserve configurations, reset/seeds/legacy | Four API regressions plus native customized/deleted seeds, explicit reset/Overview/last delete; committed lost-response reconciliation/source archive; caller malformed/storage-failure coverage |
+| Independent loading/error/retry, retained builder/SQL | Held/failed query and failed-only retry; stale A/B native+captured handlers; legitimate recovery; full structured payload/context, retained builder entry, explicit HTTP-faked SQL preview |
+| Domain totals/no global date filter | Existing query services and registry unchanged; aggregate/detail equivalence API test excludes only independent elapsed_ms; existing aggregate endpoint remains; no Python full-table aggregation added |
+| Saved/fresh/legacy/deleted and real edit/reorder workflows | Native 89 + four API tests + 21 dedicated Node tests; full 356 Python / 167 Node / 57 syntax rerun |
+| Shared safety/regression/recorded gaps | New/tmp isolation, exact refs/review/hash receipts, actual daemon/FK, inert text/focus/narrow samples, cleanup and honest manual limits; not blanket accessibility certification |
+
+Only **01 + 11 completed**; all other 23 tickets remain pending. Recomputed technical frontier:
+**02,03,04,10,12,13,14,15,18,19,21,24**. Reservation11→02→04;02/04 intentionally dirty/uncommitted
+read-only checkpoints preserved. Their continuation remains **HOLD** until parent fresh independent
+Standards+Spec review of this new closure commit.12/13/14 are merely technically unblocked, not started.
+
+Deferred manual acceptance: physical touch, screen readers, non-Chromium, zoom/reduced-motion,
+exhaustive contrast/gestures and human visual review. Known three light task-title4.33:1 failures and
+four dark AI 3.98986 observations are not fixed or waived; pre-delivery source ancestry is **not**
+baseline-browser proof or all-palette certification. Legacy cross-tab races/no transport idempotency/
+uncertain lost-response reconciliation remain honest limitations. No whole-a11y/SQL security claim.
+Spec remains **Approved, not Built**. Whole-delivery review against fixed
+`82fabdc652c59da87de0f57d7770d0aa32fb7f64`, later adversarial/human tuicr approval and dev-merge gates
+remain separate and mandatory; no push, PR, release or dev merge here.

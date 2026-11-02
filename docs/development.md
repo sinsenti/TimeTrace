@@ -77,12 +77,20 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 
 ### Current implementation versus older notes
 
-- **Statistics:** `/stats` renders a seeded Overview plus persisted named dashboards and widgets.
-  Structured widgets execute through `QueryService`; optional SQL widgets are disabled by default and
-  use the isolated read-only `SqlQueryService` sandbox when enabled. Per-widget comparisons support
-  previous period, same period last year, and custom ranges. `AnalyticsService.get_summary` delegates
-  to `QueryService`; `core/analytics.py` retains legacy aggregation behavior/tests, not the current
-  dashboard execution path. Query capabilities come from `core/query_registry.py`.
+- **Statistics:** `/stats` renders the Widget canvas with a seeded Overview plus persisted named
+  dashboards and editable/reorderable/removable widgets. `dashboards.js` loads saved dashboard detail,
+  then independent `/analytics/query` or `/analytics/sql` card reads with per-card loading/error/retry
+  and stale-selection protection. Structured reads execute through `QueryService`; optional SQL widgets
+  remain disabled by default and use the isolated read-only `SqlQueryService` sandbox when enabled.
+  The aggregate `POST /api/dashboards/{id}/data` endpoint remains available for other callers; no API
+  or schema change. Legacy browser-widget handoff journals acknowledged/uncertain imports and retains
+  source until safely archived; uncertain writes require explicit user reconciliation, not automatic
+  replay or a transport-idempotency guarantee. Existing seed/reset rules and builder entry paths remain.
+  Per-widget comparisons support previous period, same period last year, and custom ranges.
+  `AnalyticsService.get_summary` delegates to `QueryService`; `core/analytics.py` retains legacy
+  aggregation behavior/tests, not the current dashboard execution path. Query capabilities come from
+  `core/query_registry.py`. Builder/SQL adoption and performed-time/default-label changes remain later
+  UI tickets12–14, not part of the ticket11 canvas closure.
 - **Local time:** `settings.js` sends timezone/week-start query context. SQLite bucketing follows
   the daemon's local timezone; `QueryService` warns and uses that zone if a requested zone differs.
   Arbitrary per-query IANA timezone bucketing is not implemented. `Session.timezone` is modeled,

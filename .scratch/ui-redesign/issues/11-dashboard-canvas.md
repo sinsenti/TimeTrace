@@ -4,7 +4,7 @@
 
 **Blocked by:** [01: Calendar shell and shared appearance](01-calendar-shell.md)
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **Approved decisions:** O8, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,12 +12,12 @@
 
 ## Acceptance criteria
 
-- [ ] Adopt Widget canvas with responsive stacking, dashboard CRUD and editable/reorderable/removable widgets.
-- [ ] Preserve named configurations, explicit reset/seed rules and existing local-browser custom-widget handoff without destructive reseeding.
-- [ ] Give each widget independent loading/error/retry behavior and keep existing builder/SQL entry paths usable while their adoption tickets wait.
-- [ ] Continue totals through the structured query services; do not introduce Python full-table aggregation or a global date filter.
-- [ ] Test saved/fresh/legacy dashboards, deleted widgets, independent query failures and real edit/reorder/persistence workflows.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Adopt Widget canvas with responsive stacking, dashboard CRUD and editable/reorderable/removable widgets.
+- [x] Preserve named configurations, explicit reset/seed rules and existing local-browser custom-widget handoff without destructive reseeding.
+- [x] Give each widget independent loading/error/retry behavior and keep existing builder/SQL entry paths usable while their adoption tickets wait.
+- [x] Continue totals through the structured query services; do not introduce Python full-table aggregation or a global date filter.
+- [x] Test saved/fresh/legacy dashboards, deleted widgets, independent query failures and real edit/reorder/persistence workflows.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -28,3 +28,5 @@
 - 2026-11-02 implementation checkpoint: Widget canvas, independent card reads/retry/identity, acknowledged-write refresh recovery and non-destructive legacy handoff implemented on the isolated ticket-11 branch. Dedicated caller/API regressions and genuine synthetic browser readbacks are recorded in [ticket-11-evidence.md](../ticket-11-evidence.md). Full checks: 356 Python / 162 Node pass; 57 syntax checks pass; full Ruff retains 18 unchanged baseline findings. Latest browser: 83 bounded checks, zero uncaught errors; explicit fakes and first failures retained. Parent independently repeated all 83 browser checks and approved its gate/first commit reservation; own-branch latest-integration fast-forward check returned Already up to date at 7ed9bf3. Own daemon/socket/timer state cleaned up. Still ready/unclosed: independent two-axis review, parent integration and closure remain pending; not manual acceptance, whole-spec completion or merge permission.
 
 - 2026-11-02 independent-review repair: both reviews of `badbd787` blocked on one unique obsolete-detail-Retry P1 missed by the prior83 checks. Fresh scoped repair guards selection before canvas invalidation, owns detail retries by generation, restores underlying Saving/Saved/read-only notices and extracts one tiny shared clearing helper. Five added caller regressions; genuine new caller/native RED→GREEN retained. Parent independently repeated the frozen **89-assertion / zero-pageerror** browser gate and approved one focused repair commit. Checks: **356 Python/101 existing warnings, 167 Node (21 focused), 57 syntax**; full Ruff remains byte-identical baseline18 findings. Latest integration remains `7ed9bf3`; own-branch ancestry/ff-only recheck passed, Already up to date. Raw evidence in `evidence/ticket-11-repair/` outside the repository, details/limits appended to [ticket-11-evidence.md](../ticket-11-evidence.md). Still ready/unclosed: fresh independent repair+combined review, parent integration and closure pending; not manual acceptance or merge permission.
+
+- 2026-11-02 local integration and bounded closure: independent Standards and Spec reviews each found **zero findings** on amendment `badbd787…9cf076c` and combined `7ed9bf3…9cf076c`; the earlier unique P1 is repaired, not waived. Fresh merger verified clean exact refs/source/ancestry and fast-forwarded integration to `9cf076cc5297cc10e6b157257a35362f18893a20` without a merge commit. Fresh own-source checks: **356 Python / 101 warnings, 167 Node, 57 syntax, scoped Python Ruff/format and whitespace pass**; full Ruff exits1 with 18 findings and warning byte-identical to fixed baseline. Native Chromium full probe: **89 assertions / zero pageerrors, 16 bounded geometry/color samples**. [Criterion mapping and durable receipts](../ticket-11-evidence.md#local-integration-and-bounded-closure-2026-11-02) distinguish real persistence/legacy lost-response checks from explicit HTTP-faked SQL and other failure fixtures. One cleanup audit-path typo returned 404; stopped, obtained parent approval for one corrected read-only audit, then verified healthy inactive timer and cleaned up own PID 362541/18169/timer file. No new product/check failure or code correction. Completed records bounded delivery/evidence, not blanket shared-accessibility or human acceptance. Physical touch, screen-reader, other engines, zoom/reduced-motion and exhaustive accessibility remain deferred; known contrast failures remain unwaived. New docs-only closure requires fresh parent Standards/Spec review before paused 02/04 continuation; spec **Approved, not Built**. No push/PR/dev merge.
