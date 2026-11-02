@@ -192,6 +192,15 @@ loads metadata/views only: it never repeats the saved write. Calendar source fai
 to this notice because FullCalendar's `refetchEvents()` does not return a completion promise.
 There is no cross-tab/CLI detection or background metadata polling.
 
+The Calendar Session popup supports multiline Notes (ordinary Enter), Ctrl+Enter Save, Escape Cancel,
+create-search/edit-Notes focus and contained keyboard navigation. Connected Cancel restores its launcher;
+acknowledged clean Save focuses stable Calendar before refresh replaces event/planning-list launchers.
+Per-owner pending Save blocks duplicate activation; rejected/concurrent drafts remain editable and dirty.
+Acknowledged POST/materialized occurrence IDs are adopted before fallible display reads; Retry refresh
+reads only, never replays the saved mutation. Shared confirmation Escape resolves cancellation, and the
+global handler retains focus when an existing close callback leaves its editor open. These are UI
+lifecycle safeguards, not new API/domain policy or physical-gesture/transport-idempotency guarantees.
+
 Session editing preserves the daemon's `task_id` independently of metadata availability, including
 successfully empty lists and partial fallback labels. Explicit detach or an authoritative session
 row with a cleared link can remove it; a registry miss cannot. Ordinary attachment/drop fallbacks

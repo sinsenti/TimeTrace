@@ -1,7 +1,7 @@
 # Ticket 02 — Session editing implementation evidence
 
-Status: implemented Session candidate; **renewed parent browser gate passed; independent per-commit review/integration pending**.
-Ticket remains ready/unclosed. This is not independent review, manual acceptance, merge permission or whole-redesign completion.
+Status: **completed — bounded local implementation/evidence closure** at reviewed `abd7a6da11a9f9589371a8f876ebf38b45fb4d96`.
+Fresh independent amendment/combined code reviews and integrated checks passed; the new docs-only closure still requires parent two-axis review. Historical pending paragraphs below describe their checkpoints. No human/manual acceptance, merge permission or whole-redesign completion.
 
 ## Scope and contracts
 
@@ -112,3 +112,75 @@ Source/tests frozen; parent genuine-browser gate and explicit release required b
 Parent independently read the complete new probe/source/caller delta and verified all3 frozen source/test hashes before AND after rerunning **planning_focus + existing workflows** on exact newDB18177/PID391516. Four new native planning cases and six existing workflows PASS/0pageerrors; actual Schedule keyboard entry, onePOST/authoritative1800s/#planning/multiline row, actual old launcher disconnected before Calendar-focus assertion and subsequent Tab, exact connected Cancel/no write, rejected/concurrent-dirty focus, actual FullCalendar event Cancel/disposed-Save and nested Task flows were asserted. `evidence/ticket-02-focus-repair/parent-browser-gate.md` records bounded approval and **explicit release of ONE five-path fix commit with exact parent110cc0d**. Parent reran2 probes, not all7; worker all7 receipts above remain separately attributed.
 
 No source/test edits after freeze. Parent postgate timer inactive/notfrozen/nullgap/idlefalse; normal shutdown of only own391516/18177 and byte/status audits follow commit. This release is not independent code review, integration, ticket closure or human acceptance. Parent-owned fresh amendment110...FIX AND combinedDD...FIX Standards/Spec reviews remain mandatory; manual/known-contrast/transport limits above remain unwaived.
+
+
+## Local integration and bounded closure (2026-11-02)
+
+Clean own integration/ref `dd1399487172ab08516ace6ce6e88979ae1f63b1`, clean read-only source/ref
+`abd7a6da11a9f9589371a8f876ebf38b45fb4d96`, exact parent110 and ancestry verified before
+`git merge --ff-only feat/ui-redesign-02-focus-repair` reached exactABD. Two commits/19paths,
+no merge commit; combined diff SHA256 `d27217d21f68d13d551d667b5f3b2f217db546c42b0d8598c7c84533d0716063`
+byte-matches frozen review. Fully read amendment110→ABD AND combinedDD→ABD Standards/Spec reports:
+0 documented breaches/0 heuristic findings, Spec0P0/P1/P2 on both ranges. Original110 SpecP2
+planning focus is repaired with actual sidebar-disconnection RED/GREEN, not waived. Reports:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/ticket-02-focus-repair/review-abd7a6d-{standards,spec}.md`.
+
+Fresh merger receipts (external/machine-local):
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-02/merger-report.md`
+and sibling raw stdout/stderr, explicit syntax paths, browser JSON, ancestry/FF/identity and cleanup audits.
+Before ANY app import/test/runtime, NEW private `/tmp/timetrace-integrated-02.mSelQr/timetrace.db`;
+own integration `.venv` and source verified, free loopback18179, idle/tracing off, credentials unset,
+fresh contexts with fake provider catalog. Actual `timetrace.main:daemon_app` startup migrated through
+`0013_ai_data_scope`; health exactDB/port and FKempty. No schema change: existing-DB-copy test N/A;
+no personal DB/copy/key, provider Test/Activate/inference or paid call.
+
+Fresh checks: **364Python passed/103warnings** (101 existing SQLite +2 unchanged Task-read serializer),
+**181Node passed/0failed/skipped/cancelled**, **65 explicitly listed source+test JS/CJS syntax passes**;
+focused8Python/2warnings, scoped new Python Ruff/format and whitespace pass. Full concise no-cache
+Ruff exits1: **18 unchanged baseline findings** plus old invalid-noqa warning; stdout AND stderr
+byte-identical to fixed `evidence/fresh-verification/run.zoEyTE/baseline-ruff.*`. Not globally lint-clean.
+
+Native Chromium **Stats full89 assertions FIRST**, before any Session fixtures: CRUD/persistence,
+independent failure/retry, obsolete native/captured Retry, stale identity/focus, legacy uncertain-write
+reconciliation, seeds and16 bounded samples. Zero pageerrors; minimum sampled text5.689/control12.011.
+SQL enable/schema/preview HTTP-faked, NOT sandbox certification; real backend SQL pytest rerun above.
+Then ALL7 unchanged Session probes: editing/dialog/workflows/recurrence/preservation/appearance/planning_focus.
+Results/assertions inspected, not inferred from returned status. No new test/runtime failure or correction.
+
+| Ticket02 criterion | Fresh bounded evidence |
+| --- | --- |
+| Fields, attach/create/detach, duration/quick actions, Timer Now, initial focus | `browser-editing.json`, `browser-workflows.json`; real multiline New York overnight04:45–05:30UTC/2700s, tags/attachment, failed+empty metadata, explicit detach, nested Task Cancel/create/attach without Session autosave; Timer Now file-only before stop. Retained quick-action/duration wiring inspected; no separate native click matrix claimed. |
+| Keyboard, dirty state and focus | `browser-dialog.json` four widths390/768/1024/1440, native Tab/ShiftTab/Escape; `browser-planning_focus.json`4cases: keyboard Schedule, connected Cancel/no write, ONE real clean POST/readback1800s/#planning/multiline then actual old button DISCONNECTED before connected Calendar/tabindex−1 and subsequent Tab; rejected Save/concurrent Notes retain modal focus after replacement. `browser-workflows.json` actual mouse FullCalendar Cancel/disposed-Save fallback, held POST/doubleactivation and tag-only concurrent dirtiness. |
+| Occurrence identities, exceptions/history, unknown-action retry | `browser-recurrence.json`5cases and `browser-preservation.json`4cases: real virt→UUID before failed range read, read-only retry, move available while unknown resize/delete blocked, explicit resize retry, skip/task-edit nonresurrection and following/all scopes preserving logged history; API characterization tests rerun. Public handlers, NOT physical gestures. |
+| Scope/estimates and independent completion choices | Same recurrence/preservation receipts: occurrence/all-future duration, estimate123 unchanged while duration75; actual completion Keep/selected-own/subtree-only prompts with authoritative row checks. |
+| Failed write versus failed reads; overnight/retry/no duplicate replay | editing/workflows/recurrence plus14owned Node cases: rejected PUT then explicit retry, held POST sends once, canonical ID before fallible display, refresh-only retry not repeating mutation, UTC overnight rows. Genuinely lost responses remain ambiguous. |
+| Shared safety, focused evidence and honest unrun record | All above plus native Stats89 shared-utils regression, scoped/full automated checks, fresh isolated health0013/FK/timer audits;36 Session contrast samples across3light+dark minimum5.381521681093853, no below4.5 sample, draft retention/long inert Notes. Not whole accessibility. |
+
+Owned PID426531 stopped normally via SIGTERM; exactPID absent,18179 socket closed, expected health
+refusal/curl7. Final `/timer/status` and sibling `active_timer.json`: is_running=false,
+is_frozen_idle=false,pending_idle_gap=null,idle_detection_enabled=false. New private DB/timer/logs
+retained for audit: **11tasks/15sessions**,0recurrenceexceptions,0providers/conversations/drafts/audit,
+one default Overview/nine widgets; default statuses/AI settings/FTS bookkeeping remain. Not zero fixtures.
+
+History above and all original worker/finalize/focus-repair receipts are preserved: harness sequencing,
+mock source/fake-DOM/date fixtures, delayed attachment/tag-only ownership, actual event and planning
+launcher failures; original preservation Promise-GC observation followed STOP/parent-authorized bounded
+diagnosis and await-real-operation/primitive bridge correction. Exact Chrome internal cause unknown,
+not a product repair. Paired Dismiss TDD exceptions elsewhere remain unchanged. This merger had no
+new app/test failure; pre-FF `wc` inspection named the not-yet-integrated evidence file and printed
+ENOENT, then the file was read after FF; inspection-only, not a failed test or source correction.
+
+Physical drag/resize/touch, screen-reader, other engines,200%zoom/reduced-motion and exhaustive
+all-state accessibility/human visual acceptance remain unrun. Known three light Task4.33 failures
+and four dark AI3.98986 observations remain unwaived;36 Session samples do not certify the palette.
+No new idempotency/exactly-once/cross-tab guarantee or exact browser-internals claim.
+
+Owner lifecycle completion means implementation delivered with bounded acceptance evidence, not
+manual/human acceptance. ONE closure commit contains ONLY this evidence, issue02, README,
+implementation record and a narrow Session development paragraph; exact parentABD, source/tests/specs
+unchanged. Fresh parent Standards+Spec DOC review is required before04 continuation.04/10 dirty stopped
+checkpoints remain read-only;12 active in its own worktree (authorized compiler/widget-fixture extras
+outside this range), held serial reservation;13/14 resource-locked by12, not launched. No new DAG edges.
+Only01+02+11 complete;22 pending, frontier03,04,10,12,13,14,15,18,19,21,24;22 still blocked05/15/21.
+Spec **Approved, not Built**; final whole-delivery82fabdc review and later adversarial/human/dev-merge
+gates remain mandatory, not authorized by this closure. No push/PR/release/dev merge.

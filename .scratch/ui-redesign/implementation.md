@@ -8,7 +8,7 @@ no-start/no-commit wording in approval records describes the earlier approval-on
 a current implementation blocker. Preserve that approval history; do not reopen O1–O8 or treat the
 spec as Built. The parent owns the task graph, worktree orchestration and every review; seed workers
 do not delegate. The historical seed was one authorized documentation-only planning commit, not
-production implementation. Tickets01 and11 have since been locally integrated and completed with
+production implementation. Tickets01,02 and11 have since been locally integrated and completed with
 bounded evidence below; this does not complete the spec.
 
 - Fixed pre-delivery base: `82fabdc652c59da87de0f57d7770d0aa32fb7f64` (before this seed).
@@ -22,11 +22,15 @@ bounded evidence below; this does not complete the spec.
   fast-forwarded from seed `2f978dcf4a3aef21f0d4a5438ba026db1b2e0fe2` without a merge commit.
 - Ticket **11 completed**, reviewed code `9cf076cc5297cc10e6b157257a35362f18893a20`, locally
   fast-forwarded from `7ed9bf330677fb317793aa4371c4f36f407a2595` without a merge commit.
-- Computed frontier: **02, 03, 04, 10, 12, 13, 14, 15, 18, 19, 21, 24**. Only01+11 completed;
-  all others remain pending (`ready-for-agent`) subject to remaining edges;25 is not done.
-  Reservation **11 → 02 → 04** remains; paused02/04 dirty uncommitted checkpoints are preserved
-  read-only and continuations **HOLD** until fresh parent Standards/Spec review of the new ticket11
-  docs-only closure commit.12/13/14 are technically unblocked, not launched.
+- Ticket **02 completed**, reviewed code `abd7a6da11a9f9589371a8f876ebf38b45fb4d96`, locally
+  fast-forwarded from `dd1399487172ab08516ace6ce6e88979ae1f63b1` without a merge commit.
+- Computed frontier: **03, 04, 10, 12, 13, 14, 15, 18, 19, 21, 24**. Only01+02+11 completed;
+  other22 remain pending (`ready-for-agent`),22 blocked05/15/21;25 is not done.
+  Reservation **11 → 02 → 04**: prior11 closure gate released02;04/10 dirty uncommitted checkpoints
+  remain stopped/preserved read-only.04 continuation **HOLD** until fresh parent Standards/Spec review
+  of this new02 docs-only closure;10 awaits04 plus reviewed02, not new prerequisite edges.
+  12 active in own worktree with authorized compiler/widget-fixture extras outside this range, held
+  serial reservation;13/14 technically unblocked but resource-locked by12, not launched.
 - No push, PR, release or merge into `dev` is authorized. Do not reset/stash or overwrite owner edits.
 
 ## Review and completion obligations
@@ -38,8 +42,8 @@ This record does not substitute for those reviews. The final code amendment `06c
 and combined ticket `2f978dc...2f3024a` each have independent Standards 0 documented breaches /
 0 smells and Spec 0 P0/P1/P2 (OK with notes). Every earlier code commit was reviewed too; prior
 findings and repairs remain in [ticket evidence](ticket-01-evidence.md). The prior documentation-only
-ticket01 closure commit has passed its parent gate; the new ticket11 documentation-only closure
-commit requires fresh parent two-axis review before paused continuations resume.
+ticket01 and ticket11 closure commits passed their parent gates before subsequent releases; the new
+ticket02 documentation-only closure requires fresh parent two-axis review before04 continuation.
 
 After all 25 tickets are implemented, run the full integrated automated checks and independent
 whole-delivery two-axis review against the fixed base above, covering **all tickets together**, tests
@@ -163,6 +167,55 @@ remain deferred. Known three light 4.33 failures/four dark AI 3.98986 samples ar
 pre-delivery ancestry is not baseline-browser proof. Legacy cross-tab/idempotency uncertainty remains.
 No 12/13/14 adoption, whole-spec completion, human approval, push/PR/dev merge. Spec **Approved, not Built**;
 final whole-delivery review against 82fabdc and later human/dev-merge gates remain separate.
+
+## Ticket02 integrated verification and bounded closure
+
+The preceding ticket11 pending-review wording is its historical closure checkpoint; that gate later
+released02. Its original evidence/history remains unchanged. Current02 closure review is pending below.
+
+Clean expectedDD/ref/source ancestry verified; FF-only reached exact reviewed
+`abd7a6da11a9f9589371a8f876ebf38b45fb4d96` (sole parent110cc0d, feature parentDD).
+Two commits/19paths, frozen combined diff SHA256d27217d21f68d13d551d667b5f3b2f217db546c42b0d8598c7c84533d0716063
+matches review bytes. Amendment and combined02 independently Standards0/Spec0; original Schedule-focus
+P2 repaired, not waived. No merge commit/source correction. ONE five-document closure exact parentABD;
+source/tests/specs identical. Parent fresh Standards+Spec DOC review still REQUIRED before04 continues.
+
+Fresh integrated364Python/103warnings (101SQLite+2unchanged Task serializers),181Node/0failed,
+65explicit source+test syntax, focused8Python/2warnings, scoped Python Ruff/format and whitespace pass.
+Full concise no-cache Ruff exits1/18unchanged baseline findings plus old invalid-noqa warning; stdout
+AND stderr byte-match fixed fresh-verification baseline. NEW private `/tmp/timetrace-integrated-02.mSelQr/timetrace.db`
+before imports/tests/runtime; own integration venv/source, free127.0.0.1:18179, idle/tracing off,
+credentials unset, fresh contexts/catalog fake. Actual main startup0013, health exactDB/port, FKempty.
+No schema change: existing-DB copy N/A; no personal DB/copy/keys/provider/inference/paid calls.
+
+Native Stats89 FIRST before Session fixtures,0pageerrors: CRUD/persistence, independent retry/stale
+identity/obsolete Retry, legacy uncertain writes/seeds,16bounded samples. HTTP-fake SQL preview is
+not sandbox certification; backend SQL pytest rerun. Then ALL7 Session probes passed with inspected
+assertions/readbacks: multiline NewYork overnight2700s/UTC,4widths/native keyboard/focus, attachment/
+detach/failed+empty metadata/nested Task, actual mouse FC Cancel/disposed-Save, rejected PUT/retry,
+held realPOST/doubleactivation/concurrentNotes+tag-only dirtiness, TimerNowfile-only, canonicalvirt→UUID
+before failedread/readonlyretry, scope Escape/only/allfuture/estimate preservation, skip/move
+nonresurrection/history, unknown resize-delete/actionretry and actual completion Keep/own/subtree.
+Planning4cases specifically wait for ACTUAL sidebar launcher disconnection after real Save/readback
+before Calendar-focus/subsequentTab assertion; connectedCancel0write, rejection/concurrentfocus retained.
+36 Session contrasts minimum5.3815:1, long inert Notes and draft retention, not whole-palette/a11y.
+
+No new test/runtime failure/correction. Inspection-only pre-FFwc named the absent incoming evidence
+file; read after FF, not a test failure. All historical first failures/TDD/helper limitations retained
+in [ticket02 evidence](ticket-02-evidence.md#local-integration-and-bounded-closure-2026-11-02),
+including original Promise-GC bridge observation/authorized bounded diagnosis, not exact browser cause.
+Own PID426531 normal SIGTERM, exactPID absent/18179closed/healthcurl7. Final timer HTTP+file stopped,
+unfrozen/nullgap/idlefalse. Synthetic11tasks/15sessions remain in retained private DB,0AI provider/
+conversation/draft/audit rows, default Overview9widgets/statuses/settings/FTS remain; FKempty0013.
+
+External report/raw receipts:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-02/merger-report.md`.
+Only01+02+11 complete/22pending/specApprovedNOTBuilt;04/10 stopped dirty read-only,12 active ownWT,
+13/14 resource-locked by12. No other-ticket source or statuses changed. Physical gestures/touch,
+screen-reader/other engines,200%zoom/reduced-motion/exhaustive accessibility/human visuals deferred;
+known three light4.33/four darkAI3.98986 observations unwaived. Genuinely lost writes remain ambiguous:
+no new idempotency/exactly-once/cross-tab claim. Final whole-delivery82fabdc review and later
+adversarial/human/dev-merge gates remain mandatory; no push/PR/release/dev merge.
 
 ## Historical seed validation and safety
 

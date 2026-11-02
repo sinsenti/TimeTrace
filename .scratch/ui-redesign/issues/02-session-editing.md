@@ -4,7 +4,7 @@
 
 **Blocked by:** [01: Calendar shell and shared appearance](01-calendar-shell.md)
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **Approved decisions:** O8, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,12 +12,12 @@
 
 ## Acceptance criteria
 
-- [ ] Retain task search/attach/create/detach, tags, notes, full timestamps, duration feedback, quick actions and Start Timer Now; create focuses task search and edit focuses Notes.
-- [ ] Ctrl+Enter saves, Escape cancels without writes, and ordinary Enter in Notes inserts a newline; preserve dirty state and focus restoration.
-- [ ] Move/resize/delete through existing occurrence-aware services; preserve virtual identities, moved/skipped exceptions and logged history. Unknown recurrence blocks unsafe actions with action-specific retry.
-- [ ] Offer this occurrence/all future where applicable without changing task estimates; preserve completion keep/clear prompts and independent own-session/subtree choices.
-- [ ] Distinguish failed mutations from failed refreshes; regression-test overnight/local boundaries, recurrence materialization, cancellation and retry without duplicate writes.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Retain task search/attach/create/detach, tags, notes, full timestamps, duration feedback, quick actions and Start Timer Now; create focuses task search and edit focuses Notes.
+- [x] Ctrl+Enter saves, Escape cancels without writes, and ordinary Enter in Notes inserts a newline; preserve dirty state and focus restoration.
+- [x] Move/resize/delete through existing occurrence-aware services; preserve virtual identities, moved/skipped exceptions and logged history. Unknown recurrence blocks unsafe actions with action-specific retry.
+- [x] Offer this occurrence/all future where applicable without changing task estimates; preserve completion keep/clear prompts and independent own-session/subtree choices.
+- [x] Distinguish failed mutations from failed refreshes; regression-test overnight/local boundaries, recurrence materialization, cancellation and retry without duplicate writes.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -38,3 +38,5 @@
 - 2026-11-02 (fresh bounded Spec P2 repair; gate pending): On exact110cc0d, native keyboard planning Schedule→Save reproduced focus loss **after actual sidebar replacement**, with one real POST/readback. Minimal Session-only fallback now focuses stable Calendar before refresh for disposable planning-list launchers; connected Cancel, failed/concurrent-dirty Save and existing Calendar-event paths retained. New owned native/caller regressions RED→GREEN;364Python/103warnings,181Node,65explicit syntax,6existing+1new native probes pass; full Ruff18 exact baseline. See appended owned evidence and external `evidence/ticket-02-focus-repair/`. Frozen source/tests and healthy private18177 runtime await parent genuine-browser gate/explicit one-fix-commit release; status ready/unclosed, no completion or merge permission.
 
 - 2026-11-02 (fresh repair parent browser gate PASS): Parent independently reran planning_focus4cases + existing workflows6cases on exact isolated18177 DB,0pageerrors; verified3source/test hashes before/after, real Schedule Save payload/row and focus after actual sidebar replacement, exact connected Cancel/no write, failed/concurrent-dirty focus plus existing FC/nested workflows. Explicitly released ONE five-owned-path fix commit with exact parent110cc0d, source/tests unchanged since freeze. Fresh amendment AND combined02 independent Standards/Spec reviews and parent integration/closure still mandatory; ready/unclosed, no spec/human/whole-delivery completion claim.
+
+- 2026-11-02 (local integration and bounded closure): Clean integration `dd1399487172ab08516ace6ce6e88979ae1f63b1` fast-forwarded only to reviewed `abd7a6da11a9f9589371a8f876ebf38b45fb4d96` (feature110 + focus repairABD). Fresh amendment and combined02 Standards/Spec reviews each report zero findings; original Schedule-focus P2 repaired, not waived. Fresh integrated364Python/103warnings,181Node,65explicit syntax, scoped Python Ruff/format and whitespace pass; full Ruff18 unchanged baseline, both streams exact. Native Stats89 ran first, then all7 Session probes passed, including actual Schedule Save focus AFTER sidebar replacement, Cancel/no write, rejected/concurrent focus, old Calendar/nested Task, UTC/metadata/recurrence/completion and Timer Now. [Closure evidence and criterion mapping](../ticket-02-evidence.md#local-integration-and-bounded-closure-2026-11-02) records isolation, first-failure history and normal owned cleanup. Acceptance boxes mean bounded implementation delivery/evidence under the owner lifecycle, not unrun manual acceptance. Physical gestures/touch, screen-reader/other engines, zoom/reduced-motion/exhaustive accessibility and lost-response transport uncertainty remain deferred; known contrast failures unwaived. Only01+02+11 completed,22 pending; spec Approved, not Built. This ONE five-document closure requires fresh parent Standards/Spec review before04 continuation; no human/dev-merge permission.
