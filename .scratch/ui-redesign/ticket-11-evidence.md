@@ -1,6 +1,6 @@
 # Ticket 11 — Widget canvas implementation evidence
 
-Status: implementation/checks delivered; **parent browser gate passed; independent review/integration/closure pending**.
+Status: feature review found one unique P1; scoped repair delivered and **parent repair browser gate passed; fresh independent repair/combined review, integration and closure pending**.
 Base: `7ed9bf330677fb317793aa4371c4f36f407a2595`, branch `feat/ui-redesign-11-dashboard-canvas`.
 This is ticket 11 only, not whole-spec completion, manual acceptance or merge permission.
 
@@ -65,3 +65,54 @@ Own daemon stopped after the parent gate: app PID265894 and uv PID265890 absent,
 Physical touch, screen reader, non-Chromium engines, zoom/reduced-motion and comprehensive contrast are not certified. Existing reported light task-color 4.33:1 and four dark AI 3.98986 samples are not fixed or waived here. Cross-tab legacy import races/transport exactly-once are not promised; genuine uncertain outcomes need explicit user review. The retained existing builder/SQL editor is not redesigned or fully retested across every capability combination in this ticket. No existing-DB migration test was needed/run because no schema/migration changed.
 
 Serialized common-doc follow-up for parent: development's statistics description should note detail + independent query/SQL card reads and the legacy recovery journal, rather than aggregate-only execution. Do not close ticket 11 or mark the whole spec Built from this receipt.
+
+## Independent-review repair — obsolete detail Retry (2026-11-02)
+
+Both independent reviews of `badbd787e4967c775d67e6da2d021c526d9a7394` reported the
+**same unique P1**, not two defects: after failed A detail, the surviving Retry could erase
+healthy B before rejecting A's response. Prior 83-check gates did not cover that sequence.
+Repair branch `feat/ui-redesign-11-review-fixes` started clean at that exact commit.
+
+- Reject non-selected dashboard loads before generation/data/chart/grid/heading initialization.
+  Detail retries also validate their captured selection/generation, including queued old notice
+  and grid handlers. Accepted new loads clear obsolete/recovered detail notices while restoring
+  the underlying write/list notice, retaining Saving, Saved and read-only recovery.
+- One minimal shared canvas-clearing helper replaces identical invalidation blocks; generation
+  changes and selection decisions stay at callers. No builder/backend/seed/framework changes,
+  tickets 12–14 work, new API or schema.
+- Five added caller regressions cover obsolete handlers, legitimate same-dashboard recovery,
+  same-dashboard supersession, held create/selection/Saving→Saved and unacknowledged-write
+  read-only recovery. Actual RED: `red-stale-caller.log` loses healthy B. Actual native RED:
+  `browser-red-stale.json` loses B's data/card/chart/focus, changes heading to Overview and
+  leaves Loading. These are new executed failures; older failures remain historical.
+
+New raw outputs only: `/home/user/.local/state/timetrace-ui-redesign/evidence/ticket-11-repair/`.
+Own source/venv and newly created `/tmp/timetrace-ticket11-repair.FR4133/timetrace.db` were configured
+before any import/test/runtime; daemon PID334532, loopback18167 (verified free), idle/tracing off,
+credential environment unset, separate timer/key directory. No personal DB/provider/paid calls.
+The external runner health-checks exact DB/port and fakes provider catalog.
+
+Checks: **356 Python passed / 101 existing warnings; 167 Node passed; 21 focused caller tests;
+57 source/test syntax checks**. Full Ruff exits1 at the **same 18 baseline findings**; concise
+stdout and stderr independently `cmp` equal `fresh-verification/run.zoEyTE/baseline-ruff.*`.
+No Python edits; scoped Python formatting not applicable. `git diff --check` passed.
+An initial mistaken `tests/test_tags.js` command failed (file absent), retained in
+`tags-wrong-path.log`; corrected full command includes `tests/test_tags_engine.js` and passes.
+
+`browser-gate-ready.json` and independently executed `parent-browser-gate.json` each report
+**89 bounded assertions / zero pageerrors**: prior83 plus six new recovery assertions. The
+native obsolete UI is absent after selecting B; captured old notice/grid callbacks issue zero
+requests and preserve B's data/card/chart/focus/heading. Legitimate same-dashboard Retry performs
+reads only, restores Overview and clears its error while retaining Saved. Query payload context
+is checked. Deliberate detail503 joins the existing explicit holds/failures/SQL HTTP fake;
+SQL preview remains **not sandbox certification**. Parent verified all three frozen hashes in
+`gate-source-sha256.txt` and approved the browser/one-fix-commit gate. No source/tests changed after
+that freeze. Own-branch latest-integration ancestry check passed at `7ed9bf3`; authorized
+`--ff-only` recheck returned **Already up to date** (`integration-recheck.log`). Final check,
+commit and owned daemon/socket/timer cleanup receipts are external; fresh independent amendment
+and combined ticket11 Standards/Spec review, parent integration and closure remain mandatory.
+
+Prior bounded/manual limits remain: no physical touch/screen-reader/non-Chromium certification,
+comprehensive contrast, cross-tab detection or transport idempotency. Known light4.33:1 and four
+dark AI3.98986 samples are not fixed or waived. No schema/migration or existing-DB migration test.
+This receipt does not close ticket11, mark the spec Built or authorize integration/dev merge.

@@ -69,6 +69,53 @@ async (page, baseURL) => {
         await p.waitForFunction(() => document.getElementById('dashboard_title').textContent === 'Renamed canvas'); await ready();
         check((await detail(named.id)).name === 'Renamed canvas', 'Named rename persists');
 
+        // A failed A read must not leave a retry capable of destroying healthy B.
+        const failedDetailPath = `/api/dashboards/${overview.id}`;
+        let failDetail = true;
+        await context.route(`**${failedDetailPath}`, route => failDetail
+            ? route.fulfill({ status: 503, json: { detail: 'Synthetic detail outage' } }) : route.continue());
+        await p.locator('#dashboard_tabs').getByRole('button', { name: 'Overview', exact: true }).click();
+        await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).waitFor();
+        await p.evaluate(() => {
+            window.queuedDetailRetry = document.querySelector('#dashboard_notice button').onclick;
+            window.queuedCanvasRetry = document.querySelector('#widget_grid button').onclick;
+        });
+        await select('Renamed canvas');
+        const focusButton = p.getByRole('button', { name: 'Edit this widget: Synthetic comparison', exact: true });
+        await focusButton.focus();
+        await p.evaluate(id => {
+            window.healthyCanvas = { data: currentDashboardData, card: document.querySelector(`[data-widget-id="${id}"]`),
+                chart: dashboardCharts[id], focus: document.activeElement };
+        }, chartId);
+        const healthyTraffic = requests.length;
+        const staleVisible = await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).count();
+        if (staleVisible) {
+            // On the unfixed source, genuinely activate the surviving stale native UI.
+            const staleResponse = p.waitForResponse(r => new URL(r.url()).pathname === failedDetailPath);
+            await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).click();
+            await staleResponse;
+        }
+        await p.evaluate(async () => { await window.queuedDetailRetry(); await window.queuedCanvasRetry(); });
+        const staleState = await p.evaluate(() => ({ sameData: currentDashboardData === window.healthyCanvas.data,
+            sameCard: document.querySelector(`[data-widget-id="${window.healthyCanvas.card.dataset.widgetId}"]`) === window.healthyCanvas.card,
+            sameChart: Object.values(dashboardCharts).includes(window.healthyCanvas.chart),
+            sameFocus: document.activeElement === window.healthyCanvas.focus,
+            heading: document.getElementById('dashboard_title').textContent, grid: document.getElementById('widget_grid').textContent }));
+        check(staleState.sameData && staleState.sameCard && staleState.sameChart && staleState.sameFocus && staleState.heading === 'Renamed canvas',
+            `Obsolete Retry preserves B data/card/chart/focus/heading: ${JSON.stringify(staleState)}`);
+        check(staleVisible === 0 && await p.locator('#dashboard_notice').textContent() === 'Saved. ', 'Obsolete detail notice clears without losing Saved acknowledgement');
+        check(requests.length === healthyTraffic, 'Captured obsolete retry handlers issue no requests, including healthy queries');
+        await p.locator('#dashboard_tabs').getByRole('button', { name: 'Overview', exact: true }).click();
+        await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).waitFor();
+        failDetail = false;
+        const recoveryStart = requests.length;
+        await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).click(); await ready();
+        check(await p.locator('#dashboard_title').textContent() === 'Overview' && !(await p.locator('#dashboard_notice').getByRole('button', { name: 'Retry refresh', exact: true }).count()), 'Legitimate same-dashboard Retry recovers and clears its error');
+        check(requests.slice(recoveryStart).filter(r => r.path === failedDetailPath).length === 1 && requests.slice(recoveryStart).every(r => r.method === 'GET' || r.path === '/analytics/query'), 'Legitimate Retry performs reads only');
+        check(requests.filter(r => r.path === '/analytics/query').every(r => r.body.query && typeof r.body.timezone === 'string' && [0, 1].includes(r.body.first_day_of_week)), 'Real query requests retain saved query and local context payload');
+        await context.unroute(`**${failedDetailPath}`);
+        await select('Renamed canvas');
+
         // One failed query and a held sibling: native UI shows each card independently.
         let release, entered;
         const held = new Promise(r => release = r), started = new Promise(r => entered = r);
@@ -212,7 +259,7 @@ async (page, baseURL) => {
         await p.waitForFunction(() => currentDashboardData && currentDashboardData.dashboard.slug === 'overview'); await ready();
         check((await get('/api/dashboards')).length === 1 && (await get('/api/dashboards'))[0].widget_count === 9, 'Deleting the last dashboard permits the existing nine-widget seed rule');
         check(errors.length === 0, 'No uncaught page errors');
-        return { results, errors, dialogs, measurements, requests, fakes: ['provider catalog', 'one query 503 + held query', 'held old detail', 'dashboard list 503', 'legacy POST commits then browser response aborts', 'SQL enabled flag/schema/preview (not sandbox certification)'],
+        return { results, errors, dialogs, measurements, requests, fakes: ['provider catalog', 'one query 503 + held query', 'detail 503 + obsolete native/captured retry', 'held old detail', 'dashboard list 503', 'legacy POST commits then browser response aborts', 'SQL enabled flag/schema/preview (not sandbox certification)'],
             limits: ['No physical touch, screen reader or non-Chromium execution', 'Sample geometry/colors are not whole accessibility certification', 'Backend SQL sandbox is covered separately by pytest'] };
     } finally {
         // Keep the scratch DB inspectable for the parent browser gate; no personal storage.

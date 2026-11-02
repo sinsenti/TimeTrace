@@ -343,3 +343,106 @@ test('an acknowledged reset invalidates removed widgets even when list refresh f
     assert.doesNotMatch(b.elements.widget_grid.textContent, /999|old-seed/);
     assert.match(b.elements.dashboard_notice.textContent, /Saved/);
 });
+
+test('obsolete failed-dashboard Retry cannot clear the selected dashboard, including a queued old handler', async () => {
+    const one = dashboard('one'), two = dashboard('two', [widget('healthy', 'two')]);
+    const b = browser(async url => {
+        if (url === '/api/dashboards') return [one, two];
+        if (url === '/api/dashboards/one') throw Error('Detail unavailable');
+        if (url === '/api/dashboards/two') return two;
+        return result(7);
+    });
+    await b.run('loadDashboards()');
+    const noticeRetry = b.buttons(b.elements.dashboard_notice).find(c => c.textContent === 'Retry refresh').onclick;
+    const canvasRetry = b.buttons().find(c => c.textContent === 'Retry refresh').onclick;
+    await b.buttons(b.elements.dashboard_tabs).find(c => c.textContent === 'two').onclick(); await tick();
+    const card = b.elements.widget_grid.children[0], requestCount = b.requests.length;
+    await noticeRetry(); await canvasRetry(); await tick();
+    assert.equal(b.run("getWidgetById('healthy')?.title"), 'healthy');
+    assert.equal(b.elements.widget_grid.children[0], card);
+    assert.equal(b.elements.dashboard_title.textContent, 'two');
+    assert.equal(b.requests.length, requestCount, 'obsolete retries issue no reads or queries');
+    assert.equal(b.elements.dashboard_notice.textContent, '', 'obsolete detail error is cleared');
+});
+
+test('same-dashboard Retry recovers once, clears its notice and ignores previously queued handlers', async () => {
+    let fail = true;
+    const b = browser(async url => {
+        if (url === '/api/dashboards') return [dashboard('one')];
+        if (url === '/api/dashboards/one') {
+            if (fail) throw Error('Detail offline');
+            return dashboard('one', [widget('recovered')]);
+        }
+        return result(4);
+    });
+    await b.run('loadDashboards()');
+    const retry = b.buttons(b.elements.dashboard_notice).find(c => c.textContent === 'Retry refresh').onclick;
+    const queuedCanvasRetry = b.buttons().find(c => c.textContent === 'Retry refresh').onclick;
+    fail = false; await retry(); await tick();
+    assert.equal(b.run("getWidgetById('recovered').title"), 'recovered');
+    assert.equal(b.elements.dashboard_notice.textContent, '');
+    const requests = b.requests.length, card = b.elements.widget_grid.children[0];
+    await retry(); await queuedCanvasRetry(); await tick();
+    assert.equal(b.requests.length, requests);
+    assert.equal(b.elements.widget_grid.children[0], card);
+});
+
+test('pending create retains Saving through detail failure, selection and Retry, then Saved without stealing selection', async () => {
+    const held = deferred(); let fail = true, created = false;
+    const b = browser(async (url, method) => {
+        if (method === 'POST') { await held.promise; created = true; return dashboard('created'); }
+        if (url === '/api/dashboards') return [dashboard('one'), dashboard('two'), ...(created ? [dashboard('created')] : [])];
+        if (url === '/api/dashboards/two' && fail) throw Error('Detail offline');
+        return dashboard(url.split('/').at(-1));
+    });
+    await b.run('loadDashboards()'); b.prompts.push('Created');
+    const creating = b.run('createDashboard()'); await tick();
+    await b.buttons(b.elements.dashboard_tabs).find(c => c.textContent === 'two').onclick();
+    assert.match(b.elements.dashboard_notice.textContent, /Saving/);
+    await b.buttons(b.elements.dashboard_tabs).find(c => c.textContent === 'one').onclick();
+    assert.equal(b.elements.dashboard_notice.textContent, 'Saving…');
+    await b.buttons(b.elements.dashboard_tabs).find(c => c.textContent === 'two').onclick();
+    fail = false;
+    await b.buttons(b.elements.dashboard_notice).find(c => c.textContent === 'Retry refresh').onclick();
+    assert.equal(b.elements.dashboard_notice.textContent, 'Saving…');
+    held.resolve(); await creating;
+    assert.equal(b.run('getCurrentDashboardId()'), 'two');
+    assert.equal(b.elements.dashboard_notice.textContent, 'Saved. ');
+    assert.equal(b.requests.filter(r => r.method === 'POST').length, 1);
+});
+
+test('detail recovery preserves an unacknowledged-write read-only recovery notice', async () => {
+    let fail = false;
+    const b = browser(async (url, method) => {
+        if (method === 'POST') throw Error('Write acknowledgement lost');
+        if (url === '/api/dashboards') return [dashboard('one')];
+        if (fail) throw Error('Detail offline');
+        return dashboard('one');
+    });
+    await b.run('loadDashboards()'); b.prompts.push('Uncertain'); await b.run('createDashboard()');
+    fail = true; await b.run('reloadCurrentDashboard()');
+    fail = false;
+    await b.buttons(b.elements.dashboard_notice).find(c => c.textContent === 'Retry refresh').onclick();
+    assert.match(b.elements.dashboard_notice.textContent, /not acknowledged/);
+    await b.buttons(b.elements.dashboard_notice).find(c => c.textContent === 'Retry refresh').onclick();
+    assert.equal(b.requests.filter(r => r.method === 'POST').length, 1);
+});
+
+test('an older failed detail read cannot overwrite a newer successful read of the same dashboard', async () => {
+    const held = deferred(); let reads = 0;
+    const b = browser(async url => {
+        if (url === '/api/dashboards') return [dashboard('one')];
+        if (url === '/api/dashboards/one') {
+            if (++reads === 1) { await held.promise; throw Error('Old read failed'); }
+            return dashboard('one', [widget('current')]);
+        }
+        return result(6);
+    });
+    const initial = b.run('loadDashboards()'); await tick();
+    await b.run('reloadCurrentDashboard()'); await tick();
+    const card = b.elements.widget_grid.children[0];
+    held.resolve(); await initial; await tick();
+    assert.equal(b.run("getWidgetById('current').title"), 'current');
+    assert.equal(b.elements.widget_grid.children[0], card);
+    assert.equal(b.elements.dashboard_notice.textContent, '');
+});

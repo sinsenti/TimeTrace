@@ -96,8 +96,12 @@ document.addEventListener('DOMContentLoaded', () => {
 let dashboardListGeneration = 0;
 let dashboardWritePending = false;
 let savedDashboardNotice = '';
+let dashboardNotice = { message: '', retry: null };
+let dashboardDetailNoticeGeneration = null;
 
-function _dashboardNotice(message, retry) {
+function _dashboardNotice(message, retry, detailGeneration = null) {
+    if (detailGeneration === null) dashboardNotice = { message, retry };
+    dashboardDetailNoticeGeneration = detailGeneration;
     const notice = document.getElementById('dashboard_notice');
     if (!notice) return;
     notice.innerHTML = '';
@@ -130,15 +134,13 @@ async function loadDashboards() {
     const remembered = currentDashboardId || localStorage.getItem(LAST_DASHBOARD_KEY);
     currentDashboardId = dashboardList.some(d => d.id === remembered) ? remembered : (dashboardList[0]?.id || null);
     renderDashboardTabs();
-    _dashboardNotice(savedDashboardNotice);
+    _dashboardNotice(savedDashboardNotice || (dashboardWritePending ? 'Saving…' : ''));
     if (currentDashboardId) {
         localStorage.setItem(LAST_DASHBOARD_KEY, currentDashboardId);
         await loadDashboard(currentDashboardId);
     } else {
         ++canvasGeneration;
-        currentDashboardData = null;
-        Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
-        grid.innerHTML = '';
+        _clearDashboardCanvas();
         grid.appendChild(_el('p', 'canvas-empty', 'No dashboards yet. Create a dashboard to add widgets.'));
     }
 }
@@ -317,9 +319,7 @@ async function createDashboard() {
         if (selection === canvasGeneration) {
             ++canvasGeneration;
             currentDashboardId = created.id;
-            currentDashboardData = null;
-            Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
-            document.getElementById('widget_grid').innerHTML = '';
+            _clearDashboardCanvas();
             document.getElementById('dashboard_title').textContent = created.name;
         }
         renderDashboardTabs();
@@ -348,9 +348,7 @@ async function deleteDashboard() {
         if (currentDashboardId === current.id) {
             ++canvasGeneration;
             currentDashboardId = dashboardList[0]?.id || null;
-            currentDashboardData = null;
-            Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
-            document.getElementById('widget_grid').innerHTML = '';
+            _clearDashboardCanvas();
             localStorage.removeItem(LAST_DASHBOARD_KEY);
         }
         renderDashboardTabs();
@@ -369,9 +367,7 @@ async function resetDashboard() {
     await _writeDashboard(() => api.post(`/api/dashboards/${current.id}/reset`), () => {
         if (currentDashboardId !== current.id) return;
         ++canvasGeneration;
-        currentDashboardData = null;
-        Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
-        document.getElementById('widget_grid').innerHTML = '';
+        _clearDashboardCanvas();
     }, () => loadDashboards());
 }
 
@@ -388,13 +384,20 @@ function _disposeWidgetChart(widgetId) {
     delete dashboardCharts[widgetId];
 }
 
-async function loadDashboard(dashboardId) {
-    const grid = document.getElementById('widget_grid');
-    if (!grid) return;
-    const generation = ++canvasGeneration;
+function _clearDashboardCanvas() {
     currentDashboardData = null;
     Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
-    grid.innerHTML = '';
+    document.getElementById('widget_grid').innerHTML = '';
+}
+
+async function loadDashboard(dashboardId) {
+    const grid = document.getElementById('widget_grid');
+    if (!grid || dashboardId !== currentDashboardId) return;
+    if (dashboardDetailNoticeGeneration !== null) {
+        _dashboardNotice(dashboardNotice.message, dashboardNotice.retry);
+    }
+    const generation = ++canvasGeneration;
+    _clearDashboardCanvas();
     grid.appendChild(_el('p', 'canvas-empty', 'Loading dashboard…'));
     const resetBtn = document.getElementById('reset_dashboard_btn');
     if (resetBtn) resetBtn.classList.toggle('hidden', true);
@@ -408,10 +411,14 @@ async function loadDashboard(dashboardId) {
     } catch (err) {
         if (generation !== canvasGeneration || dashboardId !== currentDashboardId) return;
         grid.innerHTML = '';
-        _dashboardNotice(`${savedDashboardNotice}Could not refresh this dashboard.`, () => loadDashboard(dashboardId));
+        const retryDetail = () => {
+            if (generation !== canvasGeneration || dashboardId !== currentDashboardId) return;
+            return loadDashboard(dashboardId);
+        };
+        _dashboardNotice(`${savedDashboardNotice || (dashboardWritePending ? 'Saving… ' : '')}Could not refresh this dashboard.`, retryDetail, generation);
         grid.appendChild(_el('p', 'canvas-empty', 'Failed to load this dashboard.'));
         const retry = _el('button', 'canvas-button', 'Retry refresh');
-        retry.onclick = () => loadDashboard(dashboardId);
+        retry.onclick = retryDetail;
         grid.appendChild(retry);
         return;
     }
