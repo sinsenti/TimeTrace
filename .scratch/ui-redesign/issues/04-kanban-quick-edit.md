@@ -46,3 +46,21 @@
   Source/tests unchanged; final evidence appendix records precise scope/fakes and retained limits.
   This is browser/commit authorization only: fresh independent two-axis review, fresh merger and
   serialized closure remain required; status/criteria are not changed to completed here.
+
+- 2026-11-02: Bounded post-review repair on exact `e5afa8d`: Task-modal preset buttons and
+  `selectSwatch` now respect pending/acknowledged-parent locks; metadata completion yields to
+  intervening focus/dialog owners and disconnected launchers, including superseding nested Sessions.
+  Dedicated caller/native RED receipts reproduced both accepted Spec P2 findings before production
+  edits. All original assertions remain; new public-caller and native coverage includes partial retry,
+  ordinary color editing/unlock, Session Notes, planning input, unsent Assistant text and nested resume.
+  Fresh377 Python/105 warnings,198 Node,69 syntax checks pass; full Ruff remains baseline18.
+  External `evidence/ticket-04-review-fixes/` preserves raw failures, readbacks and frozen candidate.
+  Parent genuine-browser/commit gate and fresh amendment/combined two-axis review remain mandatory;
+  status/criteria remain unclosed and no integration/human/whole-spec acceptance is claimed.
+
+- 2026-11-02: Parent independently passed all five frozen repair/affected native probes (20 new P2
+  checks true, zero pageerrors), verified all four candidate hashes before/after and the inactive
+  private timer, then explicitly released ONE four-path fix commit directly on E5. Three source/test
+  files remain byte-identical to the gate; only this permitted history Comment was appended afterward.
+  Fresh E5…FIX amendment AND DFDA…FIX combined Standards/Spec reviews, fresh merger and serialized
+  closure remain parent-owned mandatory gates; this authorization does not close the ticket/spec.

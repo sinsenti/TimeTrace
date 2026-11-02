@@ -59,6 +59,9 @@ function setTaskParentLocked(locked) {
     modal?.querySelectorAll?.('input, select, textarea').forEach(el => {
         if (!['task_child_title', 'task_children_draft'].includes(el.id)) el.disabled = locked;
     });
+    document.getElementById('swatch_list')?.querySelectorAll('button').forEach(button => {
+        button.disabled = locked;
+    });
     const deleteButton = document.getElementById('modal_delete_btn');
     if (deleteButton) deleteButton.disabled = locked;
     const parse = document.getElementById('ai_quickadd_parse_btn');
@@ -108,11 +111,12 @@ function renderColorSwatches(activeHex = '') {
     if (!list) return;
 
     list.innerHTML = defaultPalette.map(hex => `
-        <button type="button" onclick="selectSwatch('${hex}')" class="w-5 h-5 rounded-full border-2 transition transform hover:scale-125 ${activeHex.toLowerCase() === hex.toLowerCase() ? 'border-white scale-110' : 'border-transparent'}" style="background-color: ${hex};"></button>
+        <button type="button" ${taskSaveInFlight || savedTaskParent ? 'disabled' : ''} onclick="selectSwatch('${hex}')" class="w-5 h-5 rounded-full border-2 transition transform hover:scale-125 ${activeHex.toLowerCase() === hex.toLowerCase() ? 'border-white scale-110' : 'border-transparent'}" style="background-color: ${hex};"></button>
     `).join('');
 }
 
 function selectSwatch(hex) {
+    if (taskSaveInFlight || savedTaskParent) return;
     const picker = document.getElementById('modal_input_color');
     const hexLabel = document.getElementById('custom_color_hex');
     if (picker) picker.value = hex;
@@ -402,14 +406,23 @@ async function saveTask() {
         savedTaskParent = null;
         queuedTaskChildren = [];
         taskSaveInFlight = true;
+        // Metadata can finish after another editor or ordinary input has claimed focus.
+        const focusAtClose = document.activeElement;
+        let focusMoved = false;
+        const retainNewFocus = () => { focusMoved = true; };
+        document.addEventListener('focusin', retainNewFocus);
         // A failed metadata read is not a failed mutation and must never replay writes.
         try { await taskKnowledge.changed(); }
         catch (error) { console.error('Task saved; metadata refresh failed:', error); }
-        if (completedGeneration !== taskEditorGeneration) return;
+        finally { document.removeEventListener?.('focusin', retainNewFocus); }
+        const activeDialog = Array.from(document.querySelectorAll('[role="dialog"]'))
+            .some(dialog => dialog.getClientRects().length);
+        if (completedGeneration !== taskEditorGeneration || focusMoved ||
+            document.activeElement !== focusAtClose || activeDialog) return;
         if (suspendedOwner && suspendedSessionModal === suspendedOwner && completedParent?.id) {
             resumeSessionModalFromTask(completedParent);
-        } else {
-            returnFocus?.focus();
+        } else if (!suspendedOwner && returnFocus?.isConnected) {
+            returnFocus.focus();
         }
     } catch (err) {
         console.error("Failed to save task:", err);

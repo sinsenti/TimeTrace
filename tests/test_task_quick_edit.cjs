@@ -9,22 +9,32 @@ function editor(respond) {
     const elements = new Map();
     function element(tagName = 'DIV') {
         const classes = new Set();
-        return {tagName, value: '', textContent: '', innerText: '', children: [], dataset: {}, disabled: false,
+        return {tagName, value: '', textContent: '', innerText: '', children: [], dataset: {}, disabled: false, isConnected: true,
             classList: {add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x)},
             appendChild(child) { this.children.push(child); }, replaceChildren(...children) { this.children = children; },
             addEventListener(name, handler) { (this.listeners[name] ||= []).push(handler); }, listeners: {},
-            querySelectorAll() { return []; }, focus() { document.activeElement = this; }, select() {}, setAttribute() {}};
+            querySelectorAll() { return []; },
+            focus() { document.activeElement = this; (document.listeners.focusin || []).forEach(fn => fn({target: this})); },
+            select() {}, setAttribute() {}};
     }
     const domReady = [];
     const document = {getElementById: id => elements.get(id), createElement: element, activeElement: null,
-        addEventListener(name, fn) { if (name === 'DOMContentLoaded') domReady.push(fn); }};
+        listeners: {}, querySelectorAll() { return []; },
+        addEventListener(name, fn) { if (name === 'DOMContentLoaded') domReady.push(fn); else (this.listeners[name] ||= []).push(fn); },
+        removeEventListener(name, fn) { this.listeners[name] = (this.listeners[name] || []).filter(item => item !== fn); }};
     const html = fs.readFileSync(path.join(js, '../../templates/components/task_modal.html'), 'utf8');
     for (const [, tag, id] of html.matchAll(/<(\w+)[^>]*\bid="([^"]+)"/g)) elements.set(id, {...element(tag.toUpperCase()), id});
     elements.get('task_modal').classList.add('hidden');
+    elements.get('task_modal').querySelectorAll = () => [...elements.values()].filter(el => ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName));
+    const swatches = elements.get('swatch_list');
+    Object.defineProperty(swatches, 'innerHTML', {set(html) {
+        this.children = [...html.matchAll(/<button([^>]*)>/g)].map(([, attrs]) => ({...element('BUTTON'), disabled: /\bdisabled\b/.test(attrs)}));
+    }});
+    swatches.querySelectorAll = () => swatches.children;
     const requests = [], alerts = [];
     const context = vm.createContext({document, console, alert: x => alerts.push(x), confirm: () => true,
         setTimeout, clearTimeout, formatMinutesToDuration: n => `${n}m`, parseDurationToMinutes: () => 15,
-        parseFlexibleDateInput: () => null, defaultPalette: [],
+        parseFlexibleDateInput: () => null, defaultPalette: ['#7c3aed', '#2563eb'],
         taskKnowledge: {changed: async () => {}, get: () => null, state: () => ({status: 'failed'})},
         fetch: async (url, options) => {
             const request = {url, method: options.method, body: options.body && JSON.parse(options.body)};
@@ -258,4 +268,75 @@ test('queued child inherits an authoritative empty parent category, not the form
     await p.run('saveTask()');
     assert.equal(p.requests[0].body.category, 'study');
     assert.equal(p.requests[1].body.category, '');
+});
+
+test('task color presets and public swatch handler respect pending and acknowledged parent locks', async () => {
+    const pending = deferred();
+    let reject = true;
+    const p = editor(async r => !r.body.parent_id ? pending.promise : reject
+        ? {status: 400, body: {detail: 'Synthetic child rejection'}} : {body: {id: 'child', ...r.body}});
+    p.run('openNewTaskModal()');
+    p.set('modal_input_title', 'Locked color');
+    p.set('modal_input_color_mode', 'custom');
+    p.run('selectSwatch("#2563eb")');
+    p.set('task_child_title', 'Child');
+    const saving = p.run('saveTask()');
+    assert.equal(p.elements.get('modal_input_color').disabled, true);
+    assert.ok(p.elements.get('swatch_list').children.every(button => button.disabled));
+    p.run('selectSwatch("#7c3aed")');
+    assert.equal(p.elements.get('modal_input_color').value, '#2563eb');
+    pending.resolve({body: {id: 'parent', title: 'Locked color', color: '#2563eb'}});
+    await saving;
+    assert.ok(p.elements.get('swatch_list').children.every(button => button.disabled));
+    p.run('selectSwatch("#7c3aed"); toggleCustomColorPicker("custom")');
+    assert.equal(p.elements.get('modal_input_color').value, '#2563eb');
+    assert.equal(p.elements.get('custom_color_hex').innerText, '#2563EB');
+    assert.ok(p.elements.get('swatch_list').children.every(button => button.disabled));
+    reject = false;
+    await p.run('saveTask()');
+    assert.equal(p.requests.length, 3);
+    assert.deepEqual(p.requests.map(r => r.body.title), ['Locked color', 'Child', 'Child']);
+    assert.equal(p.requests.filter(r => !r.body.parent_id).length, 1);
+    p.run('openNewTaskModal(); selectSwatch("#7c3aed")');
+    assert.equal(p.elements.get('modal_input_color').value, '#7c3aed');
+    assert.ok(p.elements.get('swatch_list').children.every(button => !button.disabled));
+});
+
+test('task metadata completion yields to newer focus and ignores disconnected launchers', async () => {
+    for (const transition of ['ordinary', 'focus', 'focus-then-blur', 'disposed', 'new-dialog']) {
+        const pending = deferred();
+        const p = editor(async r => ({body: {id: 'saved', ...r.body}}));
+        const launcher = p.context.document.createElement('BUTTON');
+        launcher.focus();
+        p.run('openNewTaskModal()'); p.set('modal_input_title', 'Saved');
+        p.context.taskKnowledge.changed = () => pending.promise;
+        const saving = p.run('saveTask()');
+        await new Promise(resolve => setImmediate(resolve));
+        const other = p.context.document.createElement('INPUT');
+        if (transition.startsWith('focus')) other.focus();
+        if (transition === 'focus-then-blur') p.context.document.activeElement = p.elements.get('modal_input_title');
+        if (transition === 'disposed') launcher.isConnected = false;
+        if (transition === 'new-dialog') p.context.document.querySelectorAll = () => [{getClientRects: () => [1]}];
+        const before = p.context.document.activeElement;
+        pending.resolve(); await saving;
+        assert.equal(p.context.document.activeElement, transition === 'ordinary' ? launcher : before, transition);
+        assert.equal((p.context.document.listeners.focusin || []).length, 0, 'temporary observer removed');
+    }
+});
+
+test('unacknowledged parent rejection unlocks custom color and pending Save guards new editors', async () => {
+    const pending = deferred();
+    const p = editor(async () => pending.promise);
+    p.run('openNewTaskModal()'); p.set('modal_input_title', 'Pending parent');
+    p.set('modal_input_color_mode', 'custom'); p.run('selectSwatch("#2563eb")');
+    const saving = p.run('saveTask()');
+    p.run('openNewTaskModal(); selectSwatch("#7c3aed")');
+    assert.equal(p.elements.get('modal_input_title').value, 'Pending parent');
+    assert.equal(p.elements.get('modal_input_color').value, '#2563eb');
+    pending.resolve({status: 400, body: {detail: 'Synthetic parent rejection'}});
+    await saving;
+    assert.equal(p.elements.get('modal_input_color').disabled, false);
+    assert.ok(p.elements.get('swatch_list').children.every(button => !button.disabled));
+    p.run('selectSwatch("#7c3aed")');
+    assert.equal(p.elements.get('modal_input_color').value, '#7c3aed');
 });
