@@ -328,7 +328,9 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
 function restoreSessionModalFocus(owner, refreshing = false) {
     const calendarRegion = document.getElementById('calendar');
-    const target = owner?.launcher?.isConnected && !(refreshing && owner.calendarLauncher)
+    const refreshDisposesLauncher = refreshing && (owner?.calendarLauncher ||
+        document.getElementById('task_card_list')?.contains?.(owner?.launcher));
+    const target = owner?.launcher?.isConnected && !refreshDisposesLauncher
         ? owner.launcher : calendarRegion;
     if (target === calendarRegion && target) target.setAttribute('tabindex', '-1');
     target?.focus({ preventScroll: true });
@@ -398,7 +400,7 @@ async function saveSessionFromModal() {
     if (sessionModalOwner === owner && !document.getElementById('session_modal').classList.contains('hidden')) {
         if (submittedSnapshot === sessionModalSnapshot()) {
             closeSessionModal(false);
-            // FullCalendar replaces event elements on refetch; use its stable planning region.
+            // Calendar events and sidebar task launchers are replaced on refresh; use the stable planning region.
             restoreSessionModalFocus(owner, true);
         } else {
             const feedback = document.getElementById('session_modal_feedback');

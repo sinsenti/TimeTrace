@@ -110,6 +110,33 @@ test('Session Cancel and Save restore the connected launcher without losing a ne
     assert.equal(p.context.document.activeElement.id, 'second-launcher');
 });
 
+test('planning Schedule Cancel restores its launcher but clean Save focuses Calendar before sidebar replacement', async () => {
+    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : { id: 'planning-session', ...JSON.parse(options.body) });
+    const list = p.element('task_card_list');
+    const launcher = p.element('planning-schedule', 'button');
+    list.appendChild(launcher);
+    const calendar = p.element('calendar');
+    launcher.focus(); p.open();
+    p.elements.get('session_modal_notes').focus();
+    p.run('closeSessionModal()');
+    assert.equal(p.context.document.activeElement, launcher, 'Cancel keeps the connected Schedule launcher');
+    p.open();
+    let replaced = false, focusBeforeReplacement;
+    p.context.fetchTasks = async () => {
+        focusBeforeReplacement = p.context.document.activeElement;
+        launcher.isConnected = false;
+        list.children = [];
+        if (p.context.document.activeElement === launcher) p.context.document.body.focus();
+        replaced = true;
+        return true;
+    };
+    await p.run('saveSessionFromModal()');
+    assert.equal(replaced, true, 'real metadata refresh reaches sidebar caller');
+    assert.equal(focusBeforeReplacement, calendar, 'focus is stable before disposable sidebar HTML is replaced');
+    assert.equal(p.context.document.activeElement, calendar);
+    assert.equal(p.writes.length, 1);
+});
+
 test('edits made during Save remain dirty and the next Save updates the returned real identity', async () => {
     const held = deferred();
     const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : (await held.promise, { id: 'materialized', ...JSON.parse(options.body) }));
