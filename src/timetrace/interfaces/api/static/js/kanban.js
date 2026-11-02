@@ -9,9 +9,36 @@ let sortableColumnInstance = null;
 let sortableStatusListInstance = null;
 
 document.addEventListener('DOMContentLoaded', () => {
+    setupTaskViewSelector();
     loadKanbanBoard();
     setupAddStatusModalKeyboard();
 });
+
+function setupTaskViewSelector() {
+    const selector = document.getElementById('task_view_selector');
+    if (!selector) return;
+    selector.value = getUserSettings().taskView;
+    showTaskViewAvailability(selector.value);
+}
+
+function showTaskViewAvailability(view) {
+    const notice = document.getElementById('task_view_notice');
+    if (notice) notice.textContent = view === 'kanban' ? ''
+        : `${view === 'grouped' ? 'Grouped list' : 'Outline + inspector'} is not available yet. Showing Kanban; your view preference is kept.`;
+}
+
+function selectTaskView(view) {
+    if (!['kanban', 'grouped', 'outline'].includes(view)) return;
+    const settings = getUserSettings();
+    settings.taskView = view;
+    saveUserSettings(settings);
+    showTaskViewAvailability(view);
+}
+
+function matchesKanbanSearch(task) {
+    const text = document.getElementById('tasks_search')?.value.trim().toLocaleLowerCase() || '';
+    return !text || `${task.title || ''} ${task.tags || ''} ${task.category || ''}`.toLocaleLowerCase().includes(text);
+}
 
 async function loadKanbanBoard() {
     const generation = taskKnowledge.state().generation;
@@ -53,19 +80,21 @@ function renderKanbanColumns() {
             colTasks = colTasks.filter(t => matchesCustomFilter(t));
         }
 
+        colTasks = colTasks.filter(matchesKanbanSearch);
+
         return `
-            <div class="kanban-col flex flex-col p-3 space-y-3 h-full overflow-hidden shrink-0" data-status-id="${st.id}" data-status-name="${st.name}">
+            <div class="kanban-col flex flex-col p-3 space-y-3 h-full overflow-hidden shrink-0" data-status-id="${st.id}" data-status-name="${escapeHtml(st.name)}">
                 <div class="kanban-col-header flex justify-between items-center border-b border-[var(--border-muted)] pb-2 shrink-0 cursor-move" title="Drag column to reorder">
                     <div class="flex items-center space-x-2">
                         <span class="w-3 h-3 rounded-full" style="background-color: ${st.color};"></span>
-                        <span class="font-bold text-sm text-white">${st.name}</span>
+                        <span class="font-bold text-sm text-white">${escapeHtml(st.name)}</span>
                         <span class="kanban-col-count text-xs text-slate-500 font-bold">(${colTasks.length})</span>
                     </div>
                     ${st.is_completed ? '<span class="text-[9px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-bold">DONE</span>' : ''}
                 </div>
 
-                <div class="kanban-card-list flex-1 overflow-y-auto space-y-2.5 pr-1" data-status-name="${st.name}">
-                    ${colTasks.length === 0 ? '' : colTasks.map(t => renderKanbanCard(t)).join('')}
+                <div class="kanban-card-list flex-1 overflow-y-auto space-y-2.5 pr-1" data-status-name="${escapeHtml(st.name)}">
+                    ${colTasks.length === 0 ? '<p class="text-xs text-slate-400 py-4">No matching tasks</p>' : colTasks.map(t => renderKanbanCard(t)).join('')}
                 </div>
             </div>
         `;
@@ -95,14 +124,18 @@ function renderKanbanCard(task) {
         descContentHTML = `<div class="text-[11px] text-slate-300 line-clamp-3 font-normal leading-snug overflow-hidden">${escapeHtml(task.description.trim())}</div>`;
     }
 
+    const parent = task.parent_id ? kanbanTasks.find(t => t.id === task.parent_id) || taskKnowledge.get(task.parent_id) : null;
+    const parentLabel = task.parent_id ? `<div class="text-[11px] text-slate-400">Subtask of ${escapeHtml(parent?.title || 'another task')}</div>` : '';
     return `
-        <div data-task-id="${task.id}" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
+        <div data-task-id="${task.id}" tabindex="0" onkeydown="if(event.target === this && event.key === 'Enter') window.location.href='/task-inspector/${task.id}'" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
                 <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${escapeHtml(task.title)}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
             </div>
             ${dueBadgeHTML ? `<div class="pt-0.5">${dueBadgeHTML}</div>` : ''}
+            ${parentLabel}
             ${descContentHTML}
+            ${task.tags ? `<div class="text-[11px] text-slate-400 break-words">${escapeHtml(task.tags)}</div>` : ''}
             <div class="flex justify-between items-center pt-1 border-t border-[#1a1c26] text-[10px]">
                 <div class="flex items-center space-x-1.5">
                     <span class="text-purple-400 font-semibold uppercase">${escapeHtml(task.category || 'work')}</span>

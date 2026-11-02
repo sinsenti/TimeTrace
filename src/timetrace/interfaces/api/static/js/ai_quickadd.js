@@ -16,6 +16,28 @@
 
 let aiQuickAddClassifyTimer = null;
 let aiQuickAddParseInFlight = false;
+let aiQuickAddGeneration = 0;
+
+function aiQuickAddInvalidate() {
+    aiQuickAddGeneration++;
+    clearTimeout(aiQuickAddClassifyTimer);
+    aiQuickAddParseInFlight = false;
+    const hint = document.getElementById('ai_quickadd_hint');
+    const button = document.getElementById('ai_quickadd_parse_btn');
+    if (hint) hint.textContent = '';
+    if (button) button.disabled = false;
+}
+
+function aiQuickAddReset() {
+    aiQuickAddInvalidate();
+    const input = document.getElementById('ai_quickadd_input');
+    if (input) input.value = '';
+}
+
+function aiQuickAddFormSnapshot() {
+    return JSON.stringify(['title', 'tags', 'priority', 'due_date', 'assigned_date', 'est'].map(name =>
+        document.getElementById(`modal_input_${name}`)?.value));
+}
 
 function aiQuickAddSetupStrip() {
     const input = document.getElementById('ai_quickadd_input');
@@ -23,6 +45,9 @@ function aiQuickAddSetupStrip() {
     if (!input || !parseBtn) return; // strip not present on this page
 
     input.addEventListener('input', () => {
+        aiQuickAddGeneration++;
+        aiQuickAddParseInFlight = false;
+        parseBtn.disabled = false;
         clearTimeout(aiQuickAddClassifyTimer);
         const hint = document.getElementById('ai_quickadd_hint');
         const text = input.value.trim();
@@ -37,6 +62,7 @@ function aiQuickAddSetupStrip() {
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
+            e.stopPropagation();
             aiQuickAddParse();
         }
     });
@@ -47,16 +73,19 @@ document.addEventListener('DOMContentLoaded', aiQuickAddSetupStrip);
 async function aiQuickAddClassify(text) {
     const hint = document.getElementById('ai_quickadd_hint');
     if (!hint) return;
+    const generation = aiQuickAddGeneration;
     try {
         const decision = await api.post('/api/ai/quick-add/classify', { text });
+        if (generation !== aiQuickAddGeneration) return;
         if (decision.tier === 2) {
             hint.textContent = 'AI will parse this (tier 2) -- click Parse or press Enter.';
         } else {
             hint.textContent = 'Simple enough for the regular parser -- Parse still works, but is optional.';
         }
     } catch (err) {
+        if (generation !== aiQuickAddGeneration) return;
         console.error('Quick-add classify failed:', err);
-        hint.textContent = '';
+        hint.textContent = 'Classification unavailable. You can retry Parse or enter fields manually.';
     }
 }
 
@@ -65,16 +94,24 @@ async function aiQuickAddParse() {
     const input = document.getElementById('ai_quickadd_input');
     const hint = document.getElementById('ai_quickadd_hint');
     const parseBtn = document.getElementById('ai_quickadd_parse_btn');
-    if (!input) return;
+    if (!input || input.disabled) return;
     const text = input.value.trim();
     if (!text) return;
 
+    clearTimeout(aiQuickAddClassifyTimer);
+    const generation = ++aiQuickAddGeneration;
+    const snapshot = aiQuickAddFormSnapshot();
     aiQuickAddParseInFlight = true;
     if (parseBtn) parseBtn.disabled = true;
     if (hint) hint.textContent = 'Parsing...';
 
     try {
         const result = await api.post('/api/ai/quick-add/parse', { text });
+        if (generation !== aiQuickAddGeneration) return;
+        if (snapshot !== aiQuickAddFormSnapshot()) {
+            if (hint) hint.textContent = 'Fields changed while parsing. Your edits were kept; Parse again to replace them.';
+            return;
+        }
         if (!result.fields || Object.keys(result.fields).length === 0) {
             if (hint) {
                 hint.textContent = result.tier === 1
@@ -86,11 +123,14 @@ async function aiQuickAddParse() {
         aiQuickAddApplyFields(result.fields);
         if (hint) hint.textContent = 'Fields prefilled below -- review before saving.';
     } catch (err) {
+        if (generation !== aiQuickAddGeneration) return;
         console.error('Quick-add parse failed:', err);
         if (hint) hint.textContent = 'Parse failed: ' + (err.message || err);
     } finally {
-        aiQuickAddParseInFlight = false;
-        if (parseBtn) parseBtn.disabled = false;
+        if (generation === aiQuickAddGeneration) {
+            aiQuickAddParseInFlight = false;
+            if (parseBtn) parseBtn.disabled = false;
+        }
     }
 }
 

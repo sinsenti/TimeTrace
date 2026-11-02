@@ -25,7 +25,7 @@
         }
 
         body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
-        .kanban-col { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; flex: 1 1 0%; min-width: 250px; }
+        .kanban-col { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; flex: 1 1 0%; min-width: 270px; }
         .kanban-card { background-color: #0f1016; border: 1px solid var(--border-muted); border-radius: 0.5rem; transition: transform 0.15s, border-color 0.15s; cursor: grab; }
         .kanban-card:active { cursor: grabbing; }
         .kanban-card:hover { border-color: #a855f7; transform: translateY(-2px); }
@@ -50,17 +50,24 @@
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
 
-        <div class="flex items-center space-x-2">
-            <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">🔍 Filter</button>
-            <button onclick="openStatusManagerModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs">Statuses Config</button>
-            <button onclick="clearCompletedTasks()" class="h-8 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 px-3 rounded-lg font-bold transition text-xs">Clear Completed</button>
-            <button onclick="openNewTaskModal()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition text-xs">+ Create Task</button>
-        </div>
     </header>
 
-    <!-- Main Kanban Board Grid -->
-    <main class="flex-1 p-4 overflow-x-auto flex space-x-4">
-        <div id="kanban_columns_container" class="flex space-x-4 h-full w-full"></div>
+    <section id="tasks_tools" class="px-4 py-3 border-b border-[var(--border-muted)] flex flex-wrap items-center gap-3 shrink-0">
+        <div class="mr-auto"><h1 class="font-bold text-lg">Tasks</h1><p class="text-xs text-slate-400">Plan work, then open a task for details.</p></div>
+        <label class="text-xs">View
+            <select id="task_view_selector" onchange="selectTaskView(this.value)" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-2 py-2 rounded-lg">
+                <option value="kanban">Kanban</option><option value="grouped">Grouped list</option><option value="outline">Outline + inspector</option>
+            </select>
+        </label>
+        <label class="text-xs"><span class="sr-only">Search tasks</span><input id="tasks_search" type="search" placeholder="Search tasks or tags" oninput="renderKanbanColumns()" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-3 py-2 rounded-lg"></label>
+        <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Filter</button>
+        <button onclick="openStatusManagerModal()" class="border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Statuses Config</button>
+        <button onclick="clearCompletedTasks()" class="text-red-400 border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Clear Completed</button>
+        <button onclick="openNewTaskModal()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-lg text-xs">+ Create Task</button>
+        <p id="task_view_notice" role="status" class="basis-full text-xs text-slate-400 empty:hidden"></p>
+    </section>
+    <main class="flex-1 min-h-0 p-4 overflow-x-auto flex gap-4" aria-label="Kanban board">
+        <div id="kanban_columns_container" class="flex gap-4 h-full w-full"></div>
     </main>
 
     {% include "components/settings_modal.html" %}

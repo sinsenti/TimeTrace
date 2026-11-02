@@ -25,3 +25,24 @@
 - Owner approved the 25-ticket granularity/dependency proposal and local publication with “everything feels right, approved”. Implementation-spec/product decision gates remain recorded above. Move to ready-for-agent only after the spec and applicable decisions are explicitly approved; technical blockers still govern execution order.
 
 - 2026-11-01: Owner answered “yes to all answer. and final approve as well” to the full decision questionnaire. All applicable decisions and the final spec/verification plan are approved; status is now ready-for-agent, subject to technical blockers. No implementation has begun.
+
+- 2026-11-02: Local implementation prepared on `feat/ui-redesign-04-kanban-quick-edit` from
+  `7ed9bf3`: adopted Kanban controls, queued child receipt/partial-retry workflow and independently
+  human-saved Quick Add on Tasks/Calendar. [Owned evidence](../ticket-04-evidence.md) records caller/API
+  tests, actual synthetic browser readbacks, retained first failures and known contrast/manual limits.
+  Status remains ready-for-agent/unclosed pending parent browser/commit/integration/review gates;
+  this comment is not closure, human acceptance or dev-merge permission.
+
+- 2026-11-02: Fresh continuation independently verified/preserved the complete dirty checkpoint and
+  fast-forwarded disjointly to reviewed `dfda0aaa67e4014f7123fe5fd659d179c9576dd6`. Fresh377 Python,
+  195 Node,68 syntax and both native probes pass; new assertions verify actual combined02 declined
+  partial-discard Escape retains child focus/value with no writes, then resumes retained Session DOM.
+  [Evidence](../ticket-04-evidence.md#fresh-native-continuation-on-reviewed-dfda-final-parent-gate-pending)
+  preserves fixture/command failures and baseline Ruff/manual/contrast/transport limits. Parent final
+  browser/commit release remains pending; no ticket closure, human acceptance or integration claim.
+
+- 2026-11-02: Parent independently passed all four current native probes/zero errors, verified frozen
+  twelve hashes and exact DFDA runtime/base, then explicitly released one owned-scope feature commit.
+  Source/tests unchanged; final evidence appendix records precise scope/fakes and retained limits.
+  This is browser/commit authorization only: fresh independent two-axis review, fresh merger and
+  serialized closure remain required; status/criteria are not changed to completed here.
