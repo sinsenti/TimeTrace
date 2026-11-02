@@ -16,7 +16,7 @@ function node(id = '', value = '', tag = 'input') {
             s = s.trim();
             if (s.includes(':not')) return el.id !== 'ai_setting_custom_instructions';
             if (s.startsWith('#')) return el.id === s.slice(1);
-            if (s.startsWith('[id^=')) return el.id.startsWith('day_form_');
+            if (s.startsWith('[id^=')) return el.id.startsWith(s.match(/\[id\^="([^"]+)"\]/)[1]);
             if (s.startsWith('.')) return el.classList.contains(s.slice(1));
             return el.tagName.toLowerCase() === s;
         }));}, querySelector(){return null;}
@@ -224,7 +224,11 @@ test('Partial day Save cleans only successful text and rating writes; failed rat
     const fields=dayElements();const ratings=['one','two'].map(id=>{const el=node('rating_range_input_'+id,3);el.classList.add('custom-rating-input');return el;});
     fields.day_custom_ratings_container.children.push(...ratings);
     const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>url==='/rating-entries' && JSON.parse(options.body).rating_definition_id==='two' ? {status:503,json:{detail:'Second rating failed'}} : {json:url.startsWith('/rating-definitions') ? [] : {day_review:null,custom_ratings:[]}});
-    b.context.document.querySelectorAll=()=>ratings.map((input,i)=>({getAttribute:()=>['one','two'][i],querySelector:()=>input}));
+    const cards=ratings.map((input,i)=>({getAttribute:key=>key==='data-required' ? 'false' : ['one','two'][i],querySelector:()=>input}));
+    const query=fields.day_custom_ratings_container.querySelectorAll.bind(fields.day_custom_ratings_container);
+    fields.day_custom_ratings_container.querySelectorAll=selector=>selector==='[data-rating-def-id]' ? cards : query(selector);
+    ratings.forEach(input=>fields[input.id]=input);
+    b.context.document.querySelectorAll=()=>cards;
     await b.run('loadDayReviewData()');fields.day_form_notes.value='Saved text';ratings.forEach(el=>el.value=5);
     await assert.rejects(b.run('saveDayReviewForm()'),/Second rating failed/);
     assert.equal(b.run('followSettingsLink({})'),false);
@@ -275,4 +279,121 @@ test('Day same-owner rating hydration cannot absorb edits made after the refresh
     await b.run('loadDayReviewData()');hold=true;
     const refresh=b.run('loadDayReviewData()');await tick();rating.value=5;held.resolve({json:[]});await refresh;
     assert.equal(b.run('followSettingsLink({})'),false);assert.equal(rating.value,5);assert.equal(b.writes.length,0);
+});
+
+for (const conflict of [false, true]) test(`Instruction ${conflict ? '409 reload' : 'acceptance'} advances authoritative baseline without consuming live draft`, async () => {
+    const fields=aiElements(); fields.ai_thread=node('ai_thread'); let accepted=false;
+    const b=browser(fields,['ai_settings_page.js','ai_assistant.js'],url=> {
+        if (url.endsWith('/accept')) { accepted=true; return conflict ? {status:409,json:{detail:'Settings conflict'}} : {json:{settings:{custom_instructions:'Authoritative C'},proposal:{id:'proposal',status:'accepted'}}}; }
+        return {json:{...aiSettings,custom_instructions:accepted ? 'Authoritative C' : 'Original A'}};
+    });
+    await b.run('aiLoadBehaviorSettings()'); fields.ai_setting_custom_instructions.value='Live B';
+    b.run("globalThis.card=aiBuildInstructionProposalNode({id:'proposal',status:'pending',proposed_instruction:'C'}); document.getElementById('ai_thread').appendChild(card)");
+    await b.context.card.children.at(-1).children[1].listeners.click();
+    assert.equal(fields.ai_setting_custom_instructions.value,'Live B');
+    fields.ai_setting_custom_instructions.value='Original A';
+    assert.equal(b.run('followSettingsLink({})'),false,'obsolete A is unsaved against C');
+    fields.ai_setting_custom_instructions.value='Authoritative C';
+    assert.equal(b.run('followSettingsLink({})'),true,'authoritative C is clean');
+    assert.equal(b.writes.length,1,'only explicit acceptance POST');
+});
+
+for(const fail of [false,true]) test(`Task detail unknown ${fail ? '503 and retry' : 'held tree'} blocks Save; first success initializes even preserveEdits retry`, async()=>{
+    const ids=['inspector_task_id','task_properties_editor','task_properties_status','inspector_edit_title','inspector_edit_desc','inspector_edit_status','inspector_edit_category','inspector_edit_priority','inspector_edit_attachments'];
+    const fields=Object.fromEntries(ids.map(id=>[id,node(id)]));
+    fields.inspector_task_id.value='task'; fields.task_properties_editor.disabled=true;
+    fields.task_properties_editor.children.push(...ids.filter(id=>id.startsWith('inspector_edit_')).map(id=>fields[id]));
+    const held=deferred(); let first=true;
+    const tree={id:'task',title:'Server title',description:'Server description',status:'To Do',subtasks:[]};
+    const b=browser(fields,['utils.js','subtasks.js'],url=>url.endsWith('/tree') && first ? held.promise : {json:url.endsWith('/tree') ? tree : {sessions:[]}});
+    b.context.taskKnowledge={state:()=>({generation:0}),viewResult(){},changed:async()=>{}};
+    b.context.formatMinutesToDuration=()=> '15m'; b.context.alert=()=>{};
+    const loading=b.run('loadTaskDetailTree()');
+    // Even a keyboard/programmatic Save cannot write the unknown defaults.
+    fields.inspector_edit_title.value='Unloaded title';
+    await b.run('saveInspectorTaskProperties()');
+    assert.equal(b.writes.length,0);
+    held.resolve(fail ? {status:503,json:{detail:'Synthetic tree failure'}} : {json:tree}); await loading;
+    if(fail) {
+        assert.equal(fields.task_properties_editor.disabled,true);
+        first=false;await b.run('loadTaskDetailTree(true)');
+    }
+    assert.equal(fields.task_properties_editor.disabled,false);
+    assert.equal(fields.inspector_edit_desc.value,'Server description');
+    fields.inspector_edit_desc.value='Draft description';
+    assert.equal(b.run('followSettingsLink({})'),false);
+    first=false;await b.run('loadTaskDetailTree(true)');
+    assert.equal(fields.inspector_edit_desc.value,'Draft description');
+    fields.inspector_edit_desc.value='Server description';assert.equal(b.run('followSettingsLink({})'),true);
+});
+
+for(const edit of ['notes','rating']) test(`Hidden retained Day ${edit} warns on Settings, survives show and reverted fields are clean`,async()=>{
+    const fields=dayElements(); fields.rev_tab_day.dataset.settingsDraftRetained='true';
+    fields.rev_tab_overview=node('rev_tab_overview');
+    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js','day_history.js'],url=>({json:url.startsWith('/rating-definitions') || url.startsWith('/revision/day-reviews') ? [] : {day_review:null,custom_ratings:[]}}));
+    await b.run('loadDayReviewData()');
+    const field=fields[`day_form_${edit}`], original=field.value;field.value=edit==='notes' ? 'Retained text' : 5;
+    b.run("switchRevisionTab('overview',false)");
+    assert.equal(b.run('followSettingsLink({})'),false);
+    assert.equal(field.value,edit==='notes' ? 'Retained text' : 5);
+    b.run("switchRevisionTab('day',false)");await tick();
+    assert.equal(field.value,edit==='notes' ? 'Retained text' : 5);
+    field.value=original;b.run("switchRevisionTab('overview',false)");
+    assert.equal(b.run('followSettingsLink({})'),true);assert.equal(b.writes.length,0);
+});
+
+function reviewBrowser(kind) {
+    const textIds=kind==='task' ? ['task_rev_difficulty','task_rev_went_well','task_rev_blockers','task_rev_takeaways'] : ['session_rev_modal_tags','session_rev_modal_notes','session_rev_modal_skip_check'];
+    const owner=kind==='task' ? 'task_inspector_body' : 'session_review_modal';
+    const fields=Object.fromEntries([...textIds,owner,`${kind}_custom_ratings_container`,'inspect_task_title','inspect_task_desc','inspect_task_status_badge','session_rev_modal_id','session_rev_modal_time'].map(id=>[id,node(id)]));
+    fields[owner].children.push(...textIds.map(id=>fields[id]),fields[`${kind}_custom_ratings_container`]);
+    const ratings=['one','two'].map(id=>{const el=node('rating_range_input_'+id,3);el.classList.add('custom-rating-input');return el;});
+    fields[`${kind}_custom_ratings_container`].children.push(...ratings);
+    const cards=ratings.map((input,i)=>({getAttribute:key=>key==='data-required' ? 'false' : ['one','two'][i],querySelector:()=>input}));
+    const held=deferred();let fail=true,stored=null;
+    const b=browser(fields,['ratings_config.js',kind==='task' ? 'task_inspector.js' : 'session_review.js'],async(url,options)=>{
+        if(options.method==='GET') {
+            if(url==='/api/tasks/task/stats') return {json:{task:{id:'task',title:'Synthetic'},sessions:[],custom_ratings:[],task_review:stored}};
+            if(url==='/sessions/session') return {json:{id:'session',notes:stored?.notes || '',tags:stored?.tags || ''}};
+            return {json:[]};
+        }
+        if(url==='/rating-entries') return JSON.parse(options.body).rating_definition_id==='two' && fail ? {status:503,json:{detail:'Second rating failed'}} : {json:{}};
+        stored=JSON.parse(options.body);await held.promise;return {json:stored};
+    });
+    const query=fields[`${kind}_custom_ratings_container`].querySelectorAll.bind(fields[`${kind}_custom_ratings_container`]);
+    fields[`${kind}_custom_ratings_container`].querySelectorAll=selector=>selector==='[data-rating-def-id]' ? cards : query(selector);
+    ratings.forEach(input=>fields[input.id]=input);
+    b.context.document.querySelectorAll=()=>cards;
+    b.context.taskKnowledge={state:()=>({generation:0}),get:()=>null,viewResult(){}};
+    b.context.loadCurrentRevisionView=()=>{};
+    return {b,fields,ratings,owner,held,retry:()=>{fail=false;},text:fields[kind==='task' ? 'task_rev_went_well' : 'session_rev_modal_notes']};
+}
+
+test('Task review partial success cleans persisted text and first rating only, retaining failed and concurrent fields through retry',async()=>{
+    const {b,fields,ratings,owner,held,retry,text}=reviewBrowser('task');
+    await b.run("loadTaskInspectorStats('task')");text.value='Submitted review';ratings.forEach(el=>el.value=5);
+    const saving=b.run('saveTaskReviewForm()');await tick();text.value='New draft while POST pending';held.resolve();
+    await assert.rejects(saving,/Second rating failed/);
+    assert.equal(b.run('followSettingsLink({})'),false);
+    text.value='Submitted review';ratings[1].value=3;
+    assert.equal(b.run('followSettingsLink({})'),true,'persisted text and first rating are clean');
+    assert.equal((await b.run("api.get('/api/tasks/task/stats')")).task_review.what_went_well,'Submitted review','fake HTTP readback');
+    ratings[1].value=5;retry();await b.run('saveTaskReviewForm()');await tick();
+    assert.equal(b.run('followSettingsLink({})'),true);
+    assert.equal(fields[owner].classList.contains('hidden'),false);
+});
+
+test('Session review partial success cleans submitted text and first rating, failed rating guards, retry retains new typing',async()=>{
+    const {b,fields,ratings,held,retry,text}=reviewBrowser('session');
+    await b.run("openSessionReviewModal('session')");text.value='Submitted notes';ratings.forEach(el=>el.value=5);
+    const saving=b.run('saveSessionReviewModal()');await tick();text.value='Typed during PUT';held.resolve();
+    await assert.rejects(saving,/Second rating failed/);
+    assert.equal(text.value,'Typed during PUT');assert.equal(b.run('followSettingsLink({})'),false);
+    text.value='Submitted notes';ratings[1].value=3;
+    assert.equal(b.run('followSettingsLink({})'),true,'persisted session text and first rating clean');
+    assert.equal((await b.run("api.get('/sessions/session')")).notes,'Submitted notes','fake HTTP readback');
+    ratings[1].value=5;retry();const retried=b.run('saveSessionReviewModal()');text.value='Next draft';await retried;
+    assert.equal(text.value,'Next draft');assert.equal(fields.session_review_modal.classList.contains('hidden'),false);
+    assert.equal(b.run('followSettingsLink({})'),false);
+    text.value='Submitted notes';assert.equal(b.run('followSettingsLink({})'),true);
 });

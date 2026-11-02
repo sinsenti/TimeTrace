@@ -826,6 +826,7 @@ test('inspector display refresh preserves unsaved properties, including after su
         p.elements.set(id, p.element());
     }
     p.elements.get('inspector_task_id').value = 'task-1';
+    await p.run('loadTaskDetailTree()');
     p.elements.get('inspector_edit_title').value = 'Unsaved inspector title';
     p.elements.get('inspector_edit_desc').value = 'Unsaved description';
     await p.run('taskKnowledge.refresh()');

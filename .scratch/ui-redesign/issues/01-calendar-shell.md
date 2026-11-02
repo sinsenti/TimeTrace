@@ -70,3 +70,16 @@
   diagnostics. Evidence preserves the explicit Dismiss test-first chronology deviation and the
   failed probe-selector receipt. **Status remains ready-for-agent/unclosed** pending fresh
   per-commit and combined01 two-axis review and parent integration/closure; no later ticket built.
+
+- 2026-11-02 guard-edge repair from reviewed60099fb: authoritative instruction baselines,
+  initial/failed/retried task-property gating, retained hidden Day text/grade and independent
+  partial task/session-review checkpoints repaired; small shared capability loader only.
+  Corrected probes distinguish observed startup idle configuration from departure writes and
+  immediate contrast diagnostics from bounded finite-animation-settled samples. Fresh full
+  Python352/85warnings, Node123,40combinedJS/CJS syntax, exact18baseline Ruff comparison pass.
+  Actual native Chromium eight new cases +15 existing suites executed; parent independently
+  reran eight and approved browser gate. Two review cases each intentionally surface one fake503
+  pageerror; settled21cases/1119samples0issues, immediate/dark limitations remain disclosed.
+  First helper/full-suite fixture failures remain recorded in [evidence](../ticket-01-evidence.md).
+  **Still unclosed/ready-for-agent** pending fresh amendment+combined01 two-axis review and parent
+  integration/closure; no later-ticket or whole-spec completion implied.

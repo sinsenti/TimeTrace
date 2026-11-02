@@ -267,9 +267,10 @@ async function saveTaskReviewForm() {
     };
 
     const markSaved = typeof settingsDraftCheckpoint === 'function'
-        ? settingsDraftCheckpoint('task_inspector_body', '[id^="task_rev_"], .custom-rating-input') : () => {};
+        ? settingsDraftCheckpoint('task_inspector_body', '[id^="task_rev_"]') : () => {};
     await api.post('/api/task-reviews', payload);
-    await submitCustomRatings('task', taskId);
+    if (selectedInspectedTaskId !== taskId || initializedTaskReviewId !== taskId) return;
     markSaved();
-    loadTaskInspectorStats(taskId);
+    await submitCustomRatings('task', taskId);
+    if (selectedInspectedTaskId === taskId) loadTaskInspectorStats(taskId, true);
 }

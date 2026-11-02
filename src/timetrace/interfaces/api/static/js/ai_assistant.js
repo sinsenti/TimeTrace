@@ -303,9 +303,11 @@ function aiSyncCustomInstructions(settings) {
     const textarea = document.getElementById('ai_setting_custom_instructions');
     if (!textarea || (typeof aiBehaviorReady !== 'undefined' && !aiBehaviorReady)) return;
     const selector = '#ai_setting_custom_instructions';
-    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['ai_behavior_settings'], selector)) return;
+    const draft = typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['ai_behavior_settings'], selector)
+        ? textarea.value : null;
     textarea.value = settings.custom_instructions;
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('ai_behavior_settings', selector);
+    if (draft !== null) textarea.value = draft;
 }
 
 function aiBuildInstructionProposalNode(proposal, options = {}) {

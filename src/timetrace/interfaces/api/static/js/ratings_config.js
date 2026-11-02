@@ -104,15 +104,18 @@ function validateRequiredCustomRatings(targetType, targetId) {
 }
 
 async function submitCustomRatings(targetType, targetId) {
-    const cards = document.querySelectorAll(`[data-rating-def-id]`);
+    const container = document.getElementById(`${targetType}_custom_ratings_container`);
+    const cards = container ? container.querySelectorAll('[data-rating-def-id]') : [];
+    const ownerId = targetType === 'task' ? 'task_inspector_body'
+        : targetType === 'session' ? 'session_review_modal' : 'day_custom_ratings_container';
     for (let card of cards) {
         const defId = card.getAttribute('data-rating-def-id');
         const input = card.querySelector('.custom-rating-input');
         if (input) {
             const isDismissed = input.disabled;
             const parsedScore = parseInt(input.value);
-            const markSaved = targetType === 'day' && typeof settingsDraftCheckpoint === 'function'
-                ? settingsDraftCheckpoint('day_custom_ratings_container', `#${input.id}`) : () => {};
+            const markSaved = typeof settingsDraftCheckpoint === 'function'
+                ? settingsDraftCheckpoint(ownerId, `#${input.id}`) : () => {};
             await api.post('/rating-entries', {
                 rating_definition_id: defId,
                 target_type: targetType,
@@ -120,7 +123,7 @@ async function submitCustomRatings(targetType, targetId) {
                 score: isDismissed || isNaN(parsedScore) ? 0 : parsedScore,
                 dismissed: isDismissed
             });
-            markSaved();
+            if (document.getElementById(input.id) === input) markSaved();
         }
     }
 }

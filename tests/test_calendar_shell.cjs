@@ -357,7 +357,7 @@ test('Revision failed Save stays dirty and successful Save clears only its own d
     const fields = Object.fromEntries(['day_form_rating','day_form_highlights','day_form_friction','day_form_notes'].map(id => [id,{id,value:'',style:{}}]));
     fields.day_review_date_input = {value:'2026-11-01'};
     fields.rev_tab_day = {...panel(),id:'rev_tab_day',querySelectorAll: () => Object.values(fields).filter(el => el.id?.startsWith('day_form_'))};
-    fields.settings_modal = {...panel(),id:'settings_modal',querySelectorAll: () => [fields.setting_appearance]};
+    fields.settings_modal = {...panel(),dataset:{},id:'settings_modal',querySelectorAll: () => [fields.setting_appearance]};
     fields.setting_appearance = {id:'setting_appearance',value:'light'};
     const b = browser({}, fields);
     b.context.window.location.href = 'http://localhost/revision';

@@ -173,9 +173,15 @@ async function saveSessionReviewModal() {
     const notesVal = document.getElementById('session_rev_modal_notes').value.trim();
     const skipVal = document.getElementById('session_rev_modal_skip_check') ? document.getElementById('session_rev_modal_skip_check').checked : false;
 
+    const markSaved = typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint('session_review_modal', '#session_rev_modal_tags, #session_rev_modal_notes, #session_rev_modal_skip_check') : () => {};
     await api.put(`/sessions/${sessionId}`, { tags: tagsVal, notes: notesVal, review_skipped: skipVal });
+    if (document.getElementById('session_rev_modal_id').value !== sessionId) return;
+    markSaved();
     await submitCustomRatings('session', sessionId);
 
+    if (document.getElementById('session_rev_modal_id').value !== sessionId) return;
+    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['session_review_modal'])) return;
     closeSessionReviewModal();
     loadCurrentRevisionView();
 }

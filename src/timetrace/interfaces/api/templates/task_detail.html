@@ -94,7 +94,8 @@
         </div>
 
         <!-- Integrated Full Task Editor -->
-        <div id="task_properties_editor" class="detail-card space-y-4">
+        <p id="task_properties_status" role="status" class="text-xs text-slate-400">Loading task properties before editing...</p>
+        <fieldset id="task_properties_editor" disabled class="detail-card space-y-4">
             <h2 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Edit Task Properties</h2>
             
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -200,7 +201,7 @@
                 <button type="button" onclick="deleteMainInspectorTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete Task</button>
                 <button id="inspector_save_btn" type="button" onclick="saveInspectorTaskProperties(event)" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs transition">Save Task Changes <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
             </div>
-        </div>
+        </fieldset>
 
         <!-- Subtasks Hierarchy Tree -->
         <div class="detail-card space-y-4">

@@ -224,7 +224,9 @@ function hasSettingsDrafts(ids = [...settingsDrafts.keys()], selector = 'input, 
     return ids.some(id => {
         const root = document.getElementById(id);
         const saved = settingsDrafts.get(id);
-        if (!root || !saved || root.classList.contains('hidden')) return false;
+        if (!root || !saved) return false;
+        // Retained page tabs are not discarded dialogs when hidden.
+        if (root.classList.contains('hidden') && root.dataset.settingsDraftRetained !== 'true') return false;
         const fields = Array.from(root.querySelectorAll(selector));
         return fields.some(el => {
             const baseline = saved.fields.get(el.id || el);

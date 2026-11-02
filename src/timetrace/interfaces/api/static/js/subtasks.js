@@ -3,6 +3,7 @@
  */
 
 let currentTreeData = null;
+let initializedTaskDetailId = null;
 
 document.addEventListener('DOMContentLoaded', () => {
     loadTaskDetailTree();
@@ -131,7 +132,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
         if (remainingContainer) remainingContainer.classList.remove('hidden');
         if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
 
-        if (!preserveEdits) {
+        if (!preserveEdits || initializedTaskDetailId !== taskId) {
             const titleInput = document.getElementById('inspector_edit_title');
             if (titleInput) titleInput.value = tree.title || '';
 
@@ -174,6 +175,11 @@ async function loadTaskDetailTree(preserveEdits = false) {
             const attachInput = document.getElementById('inspector_edit_attachments');
             if (attachInput) attachInput.value = tree.attachments || '';
             if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_properties_editor');
+            initializedTaskDetailId = taskId;
+            const editor = document.getElementById('task_properties_editor');
+            if (editor) editor.disabled = false;
+            const status = document.getElementById('task_properties_status');
+            if (status) status.textContent = '';
         }
 
         const stats = await api.get(`/api/tasks/${taskId}/stats`);
@@ -280,7 +286,13 @@ async function loadTaskDetailTree(preserveEdits = false) {
         taskKnowledge.viewResult("task-detail", true);
         return true;
     } catch (e) {
-        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult("task-detail", false);
+        if (generation === taskKnowledge.state().generation) {
+            taskKnowledge.viewResult("task-detail", false);
+            const status = document.getElementById('task_properties_status');
+            if (status && initializedTaskDetailId !== taskId) {
+                status.textContent = 'Task properties unavailable. Use Retry refresh to enable editing.';
+            }
+        }
         console.error("Failed to load task tree:", e);
         return false;
     }
@@ -294,6 +306,10 @@ async function saveInspectorTaskProperties(event) {
 
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
+    if (initializedTaskDetailId !== taskId) {
+        alert('Task properties are not ready. Wait for loading or use Retry refresh before saving.');
+        return;
+    }
 
     const assignedInputVal = document.getElementById('inspector_edit_assigned_date') ? document.getElementById('inspector_edit_assigned_date').value.trim() : '';
     const dueInputVal = document.getElementById('inspector_edit_due_date') ? document.getElementById('inspector_edit_due_date').value.trim() : '';

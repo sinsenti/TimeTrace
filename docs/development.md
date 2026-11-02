@@ -380,8 +380,9 @@ ratings have separate roots; each successful rating POST checkpoints its own inp
 only day text/grade before refresh. Same-day retries and late rating reads retain existing drafts.
 Unknown day/AI settings Save performs no write: finish/retry loading first. AI load failures offer
 **Retry load**; widget capability failures keep the unknown form closed and explain reopening to retry.
-Accepted instructions (or an authoritative conflict reload) synchronize only a clean instruction field,
-without clearing other behavior/provider drafts or replacing unsaved instructions.
+Accepted instructions (or an authoritative conflict reload) advance the persisted instruction baseline
+even when the live field is dirty. Only a clean field adopts the new value; unsaved instruction text
+and other behavior/provider owners are retained.
 
 Current owner audit for the **new Settings link** (not a retrofit of every historical navigation path):
 
@@ -389,8 +390,8 @@ Current owner audit for the **new Settings link** (not a retrofit of every histo
 | --- | --- |
 | Preferences | Open; explicit browser Save; existing idle side effect unchanged |
 | Calendar/Tasks task and session dialogs | Initialized open; explicit Save/Cancel; session focus guard retained |
-| Task details / subtask dialog | Initialized properties/open; own Save/Cancel |
-| Revision | Day text/grade and custom ratings independently; task post-mortem, session review and rating-definition dialogs retain their initialized owners |
+| Task details / subtask dialog | Properties editing and Save gated until first successful tree read, including Retry refresh; subsequent refresh preserves drafts. Subtask dialog owns open/Save/Cancel. |
+| Revision | Hidden Day tab retains text/grade ownership. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
 | Habits | New/edit definition form; own Save/Cancel (no entry-layout/policy redesign) |
 | Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
 | Tasks Add Status | Open; explicit Save/Cancel (existing status rows still write on change) |
@@ -409,3 +410,16 @@ held/failed HTTP fixtures; five `tests/browser_*draft*ownership.js` / initializa
 manual async functions for the existing browser bridge. See ticket-01 evidence for their exact names,
 actual parent execution, fake boundaries and remaining review/manual limits. No browser framework,
 API/schema change, persisted draft store or later-ticket layout is introduced.
+
+`tests/browser_guard_edge_cases.js` adds authoritative instruction reversion, unknown task-tree gating/
+retry, retained hidden Day text/grade and real partial task/session-review persistence/retry checks.
+Only the deliberately failed rating POST is faked in those review cases; public API readbacks verify
+text and successful ratings. The existing Save handlers surface that rejection as one expected
+pageerror per case; this repair does not provide polished review-error UI (tickets 16/17).
+
+The corrected Settings-caller probe records all traffic and permits only the known dashboard-startup
+`POST /idle/toggle {enabled:true}` in its startup phase, after observing preference reconciliation.
+Canceled departures must produce no writes, including config writes. The shared-appearance probe
+keeps immediate samples as diagnostics and asserts contrast only after finite browser animations
+and rendering completion (eight batches maximum, two-second per-batch deadline). It changes no CSS,
+threshold or idle policy and certifies neither transient/all-frame contrast nor whole accessibility.

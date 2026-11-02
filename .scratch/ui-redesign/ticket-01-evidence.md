@@ -373,3 +373,132 @@ remain unverified. Unchanged retained-dark contrast 3.98986:1 and the exact inco
 older uninstrumented session assertion remain disclosed; the separately confirmed focus race was
 previously fixed and still passes. Independent review is required before integration/closure. One
 focused authorized repair commit only; no push, PR, dev merge or integration-branch write.
+
+## Fresh guard-edge repair from 60099fb (2026-11-02)
+
+Start: `60099fbcb8b8ec4e7f70ed3bea5394135a2e2a05`, clean own branch
+`feat/ui-redesign-01-guard-edge-cases`. Integration remains ancestor `2f978dc`; own-branch
+`git merge --ff-only feat/ui-redesign-integration` returned **Already up to date** after the parent
+browser gate. Owner checkout remained read-only. Ticket01 stays **ready-for-agent/unclosed**;
+independent amendment and combined01 Standards/Spec review, parent merger/integration and closure
+remain required. This is only the fresh scoped repair, not completion of the 25-ticket spec.
+
+### Accepted findings and minimal changes
+
+Separate source-review axes are preserved: Standards combined **one P1 + one P2 contract + one P2
+heuristic** (amendment heuristic only); Spec combined **three P1**, including one amendment P1.
+Task-detail initialization is a duplicate finding across axes, not two distinct bugs.
+
+- Instruction acceptance/authoritative409 reload now advances baseline C while retaining dirty B.
+  Reverting to obsolete A still guards; persisted C is clean. Other behavior/provider drafts,
+  explicit approval, hashes and inert-text/backend semantics are unchanged.
+- Task properties use the approved native fieldset-gating alternative: editing and keyboard/caller
+  Save are unavailable until first successful tree hydration. Loading/failure explains the state;
+  existing **Retry refresh** is usable. First success initializes ownership even with preserveEdits,
+  and subsequent refreshes retain initialized drafts. No unloaded default write or detail-layout rewrite.
+- Day's retained tab explicitly opts into hidden-owner checks; hidden Notes or grade-only drafts
+  guard Settings, survive canceled departure and browser Back/re-entry. Reversion stays clean.
+  Explicit modal Cancel remains discard; retained closed-drawer protection is unchanged.
+- Task/session review text checkpoints immediately after its successful POST/PUT, independently of
+  later ratings. Each successful rating checkpoints only its input; failed/pending ratings and
+  edits arriving during writes remain dirty. Task refresh retains initialized edits; Session stays
+  open if fresh edits remain. All three submitCustomRatings callers were inspected; submission is
+  limited to that target-type's existing container, never another mounted form. No required-rating,
+  exemption, completion or schedule policy, schema or API changes. Existing rating validation policy
+  is not redesigned; full simultaneous Day/history integration remains ticket15.
+- The accepted capability-loading duplicate is one small shared loading/error/supersession helper,
+  preserving the generation check at each caller. No registry/plugin/refactor expansion.
+
+### Fresh RED → GREEN and first failures (not reconstructed history)
+
+Persistent receipt root:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/guard-edge-repair/` (`R` below).
+New caller-visible tests exercise real feature handlers and api_client.js against explicit HTTP fakes.
+Eight added Node cases (22→30 ownership; all Node115→123) cover instruction accept/conflict A/B/C,
+held/failing/retried tree, hidden Day Notes/grade, task and session partial writes/concurrent input/retry.
+
+Actual pre-fix assertion failures: `R/ai-red.log` (obsolete A false-clean, two),
+`R/task-red-corrected.log` (unknown Save writes, two), `R/hidden-red.log` (hidden drafts bypass, two),
+`R/task-review-red.log` and `R/session-review-red.log` (persisted text/rating wrongly dirty).
+Green receipts: `ai-green.log`, `task-green.log`, `hidden-green.log`, `task-review-green.log`,
+`ownership-green.log`; tiny helper review-stage recheck `caps-refactor-green.log`.
+The first task harness lacked utils.js and errored before the assertion (`task-red.log`); the corrected
+harness then produced the intended pre-fix RED. No product correction or fabricated RED for that error.
+Old paired Dismiss/supplemental-case chronology limitations above remain unchanged.
+
+The first full Node run (`full-node.log`) had two fixture compatibility failures: one old minimal
+modal double omitted native dataset; another typed into task details before initializing the newly
+gated editor. Fixtures now model dataset and initialize via real loadTaskDetailTree before editing.
+`full-node-corrected.log` passes all123; no source workaround/disabled assertion. The first new browser
+probe timed out looking for a nonexistent Day tab button (`browser-guard-first.json`); the probe
+now uses actual browser Back from Overview to #day (`first-browser-classification.txt`). The full
+corrected eight-case execution passed. These failures remain available, not silently relabeled PASS.
+
+### Genuine isolated browser execution and parent gate
+
+Own NEW DB `/tmp/timetrace-guard-edge.2TLjQy/timetrace.db`, own source/.venv verified before imports;
+server18153/PID53127. Absolute DB env preceded all app imports/commands/tests. Fresh startup migrated
+through0013; no personal DB/copies/keys/providers/inference/paid calls. Tracing disabled; provider
+catalog faked in every runner-created context; all data synthetic. Existing installed native runner
+`/home/user/.local/state/timetrace-ui-redesign/run-browser-probe.cjs` was read before use; no browser
+dependency/framework installed. Each probe owns fresh browser contexts; API fixture cleanup uses
+existing delete endpoints. The synthetic Day review remains only because no delete-review API exists.
+
+`browser-guard-corrected.json`: all eight cases passed asserted paths. Task/session cases use **real**
+text/first-rating/retry writes and public API readback; only second-rating503 is fake. They check
+pending/failing drafts, own-target posts and unchanged task status/estimate. Each deliberately rejected
+Save emits **exactly one expected synthetic503 pageerror**, explicitly recorded; the other six cases
+have none. This is not a zero-pageerror claim or polished review-failure UI delivery (tickets16/17).
+
+All15 previously committed probes were actually rerun (`browser-matrix-commands.json`, per-probe
+JSON/stdout/stderr). Ownership initialization, retries, hidden drawer, modal Cancel, independent
+provider/behavior, real Habit/widget Save/readbacks, failed capabilities/reopen/late SQL columns,
+Calendar densities/layout, chart lifecycle, focus/UUID retention and preference guards pass asserted
+paths. Parent independently reran all eight new cases (`parent-browser-guard.json`) and inspected
+source/probe diffs and other receipts, then **approved the browser gate before commit**.
+
+Precise probe corrections do not erase the earlier fresh-verifier failures:
+
+- Settings callers record all mutation traffic. Only exact dashboard-startup
+  `POST /idle/toggle {"enabled":true}` is allowed in its observed startup phase; canceled departures
+  must produce zero writes. One explicit additional run reset scratch idle false before starting:
+  `browser-traffic-startup-false.json` records that sole startup write, zero unexpected/departure
+  writes, four confirmations, retained Notes focus and exact task UUID. The first matrix execution
+  already had matching idle state and recorded no writes; these are distinct environment cases,
+  not a retry-until-green or removed idle side effect.
+- Shared appearance retains immediate diagnostic samples (21 below-threshold observations this run).
+  Assertions wait actual finite animations plus rendering frames, with bounded eight batches and
+  two-second per-batch deadline, not blind sleep, disabled CSS or lower thresholds. **21 settled
+  cases /1119 samples /0 settled issues /0 pageerrors**; observed readiness19.6–178.9ms. Original
+ 60099fb immediate failures remain failures at `evidence/fresh-verification/run.zoEyTE/`.
+  Neither transient nor all-frame contrast is certified.
+- Populated AI: three light choices pass13 samples each (minimum11.1216/10.0794/11.0384);
+  unchanged dark metadata +three buttons remain **3.989858597309983:1**, four reported issues.
+  Returned runner status is not whole-app/accessibility PASS.
+
+### Full checks and remaining gates
+
+Fresh full Python **352 passed/85 existing SQLite warnings** (`full-pytest.log`); all Node
+**123 passed** (`full-node-corrected.log`); all **40 combined-range JS/CJS** syntax checks passed
+(`syntax-combined.txt`), as did whitespace. Repository Ruff exits1 with the same18 diagnostics
+(16E501/twoE741) and old invalid-noqa warning; stdout/stderr byte comparisons with recovered
+60099fb fresh receipts both exit0. No Python changed, so changed-Python format/scoped Ruff is N/A.
+Final post-documentation/merge rechecks, exact repair commit SHA, clean index/tracked state,
+DB/timer audit and PID/port shutdown are in the external delivery report and final receipts.
+
+Physical touch/screen reader/other engines/exhaustive gestures, unsampled zoom/reduced-motion/colors,
+full accessibility and human visual acceptance remain unverified. No personal existing-DB migration
+copy was used (no schema change); no real provider/catalog discovery/Test/activation/inference.
+Earlier lost /tmp evidence stays historical only. Parent fresh two-axis amendment and combined01
+review remains mandatory; no ticket closure, later feature, integration/dev merge, push or PR.
+
+Final own-branch post-gate/merge/doc rechecks: Python352/85warnings, Node123, syntax40 and
+`git diff --check` pass. Cached final Ruff omitted the old invalid-noqa warning (stderr comparison1);
+explicit `ruff check . --no-cache --output-format concise` restores it, and stdout+stderr comparisons
+both0 with the original18-diagnostic baseline. No diagnostic was suppressed or autofixed.
+Cleanup verified all task/session/Habit/rating/provider/conversation/chat/draft/instruction-proposal
+fixture counts0; one synthetic Day review remains, no delete API. Migration version0013 and foreign
+key check empty. Timer stopped/no pending idle gap, idle restoredfalse; no real provider
+Test/activate/message requests in daemon audit. Owned server53127 and shell53122 absent after SIGINT,
+port18153closed, normal application shutdown (`R/shutdown.json`, `db-final.json`, `daemon.log`).
+One focused repair commit follows; exact SHA belongs in the external report, not a self-reference.

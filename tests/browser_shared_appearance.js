@@ -1,5 +1,6 @@
 /* Manual caller-visible light-adoption regression, adapted from the parent bridge scan.
- * Run with an isolated daemon and synthetic task; sampled contrast is not accessibility certification. */
+ * Immediate samples are diagnostic; assertions sample after finite animations and two rendering frames.
+ * Run with an isolated daemon and synthetic task; neither transient contrast nor all-frame accessibility is certified. */
 async (page, baseURL) => {
   const c=await page.context().browser().newContext({viewport:{width:1440,height:1000}});
   const p=await c.newPage();
@@ -8,12 +9,7 @@ async (page, baseURL) => {
     await p.goto(`${baseURL}/dashboard`);await p.waitForSelector('.fc-timegrid-slot');
     const task=await p.evaluate(async()=>(await api.get('/api/tasks?status=all'))[0]);
     if (!task) throw Error('Seed an isolated synthetic task through the public API before this probe.');
-    const results=[];
-    for(const theme of ['refined','stone','porcelain']) {
-      for(const route of ['/dashboard','/tasks','/stats','/habits-view','/revision','/settings/ai',`/task-inspector/${task.id}`]) {
-        await p.goto(baseURL+route);await p.waitForSelector('#appearance_toggle');
-        await p.locator('#appearance_light_theme').selectOption(theme);
-        const sample=await p.evaluate(()=>{
+    const scan=()=>{
           const rgba=s=>{const n=s.match(/[\d.]+/g)?.map(Number)||[0,0,0,0];return[n[0],n[1],n[2],n[3]??1]};
           const blend=(f,b)=>[0,1,2].map(i=>f[i]*f[3]+b[i]*(1-f[3])).concat(1);
           const lum=c=>c.slice(0,3).map(x=>x/255).map(x=>x<=.04045?x/12.92:((x+.055)/1.055)**2.4).reduce((a,x,i)=>a+x*[.2126,.7152,.0722][i],0);
@@ -29,7 +25,31 @@ async (page, baseURL) => {
           }).filter(x=>x.ratio<x.threshold);
           const nav=document.querySelector('.app-navigation').getBoundingClientRect(),head=document.querySelector('body>header').getBoundingClientRect();
           return{sampled,issues,head:{width:head.width,height:head.height},nav:{width:nav.width,height:nav.height}};
-        });results.push({theme,route,...sample});
+
+    };
+    const results=[];
+    for(const theme of ['refined','stone','porcelain']) {
+      for(const route of ['/dashboard','/tasks','/stats','/habits-view','/revision','/settings/ai',`/task-inspector/${task.id}`]) {
+        await p.goto(baseURL+route);await p.waitForSelector('#appearance_toggle');
+        await p.locator('#appearance_light_theme').selectOption(theme);
+        const immediate=await p.evaluate(scan);
+        const readiness=await p.evaluate(async()=>{
+          const start=performance.now(),batches=[];
+          for(let i=0;i<8;i++) {
+            await new Promise(requestAnimationFrame);await new Promise(requestAnimationFrame);
+            const live=document.getAnimations().filter(a=>a.playState==='running' && Number.isFinite(a.effect?.getComputedTiming().endTime));
+            batches.push(live.map(a=>({type:a.constructor.name,property:a.transitionProperty,duration:a.effect?.getTiming().duration})));
+            if(!live.length) return {elapsedMs:performance.now()-start,batches};
+            let timeout;
+            try {
+              await Promise.race([Promise.all(live.map(a=>a.finished.catch(()=>{}))),
+                new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('Finite animation readiness exceeded 2 seconds')),2000);})]);
+            } finally {clearTimeout(timeout);}
+          }
+          throw Error('Finite animations did not settle within eight rendering batches');
+        });
+        const settled=await p.evaluate(scan);
+        results.push({theme,route,immediate,readiness,...settled});
       }
     }
     const issues=results.filter(result=>result.issues.length);

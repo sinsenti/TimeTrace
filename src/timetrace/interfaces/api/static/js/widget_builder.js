@@ -85,6 +85,23 @@ function _wbResetForm() {
     document.getElementById('wb_sql_meta').innerText = '';
 }
 
+async function _wbLoadCapabilities(modal) {
+    const generation = ++wbOpenGeneration;
+    modal.classList.add('hidden');
+    let caps;
+    try {
+        caps = await _ensureCapabilitiesLoaded();
+    } catch (err) {
+        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
+        return null;
+    }
+    if (generation !== wbOpenGeneration) return null;
+    document.getElementById('wb_mode_tabs').classList.toggle('hidden', !sqlWidgetsEnabled);
+    _fillSelect(document.getElementById('wb_source'),
+        Object.keys(caps).map(src => ({ value: src, label: src.replace(/_/g, ' ') })));
+    return generation;
+}
+
 async function openWidgetBuilder(dashboardId) {
     const modal = document.getElementById('widget_builder_modal');
     if (!modal) return;
@@ -96,19 +113,7 @@ async function openWidgetBuilder(dashboardId) {
 
     _wbResetForm();
 
-    const generation = ++wbOpenGeneration;
-    modal.classList.add('hidden');
-    let caps;
-    try {
-        caps = await _ensureCapabilitiesLoaded();
-    } catch (err) {
-        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
-        return;
-    }
-    if (generation !== wbOpenGeneration) return;
-    document.getElementById('wb_mode_tabs').classList.toggle('hidden', !sqlWidgetsEnabled);
-    _fillSelect(document.getElementById('wb_source'),
-        Object.keys(caps).map(src => ({ value: src, label: src.replace(/_/g, ' ') })));
+    if (await _wbLoadCapabilities(modal) !== wbOpenGeneration) return;
     _onWidgetBuilderSourceChange();
     wbSwitchMode('structured');
 
@@ -130,19 +135,7 @@ async function openWidgetEditor(dashboardId, widgetId) {
 
     _wbResetForm();
 
-    const generation = ++wbOpenGeneration;
-    modal.classList.add('hidden');
-    let caps;
-    try {
-        caps = await _ensureCapabilitiesLoaded();
-    } catch (err) {
-        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
-        return;
-    }
-    if (generation !== wbOpenGeneration) return;
-    document.getElementById('wb_mode_tabs').classList.toggle('hidden', !sqlWidgetsEnabled);
-    _fillSelect(document.getElementById('wb_source'),
-        Object.keys(caps).map(src => ({ value: src, label: src.replace(/_/g, ' ') })));
+    if (await _wbLoadCapabilities(modal) !== wbOpenGeneration) return;
 
     _wbSetValue('wb_title', widget.title || '');
     _wbSetValue('wb_width', widget.width || 'half');
