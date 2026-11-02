@@ -1,0 +1,15 @@
+/* Session popup only; shared appearance continues to own theme colors. */
+#session_modal { padding: 16px; }
+#session_modal > div { width: min(100%, 480px); max-height: calc(100dvh - 32px); overflow-y: auto; }
+#session_modal textarea { min-height: 76px; max-height: 240px; resize: vertical; }
+#session_modal label { font-weight: 600; }
+#session_modal button { min-height: 28px; }
+#session_modal button:focus-visible { outline: 2px solid var(--accent-primary); outline-offset: 2px; }
+#session_modal button:disabled { opacity: .55; cursor: wait; }
+#session_modal_feedback:empty { display: none; }
+#session_modal > div > div:last-child { flex-wrap: wrap; gap: 8px; }
+@media (max-width: 480px) {
+    #session_modal { padding: 12px; }
+    #session_modal > div { padding: 16px; max-height: calc(100dvh - 24px); }
+    #session_modal label[for="session_modal_end"] { max-width: 95px; }
+}

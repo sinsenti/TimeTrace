@@ -223,21 +223,17 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
         return;
     }
 
-    // A materialized occurrence, or a whole-series duration change, alters what the server would
-    // project for this window -- reload the range instead of patching one event locally.
+    // Commit the returned identity before fallible range reads or a second user gesture.
+    rememberSavedSession(updatedSession, event.id, event);
     if (wasVirtual || scope === 'all_future') {
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
-        if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        return;
+        await refreshSessionDisplay();
+    } else {
+        try {
+            if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        } catch (err) {
+            taskKnowledge.viewResult('calendar', false);
+        }
     }
-
-    if (updatedSession && typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-        const idx = allSessions.findIndex(s => String(s.id) === String(event.id));
-        if (idx !== -1) allSessions[idx] = updatedSession;
-    }
-
-    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
 }
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -262,5 +258,35 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     } catch (err) {
         if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('calendar', false);
         failureCallback(err);
+    }
+}
+
+function rememberSavedSession(savedSession, previousId, event = null) {
+    if (!savedSession) return;
+    if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+        const idx = allSessions.findIndex(s => String(s.id) === String(previousId));
+        if (idx !== -1) allSessions[idx] = savedSession;
+        else allSessions.push(savedSession);
+    }
+    taskKnowledge.invalidate();
+    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) {
+        event = calendar.getEventById(String(previousId));
+    }
+    if (event && String(event.id) !== String(savedSession.id)) {
+        event.setProp?.('id', String(savedSession.id));
+        event.setExtendedProp?.('isVirtual', false);
+        event.setProp?.('classNames', []);
+    }
+}
+
+// Refresh-only recovery uses the shared notice; it must never replay a session mutation.
+async function refreshSessionDisplay() {
+    try {
+        await taskKnowledge.refresh();
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
+    } catch (err) {
+        console.error('Session saved, but display refresh failed:', err);
+        taskKnowledge.viewResult('calendar', false);
     }
 }

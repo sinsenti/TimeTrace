@@ -97,7 +97,7 @@ function attachTaskById(taskId, preventFocus = false, taskTitle = '', preserveSe
 
     if (!preventFocus) {
         const tagInput = document.getElementById('session_modal_tags_input');
-        if (tagInput) setTimeout(() => tagInput.focus(), 20);
+        if (tagInput) tagInput.focus();
     }
 }
 
@@ -120,7 +120,7 @@ function renderTaskChip() {
         chip.className = 'task-chip-item px-2.5 py-1 rounded text-xs font-bold text-white flex items-center space-x-1.5 shadow-sm shrink-0';
         chip.style.backgroundColor = attachedTask.color || '#7c3aed';
         chip.innerHTML = `
-            <button type="button" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
+            <button type="button" aria-label="Detach task" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
         `;
         const label = document.createElement('span');
         label.textContent = `✓ ${attachedTask.title}`;

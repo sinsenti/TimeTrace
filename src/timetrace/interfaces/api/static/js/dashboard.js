@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
             
             eventClick: function(info) {
-                openEditSessionModal(info.event.id);
+                openEditSessionModal(info.event.id, info.el);
             },
 
             eventReceive: async function(info) {

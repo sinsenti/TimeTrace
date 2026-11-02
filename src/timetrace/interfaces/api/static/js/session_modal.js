@@ -9,7 +9,15 @@ function setupModalKeyboardListeners() {
             const activeEl = document.activeElement;
             const isTypingText = activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA');
 
-            if (e.ctrlKey && e.key === 'Enter') {
+            if (e.key === 'Tab' && !e.defaultPrevented) {
+                const controls = [...sessionModal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), textarea, select, [tabindex="0"]')]
+                    .filter(el => el.offsetParent !== null);
+                const target = e.shiftKey ? controls.at(-1) : controls[0];
+                if ((e.shiftKey && activeEl === controls[0]) || (!e.shiftKey && activeEl === controls.at(-1))) {
+                    e.preventDefault();
+                    target?.focus();
+                }
+            } else if (e.ctrlKey && e.key === 'Enter') {
                 e.preventDefault();
                 const dropdown = document.getElementById('tag_suggestions_dropdown');
                 if (dropdown) dropdown.classList.add('hidden');
@@ -18,7 +26,7 @@ function setupModalKeyboardListeners() {
             } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
                 closeSessionModal();
-            } else if ((e.key === '+' || e.key === '=') && !isTypingText) {
+            } else if ((e.key === '+' || e.key === '=') && !isTypingText && !sessionModalOwner?.pending) {
                 e.preventDefault();
                 openTaskModalFromSessionModal();
             }
@@ -70,7 +78,7 @@ function setupModalKeyboardListeners() {
             } else if (e.key === 'Backspace' && !taskSearchInput.value && attachedTask) {
                 detachTask();
                 renderTaskSuggestions('');
-            } else if (e.key === '+') {
+            } else if (e.key === '+' && !sessionModalOwner?.pending) {
                 e.preventDefault();
                 openTaskModalFromSessionModal();
             }
@@ -154,6 +162,40 @@ function setupModalKeyboardListeners() {
 }
 
 let sessionModalFocusVersion = 0;
+let sessionModalOwner = null;
+// The returned row ID is writer identity, not an editable draft field.
+const sessionModalDraftFields = 'input:not(#edit_session_id), select, textarea';
+
+function setSessionSavePending(owner, pending) {
+    owner.pending = pending;
+    if (sessionModalOwner !== owner) return;
+    for (const id of ['session_modal_save_btn', 'session_modal_delete_btn', 'session_modal_start_now_btn', 'session_modal_new_task_btn']) {
+        const button = document.getElementById(id);
+        if (button) button.disabled = pending;
+    }
+    const modal = document.getElementById('session_modal');
+    if (modal) modal.setAttribute('aria-busy', String(pending));
+}
+
+function beginSessionModal(calendarLauncher = null) {
+    const modal = document.getElementById('session_modal');
+    const active = calendarLauncher || document.activeElement;
+    const launcher = modal?.contains?.(active) ? sessionModalOwner?.launcher : active;
+    if (calendarLauncher && calendarLauncher.tabIndex < 0) calendarLauncher.setAttribute('tabindex', '-1');
+    closeSessionModal(false);
+    sessionModalOwner = { launcher, calendarLauncher: Boolean(calendarLauncher) };
+    setSessionSavePending(sessionModalOwner, false);
+    const feedback = document.getElementById('session_modal_feedback');
+    if (feedback) feedback.textContent = '';
+}
+
+function sessionModalSnapshot() {
+    return JSON.stringify([
+        ...['session_modal_task_id', 'session_modal_start', 'session_modal_end', 'session_modal_notes', 'session_modal_tags_input']
+            .map(id => document.getElementById(id).value),
+        currentTagChips
+    ]);
+}
 
 function scheduleSessionModalFocus(inputId) {
     const modal = document.getElementById('session_modal');
@@ -177,10 +219,10 @@ function scheduleSessionModalFocus(inputId) {
     }, 50);
 }
 
-function openEditSessionModal(sessionId) {
+function openEditSessionModal(sessionId, launcher = null) {
     const session = allSessions.find(s => String(s.id) === String(sessionId));
     if (!session) return;
-    closeSessionModal();
+    beginSessionModal(launcher);
 
     document.getElementById('edit_session_id').value = session.id;
     const titleEl = document.getElementById('session_modal_title');
@@ -212,14 +254,14 @@ function openEditSessionModal(sessionId) {
 
     updateSessionModalDurationBadge();
     document.getElementById('session_modal').classList.remove('hidden');
-    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal');
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal', sessionModalDraftFields);
 
     scheduleSessionModalFocus('session_modal_notes');
 }
 
 function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
     try {
-        closeSessionModal();
+        beginSessionModal();
         const editIdEl = document.getElementById('edit_session_id');
         if (editIdEl) editIdEl.value = "";
 
@@ -276,7 +318,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
         const modal = document.getElementById('session_modal');
         if (modal) modal.classList.remove('hidden');
-        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal');
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal', sessionModalDraftFields);
 
         scheduleSessionModalFocus('session_modal_task_search');
     } catch (err) {
@@ -284,7 +326,15 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
     }
 }
 
-function closeSessionModal() {
+function restoreSessionModalFocus(owner, refreshing = false) {
+    const calendarRegion = document.getElementById('calendar');
+    const target = owner?.launcher?.isConnected && !(refreshing && owner.calendarLauncher)
+        ? owner.launcher : calendarRegion;
+    if (target === calendarRegion && target) target.setAttribute('tabindex', '-1');
+    target?.focus({ preventScroll: true });
+}
+
+function closeSessionModal(restoreFocus = true) {
     sessionModalFocusVersion++;
     closeRecurringDeleteModal();
     const modal = document.getElementById('session_modal');
@@ -292,6 +342,7 @@ function closeSessionModal() {
         modal.classList.add('hidden');
         delete modal.dataset.settingsDraftRetained;
     }
+    if (restoreFocus) restoreSessionModalFocus(sessionModalOwner);
     if (typeof suspendedSessionModal !== 'undefined') suspendedSessionModal = null;
     if (typeof calendar !== 'undefined' && calendar) {
         calendar.unselect();
@@ -299,84 +350,62 @@ function closeSessionModal() {
 }
 
 async function saveSessionFromModal() {
+    const owner = sessionModalOwner;
+    if (!owner || owner.pending || document.getElementById('session_modal').classList.contains('hidden')) return;
+    setSessionSavePending(owner, true);
+    let savedSession, submittedSnapshot, checkpoint;
+    const sessionId = document.getElementById('edit_session_id').value;
     try {
-        const sessionId = document.getElementById('edit_session_id') ? document.getElementById('edit_session_id').value : '';
-        const taskIdVal = document.getElementById('session_modal_task_id') ? document.getElementById('session_modal_task_id').value : '';
-        const startVal = document.getElementById('session_modal_start') ? document.getElementById('session_modal_start').value : '';
-        const endVal = document.getElementById('session_modal_end') ? document.getElementById('session_modal_end').value : '';
-        const notesVal = document.getElementById('session_modal_notes') ? document.getElementById('session_modal_notes').value : '';
-
-        const extraTypedTag = document.getElementById('session_modal_tags_input') ? document.getElementById('session_modal_tags_input').value.trim() : '';
-        if (extraTypedTag && typeof addTagChip === 'function') addTagChip(extraTypedTag);
-
-        const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : '';
-
-        if (!startVal || !endVal) {
-            alert("Start and End times are required.");
-            return;
+        const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
+        if (extraTypedTag) {
+            addTagChip(extraTypedTag);
+            document.getElementById('session_modal_tags_input').value = '';
         }
-
+        const startVal = document.getElementById('session_modal_start').value;
+        const endVal = document.getElementById('session_modal_end').value;
         const startDt = new Date(startVal);
         const endDt = new Date(endVal);
-        if (isNaN(startDt.getTime()) || isNaN(endDt.getTime())) {
-            alert("Invalid Start or End time.");
+        if (!startVal || !endVal || isNaN(startDt.getTime()) || isNaN(endDt.getTime()) || endDt <= startDt) {
+            alert('End time must be after a valid Start time.');
             return;
         }
-
         const payload = {
-            task_id: taskIdVal ? taskIdVal : null,
+            task_id: document.getElementById('session_modal_task_id').value || null,
             start_time: startDt.toISOString(),
             end_time: endDt.toISOString(),
-            tags: tagsVal,
-            notes: notesVal || ""
+            tags: currentTagChips.join(' '),
+            notes: document.getElementById('session_modal_notes').value || ''
         };
-
-        let savedSession;
-        if (sessionId) {
-            // A projected recurring occurrence has a synthetic `virt:...` id: PUTting it
-            // materializes it and returns a real row with a different id.
-            savedSession = await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload);
-        } else {
-            savedSession = await api.post('/sessions', payload);
-        }
-
-        if (savedSession && sessionId && String(savedSession.id) !== String(sessionId)) {
-            const hidden = document.getElementById('edit_session_id');
-            if (hidden) hidden.value = savedSession.id;
-
-            if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-                const staleIdx = allSessions.findIndex(s => String(s.id) === String(sessionId));
-                if (staleIdx !== -1) allSessions.splice(staleIdx, 1);
-            }
-            if (typeof calendar !== 'undefined' && calendar) {
-                const staleEvent = calendar.getEventById(String(sessionId));
-                if (staleEvent) staleEvent.remove();
-            }
-        }
-
-        if (savedSession) {
-            if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-                const existingIdx = allSessions.findIndex(s => String(s.id) === String(savedSession.id));
-                if (existingIdx !== -1) {
-                    allSessions[existingIdx] = savedSession;
-                } else {
-                    allSessions.push(savedSession);
-                }
-            }
-
-            if (typeof calendar !== 'undefined' && calendar) {
-                calendar.refetchEvents();
-            }
-        }
-
-        closeSessionModal();
-
-        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
+        submittedSnapshot = sessionModalSnapshot();
+        checkpoint = typeof settingsDraftCheckpoint === 'function' ? settingsDraftCheckpoint('session_modal', sessionModalDraftFields) : () => {};
+        savedSession = sessionId
+            ? await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload)
+            : await api.post('/sessions', payload);
     } catch (err) {
-        console.error("Failed to save session:", err);
-        alert("Failed to save session: " + (err.message || err));
+        console.error('Failed to save session:', err);
+        alert('Failed to save session: ' + (err.message || err));
+        return;
+    } finally {
+        setSessionSavePending(owner, false);
     }
+
+    // A successful write is authoritative before any fallible display work, including POST IDs.
+    if (savedSession && sessionModalOwner === owner) {
+        document.getElementById('edit_session_id').value = savedSession.id;
+        checkpoint();
+    }
+    rememberSavedSession(savedSession, sessionId);
+    if (sessionModalOwner === owner && !document.getElementById('session_modal').classList.contains('hidden')) {
+        if (submittedSnapshot === sessionModalSnapshot()) {
+            closeSessionModal(false);
+            // FullCalendar replaces event elements on refetch; use its stable planning region.
+            restoreSessionModalFocus(owner, true);
+        } else {
+            const feedback = document.getElementById('session_modal_feedback');
+            if (feedback) feedback.textContent = 'Saved. New edits are still unsaved; Save again to keep them.';
+        }
+    }
+    await refreshSessionDisplay();
 }
 
 function deleteSessionFromModal() {

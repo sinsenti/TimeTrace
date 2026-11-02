@@ -255,6 +255,12 @@ function getTaskDateBadge(dueDateStr, assignedDateStr) {
 
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
+        // These confirmations resolve their pending action at document capture. Let them consume
+        // Escape before a Session beneath them, rather than hiding it and stranding the Promise.
+        if (['recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+            const modal = document.getElementById(id);
+            return modal && !modal.classList.contains('hidden');
+        })) return;
         let closedAny = false;
         const focusBeforeClose = document.activeElement;
 
@@ -293,7 +299,9 @@ window.addEventListener('keydown', function(e) {
                 } else {
                     el.classList.add('hidden');
                 }
-                closedAny = true;
+                // A callback may decline discard and keep its editor open. Only a real close
+                // permits selection/focus cleanup; the drawer uses its own visibility class.
+                closedAny = item.openClass ? !el.classList.contains(item.openClass) : el.classList.contains('hidden');
                 break;
             }
         }
@@ -362,7 +370,18 @@ async function confirmRecurringDelete(scope) {
     try {
         // Ids may be synthetic (`virt:<task>:<stamp>`), so encode before interpolating.
         await api.delete(`/sessions/${encodeURIComponent(sid)}?scope=${encodeURIComponent(scope || 'only_this')}`);
+    } catch (err) {
+        console.error('Failed to delete session:', err);
+        alert('Failed to delete session: ' + (err.message || err));
+        return;
+    }
 
+    // The deletion is committed. Failures below are read/display failures, never retry DELETE.
+    taskKnowledge.invalidate();
+    const editingId = document.getElementById('edit_session_id');
+    if (editingId && String(editingId.value) === String(sid) && typeof closeSessionModal === 'function') closeSessionModal();
+    if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
+    try {
         if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
             allSessions = allSessions.filter(item => String(item.id) !== String(sid));
         }
@@ -370,17 +389,14 @@ async function confirmRecurringDelete(scope) {
         if (typeof calendar !== 'undefined' && calendar) {
             const calEv = calendar.getEventById(String(sid));
             if (calEv) calEv.remove();
-            // "following"/"all" end or truncate the series, so other projected occurrences in
-            // this window disappear too -- only a refetch can show that.
-            if (scope === 'following' || scope === 'all') calendar.refetchEvents();
+            // Scoped deletion may alter other projected occurrences too. Refresh is read-only.
+            await calendar.refetchEvents();
         }
-
-        if (typeof closeSessionModal === 'function') closeSessionModal();
-        if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        if (typeof loadCurrentRevisionView === 'function') loadCurrentRevisionView();
+        if (typeof loadCurrentRevisionView === 'function') await loadCurrentRevisionView();
     } catch (err) {
-        console.error("Failed to delete session:", err);
+        console.error('Session deleted, but display refresh failed:', err);
+        taskKnowledge.viewResult('calendar', false);
     }
 }
 
