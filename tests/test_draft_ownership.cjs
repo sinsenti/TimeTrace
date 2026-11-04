@@ -133,19 +133,76 @@ for(const edit of [false,true]) test(`Habit ${edit ? 'edit' : 'new'} form guards
     assert.equal(b.run('followSettingsLink({})'),true);
 });
 
+// Widget-only HTML fixture: model standard select selectedness and real descendant
+// structure. Other owners keep the original lightweight node/document fixtures.
+function widgetNode(tag) {
+    const el = node('', '', tag);
+    Object.defineProperty(el, 'innerHTML', { set() { el.children.length = 0; } });
+    el.querySelector = selector => el.querySelectorAll(selector)[0] || null;
+    if (tag === 'select') {
+        Object.defineProperty(el, 'options', { get: () => el.querySelectorAll('option') });
+        Object.defineProperty(el, 'value', {
+            get: () => el.options.find(option => option.selected)?.value || '',
+            set: value => el.options.forEach(option => { option.selected = option.value === String(value); })
+        });
+        el.appendChild = option => {
+            const selected = el.options.some(item => item.selected);
+            el.children.push(option);
+            if (!selected && !option.selected) option.selected = true;
+            if (option.selected) el.options.forEach(item => { if (item !== option) item.selected = false; });
+            return option;
+        };
+    }
+    el.cloneNode = deep => {
+        const copy = widgetNode(tag);
+        for (const key of ['id', 'type', 'checked', 'disabled', 'htmlFor', 'selected']) copy[key] = el[key];
+        copy.className = el.className;
+        (el.className || '').split(/\s+/).filter(Boolean).forEach(name => copy.classList.add(name));
+        if (deep) el.children.forEach(child => copy.appendChild(child.cloneNode(true)));
+        copy.value = el.value;
+        return copy;
+    };
+    return el;
+}
 function widgetElements() {
-    const html=fs.readFileSync(path.join(js,'../../templates/components/widget_builder_modal.html'),'utf8');
-    const fields=Object.fromEntries([...html.matchAll(/<(\w+)[^>]*\bid="([^"]+)"/g)].map(([,tag,id])=>{const el=node(id);el.tagName=tag.toUpperCase();
-        if(tag==='select') { el.appendChild=function(opt){if(!this.children.length) this.value=opt.value;this.children.push(opt);}; }
-        Object.defineProperty(el,'innerHTML',{set(){el.children.length=0;el.value='';}});
-        return [id,el];}));
-    fields.widget_builder_modal.children.push(...Object.values(fields).filter(el=>['INPUT','SELECT','TEXTAREA'].includes(el.tagName)));
+    const html = fs.readFileSync(path.join(js, '../../templates/components/widget_builder_modal.html'), 'utf8');
+    const fields = {}, root = widgetNode('div'), stack = [root];
+    for (const token of html.matchAll(/<!--[^]*?-->|<\/?[a-z][^>]*>|[^<]+/gi)) {
+        const text = token[0];
+        if (text.startsWith('<!--') || !text.startsWith('<')) continue;
+        if (text.startsWith('</')) { stack.pop(); continue; }
+        const tag = text.match(/^<(\w+)/)[1].toLowerCase();
+        const el = widgetNode(tag);
+        for (const [, name, value] of text.matchAll(/([\w-]+)="([^"]*)"/g)) {
+            if (name === 'class') { el.className = value; value.split(/\s+/).forEach(x => el.classList.add(x)); }
+            else if (name === 'for') el.htmlFor = value;
+            else if (['id', 'type', 'value'].includes(name)) el[name] = value;
+        }
+        if (/\sselected(?:\s|>)/.test(text)) el.selected = true;
+        if (el.id) fields[el.id] = el;
+        stack.at(-1).appendChild(el);
+        if (!['input', 'br', 'hr'].includes(tag)) stack.push(el);
+    }
     return fields;
 }
+function widgetBrowser(fields, respond) {
+    const b = browser(fields, ['widget_builder.js'], respond);
+    const root = fields.widget_builder_modal;
+    b.context.document.createElement = widgetNode;
+    b.context.document.querySelectorAll = selector => {
+        const descendant = selector.match(/^#([\w-]+) (.+)$/);
+        if (descendant) return fields[descendant[1]].querySelectorAll(descendant[2]);
+        return root.querySelectorAll(selector);
+    };
+    b.context.document.querySelector = selector => b.context.document.querySelectorAll(selector)[0] || null;
+    b.context.document.getElementById = id => fields[id] || root.querySelectorAll(`#${id}`)[0] || null;
+    return b;
+}
+
 const capabilities={sql_enabled:true,sources:[{source:'sessions',measures:[{value:'count',label:'Count'}],dimensions:[],filter_fields:[]}]};
 for(const sql of [false,true]) test(`Widget ${sql ? 'SQL' : 'structured'} editor guards draft departure without metadata absorbing title changes`,async()=>{
     const fields=widgetElements(), preview=deferred();
-    const b=browser(fields,['widget_builder.js'],url=>url==='/analytics/capabilities' ? {json:capabilities} : url==='/analytics/sql' ? preview.promise : {json:{tables:[]}});
+    const b=widgetBrowser(fields,url=>url==='/analytics/capabilities' ? {json:capabilities} : url==='/analytics/sql' ? preview.promise : {json:{tables:[]}});
     b.context.getWidgetById=()=>({title:'Original widget',spec:sql ? {mode:'sql',sql:{sql:'SELECT 1 AS amount',chart:'bar',label_column:'amount',value_column:'amount'}} : {mode:'structured',query:{source:'sessions',measure:'count',chart:'bar'}}});
     await b.run("openWidgetEditor('dashboard','widget')");
     assert.equal(b.run('followSettingsLink({})'),true);
@@ -249,7 +306,7 @@ test('Day retry after failed refresh preserves initialized custom-rating drafts 
 
 test('SQL preview metadata preserves saved column selections and cannot consume an unrelated title draft',async()=>{
     const fields=widgetElements();
-    const b=browser(fields,['widget_builder.js'],url=>({json:url==='/analytics/capabilities'?capabilities:url==='/analytics/sql'?{columns:['amount'],rows:[[1]],row_count:1,elapsed_ms:1}:{tables:[]}}));
+    const b=widgetBrowser(fields,url=>({json:url==='/analytics/capabilities'?capabilities:url==='/analytics/sql'?{columns:['amount'],rows:[[1]],row_count:1,elapsed_ms:1}:{tables:[]}}));
     b.context.getWidgetById=()=>({title:'Saved SQL',spec:{mode:'sql',sql:{sql:'SELECT 1 AS amount',chart:'bar',label_column:'amount',value_column:'amount'}}});
     await b.run("openWidgetEditor('dashboard','widget')");await tick();
     assert.equal(fields.wb_sql_label_column.value,'amount');
@@ -262,7 +319,7 @@ test('SQL preview metadata preserves saved column selections and cannot consume 
 
 test('Widget failed capabilities GET exposes retry without editable unknown fields, then opens clean',async()=>{
     const fields=widgetElements();let fail=true;const alerts=[];
-    const b=browser(fields,['widget_builder.js'],()=>fail ? {status:503,json:{detail:'Synthetic capabilities failure'}} : {json:capabilities});
+    const b=widgetBrowser(fields,()=>fail ? {status:503,json:{detail:'Synthetic capabilities failure'}} : {json:capabilities});
     b.context.alert=message=>alerts.push(message);
     await b.run("openWidgetBuilder('dashboard')");
     assert.equal(fields.widget_builder_modal.classList.contains('hidden'),true);assert.match(alerts[0],/Reopen.*retry/);

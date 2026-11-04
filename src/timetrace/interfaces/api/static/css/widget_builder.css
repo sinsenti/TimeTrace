@@ -1,0 +1,46 @@
+/* Scoped structured-builder composition; shared appearance and the SQL sandbox stay independent. */
+#widget_builder_modal { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 20px; background: #0009; --wb-control-border: #7c879b; backdrop-filter: blur(4px); }
+:root[data-appearance="light"] #widget_builder_modal { --wb-control-border: var(--border-muted); }
+#widget_builder_modal.hidden, #widget_builder_modal .hidden { display: none; }
+#widget_builder_modal .wb-dialog { display: flex; flex-direction: column; width: min(660px, 100%); max-height: calc(100dvh - 40px); background: var(--bg-card); color: var(--text-main); border: 1px solid var(--border-muted); border-radius: 12px; box-shadow: 0 20px 70px #0006; font-size: 13px; line-height: 1.6; min-width: 0; }
+#widget_builder_modal .wb-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; padding: 20px 24px 16px; border-bottom: 1px solid var(--border-color); }
+#widget_builder_modal .wb-header h2 { font-size: 20px; font-weight: 650; letter-spacing: -.025em; }
+#widget_builder_modal .wb-header p { color: var(--text-muted); }
+#widget_builder_modal .wb-eyebrow { text-transform: uppercase; font-size: 10px; letter-spacing: .13em; margin-bottom: 3px; }
+#widget_builder_modal .wb-body { padding: 16px 24px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+#widget_builder_modal :is(fieldset, details) { min-width: 0; margin-top: 20px; border: 1px solid var(--border-muted); border-radius: 7px; padding: 12px; }
+#widget_builder_modal legend { padding: 0 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+#widget_builder_modal label { display: block; margin: 8px 0 5px; font-size: 12px; font-weight: 600; color: var(--text-main); }
+#widget_builder_modal :is(input:not([type="checkbox"]):not([type="hidden"]), select, textarea) { width: 100%; min-width: 0; border: 1px solid var(--wb-control-border); border-radius: 5px; padding: 8px; background: var(--bg-main); color: var(--text-main); font: inherit; }
+#widget_builder_modal input::placeholder { color: var(--text-muted); opacity: 1; }
+#widget_builder_modal button { min-height: 36px; padding: 6px 12px; border: 1px solid var(--wb-control-border); border-radius: 6px; background: var(--bg-card); color: var(--text-main); font: inherit; font-weight: 600; cursor: pointer; }
+#widget_builder_modal button:hover { text-decoration: underline; text-underline-offset: 3px; }
+#widget_builder_modal button:disabled { cursor: wait; opacity: .65; }
+#widget_builder_modal .wb-primary { background: var(--accent-primary, #7c3aed); color: #fff; border-color: transparent; }
+#widget_builder_modal .wb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+#widget_builder_modal .wb-checkbox { display: flex; align-items: center; gap: 8px; align-self: end; padding: 8px 0; }
+#widget_builder_modal .wb-checkbox input { width: 16px; height: 16px; }
+#widget_builder_modal .wb-hint { color: var(--text-muted); font-size: 12px; line-height: 1.7; margin: 8px 0; overflow-wrap: anywhere; }
+#widget_builder_modal .wb-filter-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 0 10px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--border-color); }
+#widget_builder_modal .wb-filter-values { grid-column: 1 / 3; }
+#widget_builder_modal .wb-filter-row button { grid-column: 3; grid-row: 2; align-self: end; }
+#widget_builder_modal .wb-segmented { display: flex; gap: 4px; }
+#widget_builder_modal .wb-segmented button { flex: 1; }
+#widget_builder_modal button[aria-pressed="true"] { background: var(--accent-soft, #35244a); text-decoration: underline; text-underline-offset: 4px; }
+#widget_builder_modal summary { cursor: pointer; font-weight: 600; }
+#widget_builder_modal :is(#wb_preview_result, #wb_sql_preview) { margin-top: 12px; max-height: 300px; overflow: auto; padding: 10px; border: 1px solid var(--border-muted); border-radius: 5px; font-size: 12px; overflow-wrap: anywhere; }
+#widget_builder_modal table { border-collapse: collapse; width: 100%; }
+#widget_builder_modal :is(td, th) { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--border-color); vertical-align: top; }
+#widget_builder_modal #wb_error { color: #fca5a5; border-left: 3px solid currentColor; padding: 8px 12px; margin-top: 14px; overflow-wrap: anywhere; }
+:root[data-appearance="light"] #widget_builder_modal #wb_error { color: #a32e36; }
+#widget_builder_modal .wb-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--border-color); }
+#widget_builder_modal .wb-footer > span { margin-right: auto; }
+@media (max-width: 520px) {
+    #widget_builder_modal { padding: 8px; }
+    #widget_builder_modal .wb-dialog { max-height: calc(100dvh - 16px); }
+    #widget_builder_modal :is(.wb-header, .wb-body, .wb-footer) { padding: 12px 14px; }
+    #widget_builder_modal .wb-grid { grid-template-columns: minmax(0, 1fr); }
+    #widget_builder_modal .wb-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    #widget_builder_modal .wb-filter-row button { grid-column: 1 / 3; grid-row: auto; margin-top: 8px; }
+    #widget_builder_modal .wb-footer > span { flex-basis: 100%; }
+}
