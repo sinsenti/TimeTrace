@@ -64,3 +64,27 @@
   files remain byte-identical to the gate; only this permitted history Comment was appended afterward.
   Fresh E5…FIX amendment AND DFDA…FIX combined Standards/Spec reviews, fresh merger and serialized
   closure remain parent-owned mandatory gates; this authorization does not close the ticket/spec.
+
+- Fresh nested-owner review repair on exact `e2c1094`: completed nested Task P now reaches its
+  matching retained Session at acknowledgement, before fallible metadata. Later focus restoration
+  remains optional and cannot strand that handoff or let standalone Q inherit its suspension.
+  Native E2 RED reproduced lost P and standalone Cancel/Save mixups across planning/Assistant and
+  successful/failed reads; new GREEN adds pre-read delivery and superseding Session ownership.
+  Existing color locks, all20 focus/color checks, full04 main/edges, two declined-Escape cases and
+  authoritative empty-category receipts remain green. Parent approved only the two shared nested
+  test timing expectations changing from hidden to resumed at ACK, retaining all existing draft/write
+  assertions; its overlap with stopped12's unrelated fixture hunk requires parent-coordinated replay,
+  not a blind dirty fast-forward. The old nested-new-Session probe now explicitly calls its public
+  initializer because ACK correctly returns the Session overlay; no forced background pointer click.
+  External `evidence/ticket-04-nested-ownership/worker-report.md` records scope, raw first failures,
+  isolation, checks and frozen bytes. Genuine parent native/commit gate and fresh E2…FIX amendment
+  AND DFDA…FIX combined Standards/Spec reviews, fresh merger and serialized closure remain mandatory.
+  Status/criteria remain unclosed; no human/whole-spec/integration approval is claimed.
+
+- Parent independently passed all six frozen nested-repair/affected native probes: all66 new and
+  original20 checks true, zero pageerrors, preserved public/native boundaries and actual row readbacks.
+  All six candidate hashes and all207 source/test manifest hashes matched before/after the gate;
+  private timer remained inactive/unfrozen/idlefalse. Parent explicitly released ONE six-path fix
+  directly on exact E2, permitting only this issue history appendix afterward; five source/test files
+  remain byte-identical to the gate. Fresh E2…FIX AND DFDA…FIX Standards/Spec, fresh merger/closure and
+  later stopped12 shared-test reconciliation remain mandatory parent gates, not approval or closure here.

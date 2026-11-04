@@ -95,7 +95,11 @@ async (page, baseURL) => {
         assert(await page.locator('#task_modal').evaluate(el => el.classList.contains('hidden')), 'Real ACK hides Task before metadata');
         let target;
         if (owner === 'session' || owner === 'nested-new-session') {
-            await page.getByRole('button', {name: '+ Session', exact: true}).click();
+            // ACK now resumes the nested Session before metadata: its overlay correctly
+            // blocks the background button. Exercise supersession via its existing public
+            // initializer, not a forced pointer click. The ordinary Session case stays native.
+            if (owner === 'nested-new-session') await page.evaluate(() => createPlanningSession());
+            else await page.getByRole('button', {name: '+ Session', exact: true}).click();
             await page.locator('#session_modal_notes').fill('New Session owner');
             target = page.locator('#session_modal_notes');
             await target.focus();
@@ -121,5 +125,5 @@ async (page, baseURL) => {
     }
     assert(errors.length === 0, `Unexpected page errors ${JSON.stringify(errors)}`);
     assert(checks.every(check => check.ok), `Review-fix checks: ${JSON.stringify(checks)}`);
-    return {checks, errors, writes, boundaries: 'real Task writes/public readbacks; held parent/metadata and rejected child only; public handler bypass labeled separately; native palette and launchers, no helpers replaced; catalog fake; no providers'};
+    return {checks, errors, writes, boundaries: 'real Task writes/public readbacks; held parent/metadata and rejected child only; public handler bypass labeled separately; native palette and ordinary launchers; nested-new-session supersession uses existing public createPlanningSession after ACK-time resume (not background pointer proof); no helpers replaced; catalog fake; no providers'};
 }

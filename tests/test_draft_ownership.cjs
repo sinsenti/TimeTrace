@@ -460,8 +460,9 @@ for(const failRefresh of [false,true]) test(`Task Save retains Session through $
     f.session_modal_notes.value='Retained';f.session_modal_start.value='2026-10-01T09:45';
     b.run("addTagChip('#sessiontag'); openTaskModalFromSessionModal()");f.modal_input_title.value=task.title;
     const saving=b.run('saveTask()');await tick();assert.equal(refreshing,true);
-    assert.equal(f.session_modal.classList.contains('hidden'),true);assert.equal(f.task_modal.classList.contains('hidden'),true);
-    assert.equal(b.run('followSettingsLink({})'),false,'owner remains guarded while both forms are hidden');
+    assert.equal(f.session_modal.classList.contains('hidden'),false);assert.equal(f.task_modal.classList.contains('hidden'),true);
+    assert.equal(f.session_modal_task_id.value,task.id,'ACK attaches P before held metadata');
+    assert.equal(b.run('followSettingsLink({})'),false,'same retained Session remains guarded after ACK handoff');
     held.resolve(failRefresh?{status:503,json:{detail:'Synthetic metadata failure'}}:{json:[task]});await saving;
     assert.equal(f.session_modal.classList.contains('hidden'),false);assert.equal(f.session_modal_notes.value,'Retained');
     assert.equal(f.session_modal_start.value,'2026-10-01T09:45');assert.equal(f.session_modal_end.value,'2026-10-01T10:30');

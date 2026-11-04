@@ -340,3 +340,64 @@ test('unacknowledged parent rejection unlocks custom color and pending Save guar
     p.run('selectSwatch("#7c3aed")');
     assert.equal(p.elements.get('modal_input_color').value, '#7c3aed');
 });
+
+// Task-only caller fixture: Session close/attachment effects are explicit test doubles;
+// the native nested probe exercises the actual Session owner and attachment implementations.
+function nestedEditor(respond) {
+    const p = editor(respond);
+    const session = p.context.document.createElement('DIV');
+    const launcher = p.context.document.createElement('BUTTON');
+    p.elements.set('session_modal', session);
+    const attachments = [];
+    p.context.closeSessionModal = () => {
+        session.classList.add('hidden');
+        p.run('suspendedSessionModal = null');
+    };
+    p.context.attachTaskById = (...args) => attachments.push(args);
+    launcher.focus();
+    p.run('openTaskModalFromSessionModal()');
+    p.set('modal_input_title', 'Nested P');
+    return {...p, session, launcher, attachments};
+}
+
+for (const action of ['cancel', 'save']) test(`nested ACK handoff survives newer metadata focus then standalone ${action}`, async () => {
+    const pending = deferred();
+    const p = nestedEditor(async r => ({body: {id: r.body.title, ...r.body}}));
+    p.context.taskKnowledge.changed = () => pending.promise;
+    const saving = p.run('saveTask()');
+    await new Promise(resolve => setImmediate(resolve));
+    const target = p.context.document.createElement('INPUT');
+    target.focus();
+    pending.resolve(); await saving;
+    assert.deepEqual(p.attachments.map(args => args[0]), ['Nested P']);
+    assert.equal(p.session.classList.contains('hidden'), false);
+    assert.equal(p.run('suspendedSessionModal'), null);
+    assert.equal(p.context.document.activeElement, target);
+    p.context.closeSessionModal();
+    p.run('openNewTaskModal()'); p.set('modal_input_title', 'Standalone Q');
+    if (action === 'cancel') p.run('closeTaskModal()');
+    else await p.run('saveTask()');
+    assert.equal(p.session.classList.contains('hidden'), true);
+    assert.deepEqual(p.attachments.map(args => args[0]), ['Nested P']);
+    assert.equal(p.requests.length, action === 'cancel' ? 1 : 2);
+});
+
+test('matching nested owner receives ACK before fallible metadata; superseding Session receives nothing', async () => {
+    for (const supersede of [false, true]) {
+        const parent = deferred(), refresh = deferred();
+        const p = nestedEditor(async () => parent.promise);
+        p.context.taskKnowledge.changed = async () => { await refresh.promise; throw Error('Synthetic read failure'); };
+        const saving = p.run('saveTask()');
+        if (supersede) {
+            p.context.closeSessionModal();
+            p.session.classList.remove('hidden');
+        }
+        parent.resolve({body: {id: 'P', title: 'Nested P'}});
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(p.attachments.length, supersede ? 0 : 1, 'handoff precedes held metadata');
+        assert.equal(p.run('suspendedSessionModal'), null);
+        if (!supersede) assert.equal(p.context.document.activeElement, p.launcher);
+        refresh.resolve(); await saving;
+        assert.equal(p.attachments.length, supersede ? 0 : 1);
+    }
+});

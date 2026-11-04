@@ -406,6 +406,11 @@ async function saveTask() {
         savedTaskParent = null;
         queuedTaskChildren = [];
         taskSaveInFlight = true;
+        // Deliver this owner's acknowledged result before fallible display reads. Focus
+        // changes during refresh must not strand the Session or leak it into a later Task.
+        if (suspendedOwner && suspendedSessionModal === suspendedOwner && completedParent?.id) {
+            resumeSessionModalFromTask(completedParent);
+        }
         // Metadata can finish after another editor or ordinary input has claimed focus.
         const focusAtClose = document.activeElement;
         let focusMoved = false;
@@ -419,11 +424,7 @@ async function saveTask() {
             .some(dialog => dialog.getClientRects().length);
         if (completedGeneration !== taskEditorGeneration || focusMoved ||
             document.activeElement !== focusAtClose || activeDialog) return;
-        if (suspendedOwner && suspendedSessionModal === suspendedOwner && completedParent?.id) {
-            resumeSessionModalFromTask(completedParent);
-        } else if (!suspendedOwner && returnFocus?.isConnected) {
-            returnFocus.focus();
-        }
+        if (!suspendedOwner && returnFocus?.isConnected) returnFocus.focus();
     } catch (err) {
         console.error("Failed to save task:", err);
         if (savedTaskParent) {
