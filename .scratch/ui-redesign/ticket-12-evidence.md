@@ -515,3 +515,134 @@ then separately reviewed merger closure remain mandatory. No ticket closure/spec
 19 release/13–14 unlock/integration/human/dev-merge/push/PR permission is inferred. Caption heuristic
 and old comparison ambiguity remain explicitly deferred/out of scope; all previous contrast/manual/
 realSQL-provider/query-crossproduct/transport limitations stay unwaived.
+
+## Local integration and bounded closure draft (2026-11-04)
+
+**Code integrated; closure NOT committed/released.** Clean integration F7
+`f7c40c0233bfc98c81bab3921a4f95c253f314db` fast-forwarded ONLY to exact reviewed
+`c37c81b00c8f9928480942eb6bbb3d90638e7f9e`: three commits/24 paths, no merge commit/source copy.
+Combined diff SHA256 `0b704681569681b5088aa38dc43a3e2c95567d84481db55153bc84f98e69849a`
+matched the reviewed bytes. Fresh Standards and Spec reports on BOTH a521→c37 and F7→c37 were
+fully read: Standards amendment0/combined0 hard breaches plus ONE possible nonblocking P2 caption
+heuristic, explicitly deferred; Spec0 both ranges. Code acceptance is not whole-app/human acceptance.
+Original three Spec defects + separate parent weekday defect + collision defect are five historical
+product defects, not five original review findings. All history above remains chronological evidence.
+
+### All six unchanged issue criteria — bounded evidence
+
+| Criterion | Actual implementation and fresh evidence | Limits |
+| --- | --- | --- |
+| Full published builder/edit/validation | `widget_builder.js`/modal/scoped CSS expose all capabilities, 20 conjunctive filters/typed arrays, two dimensions/six charts, sort/limit/fill, faithful edit/reopen and inert preview/validation. Dedicated58 API tests plus review17, structured14/controls56/saved8 native checks passed. Two hardcoded compiler projection-alias loops retain tagged-session and task-estimation grouping; no capability removed to avoid their original500. | Not an exhaustive query cross-product or a claim every case began as TDD RED. |
+| Independent ranges/baselines | Dedicated API covers leap/DST/week/custom boundaries; structured14 retains custom dates, all three typed filters, limit37/split/prior-year comparison through title-only Save; main/request/context native checks exclude stale reads/owners. Normal review stacks retain exact sparse cells, separate primary/ghost stacks and source-row clicks. | No global dashboard filter/arbitrary IANA bucketing. Collision comparison's supplied baseline ambiguity below is UNWAIVED. |
+| Fan-out/split | API/compiler regressions check actual numeric fan-out/split and comparison values; controls56 keeps fan-out default/overlap explanation; structured14 retains split-evenly. | Overlapping fan-out totals are labeled, not conflated with performed work or summed into a new policy. |
+| Local start day/context | Existing structured compiler/QueryService own local session-start bucketing; explicit timezone/week-start request context and effective response bounds/warnings appear in preview. Two narrow service repairs reject destructive hour/weekday multidimensional fill and stably order ALL secondary weekday rows; focused75 includes exact four-row/order/context tests. | Daemon-zone fallback/warning remains; no frontend rebucketing or time-policy change. |
+| Compatibility/independent SQL/errors | Saved8 retains unavailable/invalid inputs, blocks unreadable overwrite; initialization10 keeps optional SQL entry separate. Review13 + fresh legacy controls20 retain historical invalid fill drafts, no Preview/Save requests or destructive rewrite, both Remove invalidations. Collision22 preserves every duplicate serialized-key source row/full labels/ordinal/inert explanation/physical clicked raw day and actual2-session readback, without aggregation/rekey/spec writes. | Actual SQL disabled; opt-in/schema/preview HTTP-faked, NOT sandbox certification. Malformed-date compatibility deliberately retains an old backend read500 before local rejection. |
+| Shared acceptance/regressions/safety | Lifecycle7/requests9/context4 preserve pending/concurrent dirty ownership, captured ACK checkpoint and read-only Retry; native Cancel/Tab/Shift+Tab/Escape/focus, inert long text and bounded24 builder/16 Canvas/four notice theme samples passed. All full/focused checks below, isolated synthetic real API readbacks, no personal/provider calls. | Scripted Settings-anchor departure is NOT physical background-pointer proof; touch/screen-reader/other engines/exhaustive zoom-motion/custom colors/a11y/human visuals deferred. |
+
+### Fresh actual integrated execution
+
+External authoritative report:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-12/merger-report.md`;
+raw run `run.vVXmFd/` under that evidence root. Results are this merger's runs, not reused producer gates:
+**466 Python passed/226 warnings** (222 SQLite datetime adapter deprecations +4 Pydantic datetime
+serializer UserWarnings); focused75 API/121 warnings; **224 canonical all-CJS+tags**, focused10
+stack/collision callers; **87 explicitly enumerated source/test JS/CJS syntax**. Scoped four-file
+Ruff, two tests/service format and ONLY compiler ranges438–455/650–667 format pass. Unrelated old
+whole-compiler `_IS_DONE_SQL` wrap remains. Full concise no-cache Ruff exits1/18 baseline findings;
+BOTH stdout and stderr byte-match fixed `fresh-verification/run.zoEyTE/baseline-ruff.*`, including
+old invalid-noqa warning. Whitespace passes; no source/test/spec edits or format cleanup.
+
+Stats89 ran FIRST before domain fixtures; then seven builder108 (14+4+56+10+7+9+8), review13,
+controls20, collision22 = **252 inspected passing labels**, all11 first-run exits0/errors[], both
+review/collision explicit PASS/failures[]. Full saved JSON, real payloads/charts/IDs and every check
+were parsed/inspected, not merely function-return status. Original source probes remain unchanged;
+ONLY two screenshot destinations changed in an external controls copy, with reversible exact diff.
+Canvas samples min description5.68948/control12.0118; builder min label12.0118/primary5.69859/
+border3.62385; notice min12.0118:1. These are bounded Chromium samples, not whole contrast/accessibility.
+
+Fresh two-CAS legacy fixture used its OWN nonce Dashboard and two valid real-API fillfalse widgets;
+external parameterized CAS changed ONLY their captured spec_json false→true, exactly2 rows, all
+other fields/rows/tables unchanged, public readback and owned-ID cleanup verified. Original external
+helpers were derived ONLY by approved DB/port/CWD/absolute NEW venv bindings, all assertions intact;
+source/derived SHA, exact diffs and reverse-byte equality retained. This is historical SQLite
+simulation, not invalid HTTP Save or bypass of production validation. Parent must use a separately
+fresh nonce/manifest for the genuine independent integrated gate, not these cleaned IDs.
+
+Actual collision API primary[1,2]/baseline[2,2] remains the pre-existing NULL/empty comparison-key
+alignment ambiguity, explicitly UNFIXED/UNWAIVED. Renderer faithfulness is not baseline-correctness
+certification. No service comparison/aggregation policy change. Catalog always faked; intentional
+HTTP holds/failures and SQL flag/schema/preview fakes remain explicit. No provider Test/Activate,
+inference, real SQL enablement, paid call, personal DB/copy/key or migration/schema change.
+
+NEW private0700 `/tmp/timetrace-integrated-12.BPvYbyol` preceded EVERY app import/test/runtime;
+NEW own editable `.venv` there points to integration, leaving its old `.venv` untouched. Whitelist
+env-i/private HOME, absolute DB/timer/key siblings, idle/SQL/tracing off, credentials including Google
+ADC/GCLOUD/Gemini/Ollama absent. Own PID452661 actual main:daemon_app on free loopback18221;
+bounded30s captured readiness succeeded normally through0013_ai_data_scope, exact health/ORM/FK[].
+No stamp/create_all fallback; existing-DB migration-copy test N/A (no schema change). Post-probe
+all synthetic domain/AI rows0; Overview1/widgets9/statuses5/settings1/migration1, FTSdata12/idx10/
+config1/otherFTS0. Timer HTTP inactive/unfrozen/idlefalse/nullgap/task/emptytags-notes; timer file absent.
+
+One fresh INSPECTION-only failure: external inspector guessed `pageErrors` rather than actual
+Canvas `errors` and overprinted request traffic. Raw KeyError/overbound stdout retained; stopped,
+read source return contract, received parent approval for ONE complete saved-JSON inspection using
+actual results/errors keys. Corrected89/errors[] metadata/labels/measurements passed. No native
+rerun/source/assertion change. A later development-DOC exact edit refused an oldText missing its
+same-line registry prefix; no write. Stopped, parent approved ONE exact-anchor DOC-only correction,
+actual paragraph re-read and narrowly replaced; raw refusal retained. No application/test rerun or
+source change. All earlier original RED/helper/oracle/readiness/provider-fetch/pidfd failures and
+the missing original repair report remain retained, not backfilled or all-first-pass.
+
+Before/after checks and before this draft, ALL231 tracked src/tests/specs paths+contents match
+manifest SHA256 `903611d11eb4ca0240d6128e87725aaa95015b0c61431321a49ae454658c1c40`.
+Original DD16/user dirty root and clean bc/a521/c37 checkpoints preserved read-only. Only five allowed
+DOC drafts may differ. **No stage/commit until genuine parent LIVE integrated browser gate and
+explicit release.** Runtime remains healthy/source frozen for that gate; no shutdown inferred from
+producer passes. Subsequent release may permit ONE exact-c37-parent five-DOC closure; cleanup only
+own identity-verified capable-stdlib pidfd normal SIGTERM after canonical timer/file/read-only0013/FK/
+actual-count audit, retaining DB/logs/venv. Actual later receipts must supersede this live checkpoint.
+
+Ticket remains pending in this draft: only01+02+04+10+11 completed/20pending. After genuine gate and
+explicit one-commit closure, eventual01+02+04+10+11+12 =6completed/19pending; bounded delivered
+implementation is NOT whole25/manual/human acceptance. Spec remains Approved NOT Built. Fresh DOC
+Standards+Spec review and parent disposition are mandatory before19 continuation/13–14 resource
+unlock; resource locks are not new DAG edges. No13 SQL-layout/sandbox adoption,14 performed preset/
+recorded-label changes or seed reinsertion. Known three light4.33/four darkAI3.98986, caption heuristic,
+comparison ambiguity, real SQL/providers, transport lost-response/atomicity/idempotency/exactly-once/
+cross-tab and broader manual limits remain unwaived. Fixed82fabdc whole-delivery/adversarial/human/
+dev-merge gates remain separate; no push/PR/dev/main write or other-ticket completion.
+
+### Released bounded closure — supersedes the preceding draft/live checkpoint
+
+Parent's genuine independent integrated gate passed on exact c37: Stats89 FIRST→seven builder108→
+review13→fresh OWN legacy controls20→collision22 =252 inspected labels, all11 first-run exits0,
+actual errors[] and review/collision PASS/actual failures[]. Complete parent gate/summary/before/after
+receipts were read. Parent independently verified all231 source/test/spec bytes before/after,
+empty index/five frozen DOCs, exact own source/env/DB/0013/FK and BOTH full concise Ruff streams
+against fixed baseline18. Only two external screenshot paths changed; no probe/source fixes/reruns.
+Parent's fresh nonce/two valid API widgets/exact2-CAS/all unrelated fields+rows+tables/public readback/
+owned cleanup were independent of producer. These are two separate252 executions, not504 unique tests.
+`evidence/integrated-ticket-12/parent-browser-gate.md` explicitly released ONE exact-single-parent
+`c37c81b00c8f9928480942eb6bbb3d90638e7f9e` five-DOC closure, with231 immutable source bytes.
+
+Actual normal cleanup: `/usr/bin/python3 -P` exposes BOTH os.pidfd_open/signal.pidfd_send_signal,
+recorded BEFORE execution; application/tests remain own Python3.14. Exact PID452661/start/cwd/cmd/
+executable/editable direct_url/whitelisted env/private0700 DB/health18221 verified through retained
+pidfd. Canonical `/timer/status` AND active_timer.json now EXISTS inactive (producer's earlier absence
+was true then): stopped/unfrozen/idlefalse/nullgap/nulltask/emptytags-notes/startnull. Explicit existing
+DB SQLite URI mode=ro/query_only,0013_ai_data_scope/FK[], ALL actual counts equal parent-after:
+all synthetic domain/AI/provider rows0, Overview1/widgets9/statuses5/settings1/migration1;
+FTSdata7/idx5/config1/otherFTS0, not stale producer12/10. Normal SIGTERM ONLY through verified pidfd;
+exit event then PIDabsent/18221connecterrno111/healthrefusal/normal shutdown. DB/timer/logs/venv retained;
+no other process/storage cleanup. `cleanup-{before,after}.json`, `cleanup.*`/capability receipt record
+actual success, no new cleanup correction/failure.
+
+Exactly five DOCs finalize bounded12 completion:01+02+04+10+11+12 =6completed/19pending; no other issue
+status/identity/criteria/history or graph changed. All six unchanged criteria above map to actual
+source/regressions/real gates and disclosed limits; checks never mean exhaustive manual/human acceptance.
+ALL231 source/test/spec path-content hashes remain903611d… before/after final docs/commit; external
+final report supplies actual one closure SHA/exact c37 parent/five-path/tree/index/preservation proofs.
+No tests/native/full suites rerun after DOC edits. Spec Approved NOT Built; fresh independent closure
+DOC Standards+Spec and parent disposition STILL REQUIRED before19 continuation/13–14 resource unlock.
+Known comparison ambiguity UNFIXED/UNWAIVED, caption heuristic deferred, contrast/manual/SQL/provider/
+transport limits retained; no whole25/human/push/PR/dev-merge permission follows from this closure.

@@ -89,8 +89,23 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   Per-widget comparisons support previous period, same period last year, and custom ranges.
   `AnalyticsService.get_summary` delegates to `QueryService`; `core/analytics.py` retains legacy
   aggregation behavior/tests, not the current dashboard execution path. Query capabilities come from
-  `core/query_registry.py`. Builder/SQL adoption and performed-time/default-label changes remain later
-  UI tickets12–14, not part of the ticket11 canvas closure.
+  `core/query_registry.py`. Ticket12's reviewed structured builder is now locally integrated: full
+  capability pickers, up to20 conjunctive typed filters, two dimensions/all charts, explicit
+  sort/limit/fill, independent dates/baselines, inert query preview/context/warnings and faithful
+  saved-query edit/reopen. Pending/concurrent drafts retain submitted-field ACK checkpoints;
+  Canvas Retry refresh reads only. Two hardcoded compiler maps use the already-attributed/base
+  projections for tagged-session/estimation grouping. Narrow QueryService repairs reject row-losing
+  multidimensional hour/weekday fill and stably retain all weekday secondary rows. Distinct-key
+  stacked charts preserve sparse source cells and separate primary/ghost stacks; duplicate
+  serialized key pairs use explained separate-row bars with full labels/ordinal/exact values/
+  source-row clicks, no aggregation/rekey/spec rewrite. Pre-existing NULL/empty comparison-key
+  ambiguity (actual primary[1,2]/baseline[2,2]) remains UNFIXED/UNWAIVED; faithfully displaying
+  supplied baselines is not correctness certification. Ticket12 is bounded-completed after fresh
+  integrated checks/genuine parent252-label gate/explicit five-DOC closure release; fresh closure
+  DOC Standards+Spec and parent disposition remain mandatory before19/13–14 release. See
+  [bounded evidence](../.scratch/ui-redesign/ticket-12-evidence.md#local-integration-and-bounded-closure-draft-2026-11-04).
+  SQL layout/sandbox adoption13 and performed-time/default-label/seed adoption14 remain later work;
+  actual SQL stays disabled, browser opt-in/schema/preview checks use HTTP fakes. No API/schema change.
 - **Tasks / Quick Add:** ticket04 keeps Kanban as the fresh/invalid default with a persisted view
   selector, hierarchy/search and existing task/scheduling/timer/completion entries. Valid Grouped/Outline
   preferences retain an honest Kanban fallback until tickets06/07. The task popup queues/removes children
@@ -102,7 +117,7 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   Separate AI Quick Add on Tasks/Calendar remains classify (no inference) → explicit Parse (read-only)
   → editable prefill → human Save; late extraction cannot replace a newer owner or concurrent edits.
   It is not the conversational Assistant approval workflow (tickets21–23). Settings still uses
-  `/settings/ai` until ticket19; stopped Timer/builder/preferences checkpoints are not integrated.
+  `/settings/ai` until ticket19; stopped Timer/preferences checkpoints are not integrated.
   Caller/API/native evidence and deferred manual/contrast limits are in
   [ticket04 evidence](../.scratch/ui-redesign/ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04).
 - **Habits:** ticket10 uses Compact cards with independent local-day strips and explicit entry

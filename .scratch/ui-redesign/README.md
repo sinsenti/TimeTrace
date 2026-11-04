@@ -2,7 +2,7 @@
 
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
-**Current frontier:** 03, 05, 06, 08, 09, 12, 13, 14, 15, 18, 19, 21, 24 after bounded tickets **01 + 02 + 04 + 10 + 11 completed**. Other20 tickets remain pending (`ready-for-agent`) subject to the unchanged graph;07/17 blocked05,16 blocked15,20 blocked19,22 blocked05/15/21,23 blocked21;25 is not done. Reservation **11 → 02 → 04 → 10** reached exact reviewed10 `9848fe7` by clean FF-only after04 closure review passed. Fresh parent Standards/Spec review of the new five-doc10 closure is REQUIRED before12 continuation release.03/12/18/19/21 stopped checkpoints remain preserved read-only; fresh05/08 blocker repairs run in their own read-only-to-this-merger worktrees, are not dependencies and may change there legitimately. No unreviewed lane is integrated.12's unrelated shared ownership-test Widget fixture overlap needs later parent-coordinated fresh latest-reviewed-base own-patch replay/disjoint-hunk reconciliation, preserving its checkpoint, not blind dirty FF or touching12 now.13/14 remain technically unblocked but resource-locked by12, not a new DAG edge. Quick Add04 is distinct from Assistant21–23; Grouped/Outline layouts remain06/07 and Settings currently stays `/settings/ai` until19. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
+**Current frontier:** 03, 05, 06, 08, 09, 13, 14, 15, 18, 19, 21, 24 after bounded tickets **01 + 02 + 04 + 10 + 11 + 12 completed**; other19 pending. Ticket12 is locally FF-integrated at exact reviewed `c37c81b00c8f9928480942eb6bbb3d90638e7f9e` (three commits/24 paths from clean F7), with explicit parent release for ONE five-DOC closure. Fresh integrated466 Python/224 Node/87 syntax/producer252 labels and genuine independent parent252-label live gate passed; baseline Ruff18 disclosed, all231 source/test/spec paths+bytes unchanged. Own452661 normally stopped via verified pidfd/18221closed/healthrefused; DB/logs retained. Six completed/19pending is bounded delivered implementation, NOT whole25/manual/human acceptance. Fresh closure DOC Standards+Spec and parent disposition are REQUIRED before19 continuation/13–14 resource unlock; locks are not new DAG edges. Unchanged graph:07/17 blocked05,16 blocked15,20 blocked19,22 blocked05/15/21,23 blocked21;25 not done. Prior10 closure review passed before12 replay; reviewed04 timing/shared Widget fixture coexist without other-lane adoption. Original DD16, all stopped03/05/08/18/19/21/24 checkpoints and user dirty root remain preserved/read-only to this merger. Quick Add04 is distinct from Assistant21–23; Grouped/Outline remain06/07 and Settings stays `/settings/ai` until19. Spec **Approved, not Built**; no push/PR/dev merge or human acceptance.
 **Execution record:** [Implementation and review gates](implementation.md), including the fixed base and external reference evidence.
 
 ## Approval record and readiness
@@ -16,7 +16,7 @@ On 2026-11-01, after the full eight-part questionnaire, the owner explicitly ans
 and approves the final production spec and verification plan. Tickets are now **ready-for-agent**.
 This status means specified work, not completed work or permission to ignore technical blockers.
 At that historical approval checkpoint, ticket **01** was the sole unblocked frontier. The current
-frontier above follows local integration/recorded implementation completion of01,02,04,10 and11; other blockers remain.
+frontier above follows local integration/recorded implementation completion of01,02,04,10,11 and12; other blockers remain.
 
 Those approval records did not themselves authorize implementation or commits. The owner has since
 requested implementation with local branches/commits and integration merges, as recorded in
@@ -38,8 +38,15 @@ reviews released their next reservations;04 closure review subsequently passed b
 Ticket10 is integrated at exact reviewed code `9848fe7e919558576b04b255876c659c72208f17`;
 [closure evidence](ticket-10-evidence.md#local-integration-and-bounded-closure-2026-11-04) records fresh391
 Python/214 Node/75 syntax, Stats89→Habits82→edges14→unchanged Definition8→new Clear31,
-criterion mapping and the repaired, not waived, initial single Spec P2. Fresh parent independent10
-closure-doc Standards/Spec review is REQUIRED before12 continuation release.
+criterion mapping and the repaired, not waived, initial single Spec P2. Subsequent10 closure-doc
+Standards/Spec passed before12 continuation.
+Ticket12 clean F7→exact c37 local FF, all six criteria, fresh checks and actual parent gate/cleanup are
+recorded in its [bounded integration evidence](ticket-12-evidence.md#local-integration-and-bounded-closure-draft-2026-11-04).
+Fresh code Standards on both ranges:0 hard breaches/ONE optional caption heuristic deferred; Spec0.
+Parent genuine independent252-label integrated gate and explicit ONE exact-c37-parent five-DOC release
+passed; fresh closure DOC two-axis review/disposition STILL REQUIRED before19/13–14 release. Known NULL/empty comparison API
+primary[1,2]/baseline[2,2] ambiguity remains UNFIXED/UNWAIVED; renderer preserves supplied cells,
+not baseline correctness. Historical failures and manual/contrast/SQL/provider/transport limits remain.
 `completed` means delivered implementation with bounded evidence, not all manual/human acceptance.
 Ticket approval paragraphs and Comments retain their historical checkpoint wording; the execution
 record supplies current authorization without rewriting ticket identities, criteria or history.

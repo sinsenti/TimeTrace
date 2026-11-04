@@ -8,8 +8,10 @@ no-start/no-commit wording in approval records describes the earlier approval-on
 a current implementation blocker. Preserve that approval history; do not reopen O1–O8 or treat the
 spec as Built. The parent owns the task graph, worktree orchestration and every review; seed workers
 do not delegate. The historical seed was one authorized documentation-only planning commit, not
-production implementation. Tickets01,02,04,10 and11 have since been locally integrated and completed with
-bounded evidence below; this does not complete the spec.
+production implementation. Tickets01,02,04,10,11 and12 have since been locally integrated and completed
+with bounded evidence below. Ticket12 exact reviewed c37 passed genuine independent parent252-label
+live gate and explicit ONE five-DOC closure release; fresh closure DOC two-axis review/disposition
+remains required. This does not complete the spec or establish whole25/manual/human acceptance.
 
 - Fixed pre-delivery base: `82fabdc652c59da87de0f57d7770d0aa32fb7f64` (before this seed).
 - Integration branch: `feat/ui-redesign-integration`.
@@ -28,18 +30,19 @@ bounded evidence below; this does not complete the spec.
   fast-forwarded from `dfda0aaa67e4014f7123fe5fd659d179c9576dd6` without a merge commit.
 - Ticket **10 completed**, exact reviewed code `9848fe7e919558576b04b255876c659c72208f17`, locally
   fast-forwarded from `118bb9d14c99e06da96199e9ea574e9afdf4e91e`, two commits, no merge commit.
-- Computed frontier: **03, 05, 06, 08, 09, 12, 13, 14, 15, 18, 19, 21, 24**.
-  Only01+02+04+10+11 completed; other20 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
+- Ticket **12 completed**, exact reviewed code `c37c81b00c8f9928480942eb6bbb3d90638e7f9e`, locally
+  fast-forwarded from F7, three commits/24paths, no merge commit; ONE released five-DOC closure.
+- Computed frontier: **03, 05, 06, 08, 09, 13, 14, 15, 18, 19, 21, 24**.
+  Only01+02+04+10+11+12 completed; other19 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
   20 blocked19,22 blocked05/15/21,23 blocked21;25 is not done.
-  Reservation **11 → 02 → 04 → 10** reached reviewed9848 after04 closure review passed. Fresh parent
-  Standards/Spec review of the new five-document10 closure is REQUIRED before12 continuation release.
-  03/12/18/19/21 stopped checkpoints remain preserved read-only. Fresh05/08 known-blocker repairs run
-  in their own worktrees, read-only to this merger and not dependencies; their status may legitimately
-  change without integration adoption.12's unrelated Widget fixture hunk shares
-  `test_draft_ownership.cjs` with04's reviewed nested timing change: preserve12's checkpoint, then later
-  parent-coordinate fresh latest-reviewed-base own-patch replay/disjoint-hunk reconciliation, not blind
-  dirty FF or touching12 now.13/14 technically unblocked but resource-locked by12, not new DAG edges.
-  No unreviewed other-lane source adopted.
+  Prior10 closure Standards/Spec passed before12 continuation/replay. Clean F7→exact reviewed
+  `c37c81b00c8f9928480942eb6bbb3d90638e7f9e` FF integrated12's three commits/24 paths without source
+  edits; reviewed04 timing/shared Widget fixture coexist. Genuine parent LIVE integrated252-label
+  gate passed; explicit ONE exact-c37-parent five-DOC closure released,6completed/19pending. Own452661
+  normally stopped via verified pidfd,18221closed/healthrefused,DB/logs retained. Fresh closure DOC
+  Standards+Spec and parent disposition are mandatory before19 continuation/13–14 resource unlock; locks are
+  not new DAG edges. Original DD16, stopped03/05/08/18/19/21/24 checkpoints and user dirty root remain
+  preserved/read-only here. No unreviewed other-lane source adopted.
 - No push, PR, release or merge into `dev` is authorized. Do not reset/stash or overwrite owner edits.
 
 ## Review and completion obligations
@@ -54,7 +57,10 @@ findings and repairs remain in [ticket evidence](ticket-01-evidence.md). The pri
 ticket01 and ticket11 closure commits passed their parent gates before subsequent releases; the new
 ticket02 documentation-only closure subsequently passed its parent gate before04 continuation.
 The04 five-document closure subsequently passed both parent review axes before10 continuation.
-The new10 five-document closure requires fresh parent two-axis review BEFORE12 continuation release.
+The new10 five-document closure subsequently passed parent two-axis review before12 continuation.
+The current12 five-DOC closure passed genuine parent live integrated gate and explicit one-commit
+release; its fresh independent DOC two-axis review/disposition STILL remains mandatory before
+19 continuation or13–14 resource unlock.
 
 After all 25 tickets are implemented, run the full integrated automated checks and independent
 whole-delivery two-axis review against the fixed base above, covering **all tickets together**, tests
@@ -351,6 +357,93 @@ reduced-motion/custom colors/contrast/accessibility/human visuals unrun. Lost-re
 atomic bulk/idempotency/exactly-once/DB-uniqueness/cross-tab guarantee. Bounded implementation completion
 is NOT human/whole25 acceptance. SpecApprovedNOTBuilt/fixed82fabdc whole-delivery/adversarial/human/
 dev-merge gates remain; no push/PR/release/dev merge.
+
+## Ticket12 integrated verification and bounded closure DRAFT (2026-11-04)
+
+Clean integration F7/source c37/index/ancestry and frozen combined SHA verified; normal FF-only to
+EXACT `c37c81b00c8f9928480942eb6bbb3d90638e7f9e`, three commits/24paths, no merge commit/source
+copy/other-lane adoption. Fully read fresh amendmenta521→c37 AND combinedF7→c37 reviews: Standards
+0 hard breaches plus ONE possible nonblocking caption P2 heuristic deferred, Spec0 both ranges.
+Original3 Spec defects + parent weekday defect + collision defect =5 historical product defects,
+not5 original review findings; all original failure/recovery history retained. Original repair
+worker report never existed and remains missing, recovery-finisher report is separately attributed.
+
+Fresh integrated466 Python/226warnings (222 SQLite+4 Pydantic),75focused/121warnings,224all-CJS+tags,
+10focused stack/collision,87explicit syntax; scoped four-file Ruff/two tests+service format/compiler
+ONLY ranges438–455/650–667 and whitespace pass. Whole-compiler old wrap untouched. Full concise
+no-cache Ruff18 BOTH stdout/stderr byte-match fixed fresh-verification baseline, not clean lint.
+Stats89 FIRST→seven builder108→review13→fresh controls20→collision22 =252 inspected labels/errors[],
+all11 first-run exits0, review/collision explicit PASS/failures[]. Every saved JSON/check/readback
+inspected. Real API/chart/source-row clicks/typed filters/full Save roundtrip/ACK+read-onlyRetry,
+invalid saved draft retention and normal sparse primary/ghost stacks pass. Only two screenshot
+paths in external controls copy changed; all source probes intact. Bounded24builder/16Canvas/4notice
+samples are not whole contrast/accessibility or physical Settings-background-pointer proof.
+
+Fresh own nonce/two real valid API widgets/parameterized exact2-CAS legacy fixture modifies ONLY
+captured spec_json false→true with all other fields/rows/tables unchanged/public readback/own-ID
+cleanup. Helpers derived only approved runtime bindings, all assertions intact/reverse-byte equality;
+parent must generate separately fresh manifest. Catalog/held-failure/SQL flag-schema-preview fakes
+explicit; actual SQL disabled/no provider Test/Activate/inference/paid calls. Underlying NULL/empty
+comparison API primary[1,2]/baseline[2,2] ambiguity remains UNFIXED/UNWAIVED: renderer preserves
+supplied cells, not baseline-correctness certification; no comparison/service policy redesign.
+
+NEW0700 `/tmp/timetrace-integrated-12.BPvYbyol` DB/HOME/timer/key isolation before any app imports,
+NEW own editable venv there (old integration venv untouched), free loopback18221/PID452661 actual
+main:daemon_app, whitelisted credentials absent/idle-SQL-tracingoff, normal bounded30s readiness,
+0013/FK[]/exact health/ORM verified. All synthetic domain/AI rows0 after own fixtures; Overview1/
+widgets9/statuses5/settings1, FTSdata12/idx10/config1. Timer HTTP inactive/unfrozen/nullgap/idlefalse,
+file absent. Existing-DB migration-copy N/A/no schema change/no personal DB/copy/key/provider call.
+
+One inspection-only wrong Canvas JSON key/overbound traffic output was stopped, raw retained, then
+parent-approved ONE saved-JSON inspection correction used actual results/errors. No native rerun,
+source/probe/assertion change. Earlier helper/oracle/readiness/provider-fetch/pidfd failures remain.
+ALL231 tracked src/tests/specs paths+bytes before/after checks/pre-draft match manifest SHA256
+`903611d11eb4ca0240d6128e87725aaa95015b0c61431321a49ae454658c1c40`.
+Original checkpoints/user dirty root preserved; only five allowed DOC drafts differ. No stage/commit
+or cleanup yet: runtime healthy/source frozen for BLOCKING genuine parent LIVE integrated gate plus
+explicit ONE exact-c37-parent five-DOC release. Normal later cleanup ONLY verified own capable-stdlib
+pidfd SIGTERM after timer/file/read-only0013/FK/actual counts; retain DB/logs/venv. Final receipts
+must supply actual closure SHA/parent/five paths/immutable231/normal shutdown, not predeclare them.
+
+Full six-criterion mapping/history/limits: [ticket12 evidence](ticket-12-evidence.md#local-integration-and-bounded-closure-draft-2026-11-04).
+External authoritative report/raw run:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-12/merger-report.md`,
+`run.vVXmFd/`. Ticket12 still pending/only5complete20pending; eventual released closure6complete19pending,
+NOT manual/whole25/human acceptance. SpecApprovedNOTBuilt. Fresh DOC Standards+Spec/parent disposition
+mandatory before19 continuation/13–14 resource unlock, not new dependencies. No SQL13 layout/sandbox,
+performed14 preset/recorded labels/seed reinsertion, other-ticket status/source or new policy. Known
+three light4.33/four darkAI3.98986, caption heuristic, comparison ambiguity, physical touch/screenreader/
+other engines/exhaustive zoom-motion-color-query/a11y/human visuals/realSQL-provider/transport atomicity-
+idempotency-exactly-once-cross-tab limits remain unwaived. Fixed82fabdc whole-delivery/adversarial/
+human/dev-merge gates remain; no push/PR/dev/main writes.
+
+### Ticket12 actual parent release and normal finish — current
+
+The preceding draft/live section is historical; parent subsequently independently passed Stats89
+FIRST→seven builder108→review13→fresh OWN controls20→collision22 =252 labels, all11 first-run exits0/
+actual errors[], review+collision PASS/actual failures[]. Full parent gate/summary/before/after read;
+all231 reviewed source/test/spec hashes unchanged before/after; BOTH actual full concise Ruff streams
+independently match fixed baseline18. Parent fresh nonce/two valid API widgets/exact2-CAS fixture
+preserved all unrelated fields/rows/tables/public readback/owned cleanup. Source probes unchanged,
+only two external screenshot paths changed; no fixes or reruns. This independent252 is distinct from
+producer252, not504 unique cases. Parent explicitly released ONE exact-single-parent-c37 five-DOC
+closure; only those five documents finalized, no source/test/spec edits or application reruns.
+
+Capable system `/usr/bin/python3 -P` stdlib verified both pidfd functions BEFORE cleanup; app/tests
+remain own3.14. Retained pidfd and exact452661 start/cwd/cmd/executable/editable-source/env/private0700
+health18221 verified. Actual canonical HTTP AND now-existing active_timer.json inactive/unfrozen/
+idlefalse/nullgap/nulltask/emptytags-notes/startnull (earlier producer file absence was accurate then).
+Explicit own existing DB mode=ro/query_only0013/FK[]/ALL table counts equal parent-after: all synthetic
+domain/AI/provider0,Overview1/widgets9/statuses5/settings1/migration1;FTSdata7/idx5/config1/otherFTS0.
+Normal ONLY verified pidfd SIGTERM/exit/PIDabsent/18221errno111/healthrefusal/normal shutdown; private
+DB/timer/logs/venv retained. No new cleanup failure/correction or other process/storage cleanup.
+
+Six bounded tickets complete/19pending, specApprovedNOTBuilt. Six unchanged12 criteria map above;
+not whole25/manual/human acceptance. ALL231 source/test/spec bytes unchanged through final five-DOC
+closure; actual single-parent commit SHA/scope/tree/index/preservation proofs in external final report.
+Fresh DOC Standards+Spec and parent disposition still mandatory before19 continuation/13–14 unlock.
+Known comparison[1,2]/[2,2] ambiguity UNFIXED/UNWAIVED/caption heuristic deferred; contrast/manual/SQL/
+provider/transport and fixed82fabdc whole-delivery/adversarial/human/dev-merge limits all remain.
 
 ## Historical seed validation and safety
 
