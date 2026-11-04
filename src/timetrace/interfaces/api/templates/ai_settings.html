@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TimeTrace -- AI Assistant Settings</title>
+    <title>TimeTrace -- Settings</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/ai.css">
     <style>
@@ -28,16 +28,24 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/browser_preferences.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
-        <div class="app-page-title font-bold text-sm text-slate-200">AI Assistant Settings</div>
+        <div class="app-page-title font-bold text-sm text-slate-200">Settings</div>
         <div></div>
     </header>
 
-    <main class="ai-settings-page flex-1 w-full">
+    <main class="ai-settings-page settings-workspace flex-1 w-full" data-settings-category="{{ settings_category }}">
+        <nav id="settings_categories" aria-label="Settings categories">
+            <button type="button" data-category="browser">Browser preferences</button>
+            <button type="button" data-category="ai">AI behavior</button>
+            <button type="button" data-category="providers">Providers</button>
+        </nav>
+        {% include "components/browser_preferences.html" %}
+        <section id="settings_providers_category" aria-label="Providers">
         <div class="ai-settings-section">
             <h2>Providers</h2>
             <p class="ai-settings-hint">Anthropic, OpenAI, Google AI Studio, Groq, OpenRouter, or a local Ollama
@@ -131,6 +139,8 @@
             <div id="ai_provider_test_result" class="ai-test-result"></div>
         </div>
 
+        </section>
+        <section id="settings_ai_category" aria-label="AI behavior">
         <div id="ai_behavior_settings" class="ai-settings-section">
             <h2>Behavior</h2>
             <p class="ai-settings-hint">These toggles are stored server-side (unlike theme/vim/first-day-of-week,
@@ -221,9 +231,9 @@
             <button type="button" id="ai_settings_save_btn" class="ai-btn ai-btn-accept mt-3">Save behavior settings</button>
             <span id="ai_settings_save_status" class="ai-test-result"></span>
         </div>
+        </section>
     </main>
 
-    {% include "components/settings_modal.html" %}
     {% include "components/ai_drawer.html" %}
 
     <script src="/static/js/api_client.js"></script>
@@ -234,5 +244,6 @@
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>
     <script src="/static/js/ai_settings_page.js"></script>
+    <script src="/static/js/browser_preferences.js"></script>
 </body>
 </html>

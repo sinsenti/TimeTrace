@@ -69,12 +69,16 @@ def get_revision_dashboard(request: Request):
     )
 
 
+@router.get("/settings")
 @router.get("/settings/ai")
 def get_ai_settings_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="ai_settings.html",
-        context={"active_page": "settings_ai"}
+        context={
+            "active_page": "settings_ai",
+            "settings_category": "ai" if request.url.path == "/settings/ai" else "browser",
+        },
     )
 
 

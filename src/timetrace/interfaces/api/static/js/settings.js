@@ -158,7 +158,9 @@ function reshuffleAutoColors() {
     s.colorSeed = (s.colorSeed || 0) + 1;
     saveUserSettings(s);
 
-    applyUserSettings(s, false);
+    // Color-only writes must not retry another owner's pending daemon preference.
+    applyUserSettings(typeof idleDetectionEnabled === 'undefined' ? s
+        : { ...s, idleDetectorEnabled: idleDetectionEnabled }, false);
 
     const msg = document.getElementById('reshuffle_status_msg');
     if (msg) {
@@ -170,8 +172,9 @@ function reshuffleAutoColors() {
 function setupSettingsKeyboardShortcuts() {
     document.addEventListener('keydown', function(e) {
         const modal = document.getElementById('settings_modal');
-        if (modal && !modal.classList.contains('hidden')) {
-            if (e.key === 'Tab') {
+        if (modal && !modal.classList.contains('hidden') &&
+            (modal.dataset?.settingsPageEditor !== 'true' || modal.contains(e.target))) {
+            if (e.key === 'Tab' && modal.dataset?.settingsPageEditor !== 'true') {
                 const focusable = modal.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled])');
                 const first = focusable[0], last = focusable[focusable.length - 1];
                 if (e.shiftKey && document.activeElement === first) {
@@ -243,88 +246,204 @@ function followSettingsLink(event) {
 }
 
 let settingsReturnFocus = null;
+let browserSettingsBaseline = null;
+let browserSettingsSaving = false;
+let browserIdlePending = false;
 
-function openSettingsModal() {
-    settingsReturnFocus = document.activeElement;
-    const s = getUserSettings();
-    const appearanceSelect = document.getElementById('setting_appearance');
-    if (appearanceSelect) appearanceSelect.value = s.appearance;
-    const lightSelect = document.getElementById('setting_light_theme');
-    if (lightSelect) lightSelect.value = s.lightTheme;
-    
-    const themeSelect = document.getElementById('setting_theme');
-    if (themeSelect) themeSelect.value = s.theme || 'midnight';
+// Only these published controls belong to the Browser owner; remembered/unknown keys stay intact.
+const BROWSER_SETTING_FIELDS = {
+    setting_appearance: ['appearance', 'string'], setting_light_theme: ['lightTheme', 'string'],
+    setting_theme: ['theme', 'string'], setting_enable_vim: ['enableVimMotions', 'boolean'],
+    setting_enable_session_review: ['enableSessionReview', 'boolean'],
+    setting_default_view: ['defaultView', 'string'], setting_first_day: ['firstDayOfWeek', 'number'],
+    setting_slot_duration: ['slotDuration', 'slot'], setting_idle_detector: ['idleDetectorEnabled', 'boolean'],
+    setting_hide_left_sidebar: ['hideLeftSidebar', 'string'], setting_hide_right_sidebar: ['hideRightSidebar', 'string'],
+    setting_auto_scroll: ['autoScrollNow', 'boolean'], setting_task_view: ['taskView', 'string'],
+    setting_calendar_density: ['calendarDensity', 'number'], setting_totals_visible: ['totalsVisible', 'boolean']
+};
 
-    const vimCheck = document.getElementById('setting_enable_vim');
-    if (vimCheck) vimCheck.checked = s.enableVimMotions !== false;
-    
-    const sessionReviewCheck = document.getElementById('setting_enable_session_review');
-    if (sessionReviewCheck) sessionReviewCheck.checked = s.enableSessionReview !== false;
-
-    const viewSelect = document.getElementById('setting_default_view');
-    if (viewSelect) viewSelect.value = s.defaultView || 'auto';
-
-    const daySelect = document.getElementById('setting_first_day');
-    if (daySelect) daySelect.value = String(s.firstDayOfWeek);
-
-    const slotSelect = document.getElementById('setting_slot_duration');
-    if (slotSelect) slotSelect.value = String(s.slotDuration || 'auto');
-
-    const idleCheck = document.getElementById('setting_idle_detector');
-    if (idleCheck) idleCheck.checked = s.idleDetectorEnabled;
-
-    const leftSelect = document.getElementById('setting_hide_left_sidebar');
-    if (leftSelect) leftSelect.value = String(s.hideLeftSidebar);
-
-    const rightSelect = document.getElementById('setting_hide_right_sidebar');
-    if (rightSelect) rightSelect.value = String(s.hideRightSidebar);
-
-    const scrollCheck = document.getElementById('setting_auto_scroll');
-    if (scrollCheck) scrollCheck.checked = s.autoScrollNow;
-
-    const modal = document.getElementById('settings_modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        const firstFocus = document.getElementById('setting_theme');
-        rememberSettingsDraft('settings_modal');
-        if (firstFocus) firstFocus.focus();
+function browserSettingsStatus(text) {
+    let status = document.getElementById('browser_save_status');
+    const root = document.getElementById('settings_modal');
+    if (!status && root?.appendChild && document.createElement) {
+        status = document.createElement('p');
+        status.id = 'browser_save_status';
+        status.setAttribute('role', 'status');
+        root.appendChild(status);
     }
+    if (status) status.textContent = text;
+}
+
+function browserSettingValue(el, type) {
+    return type === 'boolean' ? el.checked : type === 'number' || (type === 'slot' && el.value !== 'auto')
+        ? Number(el.value) : el.value;
+}
+
+function openSettingsModal(forceReload = false) {
+    const modal = document.getElementById('settings_modal');
+    if (!modal) return;
+    if (browserSettingsSaving) return;
+    if (modal.dataset?.settingsPageEditor === 'true' && browserSettingsBaseline && !forceReload) {
+        if (typeof showSettingsCategory === 'function') showSettingsCategory('browser', true);
+        return;
+    }
+    settingsReturnFocus = document.activeElement;
+    try { localStorage.getItem(SETTINGS_KEY); }
+    catch (_) {
+        browserSettingsBaseline = null;
+        browserSettingsStatus('Could not read browser storage. Preferences were not loaded; reopen to retry.');
+        return;
+    }
+    const s = getUserSettings();
+    browserSettingsBaseline = {};
+    for (const [id, [key, type]] of Object.entries(BROWSER_SETTING_FIELDS)) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (type === 'boolean') el.checked = s[key];
+        else el.value = String(s[key]);
+        browserSettingsBaseline[id] = { value: browserSettingValue(el, type), stored: s[key] };
+    }
+    modal.classList.remove('hidden');
+    let pending = document.getElementById('browser_idle_pending');
+    if (!pending && modal.appendChild && document.createElement) {
+        pending = document.createElement('input');
+        pending.id = 'browser_idle_pending';
+        pending.type = 'hidden';
+        pending.disabled = true;
+        modal.appendChild(pending);
+    }
+    if (pending) pending.value = '';
+    rememberSettingsDraft('settings_modal');
+    if (pending && browserIdlePending) pending.value = 'pending';
+    if (browserIdlePending) browserSettingsStatus('Browser preferences are stored, but inactivity detection still needs an explicit retry with Save.');
+    if (modal.dataset?.settingsPageEditor !== 'true') document.getElementById('setting_theme')?.focus();
 }
 
 function closeSettingsModal() {
+    if (browserSettingsSaving) return;
     const modal = document.getElementById('settings_modal');
-    if (modal) modal.classList.add('hidden');
-    settingsReturnFocus?.focus();
+    if (modal?.dataset?.settingsPageEditor === 'true') {
+        openSettingsModal(true);
+        if (!browserIdlePending) browserSettingsStatus('Changes canceled. Saved browser preferences restored.');
+    } else {
+        if (modal) modal.classList.add('hidden');
+        settingsReturnFocus?.focus();
+    }
 }
 
 async function saveSettingsFromModal() {
+    if (browserSettingsSaving || !browserSettingsBaseline) return;
+    try { localStorage.getItem(SETTINGS_KEY); }
+    catch (_) {
+        browserSettingsStatus('Could not read browser storage. No preferences saved; your edits are retained.');
+        return;
+    }
     const current = getUserSettings();
-    const rawSlot = document.getElementById('setting_slot_duration') ? document.getElementById('setting_slot_duration').value : 'auto';
-    const parsedSlot = rawSlot === 'auto' ? 'auto' : parseInt(rawSlot);
-
-    const newSettings = {
-        ...current,
-        appearance: document.getElementById('setting_appearance')?.value || current.appearance,
-        lightTheme: document.getElementById('setting_light_theme')?.value || current.lightTheme,
-        theme: document.getElementById('setting_theme') ? document.getElementById('setting_theme').value : 'midnight',
-        enableVimMotions: document.getElementById('setting_enable_vim') ? document.getElementById('setting_enable_vim').checked : true,
-        enableSessionReview: document.getElementById('setting_enable_session_review') ? document.getElementById('setting_enable_session_review').checked : true,
-        defaultView: document.getElementById('setting_default_view') ? document.getElementById('setting_default_view').value : 'auto',
-        firstDayOfWeek: document.getElementById('setting_first_day') ? parseInt(document.getElementById('setting_first_day').value) : 1,
-        slotDuration: parsedSlot,
-        idleDetectorEnabled: document.getElementById('setting_idle_detector') ? document.getElementById('setting_idle_detector').checked : true,
-        hideLeftSidebar: document.getElementById('setting_hide_left_sidebar') ? document.getElementById('setting_hide_left_sidebar').value : 'auto',
-        hideRightSidebar: document.getElementById('setting_hide_right_sidebar') ? document.getElementById('setting_hide_right_sidebar').value : current.hideRightSidebar,
-        autoScrollNow: document.getElementById('setting_auto_scroll') ? document.getElementById('setting_auto_scroll').checked : true
-    };
-
-    const rightChoice = newSettings.hideRightSidebar;
-    if (rightChoice !== 'auto') newSettings.totalsVisible = rightChoice === 'false' || rightChoice === false;
-    saveUserSettings(newSettings);
-    closeSettingsModal();
-    
-    await applyUserSettings(newSettings, false);
+    const right = document.getElementById('setting_hide_right_sidebar');
+    const totals = document.getElementById('setting_totals_visible');
+    if (right && totals && browserSettingsBaseline.setting_hide_right_sidebar && browserSettingsBaseline.setting_totals_visible) {
+        if (right.value !== browserSettingsBaseline.setting_hide_right_sidebar.value && right.value !== 'auto') {
+            totals.checked = right.value === 'false';
+        } else if (totals.checked !== browserSettingsBaseline.setting_totals_visible.value) {
+            right.value = 'auto';
+        }
+    }
+    const patch = {};
+    const submitted = [];
+    for (const [id, baseline] of Object.entries(browserSettingsBaseline)) {
+        const [key, type] = BROWSER_SETTING_FIELDS[id];
+        const el = document.getElementById(id);
+        const value = browserSettingValue(el, type);
+        if (value === baseline.value) continue;
+        // Do not overwrite a newer writer of the same field with an old editor snapshot.
+        if (current[key] !== baseline.stored && current[key] !== value) {
+            browserSettingsStatus('This preference changed elsewhere. Cancel changes to reload saved values before editing it again.');
+            return;
+        }
+        patch[key] = value;
+        submitted.push([id, value]);
+    }
+    if (Object.hasOwn(patch, 'hideRightSidebar') && patch.hideRightSidebar !== 'auto') {
+        patch.totalsVisible = patch.hideRightSidebar === 'false';
+    } else if (Object.hasOwn(patch, 'totalsVisible')) {
+        patch.hideRightSidebar = 'auto';
+        patch.lastHideRightSidebar = !patch.totalsVisible;
+    }
+    const saved = { ...current, ...patch };
+    const checkpoints = submitted.map(([id]) => [id, settingsDraftCheckpoint('settings_modal', `#${id}`)]);
+    const idleCheckpoint = settingsDraftCheckpoint('settings_modal', '#setting_idle_detector');
+    browserSettingsSaving = true;
+    let browserStored = false;
+    const button = document.getElementById('browser_save');
+    if (button) button.disabled = true;
+    try {
+        // A failed client write never reaches the daemon or acknowledges these fields.
+        saveUserSettings(saved);
+        browserStored = true;
+        checkpoints.filter(([id]) => id !== 'setting_idle_detector').forEach(([, checkpoint]) => checkpoint());
+        for (const [id, value] of submitted) {
+            if (id !== 'setting_idle_detector') browserSettingsBaseline[id] = { value, stored: saved[BROWSER_SETTING_FIELDS[id][0]] };
+        }
+        const needsIdle = browserIdlePending || Object.hasOwn(patch, 'idleDetectorEnabled') ||
+            (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== saved.idleDetectorEnabled);
+        let idleFailed = false;
+        if (needsIdle) {
+            browserIdlePending = true;
+            const pending = document.getElementById('browser_idle_pending');
+            if (pending) pending.value = 'pending';
+            browserSettingsStatus('Browser preferences stored. Updating daemon inactivity detection…');
+            try {
+                await api.post('/idle/toggle', { enabled: saved.idleDetectorEnabled });
+                if (typeof idleDetectionEnabled !== 'undefined') idleDetectionEnabled = saved.idleDetectorEnabled;
+                browserIdlePending = false;
+                if (pending) pending.value = '';
+                idleCheckpoint();
+                if (browserSettingsBaseline.setting_idle_detector) browserSettingsBaseline.setting_idle_detector = {
+                    value: saved.idleDetectorEnabled, stored: saved.idleDetectorEnabled
+                };
+            } catch (_) {
+                idleFailed = true;
+                browserSettingsStatus('Browser preferences stored, but daemon inactivity detection was not confirmed. Save retries it explicitly; no automatic retry.');
+            }
+        }
+        // Apply presentation without replaying a failed idle request through the legacy reconciler.
+        if (!idleFailed && needsIdle && typeof updateIdleSwitchUI === 'function') updateIdleSwitchUI();
+        const latest = getUserSettings();
+        await applyUserSettings(typeof idleDetectionEnabled === 'undefined' ? latest
+            : { ...latest, idleDetectorEnabled: idleDetectionEnabled }, false);
+        if (idleFailed) return;
+        const root = document.getElementById('settings_modal');
+        if (!hasSettingsDrafts(['settings_modal']) && root?.dataset?.settingsPageEditor !== 'true') closeSettingsModalAfterSave();
+        browserSettingsStatus(hasSettingsDrafts(['settings_modal']) ? 'Captured preferences saved. New edits remain unsaved.' : 'Browser preferences saved.');
+    } catch (_) {
+        browserSettingsStatus(browserStored
+            ? 'Browser preferences stored, but updating the display failed. Reload to refresh; saved writes are not replayed.'
+            : 'Could not save browser preferences. Check browser storage access; your edits are retained.');
+    } finally {
+        browserSettingsSaving = false;
+        if (button) button.disabled = false;
+    }
 }
+
+function closeSettingsModalAfterSave() {
+    document.getElementById('settings_modal')?.classList.add('hidden');
+    settingsReturnFocus?.focus();
+}
+
+// The navbar is an independent appearance writer. Adopt it only into clean Browser fields.
+document.addEventListener('timetrace:appearance', () => {
+    if (!browserSettingsBaseline) return;
+    const saved = getUserSettings();
+    for (const id of ['setting_appearance', 'setting_light_theme']) {
+        const baseline = browserSettingsBaseline[id];
+        const el = document.getElementById(id);
+        if (!baseline || !el || el.value !== baseline.value) continue;
+        const value = saved[BROWSER_SETTING_FIELDS[id][0]];
+        el.value = value;
+        browserSettingsBaseline[id] = { value, stored: value };
+        rememberSettingsDraft('settings_modal', `#${id}`);
+    }
+});
 
 async function applyUserSettings(s = null, isInitialBoot = false) {
     if (!s) s = getUserSettings();
