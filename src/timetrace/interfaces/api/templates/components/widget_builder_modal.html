@@ -70,7 +70,7 @@
                                 <option value="not_in">not in</option><option value="is_null">is empty</option><option value="is_not_null">is not empty</option>
                             </select></div>
                             <div class="wb-filter-values"><label for="wb_filter_value">Values</label><input id="wb_filter_value" type="text" placeholder='Text or JSON array, e.g. ["past"]'></div>
-                            <button type="button" onclick="_wbSetValue('wb_filter_field', ''); _wbSetValue('wb_filter_value', ''); wbSyncFilters()">Remove filter</button>
+                            <button type="button" onclick="_wbSetValue('wb_filter_field', ''); _wbSetValue('wb_filter_value', ''); wbSyncFilters(); wbInvalidatePreview()">Remove filter</button>
                         </div>
                         <div id="wb_filters_extra"></div>
                     </div>

@@ -759,15 +759,17 @@ function renderChartWidget(widget, result, seed) {
     chartWrap.appendChild(canvas);
     card.appendChild(chartWrap);
 
-    const labels = result.rows.map(r => r.labels[0]);
+    let labels = result.rows.map(r => r.labels[0]);
     const values = result.rows.map(r => r.value || 0);
+    const stacked = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
+    let stackedRows = null;
     const palette = (typeof defaultPalette !== 'undefined' && defaultPalette && defaultPalette.length)
         ? defaultPalette
         : ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
     const chartType = kind === 'doughnut' ? 'doughnut' : (kind === 'line' ? 'line' : 'bar');
 
-    const datasets = [{
+    let datasets = [{
         label: widget.title,
         data: values,
         backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
@@ -781,7 +783,43 @@ function renderChartWidget(widget, result, seed) {
     // Ghost baseline series. Never on a doughnut: two overlaid rings do not read as a
     // comparison, they read as one wrong chart.
     const hasComparison = !!result.comparison && chartType !== 'doughnut';
-    if (hasComparison) {
+    if (stacked) {
+        const primary = new Map();
+        const secondary = new Map();
+        result.rows.forEach(row => {
+            if (!primary.has(row.keys[0])) primary.set(row.keys[0], row.labels[0]);
+            if (!secondary.has(row.keys[1])) secondary.set(row.keys[1], { label: row.labels[1], rows: new Map() });
+            secondary.get(row.keys[1]).rows.set(row.keys[0], row);
+        });
+        labels = Array.from(primary.values());
+        datasets = [];
+        stackedRows = [];
+        Array.from(secondary.values()).forEach((series, index) => {
+            // Pivot authoritative cells, not totals. A missing cell has no value or click target.
+            const rows = Array.from(primary.keys(), key => series.rows.get(key));
+            datasets.push({
+                label: series.label,
+                data: rows.map(row => row ? row.value : null),
+                backgroundColor: palette[index % palette.length],
+                borderRadius: 6,
+                stack: 'primary'
+            });
+            stackedRows.push(rows);
+            if (hasComparison) {
+                datasets.push({
+                    label: `${series.label} — ${result.comparison.label}`,
+                    data: rows.map(row => row?.comparison_value ?? null),
+                    backgroundColor: 'rgba(148, 163, 184, 0.25)',
+                    borderColor: '#94a3b8',
+                    borderDash: [4, 3],
+                    borderRadius: 6,
+                    borderWidth: 1.5,
+                    stack: 'comparison'
+                });
+                stackedRows.push(rows);
+            }
+        });
+    } else if (hasComparison) {
         datasets.push({
             label: result.comparison.label,
             data: result.rows.map(r => (r.comparison_value === null || r.comparison_value === undefined)
@@ -807,16 +845,17 @@ function renderChartWidget(widget, result, seed) {
             plugins: {
                 legend: (chartType === 'doughnut')
                     ? { position: 'right', labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
-                    : { display: hasComparison, labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
+                    : { display: hasComparison || stacked, labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
             },
             scales: chartType !== 'doughnut' ? {
-                x: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
-                y: { ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } }
+                x: { ...(stacked ? { stacked: true } : {}), ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
+                y: { ...(stacked ? { stacked: true } : {}), ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } }
             } : undefined,
             onClick: clickable ? (evt, elements) => {
                 if (!elements.length) return;
-                const row = result.rows[elements[0].index];
-                handleWidgetClick(widget.seed_key, row);
+                const { datasetIndex, index } = elements[0];
+                const row = stackedRows ? stackedRows[datasetIndex]?.[index] : result.rows[index];
+                if (row) handleWidgetClick(widget.seed_key, row);
             } : undefined
         }
     });

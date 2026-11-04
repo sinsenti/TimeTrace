@@ -224,3 +224,163 @@ verified pidfd; exit event observed. Subsequent checks confirm PID absent,18211 
 connection refused. The private DB/logs/venv are retained. `cleanup-before.json`/`cleanup-after.json`
 are current; prior paragraphs describing a live gate-ready runtime are now historical. No other
 process, timer, DB, worktree or source was modified during cleanup.
+
+## Focused review repair on exact bc818e7 — pending parent gate
+
+Fresh own worktree `ticket-12-review-fixes`, branch `feat/ui-redesign-12-review-fixes`, started clean at
+`bc818e73ab08cd938465bc88adeb4fc586ef96fd`. Original feature and DD checkpoint remain read-only;
+integration stays reviewed F7. No prior feature/gate history above is rewritten as current repair proof.
+External raw receipts: `/home/user/.local/state/timetrace-ui-redesign/evidence/ticket-12-review-fixes/`.
+
+### Four product defects, genuine RED first, bounded repair
+
+Original independent Spec review found exactly three unique blockers: stacked chart presentation P1,
+unsupported multidimensional time gap fill P1, first-Remove stale preview P2. Parent separately found
+weekday dimension-sort row loss: a fourth product defect, not another original-review finding.
+Standards had zero hard breaches plus one possible caption-duplication P2 heuristic, non-blocking and
+explicitly deferred; no optional extraction is bundled.
+
+- Unchanged-bc actual API: two synthetic tasks sharing one local hour produce two control rows but
+  filling returns only one survivor/24. Weekday control returns four rows but filling keeps two/7.
+  Separately, fillfalse weekday dimension asc/desc with firstDay0/1 returns two instead of four.
+  `api-red-{traffic,findings}.json` retains requests/responses. Parent reviewed these actual REDs and
+  source before granting two precise QueryService hunks: analogous hour/weekday second-dimension
+  rejection, preserving existing calendar messages; stable weekday rank ordering preserving all
+  known-key rows and incoming secondary SQL order, retaining unknown-key exclusion. No aggregation,
+  Cartesian fill, time/attribution/compiler/registry/schema/API/sandbox policy change.
+- Unchanged-bc native Save/reopen really renders four repeated day bars in one dataset, with no stacked
+  axes/legend. Corrected-oracle RED uses existing human day labels, not ISO keys. Renderer-only fix
+  pivots unique typed primary keys and distinct secondary keys, never human-label grouping or sums.
+  Missing cells are null, explicit zero/negative/null survive; baseline ghost uses a distinct stack.
+  DatasetIndex/xIndex maps to the exact source QueryRow; missing cells have no forged click target.
+  Actual populated two-day/category native Save/reopen now has two slots/two [1,1] series. A separate
+  hour/task comparison has duplicate human task labels but four exact primary/ghost series. A physical
+  native second-day edited-seed segment click requests day-summary for the correct raw 2024-02-26 key.
+- Local builder validation blocks unsupported multi-time fill before Preview and Save, retaining
+  checkbox/dimensions/exact typed filters/raw saved specs and dirty ownership. Direct API now returns
+  useful400 instead of row loss; frontend-only success is not substituted for backend verification.
+- First Remove explicitly calls the existing preview invalidator after synchronization. Completed
+  preview clears immediately to outdated status; held pre-Remove reply cannot restore it. Existing
+  snapshot-based held-table prevention was already a passing control, not claimed as a new defect.
+  Both native row types produce no implicit query/widget write; other lifecycle/focus hooks survive.
+
+### First failures and authorized bounded oracle/fixture corrections
+
+Every first failure remains external, separate from product RED and final success:
+
+1. Initial shell used absent `python`, then attempted to source an uncreated env file; `uv sync` created
+   only the new own venv. No app import/test/runtime occurred before the new0700 DB directory. Corrected
+   setup uses `python3`/`set -e`; the first3s health request preceded migration readiness and refused.
+   Actual daemon subsequently completed0013 normally. No personal DB/key/env was reused.
+2. First native oracle expected ISO day labels instead of existing human Feb25/26. Parent approved one
+   label-only correction and splitting held no-repopulation control from missing outdated-status RED.
+   Original probe/hash/raw and exact correction diff remain; corrected unchanged-bc RED was recorded
+   before production edits. Runner exit0 with verdictRED was never called passing.
+3. First own API green attempt:71 passed/4 failed because the test incorrectly reversed secondary task
+   order for dimension_desc. Protected compiler only orders dimension1. Parent approved one correction
+   comparing complete ordered keys to real incoming compiled-SQL order within literal weekday buckets,
+   retaining exact four-row/keyset/value/count/label/weekstart/comparison assertions. No product/compiler
+   change forced the bad expectation. Original10failed/7passed RED and failed green attempt remain.
+4. New native legacy-fixture POST correctly400 after validation repair; parent approved one fixture-only
+   correction. External helper verifies exact own PID/cwd/env/health/privateDB, creates two valid
+   fillfalse widgets by real API, then parameterized CAS updates only those captured spec_json rows to
+   legacy filltrue (exactly2 rows). All other fields/rows/tables are unchanged; ACKs/raw before-after
+   specs/ownership manifest/public readback retained. Corrected native uses exact nonce-owned IDs via
+   real GET/DOM; cleanup deletes only its fixtures. This is explicit legacy simulation, not an invalid
+   HTTP Save, a response fake or production bypass. Comparison/physical-click assertions are unchanged.
+
+Earlier original500/34RED+controls, supplemental helper400/correction, no-write doc-refusal and parent
+truncated-JSON inspection history remain above and in original external receipts, never erased or
+relabeled all-first-pass.
+
+### Current checks, isolation and pending gate
+
+- 75 focused API pass/121 warnings;466 full Python pass/226 warnings (+17 vs449 baseline, +24 warnings).
+- 220 all-CJS+tags pass (+6);85 all source/test JS/CJS syntax pass (+3), including final corrected probe.
+- Scoped Ruff and both changed Python files' formatting pass; full concise `ruff check --no-cache
+  --output-format concise .` exits1 with the same18 diagnostics AND identical stderr warning bytes
+  against fixed finalize baseline. No unrelated formatting/compiler cleanup.
+- Current-source Stats89 FIRST then all7 unchanged builder108 pass/zero pageerrors. New native repair13
+  and controls20 pass/zero pageerrors. Raw labels/real payloads/charts retained;230 checks, not a whole
+  query-cross-product certificate. Only two external Controls screenshot destinations differ from the
+  original probe.24 theme-width samples fit, minima label12.0118/primary5.698586/border3.623854 unchanged.
+- New private0700 `/tmp/timetrace-ticket12-review-fixes.30b614j9` existed before all app imports/tests;
+  own fresh venv/editable source, loopback18217, idle/tracingOFF, all inherited credentials including
+  Google ADC/Ollama unset, catalog fake, actual SQLfalse. Initial own335419 normally stopped after
+  identity/timer/DB audit; service fix runs on new verified347616. Actual main0013/FKempty/health exactDB.
+- Scope: only `dashboards.js` renderer, builder extraction validation, modal first-Remove, two granted
+  QueryService hunks, four new regressions, two own docs append. Shared a9b fixture, compiler aliases,
+  other helpers and original probes remain unchanged. No migration/dependency/other-lane adoption.
+
+Source is held unstaged for a genuine independent current parent gate; no stage/commit until explicit
+release of one exact-bc-parent repair. Fresh independent Standards/Spec on both bc→fix amendment and
+F7→fix combined range, then separately authorized integration/closure remain mandatory. No completion,
+spec Built, global docs,19 release,13–14 unlock, push/PR/dev merge or human acceptance is implied.
+Physical touch, screen reader, other engines, exhaustive zoom/motion, whole-a11y, query cross-product,
+real-enabled SQL/provider calls and transport/exactly-once/cross-tab claims remain unrun/unwaived;
+known4.33/3.98986 observations remain limits. Runtime stays healthy for parent gate; subsequent external
+report/cleanup receipt will supersede this live checkpoint, not rewrite it.
+
+### Independent parent gate, recovery release and normal cleanup
+
+Parent's genuine independent gate inspected Stats89 FIRST, seven builder108, populated repair13 and
+controls20:230 passing labels, zero pageerrors; main result explicitly verdict PASS/failures empty.
+Actual Chart cells/stacked axes/legend, duplicate-human-label primary/ghost stacks, physical second-day
+seed-segment click/real inspector, both retained invalid saved combinations and both Remove controls
+passed. Existing older-response no-repopulation behavior remains a control, not a newly fixed defect.
+Parent receipts are `parent-browser-gate.md`, `parent-native-summary.json` and `parent-after.json` in the
+external repair evidence root. This is supplied parent execution, not a finisher native rerun.
+
+The first parent controls attempt failed its immediate hydration read. Async Edit clears/hides the
+form until capabilities/hydration finish; no failed DOM snapshot proves exact timing. Explicit grant
+allowed only six public readiness waits at three Edit sites: visible modal and enabled Submit. Every
+original assertion and all production bytes remained unchanged. Parent reran ONLY corrected controls20
+once with a fresh nonce-owned historical legacy fixture; other nine passing probes were NOT rerun.
+Two real-API valid fillfalse widgets were parameterized-CAS seeded to legacy filltrue, exact IDs/specs
+and unrelated rows checked, then own fixtures cleaned. This remains a labeled historical simulation,
+not invalid HTTP Save, policy bypass or response fake. First parent failure/raw/probe SHA remain.
+
+Prior worker60ae25fb-41b1-4053-a348-7c933c9cc51f terminated on provider `fetch failed` after an external
+artifact reconstruction assertion dropped the original probe's final newline. The helper failure was
+metadata-only; parent reconstructed the original exact hash with newline intact, preserved all10 paths
+and archive, and proved only the six waits changed. Original worker-report.md was never produced and
+is not invented/backfilled. Refreeze receipt and post-readiness manifest remain in `parent-recovery/`;
+manifest SHA256 `43b2cac7a3b6ad08768e16dc6e848f3ba30a2cb981d47e35851b0a28705ac331`.
+All prior setup/oracle/fixture failures and original500/helper400/doc-refusal/inspection errors above
+remain historical evidence, not all-first-pass claims.
+
+After operator continue and parent confirmation of no active writer, explicit exclusive release
+permitted only two own-doc appendices, normal verified own cleanup and ONE coherent10-path repair
+commit with exact single parent `bc818e73ab08cd938465bc88adeb4fc586ef96fd`. The fresh finisher verified
+HEAD/branch/empty index/exact10 dirty paths and all10 manifest hashes before editing. All eight gated
+code/test files remain byte-identical, including controls SHA256
+`862951deb08e58002e4b1820d4ec74d6dd21879d30909144c2548eec9797c7f2`.
+No implementation, fixture, assertion, harness, compiler, policy or global-doc change was made during
+finishing. Producer checks75 focused API/121 warnings,466 full Python/226 warnings,220 canonical Node,
+85 syntax, scoped lint/format and full concise Ruff18 stdout AND stderr fixed-baseline identity were
+independently inspected by parent; these are retained producer receipts, NOT finisher reruns. No app
+imports, tests, native probes, full checks, new venv/DB or daemon startup occurred during finishing.
+
+Finisher verified existing PID347616's exact source cwd/cmd, executable/editable source, whitelist env,
+credentials absent, idle/tracing/SQL false, health18217 and exact private0700
+`/tmp/timetrace-ticket12-review-fixes.30b614j9/timetrace.db`. Canonical `/timer/status` AND
+active_timer.json showed inactive timer, idle false, no frozen state/pending gap/task/tags/notes.
+SQLite was opened mode=ro/query_only only: migration0013_ai_data_scope, FK check empty, actual every-table
+counts matched parent-after. Synthetic domain/AI data are zero; Overview1/widgets9, default statuses5,
+AI settings1, migration1 and FTS bookkeeping remain (data10/idx8/config1, other FTS counts0).
+Only this identity-verified process received normal SIGTERM through its retained pidfd; exit event,
+PID absence,18217 closed/connection errno111 and health connection refusal were proved. DB, logs and
+venv retained; no other process/storage/worktree modified. External `finisher/cleanup-before.json` and
+`cleanup-after.json` supersede the preceding live-runtime checkpoint without rewriting its history.
+
+External `recovery-finisher-report.md` records actual final commit SHA, exact parent/path scope,
+all10 tree/worktree identity, eight gated hashes, clean worktree/index and preserved DD16/status,
+original clean bc feature, clean F7 integration and shared a9b fixture proofs. Fresh independent
+Standards/Spec reviews must cover BOTH amendment bc→repair AND combined F7→repair, followed by
+separately reviewed merger closure. Three original Spec defects plus one parent weekday-loss defect
+remain four product repairs; zero hard Standards breaches plus ONE possible nonblocking P2 caption
+heuristic is explicitly deferred, not zero overall findings or a policy waiver. Ticket remains pending,
+status/criteria unchanged, spec Approved NOT Built. No downstream19 release/13–14 unlock, global or
+whole25 completion, human acceptance, integration write, push/PR/dev merge is authorized here.
+Known task4.33/four dark AI3.98986, physical touch/screen reader/other engines/exhaustive zoom-motion-
+contrast/query cross-product, real enabled SQL/provider and transport-uncertainty limits remain unwaived.

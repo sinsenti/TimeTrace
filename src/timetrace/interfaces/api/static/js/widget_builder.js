@@ -580,6 +580,11 @@ function _wbStructuredQuery() {
         date_range: { ...wbOriginalQuery?.date_range, preset: _wbValue('wb_date_range') },
         filters: []
     };
+    if (query.fill_gaps && query.group_by.length > 1 &&
+        ['day', 'week', 'month', 'hour_of_day', 'weekday'].includes(query.group_by[0])) {
+        _wbShowError('Fill empty buckets supports one time dimension only. Uncheck Fill empty buckets or remove the second group-by dimension.');
+        return null;
+    }
     if (!Number.isInteger(query.limit) || query.limit < 1 || query.limit > 2000) {
         _wbShowError('Row limit must be a whole number from 1 to 2000.'); return null;
     }
