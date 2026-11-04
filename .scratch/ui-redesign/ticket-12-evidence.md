@@ -384,3 +384,134 @@ status/criteria unchanged, spec Approved NOT Built. No downstream19 release/13�
 whole25 completion, human acceptance, integration write, push/PR/dev merge is authorized here.
 Known task4.33/four dark AI3.98986, physical touch/screen reader/other engines/exhaustive zoom-motion-
 contrast/query cross-product, real enabled SQL/provider and transport-uncertainty limits remain unwaived.
+
+## Duplicate serialized-key collision repair on exact a521 — pending independent gate
+
+Fresh full Standards/Spec reports in `review-ticket-12-repair/summary.md` identify ONE new unique
+Spec P1 applying to both amendment and combined ranges, not two findings: legitimate SQL NULL and
+empty category groups both serialize to empty-string keys, and the new pivot overwrites one cell.
+The earlier four product fixes remain distinct from this fifth historical product defect; Standards'
+possible nonblocking caption-duplication P2 heuristic is still explicitly deferred, not zero findings.
+No new product specification or backend serialization/comparison-policy change is authorized.
+
+New clean worktree `ticket-12-stack-collision`, branch `feat/ui-redesign-12-stack-collision`, starts at
+exact `a52157008379db0525bdca51dbc0f7cd41e6f59d`. Only production edit is inside dashboards.js
+renderChartWidget: detect repeated actual typed primary/secondary pairs BEFORE pivot, explain the
+fallback visibly using existing text/theme tokens, and show separate full-label/row-ordinal bars.
+Every input row/value remains in source order, including null/zero/negative primary and supplied
+baseline cells; click indices retain exact raw source objects. No sums/merging/dedup/new IDs/rekeying,
+implicit Save/spec mutation, service/compiler/registry/API/schema/time/comparison policy changes,
+new palette, or unrelated chart/lifecycle changes. Only new owned CJS/native regressions and these
+two append-only owned documents accompany it; existing six stacked tests and shared a9b fixture
+are byte-identical. All other production files remain unchanged from a521.
+
+Evidence root: `/home/user/.local/state/timetrace-ui-redesign/evidence/ticket-12-stack-collision/`.
+`api-characterization.json` and full traffic characterize the unchanged real API: exactly two
+same-day/category serialized-key rows, values1 and2, labels/order captured from actual API rather
+than invented dates/secondary sort. `cjs-red.stdout` shows genuine actual[2] versus expected[1,2]
+before production edits, consuming that real response. Native original attempt400 was a fixture
+mistake: day/week/month comparison requires dense fill, while two-dimensional calendar fill is
+unsupported. Original source/hash/raw400 are immutable. Parent approved ONE probe-only correction:
+keep original day/category cell-loss assertions unchanged, use separate legal hour/category
+comparison with fillfalse/custom ranges, derive every expectation from actual API response, keep
+physical edited-seed day/date inspection, and correct only the previously unexecuted public Close
+Inspector locator. Corrected unchanged-a521 native returns genuine RED with10 failures/11 passing
+controls, actual primary[2] and one slot, not a mere runner-exit claim. Green after renderer edit:
+22 checks, failures[], verdict PASS, zero pageerrors; no further oracle correction or test weakening.
+
+New CJS4 plus unchanged stacked6 pass: captured API rows, repeated-cell null/zero/negative/order/
+counts/source-object identity on primary AND baseline clicks, same labels/different keys normal
+sparse stacks, no spec/result mutation, lifecycle disposal/live-theme registry. New native collision22
+uses real query/widget/task/session APIs and actual Chart; inert untrusted title, visible explanation,
+public Edit modal visible/Submit enabled before assertions, Cancel focus restoration, no render/
+reopen/theme writes, primary[1,2] and all supplied baseline cells, physical second-row edited-seed
+click/raw API-derived day/real2-session inspector. Four sampled theme notice contrasts range
+12.0118–14.9873:1; not exhaustive palette/zoom/accessibility certification. The legal comparison API
+itself supplies primary[1,2], baseline[2,2]: QueryService._apply_comparison's existing by-key baseline
+map (query_service.py:484) collapses NULL/empty baseline identity. This repair preserves [2,2]
+exactly and does NOT claim to repair that pre-existing backend ambiguity or invent a missing row.
+
+Fresh current-source producer native sequence: Stats89 FIRST, all seven builder108, earlier review13,
+controls20 =230 passing labels; plus collision22 =252 total, zero pageerrors. All first attempts in
+that final old-probe sequence passed. Prior original failures above remain historical, not erased or
+relabeled all-first-pass. Provider catalog is always faked; old probes explicitly fake held/failing
+HTTP and optional SQL flag/schema/preview. Actual SQL flag stays false, no provider call. Controls
+historical invalid specs are NOT invalid HTTP Saves: fresh unique valid API dashboard/two fillfalse
+widgets followed by external parameterized exact two-row SQLite CAS false→true, all unrelated fields/
+rows/tables unchanged, public readback and own-ID cleanup. External helpers derive only18217→18219,
+old→new DB/source/runtime bindings; reversible path-only diffs and SHA receipt retain ALL original
+identity/safety/CAS assertions. Producer manifest has a fresh UUID; parent must independently produce
+a fresh manifest with TIMETRACE_REVIEW_LEGACY_MANIFEST, not reuse cleaned producer IDs.
+
+Fresh full safe-path pytest:466 passed/226 existing SQLite warnings (no added Python test). Canonical
+all-CJS plus tags:224 passed, no failures/cancelled/skipped/todo (+4). ALL src/test JS/CJS explicit
+paths:87 syntax passes (+2). New tracked Python lint/format is not applicable; no Python source/test
+edit. Full `ruff check --no-cache --output-format concise .` exits1 with18 existing diagnostics;
+BOTH stdout and stderr byte-match the fixed finalize baseline, including existing invalid-noqa warning.
+No schema/migration or personal/disposable-personal-copy test is involved. Scoped whitespace check
+passes. Raw commands, exit statuses and counts are retained in external logs/report.
+
+Before ANY application import/test/runtime, created new private0700 absolute
+`/tmp/timetrace-ticket12-stack-collision.4l259qso/timetrace.db`, own new .venv with editable source
+pointing only to this worktree, free loopback18219; idle/SQL/tracing off, credential/Google ADC/Ollama
+environment absent, no personal DB/copy/key/provider/paid call. Actual daemon main migrated through
+0013_ai_data_scope; FK check empty, health exact DB/port/source PID/env verified. After producer
+fixtures, synthetic domain/AI rows zero; Overview1/widgets9/default statuses5/settings1 remain,
+with actual FTS bookkeeping documented in producer-after.json. Runtime remains alive for the
+BLOCKING genuine independent parent browser gate; nothing staged or committed. All actual owned
+paths, complete patch, code/test hashes, commands and PID/URL/private DB/env are frozen externally
+before requesting that gate. No source edits during freeze. Cleanup only verified own PID after
+explicit gate/release through canonical timer/status+file/0013/FK/count checks, normal SIGTERM and
+PID absence/port closed/health refusal, retaining DB/logs/venv. No commit release inferred from pass.
+Fresh independent Standards/Spec must cover BOTH a521→new and F7→new; one shared defect counted
+once and axes separate. Ticket remains pending/spec Approved NOT Built; no integration/19 release/
+13–14 unlock/global status/human/dev-merge/push/PR/whole25 claim. Existing4.33/3.98986 contrast,
+touch/screen reader/other engines/exhaustive zoom-motion/query cross-product/real SQL/providers/
+transport limits remain unwaived. External worker-report.md is a durable checkpoint, not prior
+missing-report backfill or independent review acceptance.
+
+### Genuine independent collision gate and released normal finish
+
+Parent independently executed all11 current frozen-source probes: Stats89 FIRST→seven builder108→
+review13→controls20→collision22 =252 inspected labels, all first-run exit0/zero pageerrors; main and
+collision explicitly verdict PASS/failures[]. `parent-browser-gate.md`, `parent-native-summary.json`,
+`parent-after.json` and raw `parent-browser/` are the independent receipts, not worker-only claims.
+All five frozen SHA values before/after, index empty/exacta521, shareda9b and original checkpoints
+preserved. Parent's fresh independent nonce-valid API/two-widget/two-row-CAS legacy fixture retained
+all other fields/rows/tables and was cleaned by owned IDs. Only two screenshot destinations changed
+in an external controls copy; no source/probe fix, expected-value wait, forced click, recoloring or
+native rerun. Actual fallback[1,2]/full labels+ordinal/inert explanation, unchanged saved stacked spec,
+focus/no writes/all4 notice themes/minimum12.0118:1, physical second source row/raw date/real2-session
+inspection and legal comparison's supplied[2,2] all passed. That existing backend alignment ambiguity
+is not repaired or disguised. Producer first400/approved correction/genuineRED and all earlier
+historical failures remain immutable; no whole-delivery all-first-pass claim.
+
+Parent explicitly released ONE coherent five-path repair with exact single parent
+`a52157008379db0525bdca51dbc0f7cd41e6f59d`, no three gated code/test changes; only these two owned
+documents append gate/cleanup history. No completed test/native/full-check reruns after doc append.
+Before staging, fresh normal own cleanup first stopped at os.pidfd_open: this own Python3.14 build
+lacks that stdlib attribute. It failed BEFORE process/DB/HTTP audit or signal; raw cleanup.stderr,
+unchanged cleanup script and capability proof are retained. This is a platform-helper setup failure,
+not application RED. Parent approved ONE command-only correction: execute EXACT unchanged stdlib
+script via `/usr/bin/python3 -P` under env-i with explicit private DB, not weaken assertions or use raw
+PID signaling. Both system pidfd functions exist; application daemon/tests remain Python3.14.
+
+Corrected cleanup verified only PID417887's exact source cwd/cmd/editable-source JSON, environment
+credentials absent/idle-SQL-tracingfalse/private0700 exact DB/18219 health. Canonical `/timer/status`
+AND active_timer.json inactive/idlefalse/not frozen/no gap/task/tags/notes; read-only SQLite URI
+mode=ro/query_only verified0013_ai_data_scope/FKempty and actual ALL-table counts equal parent-after.
+Counts: all synthetic task/session/review/rating/habit/recurrence/AI/provider/audit rows0; Overview1,
+widgets9,statuses5,settings1,migration1; FTS data12/idx10/config1,otherFTS0. Only identity-verified
+pidfd normal SIGTERM was sent; exit event, PID absence,18219 connect errno111 and health connection
+refusal proved. Private DB/logs/venv retained. `cleanup-before.json`, `cleanup-after.json`,
+`cleanup-system.stdout/.stderr`, interpreter capability/version and unchanged script SHA receipts
+provide actual cleanup evidence. No other process/storage/worktree was touched.
+
+External worker-report.md and final commit receipts identify actual commit, exact single parent,
+exact five paths, unchanged three gated hashes, append-only docs, staged/committed patch identity and
+clean final worktree/index. Original DD16/status, clean originala521/bc and integrationF7 remain
+read-only/preserved. Fresh independent Standards/Spec BOTH amendmenta521→new and combinedF7→new,
+then separately reviewed merger closure remain mandatory. No ticket closure/specBuilt/global status/
+19 release/13–14 unlock/integration/human/dev-merge/push/PR permission is inferred. Caption heuristic
+and old comparison ambiguity remain explicitly deferred/out of scope; all previous contrast/manual/
+realSQL-provider/query-crossproduct/transport limitations stay unwaived.

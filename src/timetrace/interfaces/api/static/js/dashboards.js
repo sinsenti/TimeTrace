@@ -754,14 +754,29 @@ function renderChartWidget(widget, result, seed) {
     }
     card.appendChild(header);
 
+    const stackRequested = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
+    const seenCells = new Map();
+    const collision = stackRequested && result.rows.some(row => {
+        if (!seenCells.has(row.keys[0])) seenCells.set(row.keys[0], new Set());
+        const secondaryKeys = seenCells.get(row.keys[0]);
+        if (secondaryKeys.has(row.keys[1])) return true;
+        secondaryKeys.add(row.keys[1]);
+        return false;
+    });
+    if (collision) {
+        // Serialized keys need not uniquely identify authoritative SQL groups (NULL vs empty text).
+        card.appendChild(_el('p', 'text-xs text-[var(--text-main)]',
+            'Repeated group keys: showing each result row as separate bars instead of stacking. Values are unchanged.'));
+    }
+
     const chartWrap = _el('div', 'h-64 relative' + (kind === 'doughnut' ? ' flex items-center justify-center' : ''));
     const canvas = document.createElement('canvas');
     chartWrap.appendChild(canvas);
     card.appendChild(chartWrap);
 
-    let labels = result.rows.map(r => r.labels[0]);
-    const values = result.rows.map(r => r.value || 0);
-    const stacked = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
+    let labels = result.rows.map((r, index) => collision ? `${r.labels.join(' / ')} — row ${index + 1}` : r.labels[0]);
+    const values = result.rows.map(r => collision ? r.value : (r.value || 0));
+    const stacked = stackRequested && !collision;
     let stackedRows = null;
     const palette = (typeof defaultPalette !== 'undefined' && defaultPalette && defaultPalette.length)
         ? defaultPalette
