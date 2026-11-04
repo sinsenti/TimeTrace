@@ -1,0 +1,23 @@
+.habit-compact-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:1rem; }
+.habit-compact-card { background:var(--bg-card); border:1px solid var(--border-muted); border-radius:12px; padding:1rem; min-width:0; color:var(--text-main); }
+.habit-card-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:.75rem; }
+.habit-card-heading h3 { font-weight:700; overflow-wrap:anywhere; min-width:0; }
+.habit-color { display:inline-block; width:.6rem; height:.6rem; border:1px solid currentColor; border-radius:50%; margin-right:.4rem; }
+.habit-compact-card button, .habit-compact-card input, #habit_retry_load { font:inherit; font-size:.8rem; border:1px solid currentColor; border-radius:6px; padding:.4rem .55rem; background:var(--bg-card); color:var(--text-main); min-height:36px; }
+.habit-compact-card button { cursor:pointer; }
+.habit-compact-card button:disabled { opacity:.6; cursor:default; }
+.habit-compact-card button:focus-visible, .habit-compact-card input:focus-visible { outline:3px solid var(--text-main); outline-offset:3px; }
+.habit-compact-card button[aria-pressed="true"] { box-shadow:inset 0 -3px currentColor; font-weight:800; background:var(--bg-main); }
+.habit-card-meta { font-size:.8rem; margin:.5rem 0; overflow-wrap:anywhere; }
+.habit-week-nav, .habit-entry-actions, .habit-result-choices { display:flex; gap:.5rem; flex-wrap:wrap; margin:.65rem 0; }
+.habit-day-strip { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:4px; }
+.habit-day-strip button { display:flex; flex-direction:column; align-items:center; padding:.35rem 0; min-width:0; }
+.habit-day-strip span { font-size:.65rem; }
+.habit-day-strip small { font-size:.56rem; overflow-wrap:anywhere; }
+.habit-selected-result, .habit-history-warning, .habit-entry-editor p { font-size:.8rem; margin:.65rem 0; overflow-wrap:anywhere; }
+.habit-history-warning { border-left:3px solid currentColor; padding-left:.5rem; }
+.habit-entry-editor input { display:block; width:100%; margin-top:.3rem; }
+.habit-entry-editor label { font-size:.8rem; }
+ .habits-page > header > .app-navigation { flex-basis:100%; width:100%; }
+.habits-page > header { height:auto; min-height:48px; flex-wrap:wrap; padding-top:.5rem; padding-bottom:.5rem; }
+@media(max-width:600px) { .habits-page > main { padding:1rem; } #habit_tab_charts .col-span-2 { grid-column:span 1; } }
