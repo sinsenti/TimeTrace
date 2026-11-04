@@ -2,7 +2,7 @@
 
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
-**Current frontier:** 03, 04, 10, 12, 13, 14, 15, 18, 19, 21, 24 after bounded tickets **01 + 02 + 11 completed**. Other22 tickets remain pending (`ready-for-agent`) subject to the unchanged graph;25 is not done,22 still blocked by05/15/21. Reservation **11 → 02 → 04**: reviewed02 code is integrated;04 and10 dirty/uncommitted checkpoints are stopped and preserved read-only.04 continuation is **HOLD** until fresh parent Standards/Spec review of the new02 docs-only closure;10 awaits04 plus reviewed02, not a new DAG edge.12 is active in its own worktree with authorized compiler/widget-fixture extras outside this integration range, held serial reservation.13/14 are technically unblocked but resource-locked by12, not launched. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
+**Current frontier:** 03, 05, 06, 08, 09, 10, 12, 13, 14, 15, 18, 19, 21, 24 after bounded tickets **01 + 02 + 04 + 11 completed**. Other21 tickets remain pending (`ready-for-agent`) subject to the unchanged graph;07/17 blocked05,16 blocked15,20 blocked19,22 blocked05/15/21,23 blocked21;25 is not done. Reservation **11 → 02 → 04** reached reviewed04 F150 by clean FF-only; fresh parent Standards/Spec review of its five-doc closure is required before next checkpoint release.03/10/12/19 dirty uncommitted checkpoints remain STOPPED/read-only, not completed.10 still needs disjoint latest-base preflight.12's unrelated shared ownership-test Widget fixture overlap needs later parent-coordinated fresh reviewed-base own-patch replay/disjoint-hunk reconciliation, not blind dirty FF or touching12 now.13/14 remain technically unblocked but resource-locked by12, not a new DAG edge. Quick Add04 is distinct from Assistant21–23; Grouped/Outline layouts remain06/07 and Settings currently stays `/settings/ai` until19. The spec remains **Approved, not Built**; no human acceptance or dev merge is implied.
 **Execution record:** [Implementation and review gates](implementation.md), including the fixed base and external reference evidence.
 
 ## Approval record and readiness
@@ -16,7 +16,7 @@ On 2026-11-01, after the full eight-part questionnaire, the owner explicitly ans
 and approves the final production spec and verification plan. Tickets are now **ready-for-agent**.
 This status means specified work, not completed work or permission to ignore technical blockers.
 At that historical approval checkpoint, ticket **01** was the sole unblocked frontier. The current
-frontier above follows local integration/recorded implementation completion of01,02 and11; other blockers remain.
+frontier above follows local integration/recorded implementation completion of01,02,04 and11; other blockers remain.
 
 Those approval records did not themselves authorize implementation or commits. The owner has since
 requested implementation with local branches/commits and integration merges, as recorded in
@@ -30,7 +30,12 @@ records fresh integrated checks, criterion mapping, retained first failures and 
 Ticket02 is integrated at reviewed code `abd7a6da11a9f9589371a8f876ebf38b45fb4d96`;
 [closure evidence](ticket-02-evidence.md#local-integration-and-bounded-closure-2026-11-02)
 records fresh integrated checks, criterion mapping, preserved first failures and deferred manual acceptance.
-Prior11 closure review released02;04 remains held for the parent's fresh independent02 closure-commit review.
+Ticket04 is integrated at reviewed code `f15003b821ee60383a7baf4344de3d74b732c1a9`;
+[closure evidence](ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04)
+records fresh377 Python/201 Node/70 syntax, Stats89→all7 Session→all6 Task probes, criterion mapping,
+repaired original2P2/new1P2 and retained failures/manual/contrast/transport limits. Prior11 and02 closure
+reviews released their next reservations; fresh parent independent04 closure-doc review is now required.
+`completed` means delivered implementation with bounded evidence, not all manual/human acceptance.
 Ticket approval paragraphs and Comments retain their historical checkpoint wording; the execution
 record supplies current authorization without rewriting ticket identities, criteria or history.
 

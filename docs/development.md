@@ -91,6 +91,20 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   aggregation behavior/tests, not the current dashboard execution path. Query capabilities come from
   `core/query_registry.py`. Builder/SQL adoption and performed-time/default-label changes remain later
   UI tickets12–14, not part of the ticket11 canvas closure.
+- **Tasks / Quick Add:** ticket04 keeps Kanban as the fresh/invalid default with a persisted view
+  selector, hierarchy/search and existing task/scheduling/timer/completion entries. Valid Grouped/Outline
+  preferences retain an honest Kanban fallback until tickets06/07. The task popup queues/removes children
+  below the title and includes an unsubmitted child on Save. Existing APIs write parent/children
+  separately: authoritative parent tags/category (including `''`) and each child acknowledgement are
+  retained; partial failure locks the saved parent, including color presets, and Retry writes only
+  unsaved children. Explicit partial discard explains that saved rows remain. Metadata retry reads only;
+  a lost mutation response is still uncertain, not an atomic/idempotency/exactly-once guarantee.
+  Separate AI Quick Add on Tasks/Calendar remains classify (no inference) → explicit Parse (read-only)
+  → editable prefill → human Save; late extraction cannot replace a newer owner or concurrent edits.
+  It is not the conversational Assistant approval workflow (tickets21–23). Settings still uses
+  `/settings/ai` until ticket19; stopped Timer/Habits/builder/preferences checkpoints are not integrated.
+  Caller/API/native evidence and deferred manual/contrast limits are in
+  [ticket04 evidence](../.scratch/ui-redesign/ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04).
 - **Local time:** `settings.js` sends timezone/week-start query context. SQLite bucketing follows
   the daemon's local timezone; `QueryService` warns and uses that zone if a requested zone differs.
   Arbitrary per-query IANA timezone bucketing is not implemented. `Session.timezone` is modeled,
@@ -444,9 +458,12 @@ threshold or idle policy and certifies neither transient/all-frame contrast nor 
 ### Settings departure: suspended Session and late Day writers
 
 Session → **+ Task** suspends the initialized Session DOM and its original draft baseline. The hidden
-owner stays guarded through nested Task editing and successful Task-write/metadata-refresh gaps.
-Nested Task Cancel resumes the Session; successful creation attaches the new Task without replacing
-Session Notes, timestamps or tags. Session Save is still explicit. Session Cancel or an unrelated
+owner stays guarded through nested Task editing and partial writes. Nested Task Cancel resumes the
+Session; successful completion attaches the acknowledged parent and consumes suspension **before**
+fallible metadata refresh, without replacing Session Notes, timestamps or tags. Optional late launcher
+focus restoration is independent and yields to newer focus/dialog owners; a superseding Session cannot
+receive the old parent, and standalone Task Cancel/Save cannot inherit its suspension. Session Save is
+still explicit. Session Cancel or an unrelated
 Session opening ends the suspension; ordinary standalone Task Cancel remains discard. Task create/edit
 focus the title when initialization finishes, without deferred focus/select callbacks that can steal
 subsequent Tags typing or act after closure/reopening.

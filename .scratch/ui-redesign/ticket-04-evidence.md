@@ -1,7 +1,8 @@
 # Ticket 04 — Kanban and quick-edit evidence
 
-Status: implemented locally, **ready for parent review/integration; not closed**.
-Base: `7ed9bf330677fb317793aa4371c4f36f407a2595` on
+Status: **locally integrated/completed with bounded evidence**; fresh parent closure-doc review and
+manual/human/whole-delivery gates remain. [Current closure](#local-integration-and-bounded-closure-2026-11-04).
+Historical initial base: `7ed9bf330677fb317793aa4371c4f36f407a2595` on
 `feat/ui-redesign-04-kanban-quick-edit`. No schema/API/domain-policy changes.
 
 ## Delivered slice
@@ -242,3 +243,147 @@ same-live-writer steering. This is coordination/transport receipt irregularity, 
 no explanation for expiry is assumed. Earlier “pending gate” paragraphs are historical checkpoints.
 Fresh per-commit Standards/Spec review, fresh merger, serialized closure and later human/dev-merge gates
 remain parent-owned and mandatory. Ticket remains ready/unclosed; global documentation untouched.
+
+## Review-repair chronology through F150 (2026-11-04 record)
+
+Earlier pending/uncommitted paragraphs above are retained historical checkpoints, not current status.
+Feature E5 `e5afa8d449d918f634fc6f96a468eb8cf422be6b` was committed directly on DFDA. Its fresh Standards
+review found0; Spec found **two P2**: pending/partial parent swatches remained editable despite an
+acknowledged parent, and late metadata could steal focus from a newer Session. Both were reproduced
+with dedicated caller/native RED and repaired in E2 `e2c10947cf56adf8c671ff6066570fbda2a6e67a`.
+E2 amendment AND combined reviews: Standards0; Spec **one unique new P2**, repeated in both ranges,
+not two defects: suppressing late focus restoration also skipped completed nested P handoff, leaving
+suspension for unrelated standalone Q. It was repaired, not waived, by F150
+`f15003b821ee60383a7baf4344de3d74b732c1a9`, sole parentE2. Matching nested completion now attaches P
+and consumes suspension at ACK before fallible metadata; optional late focus stays independently guarded.
+
+Unchanged-E2 native RED50 checks/16 failures and caller17 pass/3 new fail are preserved externally.
+Final66 checks include eight planning/Assistant × standalone Cancel/Save × metadata success/failure
+cases plus four superseding-Session before-ACK/during-read cases. Parent independently passed all6
+native probes, verified five changed/all207 source-test hashes and released one six-path fix.
+The approved shared `test_draft_ownership.cjs` exception changes only two nested timing expectations/
+messages and adds pre-read P proof; existing53 tests/draft/write/identity assertions remain.
+The original20 color/focus checks remain. One nested-new-Session step now explicitly uses its public
+initializer because ACK correctly resumes the overlay: the old background-pointer timeout is retained,
+not called product RED or forced through. Native/public-caller/Task-only fixture boundaries are explicit.
+
+Fresh final independent **E2→F150 amendment AND DFDA→F150 combined** reviews fully read: Standards
+0 documented breaches/0 heuristics/P0/P1/P2=0/0/0; Spec missing/unasked/wrong0 and P0/P1/P2=0/0/0
+for each range. Combined3 commits/15 paths,2,128 lines; diff SHA256
+`0863e6cd0e36e0c082b411e6c8d5bfb743811211926264539cbbae3d43c7ffba` independently recomputed.
+Reports: external `review-ticket-04-nested-ownership/summary.md` and
+`evidence/ticket-04-nested-ownership/{review-f15003b-standards,review-f15003b-spec,worker-report,parent-browser-gate}.md`.
+Prior2P2/new1P2 counts and all original failures/characterizations remain history, not erased by final0.
+
+## Local integration and bounded closure (2026-11-04)
+
+Clean integration branch `feat/ui-redesign-integration` expected DFDA
+`dfda0aaa67e4014f7123fe5fd659d179c9576dd6`, clean read-only source exactF150, ancestry and reviewed
+combined diff verified. `git merge --ff-only feat/ui-redesign-04-nested-ownership` reached **exactF150**;
+no merge commit/source correction. All207 source/test SHA256s match reviewed F150 AND the independent
+native-gated manifest. ONE five-document closure directly on F150 changes no source/tests/specs/seeds.
+Parent fresh closure-commit Standards/Spec reviews remain mandatory before next checkpoint release.
+`completed` is implementation delivery with recorded bounded evidence, not unperformed manual/human
+acceptance, full accessibility, whole25 completion, publication or dev-merge permission.
+
+### Criteria 1–7: implementation evidence and boundaries
+
+1. **Kanban/defaults/retained entries:** `kanban.js`, `tasks.html`, shared settings adoption and
+   `test_task_quick_edit.cjs` cover invalid/fresh defaults, selector/search/hierarchy and completion
+   forwarding. Fresh main/edges verify real CRUD, persisted Outline preference with honest **Showing
+   Kanban** fallback, hierarchy/search and explicit human Save. Actual Grouped/Outline layouts remain
+   tickets06/07, not claimed built. Scheduling/timer/domain preservation is additionally exercised by
+   the seven fresh Session probes; no exhaustive status-manager/drag audit is claimed.
+2. **Queue/discard/inheritance:** `task_modal.js` and its template/caller tests cover Enter/Add/Remove,
+   unsubmitted Save, Cancel/Escape and inert text. Main/edges native receipts prove real parent/children
+   and effective `#effective`/study inheritance, nested partial retention and discard. Combined decline
+   probe has two actual Calendar cases: native +Task and explicitly public Notes-textarea launcher;
+   declined Escape retains exact value/focus/modal/hidden Session with0 writes; accepted discard resumes
+   identical Session/textarea/Notes/tags/typed tag/timestamps, intentionally attaches saved P, never
+   autosaves Session or recreates acknowledged rows.
+3. **Partial ACK/retry:** parent receipt captured before children; each confirmed child skipped on Retry.
+   Main/edges/focus20 verify only rejected child retried, saved parent locked including native/public
+   swatches, no duplicate/replayed parent/confirmed child. Empty-category external probe explicitly
+   changes parent POST category to valid `''` before REAL daemon write while GUI says study/no blank
+   option; actual receipt/child request/both public rows retain `''`. This is API-fixture reachability,
+   not a new blank GUI option. Nested66 verifies P delivery/suspension consumption **before held read**,
+   same draft DOM and no inherited Q; superseding Session never receives P/Q. Planning/Assistant focus
+   and superseding initializer are public callers, not physical background clicks. ACK-time visible
+   Session is explicitly canceled before subsequent native standalone Cancel/Save.
+4. **Quick Add read-only human boundary:** actual fake-model API tests prove classify0 inference and
+   Parse0 Task/Session/conversational-draft writes. Fresh main on Tasks AND Calendar uses explicitly
+   HTTP-faked Parse, literal editable prefill and human Ctrl+Enter Save with real readbacks. These are
+   separate seams, not real provider or conversational approval coverage.
+5. **Routing/error/keyboard/domain compatibility:** nine Quick Add API regressions cover tier routing,
+   configured fallback, sanitization/JSON/provider errors; four Task API tests cover title syntax,
+   status synchronization, completion/unscheduling keep/clear and independent own/subtree handling.
+   Caller/native late Parse, rejection/retry, Description newline/Ctrl+Enter, generation/concurrent-edit
+   preservation and focus checks pass. Existing `/settings/ai`/provider entry is unchanged; ticket19
+   root/tabbed Settings and Assistant21–23 are not integrated by04. No provider Test/Activate/inference.
+6. **Regression checks:** fresh focused13 Python/73 Node (20 quick-edit+53 ownership), full377 Python/
+   201 canonical Node,70 explicit JS/CJS syntax; scoped two Python Ruff/format and whitespace pass.
+   All14 native probes ran fresh on actual integration, not relabeled worker/parent historical runs.
+7. **Shared safety/limits:** private isolation, migrations, final counts/cleanup and precise fakes below.
+   Bounded selected contrast/native keyboard evidence does not certify all manual/shared presentation
+   requirements. Deferred checks and known failures remain explicit; no personal/provider data used.
+
+### Fresh integrated execution
+
+External receipts/report: `/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-04/merger-report.md`
+and sibling explicit stdout/stderr/exits, manifests, native JSON, screenshots and audits.
+NEW private0700 `/tmp/timetrace-integrated-04.c8elic/timetrace.db` was configured BEFORE any app import/
+test/runtime. Own integration `.venv`/source, initially free loopback18189, idle/tracing off, credential
+variables including GoogleADC/Ollama unset; isolated timer/key siblings. Actual `timetrace.main:daemon_app`
+PID72290 startup migrated fresh0013_ai_data_scope; health exactDB/port, FK[]. Fresh contexts idlefalse,
+catalog fake. No personal DB/copy/keys/provider Test/Activate/model/paid calls. No schema change;
+disposable existing-DB copy testing N/A, not silently replaced with metadata create_all.
+
+- Full **377 Python passed/105 warnings** (101 existing SQLite adapters +4 existing Task serializers);
+  focused13 passed/2 serializer warnings. **201 Node passed**, focused73; **70 syntax** explicit paths.
+- Scoped new Python Ruff/format and whitespace pass. Full concise no-cache Ruff **fails18 unchanged
+  baseline violations** plus old invalid-noqa warning; stdout AND stderr byte-identical to fixed
+  `evidence/fresh-verification/run.zoEyTE/baseline-ruff.*`. No global-lint-green claim.
+- **Stats89 FIRST**, before domain fixtures: all assertions/result.results inspected, CRUD/independent
+  retry/obsolete Retry/stale identity, legacy acknowledged+uncertain imports, reset/seed/deletion and
+  real saved reads pass;16 samples minimum description5.689/control12.011, overflow0. SQL flag/schema/
+  preview HTTP fakes are NOT sandbox certification; full backend Python SQL tests ran separately.
+- Then **all7 Session probes** editing/dialog/workflows/recurrence/preservation/appearance/planning_focus
+  passed: overnight NY/UTC2700s; native keyboard and four widths; attachment/empty+failed metadata,
+  nested Cancel/ACK-time Task attach; event/actual disposed Schedule launchers, stable Calendar focus;
+  rejected/pending/concurrent drafts; TimerNow file-only; virt→UUID before failed read/refresh-only
+  retry; scopes/move/skip/nonresurrection/history/estimate; unknown recurrence retry; real completion
+  keep/selected-own/subtree. Planning waits for actual sidebar disconnection.36 contrasts min5.3815.
+- Then **all6 Task probes**, nested66/focus20/full main/edges/combined decline2/empty category, all pass,
+  every check/readback inspected,0 unexpected reported pageerrors. Edge external copy changes ONLY two
+  screenshot destinations, source assertions unchanged/old images retained.16 samples min5.3815,
+  overflow0, not palette certification. Holds/rejections/metadata/Parse/catalog and public-vs-native
+  boundaries remain labeled. No helper replacement, force-click or overlay weakening.
+
+All substantive native runs passed fresh without product changes or probe retries. A later additional
+read-only audit had **two inspection-only failures**: guessed final ordinary palette color `#ea580c`
+(actual first preset/recorded SAME-id PUT/public final row all `#7c3aed`), then a regex expecting `const`
+instead of source `let defaultPalette`. Parent authorized one bounded correction each; failed receipts/
+second script and final corrected audit preserved. No app/native/source/fixture/assertion modification,
+no rerun-until-green, no claimed product RED. The corrected extra readback audit is not a substitute
+for the original14 native assertions. All prior startup/helper/fixture/typo/contrast/failed Escape and
+review receipts remain historical failures, not relabeled first-pass success.
+
+Final timer HTTP AND file: inactive/unfrozen/null pending gap/idlefalse. Retained scratch DB has
+**59 synthetic Tasks/15 Sessions**,0 recurrence exceptions/providers/conversations/drafts/chat/audits/
+instruction proposals/reviews/ratings/habits,1 default AI settings/Overview,9 widgets,5 statuses and
+FTS bookkeeping;0013/FK[]. No zero-count assumption or synthetic fixture deletion. Only owned daemon
+PID72290 is normally stopped and PID/socket18189/negative health verified in external cleanup receipt;
+DB/timer/logs retained. Other worktrees/owner checkout remain read-only.
+
+Only01+02+04+11 completed,21 pending; computed frontier03,05,06,08,09,10,12,13,14,15,18,19,21,24.
+03/10/12/19 dirty stopped checkpoints are NOT completed. Stopped12's unrelated Widget fixture hunk
+shares `test_draft_ownership.cjs` with04's reviewed timing change: later parent-coordinated fresh latest
+reviewed-base own-patch replay/disjoint-hunk reconciliation is required, not blind dirty FF or touching12
+now.13/14 resource lock by12 is coordination, not a new DAG edge;10 still needs disjoint preflight.
+
+Known three light task4.33/four dark AI3.98986 observations remain unwaived. Selected editor5.3815 is
+not all-palette/accessibility certification. Physical touch/drag/resize, screen readers, other engines,
+exhaustive zoom/reduced-motion/custom colors/human visuals remain unrun/deferred. Real lost-response
+uncertainty remains: no atomic bulk/idempotency/exactly-once/cross-tab guarantee. Spec **Approved, not
+Built**; fixed82fabdc whole-delivery two-axis/adversarial/manual/human/dev-merge gates still required.
+No push/PR/release/dev merge or other-ticket source adoption is authorized by this closure.

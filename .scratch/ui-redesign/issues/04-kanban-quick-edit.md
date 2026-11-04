@@ -4,7 +4,7 @@
 
 **Blocked by:** [01: Calendar shell and shared appearance](01-calendar-shell.md)
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **Approved decisions:** O8, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,13 +12,13 @@
 
 ## Acceptance criteria
 
-- [ ] Default fresh/invalid view choices to Kanban, retain the view selector, hierarchy, search/filtering, CRUD, scheduling/timer actions and completion prompts.
-- [ ] Queue/remove children below the title with Enter/Add; include an unsubmitted child on Save; Cancel/Escape discards parent edits and queued children. Children inherit saved effective parent tags.
-- [ ] Handle separate parent/child writes with explicit partial-success state and retry of only unsaved children; prove retries cannot duplicate successful children.
-- [ ] Preserve classify → explicit Parse → editable prefill → human Save on Tasks and Calendar. Classification invokes no inference; Parse creates no task/session or conversational proposal draft.
-- [ ] Retain tier routing/fallback, sanitized fake-provider extraction, parse errors/keyboard behavior, title syntax parsing and status synchronization; keep existing provider/Settings entry usable.
-- [ ] Add focused task/API tests and browser checks for queued-child cancellation/partial failure, Quick Add read-only prefill and completion-policy forwarding.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Default fresh/invalid view choices to Kanban, retain the view selector, hierarchy, search/filtering, CRUD, scheduling/timer actions and completion prompts.
+- [x] Queue/remove children below the title with Enter/Add; include an unsubmitted child on Save; Cancel/Escape discards parent edits and queued children. Children inherit saved effective parent tags.
+- [x] Handle separate parent/child writes with explicit partial-success state and retry of only unsaved children; prove retries cannot duplicate successful children.
+- [x] Preserve classify → explicit Parse → editable prefill → human Save on Tasks and Calendar. Classification invokes no inference; Parse creates no task/session or conversational proposal draft.
+- [x] Retain tier routing/fallback, sanitized fake-provider extraction, parse errors/keyboard behavior, title syntax parsing and status synchronization; keep existing provider/Settings entry usable.
+- [x] Add focused task/API tests and browser checks for queued-child cancellation/partial failure, Quick Add read-only prefill and completion-policy forwarding.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -88,3 +88,20 @@
   directly on exact E2, permitting only this issue history appendix afterward; five source/test files
   remain byte-identical to the gate. Fresh E2…FIX AND DFDA…FIX Standards/Spec, fresh merger/closure and
   later stopped12 shared-test reconciliation remain mandatory parent gates, not approval or closure here.
+
+- 2026-11-04: Locally integrated exact reviewed `f15003b821ee60383a7baf4344de3d74b732c1a9`
+  by clean FF-only from DFDA. Original E5 Spec **two P2** (unsavable color/late focus) repaired in E2;
+  E2's **one unique new P2** (stranded nested handoff, reported in both ranges) repaired in F150,
+  not waived or double-counted. Fresh amendment E2→F150 AND combined DFDA→F150 Standards/Spec
+  reviews each report zero findings. [Criterion-linked closure evidence](../ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04)
+  maps criteria 1–7 in order to source/tests and fresh actual receipts: 377 Python/105 warnings,
+  201 Node,70 syntax; Stats89 first,all7 Session and all6 Task native probes (66+20 checks true),
+  real readbacks/zero unexpected reported errors. Full Ruff remains18 unchanged baseline findings.
+  Two additional read-only audit mistakes (guessed preset color, then const/let regex) are preserved;
+  parent authorized bounded inspection-only corrections, no app/probe changes or native reruns.
+  `completed` records delivered implementation and bounded evidence, **not** manual/human acceptance:
+  known4.33/3.98986 contrast, physical/accessibility/engine coverage and lost-response uncertainty
+  remain unwaived. Grouped/Outline layouts remain06/07; Quick Add is not Assistant21–23. One five-doc
+  closure on exact parentF150 still needs fresh parent Standards/Spec review before next checkpoint
+  release. Stopped12's unrelated shared-test fixture overlap needs later parent-coordinated fresh-base
+  own-patch replay/reconciliation, not blind dirty FF; no12 source is consumed or changed here.
