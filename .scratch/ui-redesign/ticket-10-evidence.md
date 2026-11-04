@@ -206,3 +206,118 @@ Fresh per-commit independent Standards/Spec review and merger closure remain req
 feature commit. Neither this gate nor the explicit commit release completes the issue or supplies
 whole-delivery/human acceptance. Subsequent commit identity and owned-runtime cleanup are recorded
 in the final external worker report, without another source/test edit.
+
+## Clear-focus Spec P2 repair — frozen pre-gate checkpoint
+
+Parent accepted the single Spec P2 from the full independent initial5b review; Standards found0.
+This bounded repair starts on clean branch `feat/ui-redesign-10-clear-focus`, exact
+`5b022bad0167faec58e1be85bce1b678f59b68ce` (feature parent reviewed118). No FF or other-lane
+source was needed. Only `habits.js`, own `test_habit_cards.cjs`, new
+`browser_habit_clear_focus.js`, this evidence appendix and own issue comment change.
+Shared utils/markup/settings/client, Python/backend/service/schema and domain policies are unchanged.
+
+The pending card render disposed the Clear launcher and attempted focus on its disabled replacement;
+the real confirmation helper supplied no initial focus/restoration and captured Enter as Proceed even
+on Cancel. The local repair captures habit/date/action plus view, definition and Clear focus generations.
+It focuses Cancel, contains Tab/Shift+Tab between the two existing buttons, and handles Clear-only Enter
+at window capture before the helper's document capture (Cancel Enter cancels; Proceed Enter confirms).
+Escape remains the actual shared helper's cancellation. Listeners are removed after confirmation or
+focus supersession/finally; a new Definition focus cancels the old confirmation. After pending clears
+and the final render, optional restoration finds the live Clear by logical action, or an enabled same-card
+Amount/definition fallback when erased. New focus/date/definition/Clear owners cannot receive old focus.
+These guards are independent of ACK receipt/baseline delivery and unconditional pending cleanup.
+No generic focus framework, helper injection/replacement, global keyboard change or new domain rule.
+
+### Actual first failures and fixture corrections
+
+New raw receipts are under external `evidence/ticket-10-clear-focus/`; all old proof is immutable.
+Before production edits, Stats89 passed and `native-red.json` genuinely failed the first assertion:
+**keyboard Clear → Escape restores live enabled Clear after pending clears**. `caller-red.log`
+independently failed body-versus-live-replacement focus. Its second ACK characterization initially
+advanced the date before the cross-VM confirmation continuation had started the write; corrected
+fixture waits for the actual request (`caller-red-corrected-fixture.log`):12 pass/1 genuine focus RED.
+This was a fixture timing gap, not data loss or a second product defect.
+
+First GREEN attempt retained two fixture gaps: CJS modeled no `querySelector`, and the native readback
+used nonexistent stats `history.date_str` instead of actual `history.date` after passing the real focus
+assertion. Added only the missing local DOM stub and corrected that response field; no weakened oracle.
+Inspection also made the numeric fallback explicitly prefer Amount over the first card button.
+Corrected caller13 and native passed. Additional pending-new-owner/lifetime cases were added before
+final freeze; generation checks and prompt key-listener release prevent an older pending Clear from
+handling/restoring a newer confirmation. Final all-probe sequence passed first run; no old helper,
+source injection, forced/background click or manufactured post-edit native RED.
+An interim progress message described27 new assertions; actual final inspected payload has31.
+
+### Fresh final checks and native readbacks
+
+- Focused API14 and caller13 pass. Full safe-path pytest: **391 passed,105 existing warnings**.
+- Canonical `node --test tests/*.cjs tests/test_tags_engine.js`: **214 passed**,0 failed/skipped.
+  Existing baseline212 plus2 new callers. All **75** explicit source/test JS/CJS syntax paths exit0
+  (baseline74 plus the new native probe). Python production formatting is N/A: no Python edits.
+- Full Ruff exit1 retains18 baseline violations and old invalid-noqa warning. **Both stdout and stderr
+  separately byte-match exact5b and reviewed118**, freshly linted from own pinned Git archives without
+  app imports; `ruff-comparison.json` records both comparisons. No unrelated cleanup.
+- `git diff --check` passes. Index remains empty; no stage/commit authorized by these checks.
+- Real native order: **Stats89 FIRST → unchanged Habits82 → edges14 → Definition confirmation8 →
+  Clear-focus31**, all exit0, all0 pageerrors. Full assertions and actual API readbacks were inspected,
+  not just runner status. Main external probe differs only at its two screenshot paths; old proof was
+  not overwritten. New390 light/1440 dark screenshots were visually inspected. The16 existing
+  width/theme samples retain no page overflow and sampled control-text contrast12.01–14.99:1;
+  narrow navigation intentionally scrolls. This is not whole-palette/accessibility certification.
+
+New31 checks cover keyboard Clear→Escape, initial Cancel focus, Tab/Shift+Tab cycling, Cancel Enter
+and Space, mouse Cancel, accepted keyboard Proceed and disabled-Clear/Amount fallback, rejected erase
+with retained dirty7/persisted zero, acknowledged erase despite failed GET and read-only Retry, new
+Definition draft/focus during held post-ACK read, new Definition before confirmation (zero erase),
+changed-date stale confirmation (zero erase), other-habit focus during held read, pending newer Clear
+confirmation without older restoration/interception, and enabled boolean-card fallback after erase.
+Real public stats readbacks verify zero Pending, selected-date erase, retained other habit and no replay;
+ACK receipt and pending cleanup are explicitly asserted even after focus ownership changes.
+The date/new pre-confirmation Definition transitions use public callers, not physical overlay clicks.
+There is no Session editor on the Habits template; no synthetic Session/helper was injected to claim one.
+Unchanged Definition confirmation8 proves its previous Escape/draft/launcher/pending/one-DELETE behavior.
+
+HTTP fakes are explicit: catalog, one rejected Clear POST, one failed list GET and three held real list
+GETs. Existing probes retain their disclosed failure/held-request/SQL-preview fakes. No personal data,
+provider activation/test/inference or paid call. Existing zero-before-goal/history/draft/receipt/
+metadata/one-record sequential-upsert boundaries are preserved, not re-approved or expanded here.
+
+### Live isolated gate readiness / limits
+
+A new private0700 `/tmp` directory was created before any app import/runtime/test. Own worktree venv
+and imported source verified. Loopback18199 was free before launch; idle and tracing are false;
+credential names including Google ADC/config and Ollama are unset. Catalog discovery is faked.
+Actual-main health matches the private DB and port; normal migrations reach0013_ai_data_scope,
+FK check is empty. Timer HTTP/file are inactive/unfrozen, no pending gap/task/tags/notes, idlefalse.
+Actual synthetic habit/log/goal/task/session/provider/draft/audit/conversation/review/rating counts0
+post-readbacks/cleanup; initialized AIsettings1, taskstatus5, Overview1/widgets9 remain. Exact DB URL,
+PID/environment/command/source/counts and socket receipts are external `runtime-ready.json`.
+
+Code/tests are frozen; staging/commit/runtime shutdown are held for **parent's blocking genuine browser
+gate and explicit release**. Only after release may one scoped fix have exact parent5b, followed by
+byte-identity/scope/clean verification and normal only-owned timer/DB/FK/PID/socket cleanup. Parent
+must obtain fresh amendment5b…FIX and combined118…FIX Standards/Spec reviews and fresh merger closure
+before12 release. This appendix does not close ticket10 or mark Approved spec Built.
+Human/final whole25/fixed82 whole-delivery checks, physical touch/screen readers/other engines/exhaustive
+contrast/zoom/reduced motion remain unrun. Known4.33 light and four3.98986 dark limitations remain
+unwaived. No transport exactly-once/idempotency/cross-tab guarantee, push/PR/dev merge or source from
+stopped/unreviewed lanes is implied.
+
+### Clear-focus independent parent gate and explicit fix release
+
+The preceding hold records the pre-gate snapshot. Parent independently passed **Stats89 FIRST →
+Habits82 → edges14 → unchanged Definition8 → Clear31**, all0 pageerrors, on the frozen own18199/
+PID165924/private DB. Parent read the full report/ready/env/production+CJS diff and entire new31 probe,
+inspected the complete actual checklists/readbacks, and verified all five owned SHA values before and
+after. Main external copy changed only two screenshot paths. Post-gate timer remained inactive,
+unfrozen, no gap, idlefalse. Raw independent proof: external `parent-summary.json`,
+`parent-frozen-before.json`, `parent-browser/*` and `parent-browser-gate.md`.
+
+Parent explicitly released **one five-path fix with exact parent5b022bad0167faec58e1be85bce1b678f59b68ce**.
+The three production/test bytes may not change after this gate; only these two own-document gate/history
+appends are allowed. No gratuitous same-byte full-suite rerun is required. Writer must verify exact
+commit parent/scope/gated source-test identity and clean index/tree, then normal only-owned165924
+HTTP/file timer, FK/actual counts and PID/socket shutdown, retaining final external proof.
+Fresh amendment5b…FIX and combined118…FIX Standards/Spec reviews and fresh merger closure still precede12
+release. This native gate is not independent code review, human/whole25 acceptance or ticket completion;
+all prior RED/fixture gaps, manual/contrast/transport uncertainties remain disclosed and unwaived.

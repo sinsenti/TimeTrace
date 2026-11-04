@@ -96,6 +96,7 @@ const habitLogReceipts = new Map();
 let habitReadGeneration = 0;
 let habitDataReady = false;
 let habitLoadError = '';
+let habitClearFocusGeneration = 0;
 
 function habitRecord(habit, date) {
     const key = habitEntryKey(habit.id, date);
@@ -204,11 +205,45 @@ async function clearHabitEntry(id, date) {
     const view = habitCardView(id), version = view.version;
     if (!draft || draft.pending || !habit || !habitRecord(habit, date)) return;
     const captured = draft.field.value;
+    const clearAction = `clearHabitEntry('${id}','${date}')`;
+    const definitionOwner = habitDefinitionOwner;
+    const focusGeneration = ++habitClearFocusGeneration;
+    const confirmation = document.getElementById('custom_confirm_modal');
+    const cancel = document.getElementById('confirm_modal_cancel_btn');
+    const proceed = document.getElementById('confirm_modal_proceed_btn');
+    let restoreFocus = document.activeElement?.getAttribute?.('onclick') === clearAction;
+    let waitingForConfirmation = true;
+    const sameOwner = () => focusGeneration === habitClearFocusGeneration && view.version === version &&
+        view.date === date && habitDefinitionOwner === definitionOwner;
+    const onFocus = event => {
+        if (confirmation?.contains(event.target)) return;
+        restoreFocus = false;
+        window.removeEventListener('keydown', onConfirmKey, true);
+        document.removeEventListener('focusin', onFocus);
+        if (waitingForConfirmation && confirmation && !confirmation.classList.contains('hidden')) cancel?.click();
+    };
+    const onConfirmKey = event => {
+        if (!sameOwner() || !confirmation || confirmation.classList.contains('hidden')) return;
+        if (event.key === 'Tab' || event.key === 'Enter') {
+            // The shared helper captures every Enter as Proceed, even on Cancel.
+            // Clear alone handles it at window capture, before that document listener.
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            if (event.key === 'Enter') (document.activeElement === proceed ? proceed : cancel)?.click();
+            else (document.activeElement === cancel ? proceed : cancel)?.focus();
+        }
+    };
     draft.pending = true;
     renderHabitCards();
     try {
-        const confirmed = await showCustomConfirm('Clear habit record', `Delete only the record for ${date}?`);
-        if (!confirmed || view.version !== version || view.date !== date || draft.field.value !== captured) return;
+        window.addEventListener('keydown', onConfirmKey, true);
+        document.addEventListener('focusin', onFocus);
+        const confirming = showCustomConfirm('Clear habit record', `Delete only the record for ${date}?`);
+        cancel?.focus();
+        const confirmed = await confirming;
+        waitingForConfirmation = false;
+        window.removeEventListener('keydown', onConfirmKey, true);
+        if (!confirmed || !sameOwner() || draft.field.value !== captured) return;
         ++habitReadGeneration;
         await api.post(`/habits/${id}/log`, {date_str:date, status:'erase'});
         ++habitReadGeneration;
@@ -227,8 +262,18 @@ async function clearHabitEntry(id, date) {
     } catch (error) {
         draft.message = 'Clear was not acknowledged. Check the record before retrying.';
     } finally {
+        window.removeEventListener('keydown', onConfirmKey, true);
+        document.removeEventListener('focusin', onFocus);
+        const focus = document.activeElement;
+        const canRestore = restoreFocus && sameOwner() && (focus === document.body || confirmation?.contains(focus));
         draft.pending = false;
         renderHabitCards();
+        if (canRestore) {
+            const card = Array.from(document.querySelectorAll('[data-habit-id]')).find(card => card.dataset.habitId === id);
+            const clear = Array.from(card?.querySelectorAll('button') || []).find(button => button.getAttribute('onclick') === clearAction);
+            const fallback = card?.querySelector('input') || card?.querySelector('button:not(:disabled)');
+            (clear && !clear.disabled ? clear : fallback)?.focus();
+        }
     }
 }
 

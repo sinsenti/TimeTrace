@@ -14,8 +14,8 @@ function node(id = '', tag = 'div') {
 function browser(respond = () => ({json:[]})) {
     const writes = [], elements = {habit_entry_owners:node('habit_entry_owners')};
     const context = vm.createContext({console, URL, Date, Intl, setTimeout:()=>{},
-        document:{addEventListener(){},getElementById:id=>elements[id] || Object.values(elements).flatMap(root=>{const walk=el=>[el,...el.children.flatMap(walk)];return walk(root);}).find(el=>el.id===id) || null,createElement:tag=>node('',tag)},
-        window:{location:{href:'http://localhost/habits-view'},addEventListener(){},confirm:()=>false},
+        document:{addEventListener(){},removeEventListener(){},getElementById:id=>elements[id] || Object.values(elements).flatMap(root=>{const walk=el=>[el,...el.children.flatMap(walk)];return walk(root);}).find(el=>el.id===id) || null,createElement:tag=>node('',tag)},
+        window:{location:{href:'http://localhost/habits-view'},addEventListener(){},removeEventListener(){},confirm:()=>false},
         localStorage:{getItem:()=>null}, showCustomConfirm:async()=>true,
         fetch:async(url, options)=>{
             if(options.method !== 'GET') writes.push({url,body:JSON.parse(options.body)});
@@ -139,4 +139,56 @@ test('Unchanged blank reminder preserves stored null rather than inventing a tim
     b.elements.modal_habit_name.value='Rename only';await b.run('saveHabit()');
     assert.equal(b.writes[0].body.reminder_time,null);
     assert.equal(b.writes[0].body.color,'#abc');
+});
+
+// This fixture replaces connected card controls when the real renderer assigns innerHTML.
+function clearFocusBrowser(respond) {
+    const b = browser(respond), document = b.context.document;
+    document.body = node('body'); document.activeElement = document.body;
+    const buttons = [];
+    b.elements.habit_cards = node('habit_cards');
+    Object.defineProperty(b.elements.habit_cards, 'innerHTML', {set(html) {
+        if (buttons.includes(document.activeElement)) document.activeElement = document.body;
+        for (const button of buttons) button.isConnected = false;
+        buttons.length = 0;
+        for (const match of html.matchAll(/<button type="button"([^>]*onclick="([^"]+)"[^>]*)>/g)) {
+            const button = node('', 'button'); button.isConnected = true;
+            button.disabled = /\sdisabled(?:\s|$)/.test(match[1]);
+            button.getAttribute = name => name === 'onclick' ? match[2] : null;
+            button.focus = () => { if (!button.disabled && button.isConnected) document.activeElement = button; };
+            buttons.push(button);
+        }
+    }});
+    b.elements.habit_cards.dataset.habitId = 'a';
+    b.elements.habit_cards.querySelectorAll = () => buttons;
+    b.elements.habit_cards.querySelector = () => null;
+    document.querySelectorAll = () => [b.elements.habit_cards];
+    b.run(`allHabits[0].logs['2026-11-01']={id:'row',status:'pending',value:0}; selectHabitDay('a','2026-11-01')`);
+    b.clear = () => buttons.find(button => button.getAttribute('onclick') === "clearHabitEntry('a','2026-11-01')");
+    b.clear().focus();
+    return b;
+}
+test('Clear cancellation restores the live replacement only after pending clears', async () => {
+    const b = clearFocusBrowser(); b.context.showCustomConfirm = async () => false;
+    const old = b.clear();
+    await b.run(`clearHabitEntry('a','2026-11-01')`);
+    assert.notEqual(b.clear(), old);
+    assert.equal(b.context.document.activeElement, b.clear());
+    assert.equal(b.run(`habitEntryDraft('a','2026-11-01').pending`), false);
+    assert.equal(b.writes.length, 0);
+});
+test('Clear ACK is delivered and pending cleared even after date and focus owner change', async () => {
+    const held = deferred();
+    const b = clearFocusBrowser((url, options) => options.method === 'POST' ? held.promise : {status:503,json:{detail:'offline'}});
+    const clearing = b.run(`clearHabitEntry('a','2026-11-01')`);
+    await new Promise(setImmediate);
+    assert.equal(b.writes.length, 1, 'wait until the erase request actually starts');
+    b.run(`selectHabitDay('a','2026-11-02'); habitDefinitionOwner = {pending:false}`);
+    const newer = node('new-owner', 'input'); b.context.document.activeElement = newer;
+    held.resolve({json:{status:'erased',date_str:'2026-11-01'}}); await clearing;
+    assert.equal(b.writes.length, 1);
+    assert.equal(b.run(`habitLogReceipts.get(habitEntryKey('a','2026-11-01'))`), null);
+    assert.equal(b.run(`habitEntryDraft('a','2026-11-01').pending`), false);
+    assert.equal(b.run(`JSON.parse(habitEntryDraft('a','2026-11-01').saved).exists`), false);
+    assert.equal(b.context.document.activeElement, newer);
 });
