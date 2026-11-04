@@ -102,9 +102,20 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   Separate AI Quick Add on Tasks/Calendar remains classify (no inference) → explicit Parse (read-only)
   → editable prefill → human Save; late extraction cannot replace a newer owner or concurrent edits.
   It is not the conversational Assistant approval workflow (tickets21–23). Settings still uses
-  `/settings/ai` until ticket19; stopped Timer/Habits/builder/preferences checkpoints are not integrated.
+  `/settings/ai` until ticket19; stopped Timer/builder/preferences checkpoints are not integrated.
   Caller/API/native evidence and deferred manual/contrast limits are in
   [ticket04 evidence](../.scratch/ui-redesign/ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04).
+- **Habits:** ticket10 uses Compact cards with independent local-day strips and explicit entry
+  Save/Cancel; Done/Failed/Skipped choices are drafts, not cycling writes. Week/Today navigation never
+  logs. Confirmed Clear erases only the selected record, distinct from numeric zero Pending; negative
+  amounts visibly clamp to zero. The approved service repair derives zero Pending before comparing
+  nonpositive goals on explicit writes only, without historical rewrites or new target validation.
+  Definitions/metadata/goal history/charts remain; compliance is completed/all recorded logs, not dates.
+  The list retains its365-day lower bound; absent dates outside conservative browser-local363 coverage
+  are Unknown. Older ACK receipts are card-only, not expanded chart history. Clear locally owns initial
+  Cancel focus/Tab/Enter and live enabled restoration after pending cleanup, yielding to newer owners
+  without skipping ACK receipt/baseline delivery. Shared helpers/API/schema are unchanged. Clock time,
+  editable notes and multiple daily entries remain deferred. See [bounded evidence and manual limits](../.scratch/ui-redesign/ticket-10-evidence.md#local-integration-and-bounded-closure-2026-11-04).
 - **Local time:** `settings.js` sends timezone/week-start query context. SQLite bucketing follows
   the daemon's local timezone; `QueryService` warns and uses that zone if a requested zone differs.
   Arbitrary per-query IANA timezone bucketing is not implemented. `Session.timezone` is modeled,
@@ -423,7 +434,7 @@ Current owner audit for the **new Settings link** (not a retrofit of every histo
 | Calendar/Tasks task and session dialogs | Initialized open; explicit Save/Cancel; session focus guard retained |
 | Task details / subtask dialog | Properties editing and Save gated until first successful tree read, including Retry refresh; subsequent refresh preserves drafts. Subtask dialog owns open/Save/Cancel. |
 | Revision | Hidden Day tab retains text/grade ownership. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
-| Habits | New/edit definition form; own Save/Cancel (no entry-layout/policy redesign) |
+| Habits | New/edit definition form and retained per-local-date entry drafts; explicit own Save/Cancel, confirmed selected-date Clear |
 | Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
 | Tasks Add Status | Open; explicit Save/Cancel (existing status rows still write on change) |
 | AI Settings | Initial behavior baseline before GET, preserve edits through load/retry; provider form remains a separate owner |
@@ -433,8 +444,9 @@ Closing the drawer is not discard: its retained composer/proposal fields remain 
 Cancel removes/closes the corresponding form without writing. Dashboard/conversation name prompts are
 blocking immediate actions, not background drafts. Date/view/search/filter/export controls, task-tab
 visibility, inspector/chart selections and batch-selection checkboxes are navigation/read/selection
-state, not unsaved domain forms. Habit log amounts and existing status-manager rows already write on
-change; this guard adds no autosave or changed domain policy to those paths.
+state, not unsaved domain forms. Habit entries now stage amounts/results until explicit Save; hidden
+per-date owners stay guarded and successful ACK checkpoints only submitted fields. Existing
+status-manager rows still write on change; no new autosave or domain policy is implied.
 
 Caller coverage: `tests/test_draft_ownership.cjs` uses real feature handlers and `api_client.js` with
 held/failed HTTP fixtures; five `tests/browser_*draft*ownership.js` / initialization/retry probes are

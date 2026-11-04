@@ -8,7 +8,7 @@ no-start/no-commit wording in approval records describes the earlier approval-on
 a current implementation blocker. Preserve that approval history; do not reopen O1–O8 or treat the
 spec as Built. The parent owns the task graph, worktree orchestration and every review; seed workers
 do not delegate. The historical seed was one authorized documentation-only planning commit, not
-production implementation. Tickets01,02,04 and11 have since been locally integrated and completed with
+production implementation. Tickets01,02,04,10 and11 have since been locally integrated and completed with
 bounded evidence below; this does not complete the spec.
 
 - Fixed pre-delivery base: `82fabdc652c59da87de0f57d7770d0aa32fb7f64` (before this seed).
@@ -26,16 +26,20 @@ bounded evidence below; this does not complete the spec.
   fast-forwarded from `dd1399487172ab08516ace6ce6e88979ae1f63b1` without a merge commit.
 - Ticket **04 completed**, reviewed code `f15003b821ee60383a7baf4344de3d74b732c1a9`, locally
   fast-forwarded from `dfda0aaa67e4014f7123fe5fd659d179c9576dd6` without a merge commit.
-- Computed frontier: **03, 05, 06, 08, 09, 10, 12, 13, 14, 15, 18, 19, 21, 24**.
-  Only01+02+04+11 completed; other21 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
+- Ticket **10 completed**, exact reviewed code `9848fe7e919558576b04b255876c659c72208f17`, locally
+  fast-forwarded from `118bb9d14c99e06da96199e9ea574e9afdf4e91e`, two commits, no merge commit.
+- Computed frontier: **03, 05, 06, 08, 09, 12, 13, 14, 15, 18, 19, 21, 24**.
+  Only01+02+04+10+11 completed; other20 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
   20 blocked19,22 blocked05/15/21,23 blocked21;25 is not done.
-  Reservation **11 → 02 → 04** reached reviewedF150; fresh parent Standards/Spec review of this
-  five-document04 closure is required before next checkpoint release.03/10/12/19 dirty uncommitted
-  checkpoints remain STOPPED/preserved read-only, not completed.10 still needs disjoint preflight.
-  12's unrelated Widget fixture hunk shares `test_draft_ownership.cjs` with04's approved nested timing
-  change: later parent-coordinated fresh latest reviewed-base own-patch replay/disjoint-hunk
-  reconciliation is required, not blind dirty FF or touching12 now.13/14 technically unblocked but
-  resource-locked by12, not new DAG edges. No unreviewed other-lane source adopted.
+  Reservation **11 → 02 → 04 → 10** reached reviewed9848 after04 closure review passed. Fresh parent
+  Standards/Spec review of the new five-document10 closure is REQUIRED before12 continuation release.
+  03/12/18/19/21 stopped checkpoints remain preserved read-only. Fresh05/08 known-blocker repairs run
+  in their own worktrees, read-only to this merger and not dependencies; their status may legitimately
+  change without integration adoption.12's unrelated Widget fixture hunk shares
+  `test_draft_ownership.cjs` with04's reviewed nested timing change: preserve12's checkpoint, then later
+  parent-coordinate fresh latest-reviewed-base own-patch replay/disjoint-hunk reconciliation, not blind
+  dirty FF or touching12 now.13/14 technically unblocked but resource-locked by12, not new DAG edges.
+  No unreviewed other-lane source adopted.
 - No push, PR, release or merge into `dev` is authorized. Do not reset/stash or overwrite owner edits.
 
 ## Review and completion obligations
@@ -49,7 +53,8 @@ and combined ticket `2f978dc...2f3024a` each have independent Standards 0 docume
 findings and repairs remain in [ticket evidence](ticket-01-evidence.md). The prior documentation-only
 ticket01 and ticket11 closure commits passed their parent gates before subsequent releases; the new
 ticket02 documentation-only closure subsequently passed its parent gate before04 continuation.
-The new04 five-document closure requires fresh parent two-axis review before next checkpoint release.
+The04 five-document closure subsequently passed both parent review axes before10 continuation.
+The new10 five-document closure requires fresh parent two-axis review BEFORE12 continuation release.
 
 After all 25 tickets are implemented, run the full integrated automated checks and independent
 whole-delivery two-axis review against the fixed base above, covering **all tickets together**, tests
@@ -282,6 +287,70 @@ zoom/reduced-motion/custom-color/accessibility/human visuals deferred. Lost tran
 uncertain,no new atomic/idempotency/exactly-once guarantee. Completed means delivered implementation
 with bounded evidence,not all manual/human acceptance. SpecApprovedNOTBuilt/fixed82fabdc whole-delivery
 review/adversarial/manual/human/dev-merge gates remain; no push/PR/release/dev merge.
+
+## Ticket10 integrated verification and bounded closure (2026-11-04)
+
+Earlier pending04/10 statements are retained historical checkpoints;04 closure review passed before10
+continuation. Clean integration118/source9848/ref/ancestry verified; FF-only reached EXACT
+`9848fe7e919558576b04b255876c659c72208f17`, two commits/twelve paths, no merge commit/source fix.
+Reviewed combined SHA256 `c7d2c5166c0d2f3a440614c2307765bcdb9b59d1a5c31104f6724b8ae94fad26` and
+amendment bytes match. Initial5b Standards0/Spec ONE P2 Clear-focus was genuinely reproduced and
+repaired, not waived; fresh amendment5b→9848 AND combined118→9848 Standards0/Spec0 fully read.
+ONE five-document closure exact parent9848 leaves all216 source/test/spec files unchanged; three
+repair code/test bytes match parent native gate. Parent fresh closure DOC Standards/Spec review is
+REQUIRED BEFORE12 continuation release, not self-approved by the code gate.
+
+Fresh integrated391 Python/105 existing warnings,214 canonical Node,75 explicit JS/CJS syntax,
+focused14 API/13 callers, scoped Habit API/service Ruff, test format and changed service421–440 ONLY
+format/whitespace pass. Whole-service pre-existing formatting untouched. Full concise no-cache Ruff
+fails18 unchanged baseline diagnostics plus old invalid-noqa warning; stdout AND stderr byte-identical
+fixed fresh-verification/run.zoEyTE/baseline-ruff.*. New private0700
+`/tmp/timetrace-integrated-10.lokdm2e0/timetrace.db` BEFORE imports/tests/runtime; own integration
+venv/source, free loopback18203, idle/tracing off, credentials including GoogleADC/Ollama unset and
+actual process environment verified. Actual main:daemon_app via own Uvicorn, no CLI/provider call;
+health exactDB/port, fresh normal0013/FK[]. No schema change/existing-DB copy N/A, no personal copy.
+
+Native Stats89 FIRST→Habits82→edges14→UNCHANGED Definition8→NEW Clear31, all0 pageerrors/exit0;
+full actual assertion/readback lists inspected, not just returned. Stats preserves CRUD/independent
+retry/stale identity/legacy uncertain+ACK/seeds; SQL-preview HTTP fake not sandbox certification.
+Habits preserve explicit Save/Cancel/choices, zeroPending/clamp, nonUTC dates, independent hidden
+drafts/Settings guard, selected-date erase, rejected write/ACK+GETfailure/read-onlyRetry, live decimal,
+metadata/null-shorthex/history/target/goalcharts/older Unknown+card-only ACK/upsert. Definition8's old
+DDRED now genuinely passes actual reviewed02 helpers, not the new Clear proof. New31 proves initial
+Cancel/Tab/ShiftTab/CancelEnter-Space-mouse/Escape/proceed1erase/enabled fallback, rejected draft7 vs
+persisted0, unconditional receipt+pending cleanup despite newer owners, readonlyRetry, newer Definition/
+date/other-habit/Clear focus not stolen, unresolved prompt/listener cleanup. Public date/Definition
+transitions are not physical overlay clicks; no fake Session editor/helper injection/force click.
+No shared Session source changed or fresh cross-slice exposure; all7 Session native probes not rerun
+here, while full old controller/Python regressions did run.16 width/theme samples no page overflow,
+card-button text12.0118–14.9872; screenshots visually inspected, not all-controls/palette/a11y proof.
+
+No fresh product/test/native failure or source correction. Discovery-only missing incoming evidence
+before FF and nonexistent shared-acceptance filename are inspection misses, resolved by reading the
+incoming file after FF and actual README requirements. All old TDD/Definition8RED/fixture/oracle/audit
+failures and initial ONE P2 repair0review chronology remain in portable evidence, not all-firstPASS.
+
+Final timer HTTP+file inactive/unfrozen/nullgap/idlefalse/no task/tags/notes. Actual all synthetic Habit/
+log/goal/task/session/provider/conversation/chat/draft/audit/instruction/review/rating/recurrence rows0;
+AIsettings1/Overview1/widgets9/taskstatus5/migration1/FTS config1-data2 remain initialization.0013/FK[].
+Only exact own251018 PID/cwd/cmd/env revalidated then normal SIGTERM; PID absent18203closed/healthrefused,
+normal shutdown. DB/timer/logs/venv retained; no other lane cleanup.
+External full report/raw receipts:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-10/merger-report.md`.
+Portable original7 criterion mapping/history/limits:
+[ticket10 evidence](ticket-10-evidence.md#local-integration-and-bounded-closure-2026-11-04).
+
+Only01+02+04+10+11 complete/20pending/frontier above. Fresh05/08 own-worktree blocker repairs may
+change legitimately, read-only/not dependencies here; no unreviewed source adopted.12 continuation
+needs parent fresh DOC review first, then preserved original checkpoint and fresh latest-reviewed-base
+SAME12 own-patch replay/disjoint-hunk reconciliation of shared ownership-test Widget fixture, not blind
+dirty FF/reset/stash/source copy/other-checkpoint cleanup.13/14 resource lock not new DAG. Settings
+currently/settings/ai until19; Grouped/Outline06/07 and Assistant21–23 remain separate. Known three
+light4.33/four darkAI3.98986 unwaived; physical touch/drag/screenreader/other engines/exhaustive zoom/
+reduced-motion/custom colors/contrast/accessibility/human visuals unrun. Lost-response ambiguity/no
+atomic bulk/idempotency/exactly-once/DB-uniqueness/cross-tab guarantee. Bounded implementation completion
+is NOT human/whole25 acceptance. SpecApprovedNOTBuilt/fixed82fabdc whole-delivery/adversarial/human/
+dev-merge gates remain; no push/PR/release/dev merge.
 
 ## Historical seed validation and safety
 

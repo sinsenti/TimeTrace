@@ -321,3 +321,156 @@ HTTP/file timer, FK/actual counts and PID/socket shutdown, retaining final exter
 Fresh amendment5b…FIX and combined118…FIX Standards/Spec reviews and fresh merger closure still precede12
 release. This native gate is not independent code review, human/whole25 acceptance or ticket completion;
 all prior RED/fixture gaps, manual/contrast/transport uncertainties remain disclosed and unwaived.
+
+## Local integration and bounded closure (2026-11-04)
+
+All preceding hold/status/commit-release statements are retained historical checkpoints. The feature
+was committed as `5b022bad0167faec58e1be85bce1b678f59b68ce` on exact reviewed118; the accepted
+Clear-focus repair is `9848fe7e919558576b04b255876c659c72208f17`, sole parent5b. Initial5b Standards
+found0; Spec found **ONE P2** (Clear loses keyboard focus), genuinely reproduced RED and **repaired,
+not waived**. Fresh full independent reports cover BOTH amendment5b→9848 and combined118→9848:
+Standards0 breaches/0 heuristics, Spec0 missing/partial/unasked/wrong, P0/P1/P2 all0. Their read-only
+review limits are retained; these code verdicts do not review this later documentation commit.
+
+Fresh merger verified clean expected integration `118bb9d14c99e06da96199e9ea574e9afdf4e91e`, clean
+read-only source9848/ref/ancestry and exact reviewed diff bytes. `git merge --ff-only
+feat/ui-redesign-10-clear-focus` reached EXACT9848, two commits/twelve paths, no merge commit/source
+correction. Combined diff SHA256 `c7d2c5166c0d2f3a440614c2307765bcdb9b59d1a5c31104f6724b8ae94fad26`;
+amendment SHA256 `741d31810dfec33b01ad1f3f6959030a4775e09d71b8391cbe6b94e265426958` matches supplied
+review artifacts too. All216 tracked source/test/spec files match committed reviewed9848 and working
+bytes before closure; the three repair source/test SHA values also match the prior genuine parent gate.
+One FIVE-DOC-ONLY closure has exact parent9848; no source/test/spec/seed/other-issue change is authorized.
+Parent fresh closure Standards/Spec review is **REQUIRED BEFORE12 continuation release**.
+
+### Original criteria 1–7: bounded implementation and verification
+
+1. **Compact cards/navigation:** `habits.html`, page-scoped `habit_cards.css`, `habits.js` card/view
+   handlers and caller navigation tests implement independent strips without shared cube/Entry date.
+   Fresh main82 verifies B's date unchanged, A's retained draft and zero viewing/theme/Cancel writes.
+2. **Explicit entry policy/Clear/focus:** staged per-date owners and captured Save/Clear handlers,
+   caller13 and real native main/edges/Clear31 verify Save/Cancel, explicit Failed/Done/Skipped,
+   visible negative clamp, numeric0 Pending versus erase, stale-date rejection and retained hidden
+   Settings drafts. Clear initially focuses Cancel, traps Tab/ShiftTab, and handles Cancel Enter at
+   window capture before unchanged helper Proceed. Escape/Cancel Enter/Space/mouse write0; accepted
+   keyboard Proceed erases once, then restores enabled same-card Amount/definition if Clear disables.
+   New Definition/date/other-habit/new Clear owners revoke optional focus, **never acknowledged receipt,
+   persisted-baseline delivery or unconditional pending cleanup**. Old unresolved prompt/listeners clean
+   up; rejected erase retains dirty7/persisted0, ACK+failed GET retries reads only. Date/new Definition
+   transitions use public callers, not physical overlay clicks. No shared keyboard/helper redesign.
+3. **Retained definitions/history:** source definition/chart/inspector paths, API metadata/notes/goal
+   test, caller races/null metadata and fresh main/edges actual readbacks retain CRUD/Cancel/deletion,
+   target/unit/color/freeform frequency/reminder, null reminder/short-hex color, goal history and charts.
+   Target changes do not rewrite historical status. Units/reminders retain existing storage/display;
+   no new converter, scheduler or notification behavior is claimed.
+4. **Pending/missing/denominator:** API14 includes six zero/clamp cases across goals0/-1/5, four
+   unchanged nonzero cases, boolean/upsert and stored-history cases. Four genuine historical REDs
+   justified the approved **explicit-write-only zero-before-goal** service repair; no historical rewrite
+   or new target validation. Main real zero-at-zero-goal readback passes. Missing is not Failed;
+   compliance remains completed/all recorded logs, not dates. Stats summary is all recorded logs;
+   existing chart arithmetic/windows remain based on their loaded recorded logs.
+5. **Local date/cardinality/metadata boundary:** API same-day ID reuse and selected-date erase preserve
+   other dates/habits; main Pacific/Kiritimati date and real sequential upserts pass. Existing stored
+   notes survive writes but are not editable. List lower bound remains daemon-local today minus365;
+   absent dates outside conservative browser-local363 are Unknown, not proven absent. Explicit old
+   Save uses existing upsert; card-only ACK receipts survive bounded GET omission without extending
+   chart history/denominators. No DB uniqueness/cross-tab guarantee, new range endpoint, clock time,
+   notes-write field or multiple-entry API/schema is introduced; those additions still need approval.
+6. **Regression coverage:** fresh14 API/13 caller, full391 Python/214 Node/75 syntax; native
+   Stats89 FIRST→main82→edges14→UNCHANGED Definition8→NEW Clear31 on integrated actual source.
+   Empty/loading/error/retry, independent navigation, cancellation, decimal1.5/native keyboard,
+   metadata/history, selected-date writes and public readbacks are actual checks, not runner-return
+   assumptions. Old Definition8's genuine dd13994 RED now passes reviewed02 utils unchanged; it is
+   **not** the new31 Clear-focus proof. No fake Session editor/shared-helper injection or force-click.
+7. **Shared safety/limits:** private actual-main runtime, fake providers only, exact lint baseline,
+   source identity, final timer/schema/count/FK/shutdown proof and bounded presentation checks below.
+   Ticked criteria mean implementation delivered with recorded bounded evidence; manual/human/whole25
+   acceptance is still deferred, not silently passed or waived.
+
+### Fresh integrated checks and genuine native payloads
+
+External report/raw receipts:
+`/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-10/merger-report.md`, with
+sibling commands/stdout/stderr/exits, manifests, full native JSON, path-only diff, screenshots and audits.
+These are machine-local supporting receipts, not portable runtime guarantees. Prior producer/parent
+checks above remain prior runs; the merger executed the following fresh on own integration source:
+
+- Focused14 API and13 caller pass. Full safe-path pytest **391 passed,105 warnings** (101 existing
+  SQLite datetime-adapter and4 existing Task serializer warnings); canonical Node **214 passed**,
+  zero failures/skips. Explicit `node --check` **75 src/test JS/CJS paths**, all exit0.
+- Scoped Habit API/service Ruff, test format and **changed service range421–440 ONLY** format pass.
+  Whole-service pre-existing formatting remains untouched. Full concise no-cache Ruff exits1 with
+  **18 baseline violations plus old invalid-noqa warning**; BOTH stdout AND stderr byte-identical
+  fixed `evidence/fresh-verification/run.zoEyTE/baseline-ruff.*`. No globally clean lint claim.
+- **Stats89 FIRST**, before Habit fixtures: real canvas CRUD/query/persistence, independent retry,
+  obsolete Retry/stale identity, acknowledged/uncertain legacy adoption and seeds/reset retained.
+  SQL capability/schema/preview HTTP fakes are NOT sandbox certification; backend SQL tests ran in
+  full Python. Full `result.results`, requests,16 measurements and errors inspected.
+- **Main82:** real numeric0 Pending, clamp, explicit choices/one-row upserts, no navigation/Cancel
+  writes, hidden-date Settings guard/nonUTC local date, selected-day erase/other habit retained;
+  failed write retained, real ACK despite failed GET/read-only Retry; held Save captures5 while6 stays
+  dirty, Cancel restores5; target/history/freeform metadata/chart inspector and older Unknown/ACK.
+- **Edges14:** native1.5/CtrlEnter/Escape, retained hidden owner; actual definition create/editCancel/
+  deleteCancel/confirmed delete/readbacks, reachable NewHabit fallback, shorthex/null retained,
+  initial failed read/no editable unknown rows and held retry/loading.
+- **Unchanged Definition8:** Escape dismisses only confirmation, retains same editor/draft/exact
+  Delete launcher, pendingfalse,0 DELETE; next explicit confirmed Delete writes once. Actual reviewed02
+  helper, no copied/injected/local global fix. **New Clear31** separately verifies all focus/keyboard,
+  rejection/ACK/retry and superseding-owner/receipt/pending boundaries in criterion2 above.
+- All five native probes exited0, **0 pageerrors**; every actual checklist/readback assertion inspected.
+  Main external copy changes ONLY two screenshot destinations (path-only diff retained), no old proof
+  overwritten. Existing duplicate-action test uses explicit dispatch on aria-disabled Save to challenge
+  the guard, not a physical disabled-click claim; Settings anchor dispatch and old-date public view
+  mutation remain disclosed. HTTP fakes: catalogs, explicit rejected write/failed GET/held real requests;
+  Stats additionally disclosed query/detail/list/SQL fakes and real committed legacy POST response abort.
+  No fixture recoloring, disabled CSS, weaker assertions, green hunting or source changes.
+
+All substantive fresh checks passed on their first run; expected baseline Ruff failure is unchanged.
+One read-only discovery command named nonexistent `shared-acceptance.md`; actual shared requirements
+were read in README. An initial combined `wc` also named incoming evidence absent before FF, then read
+it after FF. These are inspection-only path misses, not test/runtime/native failures or product REDs.
+Original TDD/zero4RED/Definition8RED, fixture timeout/timing/querySelector/date-key gaps, decimal/nav/
+focus/null-metadata repairs, overstrong geometry/weak BODY oracle, audit-table/timer-key mistakes,
+initial Spec P2 and repair review history above remain preserved, never flattened to all-first-PASS.
+
+Visually inspected new390 light/1440 dark screenshots: inert long text/units wrap, independent cards
+and reachable controls; narrow navbar intentionally scrolls horizontally. All16 width/theme samples
+390/768/1024/1440 × Refined/Stone/Porcelain/preserved dark show no page overflow and sampled card-button
+text contrast **12.011800672744089–14.98723863306763:1**. Stats description minimum5.689:1. These are
+bounded samples, NOT all controls/palettes/accessibility certification. Known three light task4.33:1
+and four dark AI3.98986:1 observations remain unwaived and untouched.
+
+### Actual runtime, cleanup and remaining gates
+
+NEW mode0700 `/tmp/timetrace-integrated-10.lokdm2e0/timetrace.db` configured BEFORE imports/tests/runtime;
+own integration `.venv`/source/engine verified. Free loopback18203 checked before launch; actual
+`timetrace.main:daemon_app` served directly by own venv Uvicorn (no CLI/provider invocation), PID251018.
+Health exact DB/port; startup normal migrations to0013_ai_data_scope, FK[]. Idle/tracing off, credential
+variables including Google ADC/config and Ollama unset, verified in exact process environment. Fresh
+contexts seed idlefalse/catalogfake; no personal DB/copy/keys/provider Test/Activate/inference/paid call.
+No schema change: existing-DB migration-copy verification N/A; no stamp/create_all fallback.
+
+Final HTTP/file timer: is_running=false,is_frozen_idle=false,idle_detection_enabled=false,
+pending_idle_gap=null,task_id/task_title=null,tags/notes empty,elapsed0,flowtime; file start/target null.
+Actual schema/table counts inspected: all synthetic Habit/log/goal/task/session/provider/conversation/
+chat/draft/audit/instruction/review/rating/recurrence rows0. Ordinary initialized AIsettings1,
+Overview1/widgets9,taskstatus5,migration1; FTS config1/data2, other FTS rows0. Counts are observations,
+not assumed blanket0. After exact own PID/cwd/cmd/env revalidation, SIGTERM ONLY251018; PID absent,
+18203 closed, health connection refused, normal Application shutdown complete recorded. Private DB,
+timer/logs/fixtures/venv retained; no other PID/worktree/storage cleanup. Post-closure committed/source/
+test/spec byte identity and clean index/tree are verified in external final receipts.
+
+Only01+02+04+10+11 completed;20 pending; frontier **03,05,06,08,09,12,13,14,15,18,19,21,24**.
+Fresh05/08 blocker repairs are own-worktree/read-only-to-merger/not dependencies; their independent
+status can change legitimately.03/12/18/19/21 stopped checkpoints remain preserved, not integrated.
+12's shared ownership-test Widget fixture needs parent-coordinated preservation then fresh latest-
+reviewed-base SAME12 own-patch replay/disjoint-hunk reconciliation, not blind dirty FF/reset/stash/
+source copy or touching12 now.13/14 lock is coordination, not a new DAG. Settings stays `/settings/ai`
+until19; no source from05/08/18/21 is claimed integrated.
+
+Parent fresh DOC Standards/Spec review of this ONE five-doc exact9848-parent closure is REQUIRED BEFORE
+12 continuation release. Spec **Approved NOT Built**; final whole-app verification and whole-delivery
+review against fixed `82fabdc652c59da87de0f57d7770d0aa32fb7f64`, later adversarial/manual/explicit human
+and dev-merge gates remain separate. Physical touch/drag, screen readers, other engines, exhaustive
+zoom/reduced-motion/custom colors/contrast/accessibility and human visuals unrun. Real lost-response
+ambiguity remains: no atomic bulk/idempotency/exactly-once/DB-uniqueness/cross-tab guarantee.
+No whole25/human acceptance, push/PR/release/dev merge is authorized by bounded ticket10 completion.

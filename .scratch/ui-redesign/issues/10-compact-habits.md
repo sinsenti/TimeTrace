@@ -4,7 +4,7 @@
 
 **Blocked by:** [01: Calendar shell and shared appearance](01-calendar-shell.md)
 
-**Status:** ready-for-agent
+**Status:** completed
 
 **Approved decisions:** O8, O3, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,13 +12,13 @@
 
 ## Acceptance criteria
 
-- [ ] Use Compact cards and a small independent day strip per habit; omit the shared date cube and per-card Entry date row. Week/Today navigation never logs data.
-- [ ] Stage entry edits until explicit Save/Cancel. Offer explicit Done/Failed/Skipped choices instead of cycling clicks; Clear confirms removal only of that selected day's record, distinct from zero. Clamp negative numeric values to zero with visible feedback; Cancel never writes.
-- [ ] Retain target/unit/color/frequency/reminder settings, definition editing, deletion, goal history, charts and inspector. Target changes do not rewrite historical logs.
-- [ ] Missing logs are not failures, numeric zero is Pending, and compliance remains completed/all recorded logs rather than all dates.
-- [ ] Keep one record per habit/local date and existing reminder/unit-conversion behavior. Defer clock time, editable notes and multiple daily entries; preserve existing stored metadata. A later amendment needs separate approval.
-- [ ] Add API/service and browser coverage for approved entry policies, cancellation, historical targets, empty states and independent card navigation.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Use Compact cards and a small independent day strip per habit; omit the shared date cube and per-card Entry date row. Week/Today navigation never logs data.
+- [x] Stage entry edits until explicit Save/Cancel. Offer explicit Done/Failed/Skipped choices instead of cycling clicks; Clear confirms removal only of that selected day's record, distinct from zero. Clamp negative numeric values to zero with visible feedback; Cancel never writes.
+- [x] Retain target/unit/color/frequency/reminder settings, definition editing, deletion, goal history, charts and inspector. Target changes do not rewrite historical logs.
+- [x] Missing logs are not failures, numeric zero is Pending, and compliance remains completed/all recorded logs rather than all dates.
+- [x] Keep one record per habit/local date and existing reminder/unit-conversion behavior. Defer clock time, editable notes and multiple daily entries; preserve existing stored metadata. A later amendment needs separate approval.
+- [x] Add API/service and browser coverage for approved entry policies, cancellation, historical targets, empty states and independent card navigation.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -35,3 +35,20 @@
 - Clear-focus review repair (not completion): parent accepted the single Spec P2 on exact `5b022bad0167faec58e1be85bce1b678f59b68ce`; Standards had no findings. A fresh unchanged-base native Clear→Escape assertion genuinely failed before production edits. Local `habits.js` now focuses/traps Clear confirmation, makes Cancel Enter cancel before the unchanged helper's capture-Enter Proceed, and restores a live enabled same-card control only after pending clears and only for the unchanged focus owner. New owners revoke optional focus, never ACK delivery or pending cleanup. Fresh checks: 14 API, 13 caller, full391 Python/105 existing warnings,214 Node,75 syntax; full Ruff remains18 baseline violations plus old warning, both streams identical to exact5b and reviewed118. Stats89 first → unchanged Habits82/edges14/Definition confirmation8 → new Clear-focus31 all pass with no pageerrors and real public row readbacks. First source failure and fixture gaps are retained separately in the appended [evidence](../ticket-10-evidence.md). Own five-path fix is frozen on exact5b, index empty; parent independent browser gate and explicit release are still required before staging/commit, followed by fresh amendment/combined two-axis reviews and merger closure. No status/criteria/spec completion or human acceptance is claimed.
 
 - Clear-focus independent parent gate/release: parent independently passed Stats89 first → Habits82 → edges14 → unchanged Definition8 → new Clear31 on the frozen own18199/PID165924/private DB,0 pageerrors, with all five hashes identical before/after and complete new readback assertions inspected. Parent explicitly released one five-path fix with exact5b parent, no changes to the three gated source/test files; only this own-issue/evidence gate-history append is allowed. Fresh amendment5b…FIX and combined118…FIX Standards/Spec reviews and fresh merger closure remain mandatory before12; this is not ticket completion, code-review/human/whole25 approval or dev merge permission.
+
+
+- 2026-11-04 local integration and bounded closure: clean integration118 fast-forwarded ONLY to exact
+  reviewed `9848fe7e919558576b04b255876c659c72208f17` (feature5b plus Clear-focus repair). Initial
+  Standards0/Spec ONE P2 is repaired, not waived; fresh amendment AND combined Standards0/Spec0
+  reports were fully read and reviewed bytes verified. All seven original criteria above retain their
+  wording; ordered source/test/evidence mappings and deferred manual limits are in
+  [closure evidence](../ticket-10-evidence.md#local-integration-and-bounded-closure-2026-11-04).
+  Fresh391 Python/105 warnings,214 Node,75 syntax,14 API/13 callers and scoped lint/range format pass;
+  full Ruff retains18 baseline findings plus warning, BOTH streams byte-identical fixed baseline.
+  Fresh native Stats89 FIRST→Habits82→edges14→UNCHANGED Definition8→NEW Clear31 pass,0 pageerrors,
+  actual row/receipt/pending/focus assertions inspected. Original TDD, old Definition8 RED, initial P2,
+  fixture/oracle/audit failures and all earlier Comments remain history, not relabeled first-pass green.
+  Only01+02+04+10+11 complete,20 pending; spec Approved NOT Built. One five-doc closure exactparent9848
+  leaves source/tests/specs identical; parent fresh closure Standards/Spec review is REQUIRED BEFORE12
+  continuation release. Known contrast/manual/accessibility/transport limits remain unwaived; completed
+  means delivered bounded implementation, NOT human/whole25 acceptance or push/PR/dev-merge permission.
