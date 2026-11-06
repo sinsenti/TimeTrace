@@ -1,0 +1,34 @@
+<div id="timer_recovery_notice" class="timer-recovery-notice hidden" role="region" aria-label="Timer recovery">
+    <p id="timer_notice_text" role="status" aria-live="polite"></p>
+    <div class="timer-recovery-actions">
+        <button type="button" id="timer_recovery_open" onclick="openIdleResolution()" class="hidden">Review idle time</button>
+        <button type="button" onclick="retryTimerRead()">Retry status (read only)</button>
+        <a href="/dashboard" target="_blank" rel="noopener">Check Calendar in a new tab</a>
+        <button type="button" id="timer_manual_ack" class="hidden" onclick="acknowledgeTimerVerification()">I checked/corrected this interval</button>
+    </div>
+</div>
+<div id="idle_resolution_modal" class="timer-recovery-modal hidden" role="dialog" aria-modal="true" aria-labelledby="idle_resolution_title" aria-describedby="idle_resolution_policy">
+    <section class="timer-recovery-card">
+        <div class="timer-recovery-heading">
+            <h2 id="idle_resolution_title" tabindex="-1">Review idle time</h2>
+            <button type="button" onclick="closeIdleResolution()" aria-label="Close idle recovery">Close</button>
+        </div>
+        <p id="idle_time_summary_label"></p>
+        <p id="idle_resolution_policy">The timer is frozen. Positive work before this interval will be logged with any choice. Resolving does not restart the timer.</p>
+        <div class="timer-recovery-choices">
+            <button type="button" data-timer-write onclick="resolveIdleGap('break')">Log interval as break</button>
+            <button type="button" data-timer-write onclick="resolveIdleGap('claim_work')">Claim interval as work</button>
+            <button type="button" data-timer-write onclick="resolveIdleGap('skip')">Discard idle interval only</button>
+        </div>
+        <fieldset>
+            <legend>Log interval with different tags</legend>
+            <label for="idle_retag_input">Tags</label>
+            <input id="idle_retag_input" type="text" placeholder="#break #other" autocomplete="off">
+            <label for="idle_retag_notes">Notes</label>
+            <textarea id="idle_retag_notes" rows="2" placeholder="Optional notes"></textarea>
+            <button type="button" data-timer-write onclick="resolveIdleGap('re_tag')">Log re-tagged interval</button>
+        </fieldset>
+        <p id="idle_resolution_feedback" role="status" aria-live="polite"></p>
+        <button type="button" onclick="retryTimerRead()">Retry status (read only)</button>
+    </section>
+</div>

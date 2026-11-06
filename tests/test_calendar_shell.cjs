@@ -379,16 +379,25 @@ test('Revision failed Save stays dirty and successful Save clears only its own d
     assert.equal(b.run('followSettingsLink({})'),true); // Failed read did not repeat/undo the successful Save.
 });
 
-test('late failed idle-toggle response cannot reverse newer browser density or totals', async () => {
+test('late failed explicit idle-toggle Save cannot reverse newer browser density or totals; presentation never POSTs', async () => {
     const right = panel();
-    const b = browser({}, {right_sidebar:right});
-    let reject;
-    b.context.api = {post: () => new Promise((_resolve,no) => reject = no)};
+    const idle = {id:'setting_idle_detector',type:'checkbox',checked:false};
+    const modal = {...panel(),id:'settings_modal',dataset:{settingsPageEditor:'true'},querySelectorAll: () => [idle]};
+    const b = browser({}, {right_sidebar:right,settings_modal:modal,setting_idle_detector:idle});
+    let reject, posts = 0;
+    b.context.api = {post: () => { posts++; return new Promise((_resolve,no) => reject = no); }};
     b.run('let idleDetectionEnabled = true; saveUserSettings({...getUserSettings(), idleDetectorEnabled:false})');
-    const applying = b.run('applyUserSettings()');
+    await b.run('applyUserSettings()');
+    assert.equal(posts,0,'owner B forbids automatic idle reconciliation');
+    assert.equal(b.run('idleDetectionEnabled'),true);
+    assert.equal(b.run('getUserSettings().idleDetectorEnabled'),false);
+    b.run('openSettingsModal()');
+    const applying = b.run('saveSettingsFromModal()');
+    assert.equal(posts,1,'only explicit Save requests the daemon change');
     b.run("setCalendarDensity(72); toggleCalendarPanel('right'); setAppearancePreference('appearance','dark')");
     reject(Error('synthetic idle-toggle failure'));
     await applying;
+    assert.equal(posts,1,'failed Save must not replay through presentation');
     assert.equal(b.attrs['data-appearance'],'dark');
     assert.equal(b.styles['--calendar-slot-height'],'18px');
     assert.equal(right.classList.contains('hidden'),false);

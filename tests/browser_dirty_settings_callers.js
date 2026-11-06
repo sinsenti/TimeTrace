@@ -26,7 +26,7 @@ async (page, baseURL) => {
         await p.locator('#inspector_edit_desc').fill(task.description);
         await p.locator('#inspector_edit_attachments').fill('');
         await p.getByRole('link',{name:'Settings',exact:true}).click();
-        await p.waitForURL('**/settings/ai');
+        await p.waitForURL('**/settings');
         if (dialogs.length !== 1) throw Error('Reverted detail was still dirty');
         phase = 'tasks startup';
         await p.goto(`${baseURL}/tasks`);
@@ -40,8 +40,9 @@ async (page, baseURL) => {
         phase = 'dashboard startup';
         await p.goto(`${baseURL}/dashboard`);
         await p.waitForSelector('.fc-timegrid-slot');
-        // Observe the existing startup preference reconciliation, before testing departure.
-        await p.waitForFunction(() => idleDetectionEnabled === getUserSettings().idleDetectorEnabled);
+        // Owner B: readiness is fresh authoritative status, not equality with stored browser intent.
+        await p.waitForFunction(() => timerStatusFresh && lastTimerData !== null &&
+            typeof lastTimerData.idle_detection_enabled === 'boolean');
         phase = 'session draft';
         const initialSession = await p.evaluate(id => {
             createPlanningSession(id);
@@ -68,10 +69,8 @@ async (page, baseURL) => {
         phase = 'Preferences departure';
         await p.getByRole('link',{name:'Open AI Settings',exact:true}).click();
         if (dialogs.length !== 4 || await p.locator('#setting_light_theme').inputValue() !== 'stone') throw Error('Preferences Settings departure unprotected');
-        const isStartupConfig = w => w.phase === 'dashboard startup' && w.method === 'POST' &&
-            new URL(w.url).pathname === '/idle/toggle' && w.body === JSON.stringify({enabled:true});
-        const startupConfigWrites = writes.filter(isStartupConfig);
-        const unexpectedWrites = writes.filter(w => !isStartupConfig(w));
+        const startupConfigWrites = writes.filter(w => new URL(w.url).pathname === '/idle/toggle');
+        const unexpectedWrites = writes; // Zero automatic writes, including idle configuration on any page entry.
         const departureWrites = writes.filter(w => w.phase.endsWith('departure'));
         if (unexpectedWrites.length || departureWrites.length || errors.length) throw Error(JSON.stringify({writes,unexpectedWrites,departureWrites,errors}));
         return {callers:['task detail + reverted','task modal','session note + task attachment','Preferences Open AI Settings'],sessionDiagnostic,dialogs,writes,startupConfigWrites,unexpectedWrites,departureWrites,errors};

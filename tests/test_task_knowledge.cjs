@@ -533,6 +533,13 @@ function taskSelect() {
 for (const missing of ['completed', 'filtered', 'unavailable']) {
     test(`AI refresh preserves an excluded (${missing}) unsaved timer selection through Start`, async () => {
         const p = workflowPage('Original', { status: 'Done' });
+        const storage = new Map();
+        p.context.sessionStorage = {
+            getItem: key => storage.get(key) || null,
+            setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key)
+        };
+        let timerStatus = { is_running: false, is_frozen_idle: false, pending_idle_gap: null };
         p.load('ai_drafts.js');
         p.load('timer_control.js');
         const select = taskSelect();
@@ -544,7 +551,7 @@ for (const missing of ['completed', 'filtered', 'unavailable']) {
         p.context.api.get = async url => {
             if (missing === 'unavailable' && url === '/api/tasks?status=all') return [];
             if (missing !== 'completed' && url.startsWith('/api/tasks?status=all&sort=')) return [];
-            if (url === '/timer/status') return null;
+            if (url === '/timer/status') return timerStatus;
             return get(url);
         };
         const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
@@ -553,12 +560,18 @@ for (const missing of ['completed', 'filtered', 'unavailable']) {
         const post = p.context.api.post;
         let started;
         p.context.api.post = async (url, payload) => {
-            if (url === '/timer/start') { started = payload; return {}; }
+            if (url === '/timer/start') {
+                started = payload;
+                timerStatus = { is_running: true, is_frozen_idle: false, pending_idle_gap: null, ...payload };
+                return timerStatus;
+            }
             return post(url, payload);
         };
         await p.run('toggleTimer()');
         assert.equal(started.task_id, 'task-1');
-        // Explicit user detach must remain possible.
+        // A separate external Stop makes the next explicit Start valid; detach must remain possible.
+        timerStatus = { is_running: false, is_frozen_idle: false, pending_idle_gap: null };
+        await p.run('fetchTimerStatus()');
         select.value = '';
         await p.run('toggleTimer()');
         assert.equal(started.task_id, null);

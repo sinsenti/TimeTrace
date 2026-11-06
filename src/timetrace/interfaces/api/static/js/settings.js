@@ -459,13 +459,9 @@ async function applyUserSettings(s = null, isInitialBoot = false) {
         updateVimModeIndicator();
     }
 
-    if (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== s.idleDetectorEnabled) {
-        try {
-            await api.post('/idle/toggle', { enabled: s.idleDetectorEnabled });
-            idleDetectionEnabled = s.idleDetectorEnabled;
-            if (typeof updateIdleSwitchUI === 'function') updateIdleSwitchUI();
-        } catch(e) {}
-    }
+    // Opening/navigating/applying presentation never changes the daemon's current idle state.
+    // Only explicit Browser Save or the idle control owns that side effect.
+    if (typeof updateIdleSwitchUI === 'function') updateIdleSwitchUI();
 
     // An idle-toggle response can arrive after newer interactive browser preferences.
     s = getUserSettings();

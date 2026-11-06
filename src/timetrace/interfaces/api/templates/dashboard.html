@@ -94,13 +94,13 @@
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
 
-        <div class="flex items-center shrink-0">
-            <div id="active_timer_pill" class="h-8 bg-[#181a28] border border-[var(--border-muted)] px-3 rounded-lg flex items-center space-x-2 shrink-0">
-                <span id="timer_status_label" class="text-slate-200 font-medium whitespace-nowrap text-[11px]">Timer Idle</span>
-                <select id="timer_task_select" class="h-6 bg-[#12131d] border border-[var(--border-muted)] text-slate-200 px-1 rounded text-[10px] focus:outline-none max-w-[130px] truncate">
+        <div class="min-w-0 max-w-full">
+            <div id="active_timer_pill" role="group" aria-label="Secondary work timer">
+                <span id="timer_status_label" role="status">Loading timer status…</span>
+                <select id="timer_task_select" aria-label="Timer task">
                     <option value="">-- Task --</option>
                 </select>
-                <button id="toggle_btn" onclick="toggleTimer()" class="h-6 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3 rounded transition text-[10px] whitespace-nowrap">Start Timer</button>
+                <button type="button" id="toggle_btn" onclick="toggleTimer()" disabled>Start Timer</button>
             </div>
         </div>
 

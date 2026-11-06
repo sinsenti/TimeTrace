@@ -261,6 +261,9 @@ window.addEventListener('keydown', function(e) {
             const modal = document.getElementById(id);
             return modal && !modal.classList.contains('hidden');
         })) return;
+        // Recovery owns Escape even when a Session beneath it is still open.
+        const idleRecovery = document.getElementById('idle_resolution_modal');
+        if (idleRecovery && !idleRecovery.classList.contains('hidden')) return;
         let closedAny = false;
         const focusBeforeClose = document.activeElement;
 
@@ -284,7 +287,7 @@ window.addEventListener('keydown', function(e) {
             { id: 'session_review_modal', closeFn: typeof closeSessionReviewModal === 'function' ? closeSessionReviewModal : null },
             { id: 'rating_def_modal', closeFn: typeof closeRatingDefModal === 'function' ? closeRatingDefModal : null },
             { id: 'widget_builder_modal', closeFn: typeof closeWidgetBuilder === 'function' ? closeWidgetBuilder : null },
-            { id: 'idle_resolution_modal', closeFn: null },
+            { id: 'idle_resolution_modal', closeFn: typeof closeIdleResolution === 'function' ? closeIdleResolution : null },
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 

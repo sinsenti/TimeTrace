@@ -417,6 +417,12 @@ function deleteSessionFromModal() {
 }
 
 async function startTimerFromModal() {
+    const owner = sessionModalOwner;
+    if (!owner || owner.pending || document.getElementById('session_modal').classList.contains('hidden')) return;
+    if (typeof startTimerFromSession !== 'function') {
+        document.getElementById('session_modal_feedback').textContent = 'Timer controller unavailable. Reload before starting a timer.';
+        return;
+    }
     const taskIdVal = document.getElementById('session_modal_task_id').value;
     const extraTypedTag = document.getElementById('session_modal_tags_input').value.trim();
     if (extraTypedTag) addTagChip(extraTypedTag);
@@ -424,12 +430,30 @@ async function startTimerFromModal() {
     const tagsVal = (typeof currentTagChips !== 'undefined' && currentTagChips.length > 0) ? currentTagChips.join(' ') : '';
     const notesVal = document.getElementById('session_modal_notes').value;
 
-    await api.post('/timer/start', {
-        task_id: taskIdVal ? taskIdVal : null,
-        tags: tagsVal,
-        notes: notesVal || ""
-    });
-
-    closeSessionModal();
-    fetchTimerStatus();
+    const snapshot = sessionModalSnapshot();
+    const launcher = document.getElementById('session_modal_start_now_btn');
+    const recoveryFocus = () => {
+        if (sessionModalOwner === owner && !document.getElementById('session_modal').classList.contains('hidden') &&
+                launcher?.isConnected && !launcher.disabled) return launcher;
+        const region = document.getElementById('calendar');
+        region?.setAttribute('tabindex', '-1');
+        return region;
+    };
+    setSessionSavePending(owner, true);
+    let started = false;
+    try {
+        started = await startTimerFromSession({
+            task_id: taskIdVal ? taskIdVal : null,
+            tags: tagsVal,
+            notes: notesVal || ""
+        }, () => sessionModalOwner === owner && sessionModalSnapshot() === snapshot &&
+            !document.getElementById('session_modal').classList.contains('hidden'), recoveryFocus);
+    } finally {
+        setSessionSavePending(owner, false);
+    }
+    if (sessionModalOwner !== owner) return;
+    if (started && sessionModalSnapshot() === snapshot) closeSessionModal();
+    else document.getElementById('session_modal_feedback').textContent = started
+        ? 'Timer start acknowledged. Your newer Session edits are retained, not saved.'
+        : 'Timer not started or outcome uncertain. Review timer recovery/status; no automatic retry.';
 }

@@ -25,7 +25,7 @@ def test_pages_share_reachable_appearance_and_preferences(client, route):
     assert 'id="appearance_light_theme"' in response.text
     assert 'id="appearance_toggle"' in response.text
     assert 'id="settings_modal"' in response.text
-    assert 'href="/settings/ai"' in response.text
+    assert 'href="/settings" onclick="return followSettingsLink(event)"' in response.text
 
 
 def test_calendar_has_aligned_planning_tools_and_filter_context_outside_totals(client):
