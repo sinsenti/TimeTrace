@@ -451,7 +451,7 @@ privatea1v5NK/18227 cleanup and ONE exact625-parent five-DOC commit. BOTHpidfd c
 pidfd/fullsource-env-UID-cwd-cmd-exe-editable0700-health/canonicaltimerHTTP+strict12keyactualregularFILE/
 ro0013FK/ALL40counts/public40fields passed. First helper assumed optional source-definedsecret.key existed:
 FileNotFoundError BEFORE signal, STOP. Parent approved shallow filename/source reads and ONE separately named
-external enumeration correction; basename correct, generated only on first encryption use, key genuinely
+external enumeration correction; basename correct, generated on first use, including decryption, key genuinely
 absent/no invented hash. Corrected invocation REOPENED retainedpidfd/reverified ALL preflight, then sole
 pidfdSIGTERM/exitpoll but immediate /proc-absence assertion FAILED, STOP. ONE parent-authorized read-only
 audit observed actual PIDabsence13:36:28.080063UTC/socket111/healthrefusal/normal shutdown appended to exact
