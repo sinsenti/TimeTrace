@@ -290,7 +290,8 @@ window.addEventListener('keydown', function(e) {
 
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
-            const isOpen = el && (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden'));
+            const isOpen = el && el.dataset?.settingsPageEditor !== 'true' &&
+                (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden'));
             if (isOpen) {
                 e.preventDefault();
                 e.stopPropagation();

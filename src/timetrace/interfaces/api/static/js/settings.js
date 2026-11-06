@@ -382,7 +382,7 @@ async function saveSettingsFromModal() {
         browserStored = true;
         checkpoints.filter(([id]) => id !== 'setting_idle_detector').forEach(([, checkpoint]) => checkpoint());
         for (const [id, value] of submitted) {
-            if (id !== 'setting_idle_detector') browserSettingsBaseline[id] = { value, stored: saved[BROWSER_SETTING_FIELDS[id][0]] };
+            browserSettingsBaseline[id] = { value, stored: saved[BROWSER_SETTING_FIELDS[id][0]] };
         }
         const needsIdle = browserIdlePending || Object.hasOwn(patch, 'idleDetectorEnabled') ||
             (typeof idleDetectionEnabled !== 'undefined' && idleDetectionEnabled !== saved.idleDetectorEnabled);

@@ -3,8 +3,8 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 
-function browser() {
-    const storage = new Map([['timetrace_user_settings', JSON.stringify({idleDetectorEnabled: false, customColor: '#123456'})]]);
+function browser(initialIdle = false) {
+    const storage = new Map([['timetrace_user_settings', JSON.stringify({idleDetectorEnabled: initialIdle, customColor: '#123456'})]]);
     const elements = {};
     const root = elements.settings_modal = {dataset: {settingsPageEditor: 'true', settingsDraftRetained: 'true'}, classList: {contains: () => false, remove() {}, add() {}}, querySelectorAll: (selector) => Object.values(elements).filter(e => e.type && (!selector?.startsWith('#') || e.id === selector.slice(1))), contains: el => Object.values(elements).includes(el)};
     for (const [id, type, value] of [['setting_appearance', 'select-one', 'light'], ['setting_light_theme', 'select-one', 'refined'], ['setting_theme', 'select-one', 'midnight'], ['setting_first_day', 'select-one', '1'], ['setting_idle_detector', 'checkbox', ''], ['setting_calendar_density', 'select-one', '88'], ['setting_task_view', 'select-one', 'kanban']]) {
@@ -13,11 +13,23 @@ function browser() {
     elements.browser_save_status = {textContent: ''};
     const posts = [];
     const listeners = {};
-    const ctx = vm.createContext({console, Event, Intl, URL, setTimeout, localStorage: {getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v)}, document: {activeElement: null, getElementById: id => elements[id], addEventListener: (type, fn) => (listeners[type] ||= []).push(fn), dispatchEvent: event => (listeners[event.type] || []).forEach(fn => fn(event)), documentElement: {setAttribute() {}, style: {setProperty() {}}}}, window: {location: {href: 'http://localhost/settings'}}, api: {post: async (path, body) => posts.push({path, body})}});
+    const windowListeners = {};
+    const ctx = vm.createContext({console, Event, Intl, URL, setTimeout, localStorage: {getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v)}, document: {activeElement: null, getElementById: id => elements[id], addEventListener: (type, fn) => (listeners[type] ||= []).push(fn), dispatchEvent: event => (listeners[event.type] || []).forEach(fn => fn(event)), documentElement: {setAttribute() {}, style: {setProperty() {}}}}, window: {location: {href: 'http://localhost/settings'}, addEventListener: (type, fn) => (windowListeners[type] ||= []).push(fn)}, api: {post: async (path, body) => posts.push({path, body})}});
     vm.runInContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/settings.js', 'utf8'), ctx);
     const run = code => vm.runInContext(code, ctx);
     run('openSettingsModal()');
-    return {ctx, run, elements, root, posts, storage, saved: () => JSON.parse(storage.get('timetrace_user_settings'))};
+    const installGlobalEscape = () => {
+        vm.runInContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/utils.js', 'utf8'), ctx);
+        run('setupSettingsKeyboardShortcuts()');
+    };
+    const keydown = target => {
+        const event = {key: 'Escape', target, prevented: false, stopped: false,
+            preventDefault() { this.prevented = true; }, stopPropagation() { this.stopped = true; }};
+        (windowListeners.keydown || []).forEach(fn => fn(event));
+        if (!event.stopped) (listeners.keydown || []).forEach(fn => fn(event));
+        return event;
+    };
+    return {ctx, run, elements, root, posts, storage, installGlobalEscape, keydown, saved: () => JSON.parse(storage.get('timetrace_user_settings'))};
 }
 
 test('Browser Save persists density/task choice while retaining alternate-writer appearance and unknown colors', async () => {
@@ -141,6 +153,69 @@ test('explicit Totals sidebar policy and remembered visibility never checkpoint 
     assert.equal(b.saved().totalsVisible, false);
     assert.equal(b.elements.setting_totals_visible.checked, false);
     assert.equal(b.run("hasSettingsDrafts(['settings_modal'])"), false);
+});
+
+for (const initialIdle of [false, true]) {
+    test(`public Browser Save retries the submitted ${initialIdle} after rejected ${!initialIdle}`, async () => {
+        const b = browser(initialIdle);
+        b.elements.browser_idle_pending = {id: 'browser_idle_pending', type: 'hidden', value: '', classList: {contains: () => false}};
+        b.run('rememberSettingsDraft("settings_modal")');
+        b.ctx.api.post = async (path, body) => { b.posts.push({path, body}); throw Error('synthetic idle rejection'); };
+        b.elements.setting_idle_detector.checked = !initialIdle;
+        await b.run('saveSettingsFromModal()');
+        assert.equal(b.saved().idleDetectorEnabled, !initialIdle);
+        assert.equal(b.elements.setting_idle_detector.checked, !initialIdle);
+        assert.equal(b.run('hasSettingsDrafts(["settings_modal"])'), true);
+        assert.match(b.elements.browser_save_status.textContent, /not confirmed/);
+        b.elements.setting_idle_detector.checked = initialIdle;
+        let acknowledge;
+        b.ctx.api.post = (path, body) => { b.posts.push({path, body}); return new Promise(resolve => { acknowledge = resolve; }); };
+        const retry = b.run('saveSettingsFromModal()');
+        assert.deepEqual(b.posts.map(post => post.body.enabled), [!initialIdle, initialIdle]);
+        assert.equal(b.saved().idleDetectorEnabled, initialIdle);
+        assert.equal(b.run('hasSettingsDrafts(["settings_modal"])'), true, 'storage is not daemon acknowledgement');
+        b.elements.setting_idle_detector.checked = !initialIdle;
+        await b.run('saveSettingsFromModal()');
+        assert.equal(b.posts.length, 2, 'pending duplicate is blocked');
+        acknowledge({idle_detection_enabled: initialIdle});
+        await retry;
+        assert.equal(b.elements.setting_idle_detector.checked, !initialIdle, 'concurrent checkbox edit retained');
+        assert.equal(b.run('hasSettingsDrafts(["settings_modal"])'), true);
+    });
+}
+
+test('actual utils window-capture Escape outside Browser retains page draft, storage, URL and focus', () => {
+    const b = browser();
+    b.installGlobalEscape();
+    b.elements.setting_calendar_density.value = '56';
+    b.elements.setting_first_day.value = '0';
+    const navbar = {id: 'appearance_light_theme'};
+    b.ctx.document.activeElement = navbar;
+    const before = b.storage.get('timetrace_user_settings');
+    const event = b.keydown(navbar);
+    assert.equal(b.elements.setting_calendar_density.value, '56');
+    assert.equal(b.elements.setting_first_day.value, '0');
+    assert.equal(b.run('hasSettingsDrafts(["settings_modal"])'), true);
+    assert.equal(b.storage.get('timetrace_user_settings'), before);
+    assert.equal(b.ctx.document.activeElement, navbar);
+    assert.equal(b.ctx.window.location.href, 'http://localhost/settings');
+    assert.equal(event.prevented, false);
+    assert.equal(b.posts.length, 0);
+});
+
+test('actual utils Escape still yields to scoped Browser Cancel and closes legacy Preferences', () => {
+    const b = browser();
+    b.installGlobalEscape();
+    b.elements.setting_calendar_density.value = '56';
+    assert.equal(b.keydown(b.elements.setting_calendar_density).prevented, true);
+    assert.equal(b.elements.setting_calendar_density.value, '88');
+    assert.equal(b.run('hasSettingsDrafts(["settings_modal"])'), false);
+    b.root.dataset.settingsPageEditor = 'false';
+    let hidden = false;
+    b.root.classList = {contains: name => name === 'hidden' && hidden, add: () => { hidden = true; }};
+    assert.equal(b.keydown(b.elements.setting_theme).prevented, true);
+    assert.equal(hidden, true);
+    assert.equal(b.posts.length, 0);
 });
 
 test('color reshuffle never reconciles an unrelated pending daemon idle preference', async () => {
