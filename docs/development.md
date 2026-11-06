@@ -34,7 +34,8 @@ uv run timetrace status
 ```
 
 Check that `/health` reports the scratch DB path and port. Browser entry points are `/dashboard`,
-`/tasks`, `/stats`, `/habits-view`, `/revision`, and `/settings/ai` on that scratch server. Stop it
+`/tasks`, `/stats`, `/habits-view`, `/revision`, `/settings` (Browser), `/settings/ai` (AI), and
+`/settings?category=providers` (Providers) on that scratch server. Stop it
 with Ctrl+C. Keep or remove only its temporary directory when finished; do not clean up personal
 TimeTrace files. A separate browser profile keeps localStorage settings/widgets isolated too.
 
@@ -102,7 +103,8 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   ambiguity (actual primary[1,2]/baseline[2,2]) remains UNFIXED/UNWAIVED; faithfully displaying
   supplied baselines is not correctness certification. Ticket12 is bounded-completed after fresh
   integrated checks/genuine parent252-label gate/explicit five-DOC closure release; fresh closure
-  DOC Standards+Spec and parent disposition remain mandatory before19/13–14 release. See
+  DOC gate was subsequently disposed before parent activated19/earlier13–14 resource unlock; its earlier
+  pending receipts remain historical. Current19 has a separate pending closure gate. See
   [bounded evidence](../.scratch/ui-redesign/ticket-12-evidence.md#local-integration-and-bounded-closure-draft-2026-11-04).
   SQL layout/sandbox adoption13 and performed-time/default-label/seed adoption14 remain later work;
   actual SQL stays disabled, browser opt-in/schema/preview checks use HTTP fakes. No API/schema change.
@@ -116,8 +118,9 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   a lost mutation response is still uncertain, not an atomic/idempotency/exactly-once guarantee.
   Separate AI Quick Add on Tasks/Calendar remains classify (no inference) → explicit Parse (read-only)
   → editable prefill → human Save; late extraction cannot replace a newer owner or concurrent edits.
-  It is not the conversational Assistant approval workflow (tickets21–23). Settings still uses
-  `/settings/ai` until ticket19; stopped Timer/preferences checkpoints are not integrated.
+  It is not the conversational Assistant approval workflow (tickets21–23). Ticket19's tabbed Settings
+  is now locally integrated: `/settings` Browser, `/settings/ai` AI, `/settings?category=providers`
+  Providers. Generic navbar still links `/settings/ai` until coordinated03; stopped Timer is NOT integrated.
   Caller/API/native evidence and deferred manual/contrast limits are in
   [ticket04 evidence](../.scratch/ui-redesign/ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04).
 - **Habits:** ticket10 uses Compact cards with independent local-day strips and explicit entry
@@ -303,9 +306,11 @@ and no existing-DB migration test, personal data, provider call, push or merge i
 ## Shared appearance and Calendar shell
 
 Ticket 01 of the approved UI redesign adopts shared navigation/appearance without replacing the
-other pages' workflows. Preferences still has a working modal on every page; Settings links to the
-existing `/settings/ai` page until ticket 19 supplies `/settings`. Additional task views remain later
-slices. The shared stylesheet is `static/css/appearance.css`; each of the seven templates includes it.
+other pages' workflows. Old Preferences remains a working modal on other pages; locally integrated19
+supplies the full-area tabbed `/settings` Browser page, retained `/settings/ai` AI entry and
+`/settings?category=providers`. Generic navbar still links `/settings/ai` until coordinated03 adoption;
+no link-source change is implied. Additional task views remain later slices. The shared stylesheet
+is `static/css/appearance.css`; each of the seven templates includes it.
 
 Browser preferences stay in `timetrace_user_settings`. Existing `theme` names still select the dark
 appearance and automatic task-color palette; valid old selections are adopted as dark, not replaced.
@@ -344,8 +349,8 @@ snapshots for Preferences, Revision/day and task reviews, task details and task/
 Canceling departure retains drafts; explicit leave does not autosave. AI Settings also guards other
 page departure and browser unload. Browser Preferences, AI behavior and provider saves remain separate;
 successful saves clean only their owner, failed saves remain dirty, and reverted fields are clean.
-This is not a replacement router or the ticket-19 tabbed Settings implementation. Delayed session
-popup initial focus now yields to immediate interaction, moved focus, closure or a newer popup;
+This historical01 guard was not a replacement router or the ticket-19 tabbed implementation; the latter
+is now locally integrated separately; the draft and current bounded closure records below distinguish their gates. Delayed session popup initial focus now yields to immediate interaction, moved focus, closure or a newer popup;
 normal create-search/edit-Notes focus remains intact. Controlled-timer caller tests and immediate
 browser checks cover canceled Settings departure without masking the race with sleeps.
 
@@ -363,6 +368,112 @@ They do not call providers, infer model output, or test real credentials. The po
 measured issues, including baseline dark samples, rather than asserting whole-dark compliance.
 See the appended review-repair evidence in `.scratch/ui-redesign/ticket-01-evidence.md` for actual
 execution results and remaining gates.
+
+### Ticket19 tabbed Settings — local integration, closure DRAFT
+
+Exact reviewed625 was normally FF-integrated from clean a8e (two commits/14paths), no sourcecopy/fix.
+Fresh Standards0breaches/0heuristics and Spec0 cover BOTH amendment and combined ranges; original TWO
+unique Spec P1 repaired, not waived. Successful captured browser STORAGE now advances its comparison
+baseline even for idle; external dirty checkpoint/hidden daemon-pending ownership remains ACK-dependent.
+Only explicit Browser page editors are excluded from global modal Escape; scoped Browser Cancel and
+real dialogs retain their handlers. Browser/AI/provider saves remain separate; AI behavior Cancel is20.
+
+Fresh private0700 DB/HOME/TMPDIR/new editable Python3.14.6 before imports/tests/runtime; strict credential-
+absent environment, idle/SQL/tracing off, actualmain/private18227/0013/FK[]. Fresh full468Python226warnings,
+237canonicalNode,92syntax,focused2Python13Node/scopedweb+newcaseLint/newcaseFormat/EXACThandlerFormat
+passed; actualRuff18 BOTH stdout/stderr byte-match fixed baseline, not lint-clean. Feature includes Python;
+repair/merger adds no Python edits or unrelated web formatting. All239 source/test/spec bytes immutable.
+
+Stats89 FIRST/new29/old94/owners11 passed. Original affected Settings case5 FIRST FAILED30000ms startup
+equality timeout, preserved with zero fakePOSTlogs/no original DOM timeline. Parent-approved ONE minimized
+invocation/two fresh unseeded profiles observed unchanged-code defaulttrue→realGETfalse client preference
+drift; second immediate equality is not durable polling/causal-hold proof. Timercontrol/defaults/protected
+apply-startup source byte-equala8e proves pre-existing SOURCE identity, not an executed old baseline.
+Initialization counterexample remains UNFIXED/UNWAIVED for reserved03/whole-delivery follow-up, not19fix.
+
+Separately authorized EXTERNAL coherent-idle departurefixture ONLY simulates initialtrue; strict POST
+updates simulated state; exactownorigin GETstatus fetches actual200/idlefalse/inactive and overrides ONLY
+idle_detection_enabled, preserving all other fields. Every original body/storage/no-seed/wait/assertion/
+cleanup byte retained/reverseproof. This CASE5-only GETfake exception passedFIRST/fourcallers/fourwarnings/
+exact Session notes-ID-focus/zero departurewrites, NOT original case5 green or real bootstrap/OSidle proof.
+Then unchanged approved cases6–13 passedFIRST; coverage variant13 observed50contexts/pages/errors[],
+originalfailed2/2 and diagnostic3/3 separate. New29/supplemental21 explicitPASS/failures[]; full actual
+labels/errors/data/readbacks/traffic inspected, missing returnederrors not defaulted. Nested66/20realTask
+POSTs/public20readbacks/noSessionautosave/ACTUAL13falseidle33total; remaining editor/Session/modal/chart
+controls preserve drafts/focus/no unintended writes. No passing reruns or assertion/readiness/source fixes.
+Catalog/providerCRUD/AIsettings/SQLpreview/failure fakes explicit, actual SQLoff/idlefalse. Auto-scroll
+preference retained, timing not instrumented; public dispatch/focus not physical-pointer certification.
+
+Producer-after actual20Tasks/0Sessions/providerAI-domain0/Overview1widgets9/status5/settings1/FTS20/docsize20/
+data11/idx9/config1; readonly0013/FK[], canonicalinactiveHTTP+actualregularnonsymlinkstrict12keyFILE
+shared agreement/SHA22f50dc2..., initially absent honestly. Parent additions require new ACTUAL counts,
+not stale20/40. Healthy own109363/start817653/18227/sourcefrozen; fiveDOC DRAFT only, no stagecommitcleanup.
+Genuine NEW independent parent LIVE gate/explicit ONEexact625-parentfiveDOC release/normalONLYowncleanup/
+fresh closure DOC Standards+Spec remain required. Sixcomplete19pending; specApprovedNOTBuilt,03/20held,
+Timerunintegrated/GroupedOutline06–07/SQL13andperformed14 deferred. Source13unit/TDD is not accepted donor.
+Known contrast/comparison/caption/initialization/manualtouch-screenreader-otherengines-zoom-motion-colors/
+a11y/humanvisual/autoscroll/realSQLprovider/querycrossproduct/transportuncertainty-idempotency-exactlyonce-
+crosstab/whole-delivery82fabdc-adversarial-tuicrhuman gates remain UNWAIVED. No humanwhole25/dev merge.
+See [criterion mapping and full history](../.scratch/ui-redesign/ticket-19-evidence.md#local-integration-and-bounded-closure-draft-2026-11-06)
+and external `evidence/integrated-ticket-19/merger-report.md` / NEW `run.eU17gc/` receipts.
+
+### Ticket19 owner-approved bounded closure — current (2026-11-06)
+
+The preceding DRAFT is historical. Current bounded19 completes seven tickets01,02,04,10,11,12,19 with18
+pending; frontier removes19/adds20, DAG unchanged. **Fresh independent closure DOC Standards+Spec and parent
+disposition STILL REQUIRED before authoritative19 acceptance or03/20 continuation.** Spec Approved NOT Built.
+Parent initially overstepped the operator's no-status-fake constraint, caught it and revoked release BEFORE
+postgate document edit/stage/commit/cleanup; original merger report remains immutable controlled STOP.
+Owner subsequently explicitly answered “yes” ONLY to narrow test-only case5 idle-status simulation/use of
+labelled departure-guard evidence. Not retrospective permission, originalcase5green or bootstrap/OSidle proof.
+Original FIRST startup timeout and fresh-profile unchanged-source initialization drift remain UNFIXED/UNWAIVED
+for reserved03/whole-delivery follow-up. Pre-existing SOURCE identity is not historical runtime/cause proof;
+immediate equality is not durable polling/causal-hold proof.
+
+Only case5's exact own-origin GETstatus route.fetch actual200/inactive/unfrozen/nullgap/idlefalse changes
+ONLYidleflag; initialsimulatedTRUE/exactPOSTbool state/allotherfields and entire original body/defaultstorage/
+no-seed/wait/assertions/readbacks/cleanup preserved/reverseproof. BOTH producer/independent parent observed
+two realfalse→servedtrueGETs/zeroPOST/fourwarnings/exactSessionnote-fullID-focus/zero departurewrites.
+Genuine independent parent13 FIRST invocations/50actualcontexts-pages/actualpassiveerrors[] =12ordinary+
+labelled coherent5, not all13originalgreen. New29/supp21 explicitPASS/failures[]/errors[]; all labels/profiles/
+samples/readbacks/data/traffic inspected; missing returnederrors remain absent. Parent Nested66/newnonce
+04-nested-1793968922549/20distinctpublicP-Q IDs/ACTUAL12falseidle32total (producer13/33 not fixed oracle),
+ALLproducer20fields unchanged/public40. Catalog/providerCRUD/AIsettings/held-failure/SQLflag-schema-preview
+fakes explicit; actualSQLoff/idlefalse/no provider execution. Publicdispatch/focus not physical-pointer proof.
+Focused2Python HTML route checks are real ASGI/TestClient fixtures, NOT standalone daemon; native94 supplies
+live browser/daemon route/category/history proof. Already-run468Py226warnings/237Node/92syntax/2focusedPy/
+13focusedNode/scopedPython-exacthandler/fixedRuff18BOTH remain evidence; no passing reruns for approval.
+Parent NEW owner-approved-before read-only audit verified exact625/indexempty/exactfive frozen drafts/all239
+acceptedpinned+GitHEAD/protected/runtimeentireenv-PID/editable0700/health0013FK/actual40counts/timerHTTP+FILE.
+
+NEW finisher authority released only five literal DOC finalizations, explicit ONLY-own109363/start817653/
+privatea1v5NK/18227 cleanup and ONE exact625-parent five-DOC commit. BOTHpidfd capabilities/retainedverified
+pidfd/fullsource-env-UID-cwd-cmd-exe-editable0700-health/canonicaltimerHTTP+strict12keyactualregularFILE/
+ro0013FK/ALL40counts/public40fields passed. First helper assumed optional source-definedsecret.key existed:
+FileNotFoundError BEFORE signal, STOP. Parent approved shallow filename/source reads and ONE separately named
+external enumeration correction; basename correct, generated only on first encryption use, key genuinely
+absent/no invented hash. Corrected invocation REOPENED retainedpidfd/reverified ALL preflight, then sole
+pidfdSIGTERM/exitpoll but immediate /proc-absence assertion FAILED, STOP. ONE parent-authorized read-only
+audit observed actual PIDabsence13:36:28.080063UTC/socket111/healthrefusal/normal shutdown appended to exact
+logprefix. Parent accepted later actual absence, not weaker zombie/not-live; both failures retained/no
+second signal/reap/restart/fallback. DB401408bytes SHAdf8e1a4868dded0cb2c254783c82deb46abc95b87272c9fae4a9cbcb6bbf775c/
+timer262bytes SHA22f50dc2... unchanged, optionalkey absent beforeafter, privateDB-timer-logs-venv retained.
+Poststopmode=ro/query_only0013_ai_data_scope/FK[]/ALLactualcounts equal parent-after: Task40/FTS40/docsize40/
+data3/idx1/config1/Overview1/widgets9/status5/AIsettings1/migration1/EVERYotheractualtable0. Poststop40DBIDs
+equal pre-signal public40 snapshot, not a post-stop HTTP readback. All239source/all11stoppedlanes/owner228
+and dirty status unchanged; fixtures retained. No other runtime/storage cleanup.
+
+Current [six-criterion mapping, history and full limits](../.scratch/ui-redesign/ticket-19-evidence.md#owner-approved-bounded-closure-and-current-gate-2026-11-06)
+and separate external `evidence/integrated-ticket-19/recovery-finisher-report.md`/`recovery.finisher-20261106-v1/`
+record actual final commit/clean/source-preservation proofs; original `merger-report.md` immutable. Routes
+/settingsBrowser,/settings/aiAI,/settings?category=providers; genericnavbarstill/settings/ai until03,
+oldPrefsretained/Timerunintegrated/AIbehaviorCancel20/GroupedOutline06–07/SQL13performed14 deferred. Both13
+TDD/unit checkpoints NOTacceptedproduction/donor/SQLruntimepermission. ALLknownTasklight4.33/darkAI3.98986/
+NULL-emptycomparisonbaseline ambiguity/captionheuristic/initialization/manualphysicaltouch-screenreader-
+otherengines-exhaustivezoom-motion-colors-a11y-humanvisual/autoscrolltiming/realSQLprovider/querycrossproduct/
+transportuncertainty-atomicity-idempotency-exactlyonce-crosstab/fixed82fabdc-whole-delivery-adversarial-tuicr-human/
+devmerge limits UNWAIVED. No appimport/tests/browser/syntax/lint/passingreruns/sourcechanges in this finisher;
+no amend/pushPR/devmerge/humanwhole25 claim. STOP fresh closure DOC two-axis review and parent disposition.
 
 ## Testing and checks
 

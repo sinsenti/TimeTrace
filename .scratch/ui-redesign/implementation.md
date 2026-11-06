@@ -8,10 +8,15 @@ no-start/no-commit wording in approval records describes the earlier approval-on
 a current implementation blocker. Preserve that approval history; do not reopen O1–O8 or treat the
 spec as Built. The parent owns the task graph, worktree orchestration and every review; seed workers
 do not delegate. The historical seed was one authorized documentation-only planning commit, not
-production implementation. Tickets01,02,04,10,11 and12 have since been locally integrated and completed
-with bounded evidence below. Ticket12 exact reviewed c37 passed genuine independent parent252-label
-live gate and explicit ONE five-DOC closure release; fresh closure DOC two-axis review/disposition
-remains required. This does not complete the spec or establish whole25/manual/human acceptance.
+production implementation. Tickets01,02,04,10,11,12 and19 have since been locally integrated and bounded
+completed (seven complete/18 pending). Prior12 closure DOC review was disposed before19 activation.
+Ticket19 exact625 passed genuine independent parent13/50-context-page coverage (12 ordinary plus labelled
+coherent5), followed by explicit owner approval ONLY of the narrow test-only case5 idle-status simulation
+and its departure evidence. Parent's earlier permission overstep/timely pre-mutation HOLD remain recorded;
+original startup failure/source initialization counterexample remain UNFIXED/UNWAIVED. NEW finisher release
+allows ONE exact625-parent five-DOC closure; transferred only-own runtime cleanup is complete with retained
+failures/later actual absence below. Fresh independent closure DOC Standards+Spec and parent disposition
+STILL REQUIRED before authoritative19 acceptance or03/20 continuation. No whole25/manual/human acceptance.
 
 - Fixed pre-delivery base: `82fabdc652c59da87de0f57d7770d0aa32fb7f64` (before this seed).
 - Integration branch: `feat/ui-redesign-integration`.
@@ -32,16 +37,20 @@ remains required. This does not complete the spec or establish whole25/manual/hu
   fast-forwarded from `118bb9d14c99e06da96199e9ea574e9afdf4e91e`, two commits, no merge commit.
 - Ticket **12 completed**, exact reviewed code `c37c81b00c8f9928480942eb6bbb3d90638e7f9e`, locally
   fast-forwarded from F7, three commits/24paths, no merge commit; ONE released five-DOC closure.
-- Computed frontier: **03, 05, 06, 08, 09, 13, 14, 15, 18, 19, 21, 24**.
-  Only01+02+04+10+11+12 completed; other19 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
-  20 blocked19,22 blocked05/15/21,23 blocked21;25 is not done.
+- Ticket **19 bounded completed**, exact reviewed code `625e5f2e5525a2307fda6cbe0f8a02f4462ecaf9`,
+  normal clean-a8e FF/two commits14paths, ONE released five-DOC closure; fresh closure DOC reviews pending.
+- Computed frontier: **03, 05, 06, 08, 09, 13, 14, 15, 18, 20, 21, 24**.
+  Only01+02+04+10+11+12+19 completed; other18 pending (`ready-for-agent`);07/17 blocked05,16 blocked15,
+  22 blocked05/15/21,23 blocked21;25 is not done. DAG unchanged:20's predecessor19 is bounded delivered,
+  but03/20 continuation remains HELD pending fresh closure DOC two-axis review and parent disposition.
   Prior10 closure Standards/Spec passed before12 continuation/replay. Clean F7→exact reviewed
   `c37c81b00c8f9928480942eb6bbb3d90638e7f9e` FF integrated12's three commits/24 paths without source
   edits; reviewed04 timing/shared Widget fixture coexist. Genuine parent LIVE integrated252-label
   gate passed; explicit ONE exact-c37-parent five-DOC closure released,6completed/19pending. Own452661
-  normally stopped via verified pidfd,18221closed/healthrefused,DB/logs retained. Fresh closure DOC
-  Standards+Spec and parent disposition are mandatory before19 continuation/13–14 resource unlock; locks are
-  not new DAG edges. Original DD16, stopped03/05/08/18/19/21/24 checkpoints and user dirty root remain
+  normally stopped via verified pidfd,18221closed/healthrefused,DB/logs retained. Prior12 closure DOC gate
+  was subsequently disposed before19 activation/earlier13–14 resource unlock; historical receipts remain,
+  locks are not new DAG edges. Current19 has its own parent LIVE gate/owner-approved bounded fixture/new
+  closure release; fresh closure DOC two-axis review is still pending. Original DD16, stopped03/05/08/18/19/21/24 checkpoints and user dirty root remain
   preserved/read-only here. No unreviewed other-lane source adopted.
 - No push, PR, release or merge into `dev` is authorized. Do not reset/stash or overwrite owner edits.
 
@@ -58,9 +67,11 @@ ticket01 and ticket11 closure commits passed their parent gates before subsequen
 ticket02 documentation-only closure subsequently passed its parent gate before04 continuation.
 The04 five-document closure subsequently passed both parent review axes before10 continuation.
 The new10 five-document closure subsequently passed parent two-axis review before12 continuation.
-The current12 five-DOC closure passed genuine parent live integrated gate and explicit one-commit
-release; its fresh independent DOC two-axis review/disposition STILL remains mandatory before
-19 continuation or13–14 resource unlock.
+The12 five-DOC closure passed genuine parent live integrated gate and explicit one-commit release;
+its then-pending fresh DOC review/disposition was subsequently completed before19 activation. Historical12
+blocks below retain their earlier pending-gate wording. Current19's independent LIVE gate, subsequent
+owner-approved narrow coherent5 evidence and new onecommit release are recorded below; subsequent fresh
+closure DOC Standards+Spec and parent disposition remain mandatory before authoritative19 acceptance or03/20 continuation.
 
 After all 25 tickets are implemented, run the full integrated automated checks and independent
 whole-delivery two-axis review against the fixed base above, covering **all tickets together**, tests
@@ -444,6 +455,125 @@ closure; actual single-parent commit SHA/scope/tree/index/preservation proofs in
 Fresh DOC Standards+Spec and parent disposition still mandatory before19 continuation/13–14 unlock.
 Known comparison[1,2]/[2,2] ambiguity UNFIXED/UNWAIVED/caption heuristic deferred; contrast/manual/SQL/
 provider/transport and fixed82fabdc whole-delivery/adversarial/human/dev-merge limits all remain.
+
+## Ticket19 local integration and bounded closure DRAFT (2026-11-06)
+
+Parent accepted exact `625e5f2e5525a2307fda6cbe0f8a02f4462ecaf9` after BOTH amendment5c→625 and
+combineda8e→625 fresh Standards0breaches/0heuristics and Spec0; original TWOuniqueP1 repaired, not
+waived/countfour. Normal clean-a8e FF-only integrated TWOcommits14paths, no sourcecopy/fix, tree409daaa4.
+ALL239 source/test/spec SHA+length identities and protected draft/ThemeOnly/apply-runtime/shareda9b
+fixture unchanged. OriginalDFDA/clean5c/625/stopped03/05/08/18/21/24/userdirtyroot and BOTH stopped13
+lanes preserved; SQL13unit/TDD unreviewed checkpoint is not donor/dependency/completed acceptance.
+
+Fresh NEW0700privateDB-HOME-TMPDIR/neweditable3.14.6venv beforeimports/tests/runtime, strictcredential-
+absentenv/idleSQLtracingoff, free18227/actualmain/30shealth/0013FK. Full468Python226warnings,
+237canonicalNode,92syntax,focused2Py13Node,scopedweb+newPythoncaseLint/newcaseFormat/EXACThandler
+format/whitespace passed; actualRuff18 BOTH streams matchFIXEDbaseline, notlintclean. No Pythonrepair;
+featureDOESincludeweb.py+newcase. Full commands/raw/sourceproof in external integrated19 merger-report.
+
+Stats89 FIRST→new29→old94→owners11 PASS. OriginalSettingscase5 FIRST FAILED startup equality timeout;
+STOP/raw preserved/actual2pageserrors[]/zeroPOSTlogs/nooriginalDOMtimeline. ONEparent-approved minimized
+invocation/two fresh unseeded Calendarprofiles observed unchanged-code lexicaltrue→realGETfalse/defaultpreftrue
+mismatch/noPOST; second immediateequal sample is NOT durable/causalhold proof. Source timer_control/defaults/
+protected apply-startup byte-equala8e; pre-existing SOURCE identity, not executed historicalbaseline.
+Initializationcounterexample remains UNFIXED/UNWAIVED/reserved03+whole-delivery follow-up, not19repair.
+Parent authorized separately named EXTERNAL coherent-idle departurefixture: simulatedinitialtrue, strict
+POSTstate, exactownoriginGETstatus fetchesactual200/idlefalse/inactive and overridesONLYidleflag, allother
+fields unchanged. All original testcasebody/defaultstorage/wait/assertions/cleanup bytes preserved via
+reverseproof; CASE5-only statusfake exception not bootstrap/OSidle certification. Variant passedFIRST,
+then cases6–13 FIRST unchangedapprovedforms. Coveragevariant13 actual50contexts/pages/errors[]; original
+failed2/2 and diagnostic3/3 remain separate, NOT all13originalgreen or blanket firstpass. No passing reruns.
+
+Four departurecallers/4warnings/exactSessionnote-ID-focus; Revision drafts/Cancel-leave; Session5assertions
+at4widths; Nested66true/newP-Q20TaskPOST/publicreadbacks/noSessionautosave/ACTUAL13falseidle33total;
+Habit8/oneconfirmedDELETE; Editors3/5warnings/2realSaveReadbacks; Charts numeric3/zero writes; Habit4states;
+Supplemental21PASS/failures[]/actualvisiblemodalEscape-focus/noURLstorage-write passed. Full actualerrors/
+labels/data/profiles/traffic inspected; missing returnederrors not normalized, passivearrays required.
+Catalog/providerCRUD/AIsettings/heldfailures/SQLpreview fakes explicit, actualSQLoff/daemonidlefalse;
+publicdispatch not physicalpointer, autoscroll preference not timing. Bounded samples notwholea11y.
+
+Producer-after readonly0013FK/actual20Tasks0Sessions/providerAI-domain0/Overview1widgets9/status5/settings1,
+FTS20/docsize20/data11/idx9/config1; canonicalHTTP+actualregularnonsymlinkstrict12keyFILE inactive/unfrozen/
+nullgap/idlefalse/SHA22f50dc2... independently audited. After parent additions measure ACTUALallcounts,
+not stale20/40. Healthy ownPID109363/start817653/private18227/sourcefrozen; no stagecommitcleanup yet.
+EXACTfiveDOC DRAFT/statuscriteria pending/sixcomplete19pending. Prospective only after explicitrelease:
+sevencomplete18pending/frontierremove19add20/unchangedDAG;03/20continuation stillHELDuntil freshclosure
+DOCStandards+Spec/parentdisposition,13/14notnew19dependencies. Routes/settingsBrowser,/settings/aiAI,
+/settings?category=providers; navbarstill/settings-aiuntil03,oldPrefsretained,Timerunintegrated,AIbehavior
+Cancel20deferred. SpecApprovedNOTBuilt/manualhumanwhole25/knowncontrast-comparison-caption-initdrift-
+physicaltouch-screenreader-otherengines-zoom-motion-colors-a11y/autoscroll/SQLprovider/querycrossproduct/
+transportatomicity-idempotency-exactlyonce-crosstab/fixed82fabdc-adversarial-tuicrhuman limits UNWAIVED.
+
+[Six unchanged criteria/bounded evidence/history](ticket-19-evidence.md#local-integration-and-bounded-closure-draft-2026-11-06).
+External authoritative report: `/home/user/.local/state/timetrace-ui-redesign/evidence/integrated-ticket-19/merger-report.md`,
+NEW `run.eU17gc/`. Required genuine NEW independent parentLIVE13 gate uses separately labelled case5
+variant, not producer relabeling; explicit ONEexact625-parent5DOC release/normalONLYowncleanup and later
+freshDOCtwoaxis reviews remain pending. No03/20release/SQL13completion/pushPR/dev-main/humanwhole25.
+
+## Ticket19 owner-approved bounded closure — current (2026-11-06)
+
+The preceding19 DRAFT is historical, not the current disposition. Parent initially overstepped the
+operator's no-status-fake constraint; it revoked its temporary release BEFORE any postgate document
+edit/stage/commit/cleanup (worker only read the gate). Immutable original integrated19 merger-report
+preserves controlled STOP. Owner then explicitly answered “yes” ONLY to narrow test-only coherent5
+idle-flag simulation and use of labelled departure evidence. No retrospective permission/original5green:
+FIRST startup failure and fresh-profile unchanged-source initialization counterexample UNFIXED/UNWAIVED,
+reserved03/whole-delivery follow-up. Pre-existing SOURCE identity is not executed historical runtime or
+original-cause proof; immediate equality is not durable polling/causal-hold proof.
+
+The fixture's exact own-origin GETstatus route.fetch actual200/inactive/unfrozen/nullgap/idlefalse changes
+ONLYidleflag; initial simulatedTRUE/exactPOSTbool state/allotherfields/originalbody-storage-no-seed-wait-
+assertions-readbacks-cleanup preserved/reverseproof. BOTH producer and independent parent: two actualfalse
+→servedtrueGETs/zeroPOST/fourwarnings/exactSessionnote-fullID-focus/zero departurewrites. Departure-only
+simulation, not bootstrap/OSidle certification, blanket GETstatus/domain fake or realSQL/provider permission.
+
+Genuine parent13 FIRST invocations/50actualcontexts-pages/each passiveerrors[] use own profiles/nonce/output:
+12ordinary plus labelled coherent5, not all13 original green or producer relabeling. New29/supp21PASS/
+failures[]/errors[]; missing returnederrors absent, not defaulted; complete labels/profiles/samples/data/
+readbacks/traffic inspected. Parent Nested66/nonce04-nested-1793968922549/20 distinct newpublic P-QfullIDs/
+ACTUAL12falseidle32total versus producer13/33/no Sessionautosave; ALLoriginal20fields unchanged/public40.
+Other full labels/fakes/manual boundaries in parent-browser-gate and current criterion mapping. New read-only
+parent-owner-approved-before independently verified exact625/emptyindex/exactfive frozen drafts/all239pinned+
+GitHEADsource/protected/fixedRuffBOTH/exactsource-env-PID0013FK/actual40counts/timerHTTP+strict12keyFILE.
+No passing reruns for approval. Focused2Python are real ASGI/TestClient fixtures, not standalone daemon;
+native94 supplies actual daemon/browser route evidence. Already-run468Py226warnings/237Node/92syntax/
+2focusedPy13Node/scopedPython-exacthandler/fixedRuff18BOTH remain the only fresh suite results.
+
+Explicit transferred ONLY109363/start817653/privatea1v5NK/18227 cleanup: BOTHpidfd capabilities, retained
+verified own pidfd after entire env/UID/cwd/cmd/exe/editable0700/health/source239/protected/fiveDocs/index/
+canonicaltimerHTTP+existingregularnonsymlinkEXACT12keyFILE/ro0013FK/ALL40counts/public40fields checks.
+First helper wrongly assumed optional source-definedsecret.key existed: FileNotFoundError BEFORE signal,
+STOP. Parent authorized read-only shallowfilename/source discovery and ONE separately named external
+storage enumeration correction (basename is correct, key generated only on first use; genuinely absent,
+no invented hash). Corrected invocation REOPENED retained pidfd/reverified ALL preflight checks; sole
+pidfdSIGTERM/exitpoll, immediate /proc-absence assertion FAILED, STOP. ONE parent-authorized read-only
+post-termination audit observed actual /proc109363ABSENT at13:36:28.080063UTC/socket18227errno111/health
+ConnectionRefusedError111/normal shutdown appended to exact original logprefix. Parent accepted actual
+later absence, not weaker zombie/not-live; both failures retained/no second signal/reap/restart/fallback.
+
+DB401408bytes SHAdf8e1a4868dded0cb2c254783c82deb46abc95b87272c9fae4a9cbcb6bbf775c and actual strict12key
+timer262bytes SHA22f50dc2d3e7acbb2d1043476bb0fd05afaef683270f0b1621ed6ef6c8365410 unchanged; key optional
+absent before/after, logs append-only/privateDB-timer-logs-venv retained. mode=ro/query_only0013_ai_data_scope/
+FK[]/ALLactualcounts exactly parent-after: Task40/task_search40/docsize40/data3/idx1/config1/Overview1/
+widgets9/status5/AIsettings1/migration1/EVERYotheractualtable0. After-stop40 DBIDs equal pre-signal public40
+snapshot (not post-stop HTTP). All239source/all11lanes HEAD-status-index-everyfile/owner228dirty unchanged.
+
+Only exactfive documents finalized; issue19 status/six original criterion boxes checked against
+[current bounded mapping/history](ticket-19-evidence.md#owner-approved-bounded-closure-and-current-gate-2026-11-06).
+Own2Doc625 prefixes preserved except approved issue status/checkboxes; historical drafts/approval/failures
+retained, new record appended. ONE normal exactsingleparent625 five-DOC commit; actual SHA/clean/tree-index-
+working/source239/preservation proofs in separate external `evidence/integrated-ticket-19/recovery-finisher-report.md`
+and `recovery.finisher-20261106-v1/`, original merger-report immutable. Sevencomplete18pending/frontier19→20/
+DAGunchanged does NOT release03/20 before fresh independent closure DOCStandards+Spec and parentdisposition.
+
+Routes/settingsBrowser,/settings/aiAI,/settings?category=providers; genericnavbar still/settings/ai until03,
+oldPrefs retained/Timerunintegrated/AIbehaviorCancel20/GroupedOutline06–07/SQL13performed14 deferred. Both
+13unit/TDD checkpoints NOTdonor/acceptedproduction/runtimeSQLpermission. SpecApprovedNOTBuilt; ALLknown
+Tasklight4.33/darkAI3.98986/NULL-emptycomparisonbaseline ambiguity/captionheuristic/initialization/manual
+physicaltouch-screenreader-otherengines-exhaustivezoom-motion-colors-a11y-humanvisual/autoscrolltiming/
+realSQLprovider/querycrossproduct/transportuncertainty-atomicity-idempotency-exactlyonce-crosstab/fixed82fabdc
+whole-delivery/adversarial/tuicr-human/devmerge gates UNWAIVED. No appimport/test/browser/syntax/lint/passing
+rerun/sourcefix/amend/pushPR/devmerge/humanwhole25 claim in this finisher. STOP fresh DOC reviews.
 
 ## Historical seed validation and safety
 
