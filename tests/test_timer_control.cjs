@@ -166,3 +166,23 @@ test('authoritative merged next schedule title is used instead of stale upcoming
     await p.run('fetchTimerStatus()');
     assert.match(p.context.document.title, /Projected occurrence/);
 });
+
+test('R09 startup receipt-storage failure stays visible after successful status and read-only Retry', async () => {
+    const storage = new Map();
+    storage.get = () => { throw Error('receipt storage denied'); };
+    const p = page(storage);
+    p.setStatus(stopped);
+    await p.run('fetchTimerStatus()');
+    assert.equal(p.elements.get('toggle_btn').disabled, true, 'unknown receipt keeps timer writes blocked');
+    assert.equal(p.elements.get('timer_recovery_notice').classList.contains('hidden'), false,
+        'INTENDED RED R09: successful status cannot hide the unresolved receipt-storage hold');
+    assert.match(p.elements.get('timer_notice_text').textContent, /storage.*unavailable/i);
+    assert.equal(p.elements.get('timer_manual_ack').classList.contains('hidden'), false);
+    await p.run('retryTimerRead()');
+    assert.equal(p.elements.get('timer_recovery_notice').classList.contains('hidden'), false);
+    await p.run('toggleTimer()');
+    assert.deepEqual(p.writes, [], 'Retry and blocked Start never replay or send a write');
+    await p.run('acknowledgeTimerVerification()');
+    assert.deepEqual(p.writes, [], 'explicit manual verification does not create timer/session work');
+    assert.equal(p.elements.get('toggle_btn').disabled, false, 'existing explicit verification clears the hold when storage permits removal');
+});

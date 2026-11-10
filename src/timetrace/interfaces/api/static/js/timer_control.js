@@ -47,7 +47,8 @@ function renderTimerState() {
     }
     const notice = document.getElementById('timer_recovery_notice');
     let message = timerNotice;
-    if (timerReceipt?.outcome === 'acknowledged') message = 'Timer write acknowledged. Status refresh is pending or failed. Retry reads only; do not repeat the write.';
+    if (timerReceipt?.operation === 'storage') message = 'Timer safety storage unavailable. Timer writes are blocked until storage is available.';
+    else if (timerReceipt?.outcome === 'acknowledged') message = 'Timer write acknowledged. Status refresh is pending or failed. Retry reads only; do not repeat the write.';
     else if (timerReceipt && timerReceipt.operation !== 'storage') {
         message = `Timer ${timerReceipt.operation} outcome uncertain; partial work may already be logged. Timer writes are blocked in this tab. Check and correct the interval in Calendar before acknowledging. No automatic retry.`;
         if (timerReceipt.start) message += ` Interval: ${timerReceipt.start} — ${timerReceipt.end || 'time of action'}.`;

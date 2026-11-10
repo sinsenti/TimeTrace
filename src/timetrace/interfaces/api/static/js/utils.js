@@ -361,11 +361,26 @@ async function promptDeleteSession(sessionId) {
     }
 }
 
+function restoreIdleRecoveryFocus(closedModal, ownedFocus) {
+    const recovery = document.getElementById('idle_resolution_modal');
+    if (!ownedFocus || !recovery || recovery.classList.contains('hidden')) return;
+    if (['recurring_delete_modal', 'recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+        const modal = document.getElementById(id);
+        return modal && !modal.classList.contains('hidden');
+    })) return;
+    // Hiding a focused control may move focus to body; never displace a newer editor/launcher.
+    if (document.activeElement !== document.body && document.activeElement !== document.documentElement &&
+        !closedModal.contains(document.activeElement)) return;
+    document.getElementById('idle_resolution_title')?.focus();
+}
+
 function closeRecurringDeleteModal() {
     deleteSessionRequest++;
     const modal = document.getElementById('recurring_delete_modal');
+    const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal?.contains(document.activeElement));
     if (modal) modal.classList.add('hidden');
     pendingDeleteSessionId = null;
+    restoreIdleRecoveryFocus(modal, ownedFocus);
 }
 
 async function confirmRecurringDelete(scope) {
@@ -662,12 +677,14 @@ function showRecurringResizeScopePrompt() {
         modal.classList.remove('hidden');
 
         const cleanup = () => {
+            const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal.contains(document.activeElement));
             modal.classList.add('hidden');
             onlyBtn.removeEventListener('click', onOnly);
             allBtn.removeEventListener('click', onAll);
             cancelBtn.removeEventListener('click', onCancel);
             if (closeBtn) closeBtn.removeEventListener('click', onCancel);
             document.removeEventListener('keydown', onKeyDown, true);
+            restoreIdleRecoveryFocus(modal, ownedFocus);
         };
 
         const finish = (value) => { cleanup(); resolve(value); };
@@ -709,10 +726,12 @@ function showCustomConfirm(title, message) {
         modal.classList.remove('hidden');
 
         const cleanup = () => {
+            const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal.contains(document.activeElement));
             modal.classList.add('hidden');
             cancelBtn.removeEventListener('click', onCancel);
             proceedBtn.removeEventListener('click', onProceed);
             document.removeEventListener('keydown', onKeyDown, true);
+            restoreIdleRecoveryFocus(modal, ownedFocus);
         };
 
         const onCancel = () => { cleanup(); resolve(false); };

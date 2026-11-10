@@ -497,3 +497,33 @@ for (const kind of ['custom', 'resize']) test(`R07-${kind} incoming Recovery yie
     assert.deepEqual(p.writes, [], 'no deletion, resolution, timer or idle write');
     assert.deepEqual(p.storageWrites, [], 'no Preferences persistence');
 });
+
+for (const kind of ['custom', 'resize', 'recurring']) for (const action of ['Escape', 'Cancel']) {
+    test(`R08-${kind}-${action} higher confirmation hands focus to Recovery and its Tab trap`, async t => {
+        const p = await page(t);
+        const pending = p.run(kind === 'custom' ? 'showCustomConfirm("Delete", "Cancel keeps the recorded interval")'
+            : kind === 'resize' ? 'showRecurringResizeScopePrompt()'
+                : 'promptDeleteSession("virt:01a1b22e-f818-70a6-a51c-e3f583bdec4b:20261101T100000")');
+        const modal = kind === 'custom' ? 'custom_confirm_modal' : kind === 'resize' ? 'recurring_resize_modal' : 'recurring_delete_modal';
+        const cancel = kind === 'recurring' ? p.button(modal, 'closeRecurringDeleteModal()')
+            : p.el(kind === 'custom' ? 'confirm_modal_cancel_btn' : 'recurring_resize_cancel_btn');
+        cancel.focus();
+        await p.pollGap();
+        assert.equal(p.document.activeElement, cancel, 'incoming Recovery still yields to the higher prompt');
+        if (action === 'Escape') p.key(cancel, 'Escape');
+        else cancel.click();
+        assert.equal(await pending, kind === 'custom' ? false : kind === 'resize' ? null : undefined);
+        assert.equal(p.hidden(modal), true);
+        assert.equal(p.hidden('idle_resolution_modal'), false);
+        assert.equal(p.document.activeElement.id, 'idle_resolution_title',
+            `INTENDED RED R08-${kind}-${action}: now-topmost Recovery must receive focus after cancellation`);
+        const backwards = p.key(p.document.activeElement, 'Tab', {shiftKey: true});
+        assert.equal(backwards.defaultPrevented, true);
+        assert.equal(p.el('idle_resolution_modal').contains(p.document.activeElement), true);
+        const forwards = p.key(p.document.activeElement, 'Tab');
+        assert.equal(forwards.defaultPrevented, true);
+        assert.equal(p.el('idle_resolution_modal').contains(p.document.activeElement), true);
+        assert.deepEqual(p.writes, [], 'cancellation/focus/Tab cannot write domain or timer state');
+        assert.deepEqual(p.storageWrites, []);
+    });
+}

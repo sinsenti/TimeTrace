@@ -88,3 +88,31 @@ Only this documentation completion text changed afterward. No Python edits/forma
 The NEW candidate native gate remains pending; these are not browser certifications.
 No commit, integration, acceptance, daemon or signals in this unit follow-up; old native checkpoints
 and blocked tails/other historical gaps remain unchanged and unwaived.
+
+## Independent 9caa553 review follow-up
+
+Standards reported0 concrete findings. Spec reported2 blockers, retained separately: P1 a storage
+receipt hold becomes invisible after successful status reads; P2 incoming Recovery yields focus but
+higher-confirmation cancellation never hands it to the now-topmost Recovery. No integration occurred.
+NEW worktree `ticket-03-storage-focus-followup` starts at9caa553; previous worktrees/commits/evidence stay
+unchanged. Existing test files retain complete9caa prefixes; appended R09storage and six R08focus cases
+failed FIRST7/7 at intended assertions, then passed FIRST7/7 with real handler/storage/DOM boundaries.
+The focus cases exercise Escape AND Cancel for custom/resize/recurring confirmations and explicit
+ShiftTab/Tab wrapping; no domain/idle/Preferences writes. They are unit adapter evidence, not browsers.
+
+Storage rendering now derives the existing persistent warning from its receipt rather than transient
+status text. No receipt replay or new verification policy. Existing confirmation cleanup captures
+whether it owned focus, then synchronously hands it to visible Recovery only if no other higher
+confirmation/newer focus owner wins. No observer/new modal registry/deferred focus callback, backend,
+schema, recurrence, dependency or provider change.
+
+Fresh private offline editable3.14.6/strict24env unit evidence:
+`evidence/ticket-03/review-followup-unit/run.fno_90ny`. First full Node run preserved262PASS/26FAIL:
+legacy partial-DOM Session fixtures omit optional Recovery and DOM.contains. Focus ownership was
+unnecessarily read on that no-Recovery path. A narrow Recovery-presence guard avoids that query;
+NO fixture/assertion changes or swallowed errors. New full-v2 receipts preserve the first run and
+verify483PythonPASS/226warnings,288canonicalNodePASS,99syntaxPASS, Ruff BOTH exact18baseline.
+All executable source stayed fixed during that complete pass; only this DOC completion followed.
+Native checks and fresh exact-commit two-axis review remain pending for this new source. Prior483/281/99/14 and their capture
+limits are historical, not inherited whole-current-source certification. No amend/reset/integration,
+app runtime, data/evidence deletion or merge permission is implied by these fixes.
