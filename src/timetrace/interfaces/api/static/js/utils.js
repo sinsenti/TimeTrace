@@ -261,9 +261,11 @@ window.addEventListener('keydown', function(e) {
             const modal = document.getElementById(id);
             return modal && !modal.classList.contains('hidden');
         })) return;
-        // Recovery owns Escape even when a Session beneath it is still open.
+        // Recovery owns Escape above Session, but not above the higher deletion prompt.
         const idleRecovery = document.getElementById('idle_resolution_modal');
-        if (idleRecovery && !idleRecovery.classList.contains('hidden')) return;
+        const recurringDelete = document.getElementById('recurring_delete_modal');
+        if (idleRecovery && !idleRecovery.classList.contains('hidden') &&
+            (!recurringDelete || recurringDelete.classList.contains('hidden'))) return;
         let closedAny = false;
         const focusBeforeClose = document.activeElement;
 

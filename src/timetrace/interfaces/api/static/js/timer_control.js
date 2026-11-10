@@ -203,6 +203,8 @@ function updateDocumentTitle() {
 // Shared by Calendar and Session Timer Now; status preflight is not a cross-client lock.
 async function performTimerAction(operation, payload, stillCurrent = () => true, recoveryLauncher = null) {
     if (timerActionPending || timerReceipt) { renderTimerState(); return false; }
+    const checkpoint = operation === 'resolve' && payload?.option === 're_tag' && typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint('idle_resolution_modal') : null;
     timerActionPending = true;
     ++timerReadVersion; // Invalidate a poll begun before this action.
     renderTimerState();
@@ -242,6 +244,7 @@ async function performTimerAction(operation, payload, stillCurrent = () => true,
             // The shared client cannot classify rejection versus partial commit/lost response.
             return false;
         }
+        checkpoint?.();
         timerReceipt.outcome = 'acknowledged';
         try { sessionStorage.setItem(timerReceiptKey, JSON.stringify(timerReceipt)); } catch (_) { /* Existing uncertain journal remains conservative on reload. */ }
         ++timerReadVersion;
@@ -282,7 +285,11 @@ function openIdleResolution(launcher = null) {
     if (modal.classList.contains('hidden')) {
         if (!launcher) timerRecoveryLauncher = document.activeElement;
         modal.classList.remove('hidden');
-        document.getElementById('idle_resolution_title')?.focus();
+        const higherConfirmationOpen = ['recurring_delete_modal', 'recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+            const confirmation = document.getElementById(id);
+            return confirmation && !confirmation.classList.contains('hidden');
+        });
+        if (!higherConfirmationOpen) document.getElementById('idle_resolution_title')?.focus();
     }
     renderTimerState();
 }
@@ -367,11 +374,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const modal = document.getElementById('idle_resolution_modal');
     const notice = document.getElementById('timer_recovery_notice');
     // Navbar lives inside headers; recovery must escape their stacking/scroll/clipping context.
-    if (modal) document.body.append(modal);
+    if (modal) {
+        document.body.append(modal);
+        modal.dataset.settingsDraftRetained = 'true';
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('idle_resolution_modal');
+    }
     if (notice) document.body.append(notice);
     window.addEventListener('keydown', e => {
-        if (!modal || modal.classList.contains('hidden') || !['Escape', 'Esc'].includes(e.key)) return;
-        if (['recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+        // Earlier window capture can consume Escape without stopping later listeners here.
+        if (e.defaultPrevented || !modal || modal.classList.contains('hidden') || !['Escape', 'Esc'].includes(e.key)) return;
+        if (['recurring_delete_modal', 'recurring_resize_modal', 'custom_confirm_modal'].some(id => {
             const confirmation = document.getElementById(id);
             return confirmation && !confirmation.classList.contains('hidden');
         })) return;
@@ -380,6 +392,8 @@ document.addEventListener('DOMContentLoaded', () => {
         closeIdleResolution();
     }, true);
     modal?.addEventListener('keydown', e => {
+        // Recovery typing must not submit Preferences or another underlying editor.
+        if (e.ctrlKey && e.key === 'Enter') e.stopPropagation();
         if (e.key === 'Tab') {
             const controls = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), a[href]')]
                 .filter(el => el.offsetParent !== null);
