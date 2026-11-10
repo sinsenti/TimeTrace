@@ -527,3 +527,33 @@ for (const kind of ['custom', 'resize', 'recurring']) for (const action of ['Esc
         assert.deepEqual(p.storageWrites, []);
     });
 }
+
+test('R10 late resolution ACK cannot restore an old launcher after Recovery was already dismissed', async t => {
+    const p = await page(t);
+    openPreferences(p);
+    const oldLauncher = p.el('setting_first_day');
+    oldLauncher.focus();
+    await p.pollGap();
+    p.type('#captured', 'Explicitly submitted before early close');
+    const ack = deferred();
+    p.postGate = ack;
+    p.button('idle_resolution_modal', "resolveIdleGap('re_tag')").click();
+    await tick();
+    assert.equal(p.writes.length, 1, 'one explicit submitted resolution is awaiting its ACK');
+    p.key(p.document.activeElement, 'Escape');
+    assert.equal(p.hidden('idle_resolution_modal'), true);
+    assert.equal(p.document.activeElement, oldLauncher, 'the actual first dismissal restores its own launcher');
+    const newer = p.el('setting_slot_duration');
+    newer.focus();
+    assert.equal(p.document.activeElement, newer);
+    ack.resolve();
+    await tick();
+    assert.equal(p.run('timerActionPending'), false);
+    assert.equal(p.document.activeElement === newer, true,
+        'INTENDED RED R10: a second asynchronous close cannot displace newer focus after dismissal');
+    assert.equal(p.hidden('idle_resolution_modal'), true);
+    assert.equal(p.hidden('settings_modal'), false);
+    assert.deepEqual(p.writes, [{method: 'POST', url: '/idle/resolve', body: {
+        option: 're_tag', new_tags: '#captured', new_notes: 'Explicitly submitted before early close'}}]);
+    assert.deepEqual(p.storageWrites.filter(write => write.kind === 'local'), [], 'no Preferences autosave');
+});

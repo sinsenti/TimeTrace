@@ -297,8 +297,10 @@ function openIdleResolution(launcher = null) {
 
 function closeIdleResolution() {
     const modal = document.getElementById('idle_resolution_modal');
+    const wasOpen = modal && !modal.classList.contains('hidden');
     modal?.classList.add('hidden');
     timerDismissedGap = timerGapIdentity(lastTimerData);
+    if (!wasOpen) return; // Late ACK/refresh must not restore a dismissed owner's old launcher.
     const launcher = typeof timerRecoveryLauncher === 'function' ? timerRecoveryLauncher() : timerRecoveryLauncher;
     if (launcher?.isConnected && !launcher.disabled) launcher.focus();
     else document.getElementById('timer_recovery_open')?.focus();

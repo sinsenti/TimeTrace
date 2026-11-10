@@ -116,3 +116,24 @@ All executable source stayed fixed during that complete pass; only this DOC comp
 Native checks and fresh exact-commit two-axis review remain pending for this new source. Prior483/281/99/14 and their capture
 limits are historical, not inherited whole-current-source certification. No amend/reset/integration,
 app runtime, data/evidence deletion or merge permission is implied by these fixes.
+
+## f2990d9 Spec late-ACK focus follow-up
+
+Fresh Spec review confirmed P1/P2 repairs but identified a Combined-only late-ACK race: dismissing
+pending Recovery and selecting another editor field was undone when completion closed the already
+hidden modal again and restored its old launcher. Standards review was still completing pagination
+when this separate follow-up began; no exhaustive Standards pass is inferred from partial reads.
+NEW worktree `ticket-03-late-ack-focus` atf2990d9 preserves previous source/commits/evidence unchanged.
+R10 appends to the COMPLETE previous regression file; actual Preferences/modal/status/held-ACK public
+seam reproduces old-launcher focus theft FIRST1RED, then FIRST1GREEN. Closing an already-hidden
+Recovery still updates dismissal bookkeeping but performs no focus restoration; ordinary first-close
+launcher behavior is retained. No new registry, deferred callback, API write/replay or policy.
+
+Fresh private offline editable3.14.6/strict24env evidence:
+`evidence/ticket-03/late-ack-unit/run.p12xesrp`. Complete NEW-source verification passed483Python/
+226warnings,289canonicalNode(includes prior288+new1, not additive),99syntax, actualRuff exit1 with18
+baseline findings+warning BOTHstreams exact. All444 source files stable during suites; only this DOC
+completion afterward. The f299 Standards artifact later returned PARTIAL/BLOCKED for incomplete read
+coverage/context limits, not a clean Standards pass; it remains preserved alongside the Spec finding.
+Native held-real-ACK Session case and fresh exact-commit reviews remain pending. These unit adapter results do not certify the
+native Session scenario or retroactively change f2990d9 review/capture limits. No merge/push.
