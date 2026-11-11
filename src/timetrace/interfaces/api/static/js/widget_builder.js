@@ -210,9 +210,12 @@ async function openWidgetEditor(dashboardId, widgetId) {
         wbSwitchMode('sql');
         wbOnSqlChartChange();
         if (spec.sql.label_column || spec.sql.value_column) {
-            // The column pickers are populated from a preview run; remember the saved choice
-            // so the run below can re-select it.
+            // Saved choices own the form immediately; preview only enriches the options.
             _wbPendingColumns = { label: spec.sql.label_column, value: spec.sql.value_column };
+            ['wb_sql_label_column', 'wb_sql_value_column'].forEach(id => _fillSelect(document.getElementById(id), [], 'None'));
+            _wbSetValue('wb_sql_label_column', spec.sql.label_column || '');
+            _wbSetValue('wb_sql_value_column', spec.sql.value_column || '');
+            wbOnSqlChartChange();
             wbRunSqlPreview();
         }
     } else if (spec && spec.mode === 'structured') {
@@ -391,7 +394,8 @@ let _wbSqlColumns = [];
 function wbOnSqlChartChange() {
     const chart = _wbValue('wb_sql_chart');
     const needsColumns = chart !== 'table';
-    document.getElementById('wb_sql_columns').classList.toggle('hidden', !needsColumns || _wbSqlColumns.length === 0);
+    const hasChoices = _wbSqlColumns.length > 0 || _wbValue('wb_sql_label_column') || _wbValue('wb_sql_value_column');
+    document.getElementById('wb_sql_columns').classList.toggle('hidden', !needsColumns || !hasChoices);
 }
 
 async function wbLoadSqlSchema() {
@@ -438,13 +442,15 @@ async function wbRunSqlPreview() {
     const errorBox = document.getElementById('wb_error');
     errorBox.classList.add('hidden');
     const meta = document.getElementById('wb_sql_meta');
+    document.getElementById('wb_sql_preview').classList.add('hidden');
+    meta.innerText = 'Loading SQL preview…';
 
     let result;
     try {
         result = await api.post('/analytics/sql', spec);
     } catch (err) {
         if (!current()) return null;
-        meta.innerText = '';
+        meta.innerText = 'Preview unavailable. Your inputs are retained; run preview again to retry.';
         _wbShowError(err.message || 'That query could not be run.');
         return null;
     }
@@ -478,8 +484,10 @@ async function wbRunSqlPreview() {
     });
 
     document.getElementById('wb_sql_preview').classList.remove('hidden');
-    const notes = [`${result.row_count} row(s) in ${result.elapsed_ms}ms`].concat(result.warnings || []);
-    meta.innerText = notes.join(' - ');
+    const notes = [`${result.row_count} row(s) in ${result.elapsed_ms}ms`];
+    if ((result.rows || []).length > 20) notes.push('Showing the first 20 preview rows.');
+    if (result.truncated) notes.push('The server truncated this result at the row limit.');
+    meta.innerText = notes.concat(result.warnings || []).join(' - ');
 
     const pendingColumns = _wbPendingColumns;
     const colOptions = _wbSqlColumns.map(c => ({ value: c, label: c }));
@@ -491,7 +499,7 @@ async function wbRunSqlPreview() {
         _wbPendingColumns = null;
     }
     columnDrafts.forEach(({id, value, dirty}) => {
-        if (dirty || (!pendingColumns && _wbSqlColumns.includes(value))) _wbSetValue(id, value);
+        if (dirty || !pendingColumns) _wbSetValue(id, value);
         if (!dirty && typeof rememberSettingsDraft === 'function') rememberSettingsDraft('widget_builder_modal', `#${id}`);
     });
     wbOnSqlChartChange();
@@ -514,7 +522,12 @@ function _wbSqlSpec() {
 
 // ---- Save ----
 
-function wbInvalidatePreview() {
+function wbInvalidatePreview(event) {
+    if (['wb_sql', 'wb_sql_limit', 'wb_sql_chart'].includes(event?.target?.id)) {
+        ++wbSqlPreviewGeneration;
+        document.getElementById('wb_sql_preview').classList.add('hidden');
+        document.getElementById('wb_sql_meta').innerText = 'Inputs changed. Run SQL preview to update the result.';
+    }
     ++wbPreviewGeneration;
     const box = document.getElementById('wb_preview_result');
     if (!box.classList.contains('hidden')) box.textContent = 'Inputs changed. Run query preview to update the result.';

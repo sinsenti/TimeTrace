@@ -84,64 +84,31 @@
                 </details>
             </div>
             <!-- ---------------- SQL mode ---------------- -->
-            <div id="wb_pane_sql" class="space-y-3 hidden">
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Query <span class="text-slate-500 font-normal">(read-only, single SELECT statement, no parameters)</span></label>
-                    <textarea id="wb_sql" rows="7" spellcheck="false" placeholder="SELECT date(start_time) AS day, round(sum(duration_seconds)/3600.0, 2) AS hours&#10;FROM session&#10;GROUP BY day&#10;ORDER BY day"
-                              class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded font-mono text-[11px] focus:outline-none"></textarea>
+            <div id="wb_pane_sql" class="hidden">
+                <label for="wb_sql">SQL query</label>
+                <p id="wb_sql_help" class="wb-hint">Read-only, single SELECT statement; no parameters. SQL owns its date filters and bucketing expressions; stored timestamps are UTC. Structured range, comparison and timezone controls do not apply.</p>
+                <textarea id="wb_sql" rows="7" spellcheck="false" aria-describedby="wb_sql_help wb_sql_shortcuts" placeholder="SELECT title FROM task ORDER BY title"></textarea>
+                <p id="wb_sql_shortcuts" class="wb-hint">In the query: Enter inserts a newline; Ctrl+Enter runs preview, not Save. Escape cancels. Preview only reads; use Add Widget or Save Widget to persist edits.</p>
+                <div class="wb-sql-actions">
+                    <div><label for="wb_sql_limit">Row limit</label><input id="wb_sql_limit" type="number" min="1" value="200" aria-describedby="wb_sql_resources"></div>
+                    <div><label for="wb_sql_chart">Chart</label><select id="wb_sql_chart" onchange="wbOnSqlChartChange()">
+                        <option value="table" selected>Table</option><option value="bar">Bar</option>
+                        <option value="line">Line</option><option value="doughnut">Doughnut</option>
+                    </select></div>
+                    <button type="button" onclick="wbRunSqlPreview()">Run preview</button>
                 </div>
-
-                <div class="grid grid-cols-3 gap-2">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Row limit</label>
-                        <input id="wb_sql_limit" type="number" min="1" value="200"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Chart</label>
-                        <select id="wb_sql_chart" onchange="wbOnSqlChartChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="table" selected>Table</option>
-                            <option value="bar">Bar</option>
-                            <option value="line">Line</option>
-                            <option value="doughnut">Doughnut</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end">
-                        <button type="button" onclick="wbRunSqlPreview()"
-                                class="w-full h-[30px] bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold rounded transition">
-                            Run preview
-                        </button>
-                    </div>
+                <p id="wb_sql_resources" class="wb-hint">Server row, query-length and time limits still apply. Preview displays at most the first 20 returned rows; status reports returned row count and resource warnings. Run preview again to retry a failed read.</p>
+                <div id="wb_sql_columns" class="wb-sql-columns hidden">
+                    <div><label for="wb_sql_label_column">Label column</label><select id="wb_sql_label_column"></select></div>
+                    <div><label for="wb_sql_value_column">Value column</label><select id="wb_sql_value_column"></select></div>
                 </div>
-
-                <div id="wb_sql_columns" class="grid grid-cols-2 gap-2 hidden">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Label column</label>
-                        <select id="wb_sql_label_column"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Value column</label>
-                        <select id="wb_sql_value_column"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
+                <div id="wb_sql_meta" class="wb-hint" role="status" aria-live="polite" aria-atomic="true"></div>
+                <div id="wb_sql_preview" class="hidden" role="region" aria-label="SQL preview rows" tabindex="0">
+                    <table><thead><tr id="wb_sql_preview_head"></tr></thead><tbody id="wb_sql_preview_body"></tbody></table>
                 </div>
-
-                <div id="wb_sql_preview" class="hidden bg-[#0f1016] border border-[var(--border-muted)] rounded-lg p-2 max-h-56 overflow-auto">
-                    <table class="w-full text-[11px] text-slate-300">
-                        <thead><tr id="wb_sql_preview_head" class="text-slate-400 font-bold"></tr></thead>
-                        <tbody id="wb_sql_preview_body"></tbody>
-                    </table>
-                </div>
-                <div id="wb_sql_meta" class="text-[11px] text-slate-500"></div>
-
-                <div class="border border-[var(--border-muted)] rounded-lg">
-                    <button type="button" onclick="wbToggleSchema()"
-                            class="w-full text-left px-2.5 py-1.5 font-bold text-slate-300 hover:text-white">
-                        Schema reference
-                    </button>
-                    <div id="wb_sql_schema" class="hidden px-2.5 pb-2 max-h-48 overflow-auto text-[11px] text-slate-400 font-mono space-y-1"></div>
+                <div class="wb-sql-schema">
+                    <button type="button" onclick="wbToggleSchema()" aria-controls="wb_sql_schema">Schema reference</button>
+                    <div id="wb_sql_schema" class="hidden"></div>
                 </div>
             </div>
 

@@ -888,6 +888,9 @@ function renderSqlWidget(widget, sqlResult) {
     const chart = spec ? (spec.chart || 'table') : 'table';
     const labelColumn = spec ? spec.label_column : null;
     const valueColumn = spec ? spec.value_column : null;
+    const notes = [];
+    if (sqlResult.truncated) notes.push(`Showing the first ${sqlResult.row_count} rows.`);
+    (sqlResult.warnings || []).forEach(w => notes.push(w));
 
     if (chart !== 'table' && labelColumn && valueColumn) {
         const labelIdx = sqlResult.columns.indexOf(labelColumn);
@@ -908,7 +911,9 @@ function renderSqlWidget(widget, sqlResult) {
                 meta: { totals_overlap: false },
                 comparison: null
             };
-            return renderChartWidget(widget, pseudoResult, null);
+            const card = renderChartWidget(widget, pseudoResult, null);
+            if (notes.length) card.appendChild(_el('div', 'text-[10px] text-amber-400', notes.join(' ')));
+            return card;
         }
     }
 
@@ -949,9 +954,6 @@ function renderSqlWidget(widget, sqlResult) {
     wrap.appendChild(table);
     card.appendChild(wrap);
 
-    const notes = [];
-    if (sqlResult.truncated) notes.push(`Showing the first ${sqlResult.row_count} rows.`);
-    (sqlResult.warnings || []).forEach(w => notes.push(w));
     if (notes.length) card.appendChild(_el('div', 'text-[10px] text-amber-400', notes.join(' ')));
 
     return card;

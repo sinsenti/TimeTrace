@@ -35,7 +35,18 @@
 :root[data-appearance="light"] #widget_builder_modal #wb_error { color: #a32e36; }
 #widget_builder_modal .wb-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--border-color); }
 #widget_builder_modal .wb-footer > span { margin-right: auto; }
+#wb_pane_sql { min-width: 0; }
+#widget_builder_modal #wb_sql { font-family: ui-monospace, monospace; font-size: 12px; resize: vertical; }
+#widget_builder_modal #wb_sql::placeholder { color: var(--text-muted); opacity: 1; }
+#wb_pane_sql :is(.wb-sql-actions, .wb-sql-columns) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
+#wb_pane_sql .wb-sql-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; }
+#wb_pane_sql .wb-sql-schema { border: 1px solid var(--border-muted); border-radius: 5px; padding: 8px; margin-top: 14px; }
+#wb_pane_sql #wb_sql_schema { max-height: 200px; overflow: auto; overflow-wrap: anywhere; font: 12px/1.7 ui-monospace, monospace; color: var(--text-main); }
+#wb_pane_sql #wb_sql_schema span { color: inherit; }
+#wb_pane_sql :is(textarea, input, select, button):focus-visible { outline: 2px solid var(--text-main); outline-offset: 2px; }
 @media (max-width: 520px) {
+    #wb_pane_sql :is(.wb-sql-actions, .wb-sql-columns) { grid-template-columns: minmax(0, 1fr); }
+    #wb_pane_sql .wb-sql-actions button { margin-top: 12px; }
     #widget_builder_modal { padding: 8px; }
     #widget_builder_modal .wb-dialog { max-height: calc(100dvh - 16px); }
     #widget_builder_modal :is(.wb-header, .wb-body, .wb-footer) { padding: 12px 14px; }
