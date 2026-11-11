@@ -137,8 +137,11 @@ def _resolve_date_range(query: AnalyticsQuery, tz: ZoneInfo, first_day_of_week: 
     elif preset == RangePreset.CUSTOM:
         if not dr.start_date or not dr.end_date:
             raise ValidationError("date_range.preset=custom requires both start_date and end_date")
-        start_date = date.fromisoformat(dr.start_date)
-        end_date = date.fromisoformat(dr.end_date)
+        try:
+            start_date = date.fromisoformat(dr.start_date)
+            end_date = date.fromisoformat(dr.end_date)
+        except ValueError as e:
+            raise ValidationError("date_range.start_date and end_date must be valid ISO dates") from e
         if end_date < start_date:
             raise ValidationError("date_range.end_date must not be before start_date")
     else:
