@@ -336,3 +336,59 @@ test('SQL Settings link is hidden in structured mode and when SQL is disabled', 
     assert.equal(link.getClientRects().length, 0);
     assert.equal(b.writes().length, 0);
 });
+
+// Explicit deferred-change adapter, not a claim that this DOM implements native textarea blur.
+for (const [field, value] of [
+    ['wb_sql', 'SELECT title, 3 AS amount FROM task ORDER BY title'],
+    ['wb_sql_limit', '12'],
+    ['wb_sql_chart', 'line']
+]) test(`deferred SQL change for ${field} retains completed preview across Settings Cancel`, async () => {
+    const b = browser(async () => b.responseA, () => false);
+    await b.load(); await b.open();
+    b.change(field, value);
+    b.el('wb_sql').focus();
+    b.el('wb_sql').dispatchEvent({ type: 'keydown', key: 'Enter', ctrlKey: true, bubbles: true,
+        preventDefault() {}, stopPropagation() {} });
+    await tick();
+    assert.equal(b.el('wb_sql_preview').classList.contains('hidden'), false);
+    const before = sqlDraftSnapshot(b), requests = b.requests.length;
+    b.el(field).dispatchEvent({ type: 'change', bubbles: true });
+    b.el('wb_sql_settings_link').focus();
+    assert.equal(settingsDeparture(b), false);
+    assert.deepEqual(b.confirmations, ['Leave this page and discard unsaved changes?']);
+    assert.equal(sqlDraftSnapshot(b), before, 'unchanged deferred change must not hide or relabel current preview');
+    assert.equal(b.requests.length, requests, 'blur and Cancel must not query or persist');
+    assert.equal(b.writes().length, 0);
+    b.check();
+});
+
+test('deferred SQL change preserves an unchanged pending preview request', async () => {
+    const held = deferred();
+    const b = browser(async () => held.promise);
+    await b.load(); await b.open();
+    b.change('wb_sql', 'SELECT title, 3 AS amount FROM task ORDER BY title');
+    const pending = b.run('wbRunSqlPreview()'); await tick();
+    b.el('wb_sql').dispatchEvent({ type: 'change', bubbles: true });
+    held.resolve({ ...b.responseA, rows: [['pending-current', 3]] });
+    await pending;
+    assert.equal(b.el('wb_sql_preview').classList.contains('hidden'), false, 'duplicate change must not revoke unchanged request');
+    assert.match(b.el('wb_sql_preview_body').textContent, /pending-current/);
+    assert.equal(b.writes().length, 0);
+    b.check();
+});
+
+for (const restore of [false, true]) test(`deferred SQL control genuine edit${restore ? ' and restore' : ''} still revokes pending result`, async () => {
+    const held = deferred();
+    const b = browser(async () => held.promise);
+    await b.load(); await b.open();
+    const sql = b.el('wb_sql').value;
+    const pending = b.run('wbRunSqlPreview()'); await tick();
+    b.change('wb_sql', sql + ' ORDER BY title');
+    if (restore) b.change('wb_sql', sql);
+    held.resolve({ ...b.responseA, rows: [['must-not-resurrect', 3]] });
+    await pending;
+    assert.equal(b.el('wb_sql_preview').classList.contains('hidden'), true);
+    assert.doesNotMatch(b.el('wb_sql_preview_body').textContent, /must-not-resurrect/);
+    assert.equal(b.writes().length, 0);
+    b.check();
+});

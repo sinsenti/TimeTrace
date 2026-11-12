@@ -26,6 +26,7 @@ let wbSavePending = false;
 let wbUnreadable = false;
 let wbPreviewGeneration = 0;
 let wbSqlPreviewGeneration = 0;
+let wbSqlInputIdentity = null;
 let wbSelectionAtOpen = null;
 
 function _wbSelection() {
@@ -87,6 +88,10 @@ function _wbValue(id) {
     return el ? el.value : '';
 }
 
+function _wbSqlInputIdentity() {
+    return JSON.stringify([_wbValue('wb_sql'), _wbValue('wb_sql_limit'), _wbValue('wb_sql_chart')]);
+}
+
 function _wbShowError(message) {
     const box = document.getElementById('wb_error');
     box.innerText = message;
@@ -94,6 +99,7 @@ function _wbShowError(message) {
 }
 
 function _wbResetForm() {
+    wbSqlInputIdentity = null;
     wbReady = false;
     wbUnreadable = false;
     _wbUpdateSaveButton();
@@ -436,9 +442,9 @@ async function wbRunSqlPreview() {
     const request = ++wbSqlPreviewGeneration;
     const selection = _wbSelection();
     const spec = _wbSqlSpec();
-    const identity = () => JSON.stringify([_wbValue('wb_sql'), _wbValue('wb_sql_limit'), _wbValue('wb_sql_chart')]);
-    const snapshot = identity();
-    const current = () => generation === wbOpenGeneration && request === wbSqlPreviewGeneration && selection === _wbSelection() && snapshot === identity();
+    const snapshot = _wbSqlInputIdentity();
+    wbSqlInputIdentity = snapshot;
+    const current = () => generation === wbOpenGeneration && request === wbSqlPreviewGeneration && selection === _wbSelection() && snapshot === _wbSqlInputIdentity();
     const errorBox = document.getElementById('wb_error');
     errorBox.classList.add('hidden');
     const meta = document.getElementById('wb_sql_meta');
@@ -523,7 +529,9 @@ function _wbSqlSpec() {
 // ---- Save ----
 
 function wbInvalidatePreview(event) {
-    if (['wb_sql', 'wb_sql_limit', 'wb_sql_chart'].includes(event?.target?.id)) {
+    if (['wb_sql', 'wb_sql_limit', 'wb_sql_chart'].includes(event?.target?.id) && _wbSqlInputIdentity() !== wbSqlInputIdentity) {
+        // Textarea change arrives on blur, possibly after Ctrl+Enter already previewed this input.
+        wbSqlInputIdentity = _wbSqlInputIdentity();
         ++wbSqlPreviewGeneration;
         document.getElementById('wb_sql_preview').classList.add('hidden');
         document.getElementById('wb_sql_meta').innerText = 'Inputs changed. Run SQL preview to update the result.';

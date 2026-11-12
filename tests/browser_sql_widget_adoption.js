@@ -266,10 +266,73 @@ async (page, baseURL) => {
             check(JSON.stringify(after) === JSON.stringify(departureBefore) && await p.locator('#widget_builder_modal').isVisible(), `Native Settings ${activation} Cancel retains SQL draft and preview`, attempt);
             check(mutations.length === 0, `Native Settings ${activation} Cancel makes no persistence write`, mutations);
         }
+        // Fresh native edit while focused: unlike the settled-input checks above, do not blur before Ctrl+Enter.
+        evidence.deferredBlurDeparture = { attempts: [], unattempted: [] };
+        await p.locator('#wb_sql').evaluate(el => {
+            window.sql13BlurEvents = [];
+            for (const type of ['input', 'change', 'blur']) el.addEventListener(type, event => {
+                window.sql13BlurEvents.push({ type, trusted: event.isTrusted, value: el.value });
+            });
+        });
+        for (const activation of ['pointer', 'keyboard']) {
+            const editedSQL = longSQL + ` /* deferred-${activation} */`;
+            const editEventStart = await p.evaluate(() => window.sql13BlurEvents.length);
+            await p.locator('#wb_sql').fill(editedSQL);
+            const completed = await preview();
+            check(completed.status === 200 && completed.request.sql === editedSQL && completed.request.limit === 3 && completed.request.chart === 'bar' &&
+                JSON.stringify(completed.data.columns) === JSON.stringify(departureColumns) && JSON.stringify(completed.data.rows) === JSON.stringify(departureRows) &&
+                completed.data.row_count === 3 && completed.data.truncated === false && JSON.stringify(completed.data.warnings) === '[]',
+            `Deferred ${activation} CtrlEnter returns exact successful preview`, completed);
+            const expected = { ...departureDOM, sql: editedSQL, meta: `3 row(s) in ${completed.data.elapsed_ms}ms` };
+            await p.waitForFunction(expected => {
+                const view = document.getElementById('wb_sql_preview');
+                return document.activeElement.id === 'wb_sql' && view.getClientRects().length > 0 &&
+                    document.getElementById('wb_sql').value === expected.sql && document.getElementById('wb_sql_limit').value === '3' && document.getElementById('wb_sql_chart').value === 'bar' &&
+                    JSON.stringify(Array.from(document.querySelectorAll('#wb_sql_preview_head th')).map(el => el.textContent)) === JSON.stringify(expected.columns) &&
+                    JSON.stringify(Array.from(document.querySelectorAll('#wb_sql_preview_body tr')).map(tr => Array.from(tr.cells).map(td => td.textContent))) === JSON.stringify(expected.rows) &&
+                    document.getElementById('wb_sql_meta').textContent === expected.meta && document.getElementById('wb_error').classList.contains('hidden');
+            }, expected);
+            const before = { fields: await fields(), preview: await previewFields(), url: p.url() };
+            const beforeEvents = await p.evaluate(start => window.sql13BlurEvents.slice(start), editEventStart);
+            check(beforeEvents.some(e => e.type === 'input' && e.trusted && e.value === editedSQL) && !beforeEvents.some(e => ['change', 'blur'].includes(e.type)),
+                `Deferred ${activation} starts with trusted edited SQL and no committed blur`, beforeEvents);
+            const eventStart = await p.evaluate(() => window.sql13BlurEvents.length), requestStart = requests.length;
+            if (activation === 'keyboard') {
+                const order = await p.locator('#widget_builder_modal').evaluate(modal => Array.from(modal.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]'))
+                    .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length).map(el => el.id || el.getAttribute('aria-label') || el.tagName));
+                const from = order.indexOf('wb_sql'), to = order.indexOf('wb_sql_settings_link');
+                check(from >= 0 && to > from, 'Deferred keyboard has a forward native Tab path from SQL to Settings', order);
+                for (let i = from; i < to; i++) await p.keyboard.press('Tab');
+                check(await settingsLink.evaluate(el => el === document.activeElement), 'Deferred native Tab reaches Settings without helper focus');
+            }
+            const [dialog] = await Promise.all([
+                p.waitForEvent('dialog').then(async d => { const value = { type: d.type(), message: d.message() }; await d.dismiss(); return value; }),
+                activation === 'pointer' ? settingsLink.click() : settingsLink.press('Enter')
+            ]);
+            const after = { fields: await fields(), preview: await previewFields(), url: p.url() };
+            const events = await p.evaluate(start => window.sql13BlurEvents.slice(start), eventStart);
+            const effects = requests.slice(requestStart).filter(r => r.path === '/analytics/sql' || ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method));
+            const attempt = { activation, completed, before, beforeEvents, after, dialog, events, effects };
+            evidence.deferredBlurDeparture.attempts.push(attempt);
+            check(events.some(e => e.type === 'change' && e.trusted && e.value === editedSQL) && events.some(e => e.type === 'blur' && e.trusted),
+                `Deferred ${activation} departure commits actual native SQL change and blur`, events);
+            check(dialog.type === 'confirm' && dialog.message === 'Leave this page and discard unsaved changes?', `Deferred ${activation} opens existing confirmation`, dialog);
+            check(effects.length === 0, `Deferred ${activation} blur and Cancel make no query or write`, effects);
+            const retained = JSON.stringify(after) === JSON.stringify(before) && await p.locator('#widget_builder_modal').isVisible();
+            const retentionName = `Deferred ${activation} Settings Cancel retains completed preview and draft`;
+            checks.push({ name: retentionName, passed: retained, data: attempt });
+            if (!retained) {
+                failures.push({ message: retentionName, type: 'deferred-preview-retention' });
+                evidence.deferredBlurDeparture.unattempted = activation === 'pointer' ? ['keyboard'] : [];
+                break; // Keep the failure, but still execute every original Escape/error/readback check below.
+            }
+        }
         await p.locator('#wb_sql').press('Escape');
         check(await p.locator('#widget_builder_modal').evaluate(el => el.classList.contains('hidden')) && await p.evaluate(() => !!document.activeElement.closest('.canvas-widget-controls, .canvas-actions')), 'Native Escape closes SQL editor and restores surviving launcher focus');
         check(errors.length === 0, 'No uncaught SQL native page errors', errors);
-        evidence.finalReadback = await detail(); evidence.verdict = unrun.length ? 'PASS_SCOPED_WITH_UNRUN' : 'PASS';
+        evidence.finalReadback = await detail();
+        check(evidence.finalReadback.id === dashboard.id, 'Native final public readback completes after departure checks', evidence.finalReadback);
+        evidence.verdict = failures.length ? 'FAIL' : unrun.length ? 'PASS_SCOPED_WITH_UNRUN' : 'PASS';
     } catch (error) {
         failures.push({ message: error.message, stack: error.stack }); evidence.verdict = 'FAIL';
         evidence.failureURL = p.url(); evidence.failureFields = await fields().catch(e => ({ inspectionError: e.message }));

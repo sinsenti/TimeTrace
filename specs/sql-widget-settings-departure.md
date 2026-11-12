@@ -19,10 +19,15 @@ No schema, migration, backfill, JSON endpoint, query resource limit, identifier 
 
 ## Layers
 - Template: `interfaces/api/templates/components/widget_builder_modal.html`, SQL pane only.
-- JS: `interfaces/api/static/js/widget_builder.js`, existing focusable selector only unless a reproduced scoped defect requires a separate decision.
+- JS: `interfaces/api/static/js/widget_builder.js`, existing focusable selector plus the conditionally approved narrow deferred-blur repair below. No other preview or navigation redesign.
 - Existing guard: `interfaces/api/static/js/settings.js:followSettingsLink`, reused unchanged.
 - Tests: focused widget keyboard/draft regressions and a new actual native caller check; preserve the earlier probe and raw receipts as historical evidence.
 - Core/services/routers/models/CLI: unchanged.
+
+## Deferred-blur follow-up approval
+Owner: “continue according to your recommendation” after the explicit request to reproduce the independently reported Ctrl+Enter → blur → Settings Cancel edge, then narrowly repair preview invalidation if confirmed. Approval is conditional on reproduction, not a claim that the browser sequence has already been executed. Preserve the original clean `5dc48b7` worktree and receipts.
+
+An unchanged SQL/limit/chart deferred `change` MUST NOT revoke a current pending request or completed preview. Genuine input edits MUST still invalidate immediately; editing away and back MUST NOT resurrect an obsolete response. Add meaningful first-failing regressions and fresh native pointer/TabEnter Cancel coverage with newly edited, still-focused SQL and a completed Ctrl+Enter preview. No automatic queries/saves, new global guard, shortcut, confirmation policy or structured-builder redesign. Existing fresh-isolation, shutdown, evidence and independent-review requirements apply. Historical settled-input native passes remain valid, not proof of this additional ordering.
 
 ## Edge cases
 Cancel with dirty or clean inputs; visible/hidden SQL pane and SQL-disabled UI; native pointer versus keyboard activation; Tab/Shift+Tab boundaries; delayed preview/Save ownership unchanged. Running/frozen timers remain file state and must not be toggled by navigation. No alternate route if a native dialog or transport check fails.
