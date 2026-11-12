@@ -13,7 +13,7 @@ const deferred = () => {
 
 // Owned DOM adapter: actual template descendants, native select selectedness and bubbling.
 // No builder, draft, save or preview business handlers are replaced.
-function browser(preview) {
+function browser(preview, confirmDecision = () => true) {
     let context;
     const events = new Map();
     const document = { activeElement: null };
@@ -88,6 +88,7 @@ function browser(preview) {
             if (s.startsWith('#')) return this.id === s.slice(1);
             if (s.startsWith('.')) return this.classList.contains(s.slice(1));
             if (s === '[data-widget-id]') return !!this.dataset.widgetId;
+            if (s === 'a[href]') return this.tagName === 'A' && this.getAttribute('href') !== null;
             return this.tagName.toLowerCase() === s;
         }
         querySelector(s) { return this.querySelectorAll(s)[0] || null; }
@@ -127,11 +128,13 @@ function browser(preview) {
     let sqlCalls = 0;
     const responseA = { columns: ['title', 'amount'], rows: [['A', 3]], row_count: 1, truncated: false, elapsed_ms: 7, warnings: [] };
     const storage = new Map();
-    context = vm.createContext({ document, Intl, Event, console, setTimeout, clearTimeout,
+    const confirmations = [];
+    const confirmDialog = message => { confirmations.push(message); return confirmDecision(message); };
+    context = vm.createContext({ document, Intl, Event, URL, console, setTimeout, clearTimeout,
         localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, v), removeItem: k => storage.delete(k) },
-        window: { addEventListener() {}, location: { href: 'http://synthetic/stats' } },
+        window: { addEventListener() {}, location: { href: 'http://synthetic/stats' }, confirm: confirmDialog },
         getComputedStyle: () => ({ getPropertyValue: () => '#777777' }),
-        alert: message => alerts.push(message), confirm: () => true,
+        alert: message => alerts.push(message), confirm: confirmDialog,
         Chart: class { constructor(canvas, config) { charts.push(config); } destroy() {} },
         fetch: async (url, options) => {
             const body = options.body ? JSON.parse(options.body) : null;
@@ -155,7 +158,7 @@ function browser(preview) {
         vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), context, { filename: file });
     }
     const run = code => vm.runInContext(code, context);
-    return { run, document, requests, responseA, charts, alerts, boardId, widgetId,
+    return { run, document, requests, responseA, charts, alerts, boardId, widgetId, confirmations,
         el: id => document.getElementById(id),
         async load() { await run('loadDashboards()'); await tick(); run('setupWidgetBuilderKeyboard()'); this.check(); },
         async open() { await run(`openWidgetEditor('${boardId}', '${widgetId}')`); await tick(); this.check(); },
@@ -244,5 +247,92 @@ test('control: preview metadata preserves concurrent column choices and title dr
     assert.equal(b.el('wb_sql_value_column').value, 'title');
     assert.equal(b.el('wb_title').value, 'Concurrent title draft');
     assert.equal(b.run("hasSettingsDrafts(['widget_builder_modal'])"), true);
+    assert.equal(b.writes().length, 0);
+});
+
+// These are unit DOM adapters, not native link/navigation or successful real CRUD evidence.
+function settingsDeparture(b, event = {}) {
+    const link = b.el('wb_sql_settings_link');
+    assert.ok(link, 'SQL pane must offer a real Settings anchor');
+    assert.equal(link.tagName, 'A');
+    assert.equal(link.getAttribute('href'), '/settings');
+    assert.equal(b.el('wb_pane_sql').contains(link), true);
+    return b.run(`(function(event) { ${link.getAttribute('onclick')} })(${JSON.stringify(event)})`);
+}
+
+function sqlDraftSnapshot(b) {
+    return JSON.stringify({
+        fields: ['wb_title', 'wb_width', 'wb_sql', 'wb_sql_limit', 'wb_sql_chart', 'wb_sql_label_column', 'wb_sql_value_column']
+            .map(id => [id, b.el(id).value]),
+        preview: ['wb_sql_preview_head', 'wb_sql_preview_body', 'wb_sql_meta', 'wb_error']
+            .map(id => [id, b.el(id).textContent, b.el(id).className]),
+        visible: !b.el('widget_builder_modal').classList.contains('hidden'),
+        previewVisible: !b.el('wb_sql_preview').classList.contains('hidden')
+    });
+}
+
+test('SQL Settings departure Cancel preserves dirty fields and preview without requests', async () => {
+    const b = browser(async () => b.responseA, () => false);
+    await b.load(); await b.open();
+    b.change('wb_title', 'Unsubmitted SQL title');
+    b.change('wb_width', 'full', 'change');
+    b.change('wb_sql', 'SELECT title, 3 AS amount FROM task ORDER BY title');
+    b.change('wb_sql_limit', '12');
+    b.change('wb_sql_chart', 'line', 'change');
+    await b.run('wbRunSqlPreview()');
+    b.change('wb_sql_label_column', 'amount', 'change');
+    b.change('wb_sql_value_column', 'title', 'change');
+    const before = sqlDraftSnapshot(b), requests = b.requests.length;
+    assert.equal(settingsDeparture(b), false, 'existing guard cancels the anchor default');
+    assert.deepEqual(b.confirmations, ['Leave this page and discard unsaved changes?']);
+    assert.equal(sqlDraftSnapshot(b), before);
+    assert.equal(b.requests.length, requests);
+    assert.equal(b.writes().length, 0);
+    assert.equal(b.run("hasSettingsDrafts(['widget_builder_modal'])"), true);
+    b.check();
+});
+
+test('SQL Settings departure keeps clean, accepted and modified-click guard semantics', async () => {
+    const b = browser(async () => b.responseA);
+    await b.load(); await b.open();
+    assert.equal(settingsDeparture(b), true);
+    assert.deepEqual(b.confirmations, []);
+    b.change('wb_title', 'Dirty title');
+    for (const key of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) assert.equal(settingsDeparture(b, { [key]: true }), true);
+    assert.deepEqual(b.confirmations, [], 'modified clicks retain the current tab without confirmation');
+    assert.equal(settingsDeparture(b), true, 'accepted confirmation permits normal link departure');
+    assert.deepEqual(b.confirmations, ['Leave this page and discard unsaved changes?']);
+    assert.equal(b.writes().length, 0);
+    b.check();
+});
+
+test('SQL anchor participates in the existing visible-field Tab trap', async () => {
+    const b = browser(async () => b.responseA);
+    await b.load(); await b.open();
+    const modal = b.el('widget_builder_modal');
+    for (const field of modal.querySelectorAll('button, a[href], input, select, textarea, summary')) field.classList.add('hidden');
+    // A genuine anchor-only focus edge, independent of the missing-template-link assertion.
+    const link = b.document.createElement('a'); link.setAttribute('href', '/settings');
+    b.el('wb_pane_sql').appendChild(link); link.focus();
+    for (const shiftKey of [false, true]) {
+        let prevented = false;
+        link.dispatchEvent({ type: 'keydown', key: 'Tab', shiftKey, bubbles: true,
+            preventDefault() { prevented = true; }, stopPropagation() {} });
+        assert.equal(prevented, true, 'visible anchor must be counted for both focus-wrap boundaries');
+        assert.equal(b.document.activeElement, link);
+    }
+    assert.equal(b.writes().length, 0);
+});
+
+test('SQL Settings link is hidden in structured mode and when SQL is disabled', async () => {
+    const b = browser(async () => b.responseA);
+    await b.load(); await b.open();
+    const link = b.el('wb_sql_settings_link');
+    assert.ok(link, 'SQL Settings link exists in the real template');
+    assert.equal(link.getClientRects().length > 0, true);
+    b.run("wbSwitchMode('structured')");
+    assert.equal(link.getClientRects().length, 0);
+    b.run("sqlWidgetsEnabled = false; wbSwitchMode('sql')");
+    assert.equal(link.getClientRects().length, 0);
     assert.equal(b.writes().length, 0);
 });

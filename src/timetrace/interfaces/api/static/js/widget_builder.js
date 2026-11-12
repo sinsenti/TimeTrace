@@ -293,7 +293,7 @@ function setupWidgetBuilderKeyboard() {
             e.stopPropagation();
             closeWidgetBuilder();
         } else if (e.key === 'Tab') {
-            const fields = Array.from(modal.querySelectorAll('button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), summary'))
+            const fields = Array.from(modal.querySelectorAll('button:not(:disabled), a[href], input:not([type="hidden"]):not(:disabled), select:not(:disabled), textarea:not(:disabled), summary'))
                 .filter(el => el.getClientRects().length);
             const first = fields[0], last = fields[fields.length - 1];
             if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last?.focus(); }

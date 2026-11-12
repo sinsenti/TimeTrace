@@ -1,4 +1,4 @@
-/* Manual SQL-on probe, scoped with a blocking Settings-departure UNRUN.
+/* Manual SQL-on probe with the separately approved native SQL-pane Settings caller.
  * Requires a NEW explicitly approved private daemon and guards on every context/page/API call.
  * Corrected fixture composition only: no native success or feature acceptance claimed by this file.
  */
@@ -11,10 +11,11 @@ async (page, baseURL) => {
     const spec = { mode: 'sql', sql: { sql, limit: 2, chart: 'bar', label_column: 'x13', value_column: 'y13' } };
     const evidence = { nonce, sql, spec, checks, failures, errors, journal, requests, profiles, datasets, holds, unrun,
         fakeBoundaries: ['catalog metadata fixture allowed only in guarded runner if used; actual usage captured separately', 'explicit preview response transport holds/aborts only; actual body unchanged'],
-        limits: ['Synthetic private data only; no host-file/DoS/provider probes', 'Chromium keyboard/geometry and sampled contrast, not physical touch or accessibility certification', 'Current reviewed Timer-B/date parent; this SQL probe is not Timer startup certification', 'Native Settings-departure cancellation is explicitly UNRUN/blocking, not waived'] };
+        limits: ['Synthetic private data only; no host-file/DoS/provider probes', 'Chromium keyboard/geometry and sampled contrast, not physical touch or accessibility certification', 'Current reviewed Timer-B/date parent; this SQL probe is not Timer startup certification', 'Original Settings UNRUN/capture/sequence limits remain historical; this new caller requires actual native proof'] };
     const check = (ok, name, data = null) => { checks.push({ name, passed: !!ok, data }); if (!ok) throw Error(name); };
     p.on('pageerror', e => errors.push(e.stack || e.message));
-    p.on('dialog', d => d.accept());
+    const acceptDialog = d => d.accept();
+    p.on('dialog', acceptDialog);
     p.on('request', r => { if (new URL(r.url()).origin === baseURL) requests.push({ path: new URL(r.url()).pathname, method: r.method(), body: r.postDataJSON() }); });
     await context.addInitScript(origin => {
         if (location.origin !== origin) return;
@@ -28,7 +29,7 @@ async (page, baseURL) => {
         return data;
     };
     const ready = async () => { await p.waitForFunction(() => currentDashboardData !== null); await p.waitForFunction(() => !document.querySelector('#widget_grid [aria-busy="true"]')); };
-    const fields = () => p.evaluate(() => Object.fromEntries(['wb_title', 'wb_mode', 'wb_sql', 'wb_sql_limit', 'wb_sql_chart', 'wb_sql_label_column', 'wb_sql_value_column'].map(id => [id, document.getElementById(id).value])));
+    const fields = () => p.evaluate(() => Object.fromEntries(['wb_title', 'wb_width', 'wb_mode', 'wb_sql', 'wb_sql_limit', 'wb_sql_chart', 'wb_sql_label_column', 'wb_sql_value_column'].map(id => [id, document.getElementById(id).value])));
     const previewFields = () => p.evaluate(() => ({
         visible: document.getElementById('wb_sql_preview').getClientRects().length > 0,
         columns: Array.from(document.querySelectorAll('#wb_sql_preview_head th')).map(el => el.textContent),
@@ -44,7 +45,7 @@ async (page, baseURL) => {
         const response = p.waitForResponse(r => new URL(r.url()).pathname === '/analytics/sql' && r.request().method() === 'POST');
         await p.locator('#wb_sql').press('Control+Enter');
         const r = await response; const data = await r.json(); journal.push({ phase: 'nativePreview', request: r.request().postDataJSON(), status: r.status(), response: data });
-        return { status: r.status(), data };
+        return { status: r.status(), data, request: r.request().postDataJSON() };
     };
     const holdNext = async reject => {
         let release, entered, rejectStart, finished;
@@ -206,12 +207,65 @@ async (page, baseURL) => {
         const first = p.getByRole('button', { name: 'Close widget editor', exact: true }), last = p.locator('#wb_submit');
         await first.focus(); await p.keyboard.press('Shift+Tab'); check(await last.evaluate(el => el === document.activeElement), 'Native ShiftTab wraps to last modal field');
         await p.keyboard.press('Tab'); check(await first.evaluate(el => el === document.activeElement), 'Native Tab wraps back to first modal field');
-        unrun.push({
-            name: 'Native Settings departure cancellation retains SQL draft', status: 'UNRUN', blocking: true,
-            reason: 'The Widget modal covers the navbar /settings link; the old /settings/ai selector targets hidden Preferences. No reachable native guarded Settings caller is established here. No force click, helper callback or Browser Back substitution is allowed.',
-            requiredOutcome: 'When a real reachable guarded departure is exercised, Cancel must retain the current SQL draft; this probe does not demonstrate it.',
-            draftSnapshot: await fields()
-        });
+        // New owner-approved entry, not a forced click through the modal or a handler callback.
+        const settingsLink = p.locator('#wb_sql_settings_link');
+        check(await settingsLink.isVisible() && await settingsLink.getAttribute('href') === '/settings', 'Approved SQL-pane Settings link is natively reachable');
+        await p.locator('#wb_title').fill(`Departure draft ${nonce}`);
+        await p.locator('#wb_width').selectOption('half');
+        await p.locator('#wb_sql_limit').fill('3');
+        await p.locator('#wb_sql_chart').selectOption('bar');
+        const departurePreview = await preview();
+        const departureColumns = ['x13', 'y13', ...Array.from({ length: 24 }, (_, i) => `pad13_${i}`)];
+        const departurePads = Array.from({ length: 24 }, (_, i) => i);
+        const departureRows = [[literal, 0, ...departurePads], ['second', 2.5, ...departurePads], ['third', 1, ...departurePads]];
+        check(departurePreview.status === 200 && departurePreview.request?.sql === longSQL && departurePreview.request.limit === 3 && departurePreview.request.chart === 'bar' &&
+            JSON.stringify(departurePreview.data.columns) === JSON.stringify(departureColumns) && JSON.stringify(departurePreview.data.rows) === JSON.stringify(departureRows) &&
+            departurePreview.data.row_count === 3 && departurePreview.data.truncated === false && JSON.stringify(departurePreview.data.warnings) === '[]',
+        'Departure preview succeeds for the exact final SQL, limit, chart and three-row result', departurePreview);
+        evidence.departurePreview = departurePreview;
+        const departureDOM = { sql: longSQL, columns: departureColumns, rows: departureRows.map(row => row.map(String)), meta: `3 row(s) in ${departurePreview.data.elapsed_ms}ms` };
+        await p.waitForFunction(expected => {
+            const preview = document.getElementById('wb_sql_preview');
+            const columns = Array.from(document.querySelectorAll('#wb_sql_preview_head th')).map(el => el.textContent);
+            const rows = Array.from(document.querySelectorAll('#wb_sql_preview_body tr')).map(tr => Array.from(tr.cells).map(td => td.textContent));
+            return preview.getClientRects().length > 0 && JSON.stringify(columns) === JSON.stringify(expected.columns) && JSON.stringify(rows) === JSON.stringify(expected.rows) &&
+                document.getElementById('wb_sql_meta').textContent === expected.meta && document.getElementById('wb_error').classList.contains('hidden') &&
+                document.getElementById('wb_sql').value === expected.sql && document.getElementById('wb_sql_limit').value === '3' && document.getElementById('wb_sql_chart').value === 'bar';
+        }, departureDOM);
+        const renderedDeparturePreview = await previewFields();
+        check(renderedDeparturePreview.visible && JSON.stringify(renderedDeparturePreview.columns) === JSON.stringify(departureDOM.columns) &&
+            JSON.stringify(renderedDeparturePreview.rows) === JSON.stringify(departureDOM.rows) && renderedDeparturePreview.meta === departureDOM.meta,
+        'Departure current preview is successfully rendered before cancellation', renderedDeparturePreview);
+        await p.locator('#wb_sql_label_column').selectOption('y13');
+        await p.locator('#wb_sql_value_column').selectOption('x13');
+        const departureBefore = { fields: await fields(), preview: await previewFields(), url: p.url() };
+        evidence.settingsDeparture = { approvedSpec: 'specs/sql-widget-settings-departure.md', before: departureBefore, attempts: [] };
+        p.off('dialog', acceptDialog); // Earlier own Remove confirmation is distinct from Cancel here.
+        for (const activation of ['pointer', 'keyboard']) {
+            if (activation === 'keyboard') {
+                const order = await p.locator('#widget_builder_modal').evaluate(modal => Array.from(modal.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]'))
+                    .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length)
+                    .map(el => el.id || el.getAttribute('aria-label') || el.tagName));
+                const index = order.indexOf('wb_sql_settings_link');
+                check(index > 0 && order[0] === 'Close widget editor', 'Native Settings keyboard path has an observed tab order', order);
+                await first.focus();
+                for (let i = 0; i < index; i++) await p.keyboard.press('Tab');
+                check(await settingsLink.evaluate(el => el === document.activeElement), 'Native Tab traversal reaches SQL Settings link');
+            }
+            const requestStart = requests.length;
+            // Subscribe BEFORE actual input; dismiss the browser's real dialog, never auto-accept it.
+            const [dialog] = await Promise.all([
+                p.waitForEvent('dialog').then(async d => { const value = { type: d.type(), message: d.message() }; await d.dismiss(); return value; }),
+                activation === 'pointer' ? settingsLink.click() : settingsLink.press('Enter')
+            ]);
+            const after = { fields: await fields(), preview: await previewFields(), url: p.url() };
+            const mutations = requests.slice(requestStart).filter(r => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(r.method) && r.path.startsWith('/api/dashboards'));
+            const attempt = { activation, dialog, after, mutations };
+            evidence.settingsDeparture.attempts.push(attempt);
+            check(dialog.type === 'confirm' && dialog.message === 'Leave this page and discard unsaved changes?', `Actual Settings ${activation} caller opens existing dirty confirmation`, dialog);
+            check(JSON.stringify(after) === JSON.stringify(departureBefore) && await p.locator('#widget_builder_modal').isVisible(), `Native Settings ${activation} Cancel retains SQL draft and preview`, attempt);
+            check(mutations.length === 0, `Native Settings ${activation} Cancel makes no persistence write`, mutations);
+        }
         await p.locator('#wb_sql').press('Escape');
         check(await p.locator('#widget_builder_modal').evaluate(el => el.classList.contains('hidden')) && await p.evaluate(() => !!document.activeElement.closest('.canvas-widget-controls, .canvas-actions')), 'Native Escape closes SQL editor and restores surviving launcher focus');
         check(errors.length === 0, 'No uncaught SQL native page errors', errors);
