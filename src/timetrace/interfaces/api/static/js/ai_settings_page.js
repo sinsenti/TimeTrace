@@ -14,6 +14,36 @@
 
 let aiCatalogCache = {};
 let aiEditingProviderId = null;
+let aiProviderOwner = null;
+let aiProviderGeneration = 0;
+let aiListGeneration = 0;
+let aiCatalogGeneration = 0;
+let aiProbeGeneration = 0;
+let aiProviderStatusGeneration = 0;
+
+function aiReadRetry(root, message, retryAction, label = 'Retry refresh') {
+    if (!root) return;
+    root.textContent = message + ' ';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'ai-btn-item';
+    retry.textContent = label;
+    retry.addEventListener('click', retryAction);
+    root.appendChild(retry);
+}
+
+function aiKeyIntent() {
+    const key = document.getElementById('ai_provider_form_api_key');
+    return key.value ? 'replace' : document.getElementById('ai_provider_form_key_intent').value;
+}
+
+function aiUpdateKeyIntent() {
+    const intent = document.getElementById('ai_provider_form_key_intent');
+    if (document.getElementById('ai_provider_form_api_key').value) intent.value = 'keep';
+    const status = document.getElementById('ai_provider_key_status');
+    if (status) status.textContent = aiKeyIntent() === 'clear' ? 'Saved key will be cleared on Save.'
+        : aiKeyIntent() === 'replace' ? 'Typed key will replace the saved key on Save.' : 'Blank keeps the saved key.';
+}
 
 function aiSetupSettingsPage() {
     aiLoadProviders();
@@ -24,7 +54,7 @@ function aiSetupSettingsPage() {
     if (newBtn) newBtn.addEventListener('click', () => aiOpenProviderForm(null));
 
     const cancelBtn = document.getElementById('ai_provider_cancel_btn');
-    if (cancelBtn) cancelBtn.addEventListener('click', aiCloseProviderForm);
+    if (cancelBtn) cancelBtn.addEventListener('click', () => aiCloseProviderForm(true));
 
     const saveBtn = document.getElementById('ai_provider_save_btn');
     if (saveBtn) saveBtn.addEventListener('click', aiSaveProviderForm);
@@ -42,6 +72,17 @@ function aiSetupSettingsPage() {
             if (modelInput && modelSelect.value) modelInput.value = modelSelect.value;
         });
     }
+
+    const clearBtn = document.getElementById('ai_provider_clear_key_btn');
+    if (clearBtn) clearBtn.addEventListener('click', () => {
+        document.getElementById('ai_provider_form_api_key').value = '';
+        document.getElementById('ai_provider_form_key_intent').value = 'clear';
+        aiUpdateKeyIntent();
+    });
+    const keyInput = document.getElementById('ai_provider_form_api_key');
+    if (keyInput) keyInput.addEventListener('input', aiUpdateKeyIntent);
+    const behaviorCancel = document.getElementById('ai_settings_cancel_btn');
+    if (behaviorCancel) behaviorCancel.addEventListener('click', aiCancelBehaviorSettings);
 
     const settingsSaveBtn = document.getElementById('ai_settings_save_btn');
     if (settingsSaveBtn) settingsSaveBtn.addEventListener('click', aiSaveBehaviorSettings);
@@ -71,11 +112,17 @@ function aiSetupSettingsPage() {
 document.addEventListener('DOMContentLoaded', aiSetupSettingsPage);
 
 async function aiLoadCatalog() {
+    const generation = ++aiCatalogGeneration;
+    const status = document.getElementById('ai_catalog_status');
     try {
-        aiCatalogCache = await api.get('/api/ai/providers/catalog');
+        const catalog = await api.get('/api/ai/providers/catalog');
+        if (generation !== aiCatalogGeneration) return;
+        aiCatalogCache = catalog;
+        if (status) status.textContent = '';
         aiRefreshModelSelectOptions();
-    } catch (err) {
-        console.error('Failed to load AI provider catalog:', err);
+    } catch {
+        if (generation !== aiCatalogGeneration) return;
+        aiReadRetry(status, 'Could not load model catalog. Custom model IDs still work.', aiLoadCatalog, 'Retry catalog');
     }
 }
 
@@ -179,26 +226,36 @@ function aiRefreshProviderHelp() {
 async function aiLoadProviders() {
     const list = document.getElementById('ai_providers_list');
     if (!list) return;
-    list.textContent = '';
+    const generation = ++aiListGeneration;
+    list.textContent = 'Loading providers…';
     try {
         const providers = await api.get('/api/ai/providers');
+        if (generation !== aiListGeneration) return;
+        const cards = providers.map(aiBuildProviderCard);
+        list.textContent = '';
         aiUpdateDataScopeWarning(providers);
-        if (providers.length === 0) {
-            const empty = document.createElement('div');
-            empty.className = 'ai-settings-hint';
-            empty.textContent = 'No providers configured yet -- click "+ Add Provider" below to get started. '
-                + 'Google AI Studio has a free tier; a local Ollama server needs no API key at all.';
-            list.appendChild(empty);
-            return;
-        }
-        providers.forEach((p) => list.appendChild(aiBuildProviderCard(p)));
-    } catch (err) {
-        console.error('Failed to load AI providers:', err);
-        const errNode = document.createElement('div');
-        errNode.className = 'ai-test-result ai-test-result-fail';
-        errNode.textContent = 'Failed to load providers: ' + (err.message || err);
-        list.appendChild(errNode);
+        if (!cards.length) list.textContent = 'No providers configured yet. Add a provider to get started.';
+        cards.forEach(card => list.appendChild(card));
+    } catch {
+        if (generation !== aiListGeneration) return;
+        aiReadRetry(list, 'Failed to load providers. Any acknowledged changes remain saved.', aiLoadProviders);
     }
+}
+
+async function aiRefreshProviderStatus(statusOnly = false) {
+    const generation = ++aiProviderStatusGeneration;
+    if (!statusOnly) await aiLoadProviders();
+    if (generation !== aiProviderStatusGeneration) return;
+    const notice = document.getElementById('ai_provider_status');
+    if (notice) notice.textContent = 'Refreshing provider status…';
+    if (typeof refreshAiStatusBadge === 'function') {
+        const success = await refreshAiStatusBadge();
+        if (generation !== aiProviderStatusGeneration) return;
+        if (success === false) {
+            aiReadRetry(notice, 'Status refresh failed. Any acknowledged changes remain saved.',
+                () => aiRefreshProviderStatus(true), 'Retry status');
+        } else if (success === true && notice) notice.textContent = '';
+    } else if (notice) notice.textContent = '';
 }
 
 function aiBuildProviderCard(provider) {
@@ -219,7 +276,7 @@ function aiBuildProviderCard(provider) {
     card.appendChild(info);
 
     const actions = document.createElement('div');
-    actions.className = 'flex gap-1.5';
+    actions.className = 'ai-provider-actions';
 
     if (!provider.is_active) {
         const activateBtn = document.createElement('button');
@@ -227,13 +284,14 @@ function aiBuildProviderCard(provider) {
         activateBtn.className = 'ai-btn-item';
         activateBtn.textContent = 'Activate';
         activateBtn.addEventListener('click', async () => {
+            if (activateBtn.disabled) return;
+            activateBtn.disabled = true;
             try {
                 await api.post(`/api/ai/providers/${encodeURIComponent(provider.id)}/activate`, {});
-                aiLoadProviders();
-                if (typeof refreshAiStatusBadge === 'function') refreshAiStatusBadge();
-            } catch (err) {
-                alert('Failed to activate provider: ' + (err.message || err));
-            }
+                await aiRefreshProviderStatus();
+            } catch {
+                if (card.parentNode) alert('Failed to activate provider. Retry explicitly.');
+            } finally { activateBtn.disabled = false; }
         });
         actions.appendChild(activateBtn);
     }
@@ -250,13 +308,14 @@ function aiBuildProviderCard(provider) {
     deleteBtn.className = 'ai-btn-item';
     deleteBtn.textContent = 'Delete';
     deleteBtn.addEventListener('click', async () => {
-        if (!window.confirm(`Delete provider "${provider.name}"? This cannot be undone.`)) return;
+        if (deleteBtn.disabled || !window.confirm(`Delete provider "${provider.name}"? This cannot be undone.`)) return;
+        deleteBtn.disabled = true;
         try {
             await api.delete(`/api/ai/providers/${encodeURIComponent(provider.id)}`);
-            aiLoadProviders();
-        } catch (err) {
-            alert('Failed to delete provider: ' + (err.message || err));
-        }
+            await aiLoadProviders();
+        } catch {
+            if (card.parentNode) alert('Failed to delete provider. Retry explicitly.');
+        } finally { deleteBtn.disabled = false; }
     });
     actions.appendChild(deleteBtn);
 
@@ -265,6 +324,11 @@ function aiBuildProviderCard(provider) {
 }
 
 function aiOpenProviderForm(provider) {
+    if (aiProviderOwner && hasSettingsDrafts(['ai_provider_form_section'])
+        && !window.confirm('Discard unsaved provider changes?')) return;
+    aiCloseProviderForm();
+    aiProviderOwner = { generation: ++aiProviderGeneration, pending: false,
+        native: provider ? provider.use_native_openrouter : false };
     aiEditingProviderId = provider ? provider.id : null;
     const section = document.getElementById('ai_provider_form_section');
     const title = document.getElementById('ai_provider_form_title');
@@ -286,16 +350,27 @@ function aiOpenProviderForm(provider) {
     document.getElementById('ai_provider_form_timeout').value = provider ? provider.request_timeout_seconds : 120;
     document.getElementById('ai_provider_form_sanitization').value = provider ? provider.sanitization_level : 'standard';
 
+    document.getElementById('ai_provider_form_key_intent').value = 'keep';
+    aiUpdateKeyIntent();
+    document.getElementById('ai_provider_save_btn').disabled = false;
+    document.getElementById('ai_provider_test_btn').disabled = false;
     document.getElementById('ai_provider_test_result').textContent = '';
     aiRefreshModelSelectOptions();
     rememberSettingsDraft('ai_provider_form_section');
     if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    document.getElementById('ai_provider_form_name').focus();
 }
 
-function aiCloseProviderForm() {
+function aiCloseProviderForm(restoreFocus = false) {
     const section = document.getElementById('ai_provider_form_section');
     if (section) section.classList.add('hidden');
+    document.getElementById('ai_provider_form_api_key').value = '';
+    document.getElementById('ai_provider_form_key_intent').value = 'keep';
+    settingsDrafts.delete('ai_provider_form_section');
+    aiProviderOwner = null;
+    ++aiProbeGeneration;
     aiEditingProviderId = null;
+    if (restoreFocus) document.getElementById('ai_provider_new_btn').focus();
 }
 
 function aiReadProviderFormBase() {
@@ -308,84 +383,92 @@ function aiReadProviderFormBase() {
         max_output_tokens: parseInt(document.getElementById('ai_provider_form_max_tokens').value, 10) || 4096,
         request_timeout_seconds: parseInt(document.getElementById('ai_provider_form_timeout').value, 10) || 120,
         sanitization_level: document.getElementById('ai_provider_form_sanitization').value,
-        use_native_openrouter: false
+        use_native_openrouter: aiProviderOwner?.native || false
     };
 }
 
 async function aiSaveProviderForm() {
+    const owner = aiProviderOwner;
+    if (!owner || owner.pending) return;
     const base = aiReadProviderFormBase();
     if (!base.name || !base.model) {
         alert('Name and model are required.');
         return;
     }
-    const apiKeyTyped = document.getElementById('ai_provider_form_api_key').value;
-
+    const key = document.getElementById('ai_provider_form_api_key');
+    const intent = aiKeyIntent();
+    const payload = { ...base };
+    if (intent === 'replace') payload.api_key = key.value;
+    if (intent === 'clear') payload.api_key = '';
+    // Passwords must never be retained in the shared submitted-field checkpoint.
+    const markSaved = settingsDraftCheckpoint('ai_provider_form_section',
+        'input:not(#ai_provider_form_api_key), select, textarea');
+    const submittedKey = key.value;
+    owner.pending = true;
+    document.getElementById('ai_provider_save_btn').disabled = true;
     try {
-        if (aiEditingProviderId) {
-            const payload = { ...base };
-            // Omit api_key entirely unless the user typed something -- an empty field must NOT
-            // clear the stored key (spec S7/S9.4's exact "don't wipe the key" bug this guards
-            // against). A dedicated "clear key" affordance isn't wired up in this first cut;
-            // deleting and re-creating the provider is the current workaround.
-            if (apiKeyTyped) payload.api_key = apiKeyTyped;
-            await api.put(`/api/ai/providers/${encodeURIComponent(aiEditingProviderId)}`, payload);
-        } else {
-            const payload = { ...base };
-            if (apiKeyTyped) payload.api_key = apiKeyTyped;
-            await api.post('/api/ai/providers', payload);
+        const saved = aiEditingProviderId
+            ? await api.put(`/api/ai/providers/${encodeURIComponent(aiEditingProviderId)}`, payload)
+            : await api.post('/api/ai/providers', payload);
+        if (aiProviderOwner === owner) {
+            markSaved();
+            // Normalize a consumed credential intent only if it has not been edited since submission.
+            if (key.value === submittedKey && aiKeyIntent() === intent) {
+                key.value = '';
+                document.getElementById('ai_provider_form_key_intent').value = 'keep';
+                rememberSettingsDraft('ai_provider_form_section', '#ai_provider_form_key_intent');
+            }
+            if (saved?.id) {
+                aiEditingProviderId = saved.id;
+                document.getElementById('ai_provider_form_id').value = saved.id;
+                rememberSettingsDraft('ai_provider_form_section', '#ai_provider_form_id');
+            }
+            aiUpdateKeyIntent();
+            if (!hasSettingsDrafts(['ai_provider_form_section'])) aiCloseProviderForm();
         }
-        aiCloseProviderForm();
-        aiLoadProviders();
-        if (typeof refreshAiStatusBadge === 'function') refreshAiStatusBadge();
-    } catch (err) {
-        alert('Failed to save provider: ' + (err.message || err));
+        await aiRefreshProviderStatus();
+    } catch {
+        if (aiProviderOwner === owner) alert('Failed to save provider. Your edits are retained; retry Save explicitly.');
+    } finally {
+        delete payload.api_key;
+        owner.pending = false;
+        if (aiProviderOwner === owner) document.getElementById('ai_provider_save_btn').disabled = false;
     }
 }
 
 async function aiTestProviderForm() {
+    const owner = aiProviderOwner;
+    if (!owner) return;
+    const generation = ++aiProbeGeneration;
     const resultEl = document.getElementById('ai_provider_test_result');
-    if (resultEl) {
-        resultEl.className = 'ai-test-result';
-        resultEl.textContent = 'Testing...';
-    }
+    resultEl.className = 'ai-test-result';
+    resultEl.textContent = 'Testing…';
     const base = aiReadProviderFormBase();
-    const apiKeyTyped = document.getElementById('ai_provider_form_api_key').value;
-
+    const intent = aiKeyIntent();
+    const fields = Array.from(document.getElementById('ai_provider_form_section').querySelectorAll('input, select, textarea'));
+    const submitted = fields.map(settingsDraftFieldSnapshot);
+    const isCurrent = () => aiProviderOwner === owner && generation === aiProbeGeneration;
+    const unchanged = () => fields.every((field, index) => settingsDraftFieldSnapshot(field) === submitted[index]);
+    const body = aiEditingProviderId && intent === 'keep'
+        ? { config_id: aiEditingProviderId }
+        : { inline_config: { ...base, api_key: intent === 'clear' ? ''
+            : document.getElementById('ai_provider_form_api_key').value || null } };
+    delete body.inline_config?.name;
+    delete body.inline_config?.sanitization_level;
     try {
-        let body;
-        if (aiEditingProviderId && !apiKeyTyped) {
-            // No new key typed while editing a saved provider -- test the saved config as-is
-            // (the stored key), since an inline_config here has no key to send.
-            body = { config_id: aiEditingProviderId };
-        } else {
-            body = {
-                inline_config: {
-                    provider: base.provider,
-                    model: base.model,
-                    base_url: base.base_url,
-                    api_key: apiKeyTyped || null,
-                    temperature: base.temperature,
-                    max_output_tokens: base.max_output_tokens,
-                    request_timeout_seconds: base.request_timeout_seconds,
-                    use_native_openrouter: false
-                }
-            };
-        }
         const result = await api.post('/api/ai/providers/test', body);
-        if (resultEl) {
-            if (result.success) {
-                resultEl.className = 'ai-test-result ai-test-result-ok';
-                resultEl.textContent = 'Connection OK.';
-            } else {
-                resultEl.className = 'ai-test-result ai-test-result-fail';
-                resultEl.textContent = 'Failed: ' + (result.error || 'unknown error');
-            }
-        }
-    } catch (err) {
-        if (resultEl) {
-            resultEl.className = 'ai-test-result ai-test-result-fail';
-            resultEl.textContent = 'Failed: ' + (err.message || err);
-        }
+        if (!isCurrent()) return;
+        if (!unchanged()) { resultEl.textContent = 'Configuration changed. Test again.'; return; }
+        resultEl.className = 'ai-test-result ' + (result.success ? 'ai-test-result-ok' : 'ai-test-result-fail');
+        resultEl.textContent = result.success ? 'Connection OK.'
+            : 'Connection failed. Check the provider, model, credentials and URL, then retry Test connection.';
+    } catch {
+        if (!isCurrent()) return;
+        if (!unchanged()) { resultEl.textContent = 'Configuration changed. Test again.'; return; }
+        resultEl.className = 'ai-test-result ai-test-result-fail';
+        resultEl.textContent = 'Connection failed. Check the provider, model, credentials and URL, then retry Test connection.';
+    } finally {
+        if (body.inline_config) delete body.inline_config.api_key;
     }
 }
 
@@ -403,6 +486,24 @@ function aiUpdateDataScopeWarning(providers) {
 let aiBehaviorReady = false;
 let aiBehaviorLoading = false;
 let aiBehaviorInitialFields = null;
+let aiBehaviorSaving = false;
+let aiBehaviorRevision = 0;
+
+function aiCancelBehaviorSettings() {
+    if (!aiBehaviorReady || aiBehaviorLoading) return;
+    ++aiBehaviorRevision;
+    const baseline = settingsDrafts.get('ai_behavior_settings');
+    document.getElementById('ai_behavior_settings').querySelectorAll('input, select, textarea').forEach(el => {
+        const snapshot = baseline?.fields.get(el.id || el);
+        if (snapshot === undefined) return;
+        const [value, disabled] = JSON.parse(snapshot);
+        if (el.type === 'checkbox') el.checked = value;
+        else el.value = value;
+        if (disabled !== null) el.disabled = disabled;
+    });
+    document.getElementById('ai_settings_save_status').textContent = aiBehaviorSaving
+        ? 'Changes discarded locally. The submitted Save is still pending.' : 'Changes discarded.';
+}
 
 async function aiLoadBehaviorSettings() {
     if (aiBehaviorLoading) return;
@@ -414,13 +515,20 @@ async function aiLoadBehaviorSettings() {
         rememberSettingsDraft('ai_behavior_settings');
     }
     aiBehaviorLoading = true;
+    const readBaselines = new Map(fields.map(el => [el.id, settingsDrafts.get('ai_behavior_settings')?.fields.get(el.id)]));
     const status = document.getElementById('ai_settings_save_status');
     if (status) status.textContent = 'Loading behavior settings…';
     try {
         const s = await api.get('/api/ai/settings');
+        const newerBaselines = fields.map(el => [el.id, settingsDrafts.get('ai_behavior_settings')?.fields.get(el.id)])
+            .filter(([id, baseline]) => baseline !== readBaselines.get(id));
         const drafts = fields.filter(el => aiBehaviorReady
             ? hasSettingsDrafts(['ai_behavior_settings'], `#${el.id}`)
             : valueOf(el) !== aiBehaviorInitialFields.get(el.id)).map(el => [el, valueOf(el)]);
+        newerBaselines.forEach(([id]) => {
+            const el = document.getElementById(id);
+            if (!drafts.some(([field]) => field === el)) drafts.push([el, valueOf(el)]);
+        });
         document.getElementById('ai_setting_quickadd_fallback').checked = Boolean(s.quickadd_fallback_enabled);
         document.getElementById('ai_setting_redact_before_send').checked = Boolean(s.redact_before_send);
         document.getElementById('ai_setting_preview_on_calendar').checked = Boolean(s.preview_on_calendar);
@@ -439,6 +547,7 @@ async function aiLoadBehaviorSettings() {
         document.getElementById('ai_setting_preferred_tags').value = (s.preferred_tags || []).join(', ');
         document.getElementById('ai_setting_custom_instructions').value = s.custom_instructions || '';
         rememberSettingsDraft('ai_behavior_settings');
+        newerBaselines.forEach(([id, baseline]) => settingsDrafts.get('ai_behavior_settings').fields.set(id, baseline));
         drafts.forEach(([el, value]) => { if (el.type === 'checkbox') el.checked = value; else el.value = value; });
         aiBehaviorReady = true;
         if (status) status.textContent = '';
@@ -451,13 +560,14 @@ async function aiLoadBehaviorSettings() {
             retry.addEventListener('click', aiLoadBehaviorSettings);
             status.appendChild(retry);
         }
-        console.error('Failed to load AI behavior settings:', err);
+
     } finally {
         aiBehaviorLoading = false;
     }
 }
 
 async function aiSaveBehaviorSettings() {
+    if (aiBehaviorSaving) return;
     if (!aiBehaviorReady || aiBehaviorLoading) {
         if (!aiBehaviorLoading) await aiLoadBehaviorSettings();
         return;
@@ -489,18 +599,34 @@ async function aiSaveBehaviorSettings() {
             .split(',').map(value => value.trim().toLowerCase()).filter(Boolean),
         custom_instructions: document.getElementById('ai_setting_custom_instructions').value
     };
-    const markSaved = settingsDraftCheckpoint('ai_behavior_settings');
+    const submittedFields = Array.from(document.getElementById('ai_behavior_settings')
+        .querySelectorAll('input, select, textarea')).map(el => ({
+            id: el.id,
+            baseline: settingsDrafts.get('ai_behavior_settings')?.fields.get(el.id),
+            checkpoint: settingsDraftCheckpoint('ai_behavior_settings', `#${el.id}`)
+        }));
+    const revision = aiBehaviorRevision;
+    aiBehaviorSaving = true;
+    document.getElementById('ai_settings_save_btn').disabled = true;
     try {
         await api.put('/api/ai/settings', payload);
-        markSaved();
-        if (statusEl) {
+        submittedFields.forEach(field => {
+            // Assistant acceptance/conflict reconciliation may have supplied a newer baseline.
+            if (settingsDrafts.get('ai_behavior_settings')?.fields.get(field.id) === field.baseline) field.checkpoint();
+        });
+        if (statusEl && revision === aiBehaviorRevision) {
             statusEl.className = 'ai-test-result ai-test-result-ok';
             statusEl.textContent = 'Saved.';
         }
     } catch (err) {
-        if (statusEl) {
+        if (statusEl && revision === aiBehaviorRevision) {
             statusEl.className = 'ai-test-result ai-test-result-fail';
-            statusEl.textContent = 'Failed to save: ' + (err.message || err);
+            statusEl.textContent = 'Failed to save: your edits are retained; retry Save explicitly.';
         }
+    } finally {
+        aiBehaviorSaving = false;
+        document.getElementById('ai_settings_save_btn').disabled = false;
+        if (statusEl && revision !== aiBehaviorRevision) statusEl.textContent =
+            'Pending Save finished. Cancel restores the latest acknowledged settings.';
     }
 }
