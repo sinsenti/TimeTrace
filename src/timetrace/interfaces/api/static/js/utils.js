@@ -267,6 +267,7 @@ window.addEventListener('keydown', function(e) {
         if (idleRecovery && !idleRecovery.classList.contains('hidden') &&
             (!recurringDelete || recurringDelete.classList.contains('hidden'))) return;
         let closedAny = false;
+        let closedModalId = null;
         const focusBeforeClose = document.activeElement;
 
         const modalOrder = [
@@ -293,6 +294,26 @@ window.addEventListener('keydown', function(e) {
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 
+        // Export can be opened over the drawer, or remain beneath a newer editor while
+        // its read finishes. Escape follows that focused owner without changing ordinary
+        // modal priority or the confirmation/recovery guards above.
+        const exportModal = document.getElementById('export_modal');
+        if (exportModal && !exportModal.classList.contains('hidden') &&
+            !['completion_policy_modal', 'recurring_delete_modal'].some(id => {
+                const el = document.getElementById(id);
+                return el && !el.classList.contains('hidden');
+            })) {
+            let ownerIndex = modalOrder.findIndex(item => {
+                const el = document.getElementById(item.id);
+                return el && el.dataset?.settingsPageEditor !== 'true' &&
+                    (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden')) &&
+                    el.contains(focusBeforeClose);
+            });
+            // Without an editor focus owner, the visible Export still sits above Assistant.
+            if (ownerIndex < 0) ownerIndex = modalOrder.findIndex(item => item.id === 'export_modal');
+            if (ownerIndex > 0) modalOrder.unshift(...modalOrder.splice(ownerIndex, 1));
+        }
+
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
             const isOpen = el && el.dataset?.settingsPageEditor !== 'true' &&
@@ -308,11 +329,20 @@ window.addEventListener('keydown', function(e) {
                 // A callback may decline discard and keep its editor open. Only a real close
                 // permits selection/focus cleanup; the drawer uses its own visibility class.
                 closedAny = item.openClass ? !el.classList.contains(item.openClass) : el.classList.contains('hidden');
+                if (closedAny) closedModalId = item.id;
                 break;
             }
         }
 
         if (closedAny) {
+            // A delayed Task/Session opening can interrupt Export. Its ordinary launcher
+            // may be behind Export; hand focus back unless another modal resumed.
+            if (['task_modal', 'session_modal'].includes(closedModalId) && exportModal &&
+                !exportModal.classList.contains('hidden') && !modalOrder.some(item => {
+                    const el = document.getElementById(item.id);
+                    return item.id !== 'export_modal' && item.id !== 'ai_drawer' && el &&
+                        !el.classList.contains('hidden') && el.contains(document.activeElement);
+                })) document.getElementById('export_mode_select')?.focus();
             if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
             // Keep a dialog's explicitly restored launcher; only blur unchanged, now-hidden fields.
             if (document.activeElement === focusBeforeClose && typeof focusBeforeClose?.blur === 'function') {
