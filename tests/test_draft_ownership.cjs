@@ -428,6 +428,7 @@ function reviewBrowser(kind) {
     const textIds=kind==='task' ? ['task_rev_difficulty','task_rev_went_well','task_rev_blockers','task_rev_takeaways'] : ['session_rev_modal_tags','session_rev_modal_notes','session_rev_modal_skip_check'];
     const owner=kind==='task' ? 'task_inspector_body' : 'session_review_modal';
     const fields=Object.fromEntries([...textIds,owner,`${kind}_custom_ratings_container`,'inspect_task_title','inspect_task_desc','inspect_task_status_badge','session_rev_modal_id','session_rev_modal_time'].map(id=>[id,node(id)]));
+    if (kind === 'session') fields.session_rev_modal_status = node('session_rev_modal_status');
     fields[owner].children.push(...textIds.map(id=>fields[id]),fields[`${kind}_custom_ratings_container`]);
     const ratings=['one','two'].map(id=>{const el=node('rating_range_input_'+id,3);el.classList.add('custom-rating-input');return el;});
     fields[`${kind}_custom_ratings_container`].children.push(...ratings);
@@ -469,7 +470,8 @@ test('Session review partial success cleans submitted text and first rating, fai
     const {b,fields,ratings,held,retry,text}=reviewBrowser('session');
     await b.run("openSessionReviewModal('session')");text.value='Submitted notes';ratings.forEach(el=>el.value=5);
     const saving=b.run('saveSessionReviewModal()');await tick();text.value='Typed during PUT';held.resolve();
-    await assert.rejects(saving,/Second rating failed/);
+    await saving;
+    assert.match(fields.session_rev_modal_status.textContent,/Second rating failed/);
     assert.equal(text.value,'Typed during PUT');assert.equal(b.run('followSettingsLink({})'),false);
     text.value='Submitted notes';ratings[1].value=3;
     assert.equal(b.run('followSettingsLink({})'),true,'persisted session text and first rating clean');
