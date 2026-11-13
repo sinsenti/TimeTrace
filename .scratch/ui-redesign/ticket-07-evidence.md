@@ -91,3 +91,22 @@ Calendar-only Vim/sidebar and Statistics direct navigation scripts are not loade
 not changed. No shared utilities, AI/Revision/ratings/API/model/policy or Grouped code was amended.
 No daemon/browser, personal data, providers, Git writes or unrelated worktrees were used. All earlier
 native, visual/accessibility, Timer, human acceptance and whole-delivery limits remain open.
+
+## Branch reconciliation 03 — integration through ticket 20
+
+The exact freeze02 17-path candidate was checkpointed as
+`2a7933d9a603425f475394b98d580481cb30f932` with no byte changes. Fresh independent
+standards and spec reviews (`standards-review02.md`, `spec-review02.md`) each recorded zero
+confirmed findings. The exact integration commit `4e75ef02cf478165f6eaa48b0527c3f852b31dcd`
+was then merged without conflicts as `8a9c94168fc2de3d4beb94442e1aebcff33e6a3b`. Incoming ticket-20 source, tests and
+browser probes retain their exact integration bytes; ticket-07 product/test/probe bytes remain
+identical to freeze02. This section and the issue comment are progress metadata only.
+
+All 539 Python / 417 Node passes above are **historical checks of freeze02 before this merge**.
+The inherited 214 Python warnings and 18 Ruff findings plus invalid-noqa warning remain recorded
+as originally reported; no new check pass is claimed. Combined-source checks and native execution
+are **UNRUN** at this checkpoint. The Outline native probe remains authored only; shared-consumer,
+visual/accessibility, Timer, human acceptance and whole-delivery gates remain open. Issue07 remains
+in-progress and no acceptance criterion is closed. Shared README, implementation and development
+notes were not edited for ticket07; their incoming ticket20 changes are retained. External
+`evidence/ticket-07/freeze03/` records the full source inventory and exact preservation bridges.
