@@ -600,3 +600,23 @@ Assistant approval/recovery and actual exports; responsive light/dark, keyboard/
 physical touch, screen readers and browser-engine checks. Each ticket owns its applicable regression
 and isolated workflow evidence; final whole-app verification cannot postpone basic per-ticket checks.
 No human acceptance or accessibility certification is claimed.
+
+
+## Ticket06 bounded software completion — current (2026-11-13)
+
+Ticket06 is software-completed under the local tracker convention, with closure metadata subject to
+independent Standards/Spec review and parent disposition. Reviewed product/test/probe bytes remain
+at563a783 (implementation abc828f plus sole status correction); integrated534Python/214warnings,
+376canonicalNode/23files, focused6Python/97Node,116syntax/scoped/whitespace checks are recorded,
+not rerun for this amendment. Full Ruff remains exit1/18 baseline. Separate real Grouped Timer entry
+returned two scenario groups/browser exit0 with real start/navigation/public Stop and one performed
+Session; original native3 remains101 returned checks/browser exit1/DELETE204 CDP UNKNOWN with
+separate original HTTP204 zero-byte capture/readback. No claim merges those channels.
+
+[Five unchanged criteria and exact receipts](ticket-06-evidence.md#bounded-software-completion-2026-11-13)
+retain physical touch/screen reader/second engine/full accessibility, frozen/recovery/OS-idle Timer,
+inherited08 custom-status editing, manual/human/whole25 and final whole-delivery review against82fabdc.
+Ten software-completed/fifteen pending:01/02/04/05/06/10/11/12/14/19 delivered.15 remains in-progress;
+03/13 and other residual gates remain separate.07/08 adoption must be serialized around task-list
+ownership; completion does not alter dependencies, grant a waiver or approve dev/push/PR.
+Historical state/counts above remain historical checkpoints.
