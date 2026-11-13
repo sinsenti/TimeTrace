@@ -51,8 +51,8 @@ function browser(respond = () => ({json: []})) {
     };
     const run = code => vm.runInContext(code, context);
     const keydown = (key, options = {}) => {
-        const event = {key, ...options, prevented: false, stopped: false, immediate: false,
-            preventDefault() {this.prevented = true;}, stopPropagation() {this.stopped = true;},
+        const event = {key, ...options, prevented: false, defaultPrevented: false, stopped: false, immediate: false,
+            preventDefault() {this.prevented = this.defaultPrevented = true;}, stopPropagation() {this.stopped = true;},
             stopImmediatePropagation() {this.stopped = this.immediate = true;}};
         // Native order: window capture, document capture, document bubble, window bubble.
         for (const [surface, capture] of [['window', true], ['document', true], ['document', false], ['window', false]]) {

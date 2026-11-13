@@ -87,6 +87,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/session_modal.css">
+    <link rel="stylesheet" href="/static/css/export_workflow.css">
 </head>
 <body class="calendar-page h-screen flex flex-col overflow-hidden">
 
@@ -205,50 +206,35 @@
     </div>
 
     <!-- Export Modal -->
-    <div id="export_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-md rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 class="font-bold text-sm text-white">Export Markdown Agenda & Data</h3>
-                <button onclick="closeExportModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Export Format / Scope</label>
-                    <select id="export_mode_select" onchange="toggleExportDateInputs(this.value)" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-white font-bold focus:outline-none focus:border-purple-500">
-                        <option value="sessions">Sessions Agenda (.md)</option>
-                        <option value="tasks_short">Tasks Concise Summary (.md)</option>
-                        <option value="tasks_full">Complete Task Dossier (.md)</option>
-                        <option value="habits">Habits Briefing (.md)</option>
-                        <option value="all">Export Everything (.md)</option>
-                        <option value="all_date_range">Export Everything with Date Limits (.md)</option>
-                    </select>
-                </div>
-
-                <div id="export_date_range_group" class="grid grid-cols-2 gap-2 p-3 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] hidden">
-                    <div>
-                        <label class="text-[10px] text-slate-400 block mb-1">Start Date</label>
-                        <div class="flex items-center space-x-1">
-                            <input id="export_start_date" type="text" placeholder="YYYY-MM-DD" class="w-full bg-[#181a28] border border-[var(--border-muted)] px-2 py-1.5 rounded text-xs text-white">
-                            <button type="button" onclick="openNativePicker('export_picker_start', 'export_start_date')" class="bg-[#12141f] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-slate-400 shrink-0">📅</button>
-                            <input id="export_picker_start" type="date" onchange="syncPickerToText('export_picker_start', 'export_start_date')" class="sr-only">
-                        </div>
-                    </div>
-                    <div>
-                        <label class="text-[10px] text-slate-400 block mb-1">End Date</label>
-                        <div class="flex items-center space-x-1">
-                            <input id="export_end_date" type="text" placeholder="YYYY-MM-DD" class="w-full bg-[#181a28] border border-[var(--border-muted)] px-2 py-1.5 rounded text-xs text-white">
-                            <button type="button" onclick="openNativePicker('export_picker_end', 'export_end_date')" class="bg-[#12141f] border border-[var(--border-muted)] px-2 py-1 rounded text-xs text-slate-400 shrink-0">📅</button>
-                            <input id="export_picker_end" type="date" onchange="syncPickerToText('export_picker_end', 'export_end_date')" class="sr-only">
-                        </div>
-                    </div>
+    <div id="export_modal" class="hidden" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="export_heading" aria-describedby="export_caveat">
+        <div class="export-panel">
+            <header><h3 id="export_heading">Export Markdown</h3><button type="button" onclick="closeExportModal()" aria-label="Close export">&times;</button></header>
+            <p id="export_caveat">Agenda Today/Tomorrow uses UTC date anchors with server-local display; local dates may differ. This is not a full backup or Calendar image.</p>
+            <label for="export_mode_select">Scope</label>
+            <select id="export_mode_select" onchange="toggleExportDateInputs(this.value)">
+                <option value="sessions">Sessions</option>
+                <option value="tasks_short">Tasks—compact</option>
+                <option value="tasks_full">Tasks—detailed</option>
+                <option value="habits">Habit definitions</option>
+                <option value="all">Everything</option>
+                <option value="all_date_range">Everything—with session date range</option>
+            </select>
+            <div id="export_date_range_group" class="hidden">
+                <p>Inclusive UTC session-start dates only, not session duration or overlap. Task and habit definitions remain unfiltered. Leave either boundary blank for no limit.</p>
+                <div class="export-dates">
+                    <div><label for="export_start_date">Start date (UTC)</label><input id="export_start_date" type="date" oninput="exportInputsChanged()" onchange="generateExportPreview()"></div>
+                    <div><label for="export_end_date">End date (UTC)</label><input id="export_end_date" type="date" oninput="exportInputsChanged()" onchange="generateExportPreview()"></div>
                 </div>
             </div>
-
-            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
-                <button onclick="closeExportModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                <button onclick="triggerExportDownload()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs flex items-center">Download Export <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
-            </div>
+            <div class="export-preview-heading"><label for="export_preview">Generated Markdown preview (read-only)</label><button id="export_generate" type="button" onclick="generateExportPreview()">Generate preview / Retry</button></div>
+            <p id="export_provenance"></p>
+            <textarea id="export_preview" readonly spellcheck="false" aria-busy="false"></textarea>
+            <p id="export_status" role="status" aria-live="polite"></p>
+            <footer>
+                <button type="button" onclick="closeExportModal()">Cancel (Esc)</button>
+                <button id="export_copy" type="button" onclick="copyExportPreview()" disabled>Copy</button>
+                <button id="export_download" type="button" onclick="triggerExportDownload()" disabled>Download (.md) · Ctrl+Enter</button>
+            </footer>
         </div>
     </div>
 

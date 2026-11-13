@@ -267,6 +267,7 @@ window.addEventListener('keydown', function(e) {
         if (idleRecovery && !idleRecovery.classList.contains('hidden') &&
             (!recurringDelete || recurringDelete.classList.contains('hidden'))) return;
         let closedAny = false;
+        let closedModalId = null;
         const focusBeforeClose = document.activeElement;
 
         const modalOrder = [
@@ -293,17 +294,39 @@ window.addEventListener('keydown', function(e) {
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 
-        // Rating administration sits above the Assistant. A newer focused Task/Session or
-        // a higher policy prompt still owns Escape, including when its close is declined.
+        // Rating administration sits above Assistant and unfocused Export. A newer focused
+        // Task/Session or a higher policy prompt still owns Escape, even if close is declined.
         const ratingDialog = document.getElementById('rating_def_modal');
-        if (ratingDialog && !ratingDialog.classList.contains('hidden')) {
+        const exportModal = document.getElementById('export_modal');
+        const ratingVisible = ratingDialog && !ratingDialog.classList.contains('hidden');
+        const exportVisible = exportModal && !exportModal.classList.contains('hidden');
+        if (ratingVisible || exportVisible) {
             const focusedEditor = ['task_modal', 'session_modal'].find(id => {
                 const modal = document.getElementById(id);
                 return modal && !modal.classList.contains('hidden') && modal.contains(focusBeforeClose);
             });
-            const priority = ['completion_policy_modal', 'recurring_delete_modal', focusedEditor, 'rating_def_modal'];
+            const priority = ['completion_policy_modal', 'recurring_delete_modal', focusedEditor,
+                ratingVisible ? 'rating_def_modal' : null];
             const rank = item => priority.includes(item.id) ? priority.indexOf(item.id) : priority.length;
             modalOrder.sort((a, b) => rank(a) - rank(b));
+        }
+        // Export can remain beneath a newer editor while its read finishes. Its focused
+        // controls sit above Rating; stale Assistant focus cannot supersede visible Rating.
+        if (exportVisible && !['completion_policy_modal', 'recurring_delete_modal'].some(id => {
+            const el = document.getElementById(id);
+            return el && !el.classList.contains('hidden');
+        })) {
+            let ownerIndex = modalOrder.findIndex(item => {
+                const el = document.getElementById(item.id);
+                return !(ratingVisible && item.id === 'ai_drawer') &&
+                    el && el.dataset?.settingsPageEditor !== 'true' &&
+                    (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden')) &&
+                    el.contains(focusBeforeClose);
+            });
+            // With no eligible focus owner, Rating sits above unfocused Export and Assistant.
+            if (ownerIndex < 0) ownerIndex = modalOrder.findIndex(item =>
+                item.id === (ratingVisible ? 'rating_def_modal' : 'export_modal'));
+            if (ownerIndex > 0) modalOrder.unshift(...modalOrder.splice(ownerIndex, 1));
         }
 
         for (const item of modalOrder) {
@@ -321,11 +344,20 @@ window.addEventListener('keydown', function(e) {
                 // A callback may decline discard and keep its editor open. Only a real close
                 // permits selection/focus cleanup; the drawer uses its own visibility class.
                 closedAny = item.openClass ? !el.classList.contains(item.openClass) : el.classList.contains('hidden');
+                if (closedAny) closedModalId = item.id;
                 break;
             }
         }
 
         if (closedAny) {
+            // A delayed Task/Session opening can interrupt Export. Its ordinary launcher
+            // may be behind Export; hand focus back unless another modal resumed.
+            if (['task_modal', 'session_modal'].includes(closedModalId) && exportModal &&
+                !exportModal.classList.contains('hidden') && !modalOrder.some(item => {
+                    const el = document.getElementById(item.id);
+                    return item.id !== 'export_modal' && item.id !== 'ai_drawer' && el &&
+                        !el.classList.contains('hidden') && el.contains(document.activeElement);
+                })) document.getElementById('export_mode_select')?.focus();
             if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
             // Keep a dialog's explicitly restored launcher; only blur unchanged, now-hidden fields.
             if (document.activeElement === focusBeforeClose && typeof focusBeforeClose?.blur === 'function') {
