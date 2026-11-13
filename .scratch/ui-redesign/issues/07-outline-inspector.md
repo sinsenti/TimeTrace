@@ -4,7 +4,7 @@
 
 **Blocked by:** [05: Task details and work accounting](05-task-details-accounting.md)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Approved decisions:** O8, O2, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -23,3 +23,13 @@
 - Owner approved the 25-ticket granularity/dependency proposal and local publication with “everything feels right, approved”. Implementation-spec/product decision gates remain recorded above. Move to ready-for-agent only after the spec and applicable decisions are explicitly approved; technical blockers still govern execution order.
 
 - 2026-11-01: Owner answered “yes to all answer. and final approve as well” to the full decision questionnaire. All applicable decisions and the final spec/verification plan are approved; status is now ready-for-agent, subject to technical blockers. No implementation has begun.
+
+- 2026-11-13: Candidate implemented from clean integration `1671f9fecc677c64fc806b3f2160a17179771101` using the approved B3/O2 plan. Outline/retained inspector, shared dedicated-details partials, draft/read/write ownership guards and regressions are present. Full checks: 539 Python / 412 canonical Node pass; 18 inherited Ruff errors remain. Native probe is authored only; independent review, guarded native/shared-consumer checks and human acceptance are still open. See [candidate evidence](../ticket-07-evidence.md) and external continuation `evidence/ticket-07/` receipts. No acceptance criterion is closed by this implementation note.
+
+- 2026-11-13: Fresh spec review P1/P2 repaired: actual Kanban click/Enter now guards retained Outline
+  drafts; pending DELETE blocks property Cancel/owner invalidation and disables its button until ACK.
+  New actual-handler RED→GREEN regressions pass. Fresh full checks: 539 Python / 417 canonical Node;
+  scoped lint/format/syntax pass, full Ruff matches all 18 inherited findings and warning in both
+  streams. New native cases are authored only. Candidate is frozen for fresh two-axis review;
+  guarded native/shared-consumer and human acceptance gates remain open. See candidate evidence's
+  repair 02 section and external `evidence/ticket-07/repair02/` receipts.

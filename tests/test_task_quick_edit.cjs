@@ -167,7 +167,7 @@ test('Tasks adopts valid view preferences without resetting neighbors and search
     for (const file of ['settings.js', 'kanban.js']) vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), p.context);
     p.run('setupTaskViewSelector()');
     assert.equal(p.elements.get('task_view_selector').value, 'outline');
-    assert.match(p.elements.get('task_view_notice').textContent, /Kanban/);
+    assert.equal(p.elements.get('task_view_notice').textContent, '');
     p.run('selectTaskView("kanban")');
     const adopted = JSON.parse(storage.get('timetrace_user_settings'));
     assert.equal(adopted.taskView, 'kanban');
