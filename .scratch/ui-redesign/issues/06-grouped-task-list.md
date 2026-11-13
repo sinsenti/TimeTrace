@@ -4,7 +4,7 @@
 
 **Blocked by:** [04: Kanban and task quick editing](04-kanban-quick-edit.md)
 
-**Status:** in-progress
+**Status:** completed
 
 **Approved decisions:** O8, O2, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,11 +12,11 @@
 
 ## Acceptance criteria
 
-- [ ] Expose Grouped list through the normal selector, retaining explicit choice per browser across reloads without resetting valid existing preferences.
-- [ ] Keep grouping/search/filtering, hierarchy, CRUD, shared quick editing, schedule/timer actions and completion-policy prompts working.
-- [ ] Preserve status/title parsing, inherited tags and queued-subtask behavior through existing services, not view-specific domain writes.
-- [ ] Verify navigation/reload, empty/long lists, keyboard/touch access, cancellation and shared-editor errors with focused regressions.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Expose Grouped list through the normal selector, retaining explicit choice per browser across reloads without resetting valid existing preferences.
+- [x] Keep grouping/search/filtering, hierarchy, CRUD, shared quick editing, schedule/timer actions and completion-policy prompts working.
+- [x] Preserve status/title parsing, inherited tags and queued-subtask behavior through existing services, not view-specific domain writes.
+- [x] Verify navigation/reload, empty/long lists, keyboard/touch access, cancellation and shared-editor errors with focused regressions.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -47,3 +47,20 @@ recorded in [evidence](../ticket-06-evidence.md#authorized-integrated-implementa
 Two fresh integrated review axes found no new confirmed defects. Local implementation commit is
 authorized; this issue remains in-progress, with acceptance criteria unchecked and native transport,
 Timer/manual/human/whole25 boundaries unchanged. No dev merge, push or PR is authorized.
+
+
+### Bounded software completion — 2026-11-13
+
+The five checked criteria record delivered software with bounded evidence under the local completion
+convention; they do not certify every manual check. The approved specification and criteria are unchanged.
+[Current five-criterion mapping](../ticket-06-evidence.md#bounded-software-completion-2026-11-13)
+supersedes the earlier in-progress checkpoint. Integrated Python534 passed/214warnings and canonical
+Node376 passed across23files; full Ruff remains exit1/18 baseline findings. The separate actual Grouped
+Timer entry run returned two scenario groups with browser exit0 and real start/navigation/Stop/readbacks.
+Original native3 remains101 returned checks with actual exit1 and DELETE204 CDP body UNKNOWN;
+separate original HTTP204/zero-byte capture and domain readback remain distinct evidence channels.
+
+Software completion remains subject to independent closure metadata review and parent disposition.
+Physical touch, screen reader, second engine, full keyboard/focus/contrast matrix, frozen/recovery/OS-idle
+Timer coverage, shared arbitrary custom-status editing (08), human/whole25 acceptance and final
+whole-delivery review against82fabdc remain separate. No gate is waived; no dev merge/push/PR is approved.

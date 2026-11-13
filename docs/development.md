@@ -559,7 +559,7 @@ Current owner audit for the **new Settings link** (not a retrofit of every histo
 | Preferences | Open; explicit browser Save; existing idle side effect unchanged |
 | Calendar/Tasks task and session dialogs | Initialized open; explicit Save/Cancel; session focus guard retained |
 | Task details / subtask dialog | Properties editing and Save gated until first successful tree read, including Retry refresh; subsequent refresh preserves drafts. Subtask dialog owns open/Save/Cancel. |
-| Revision | Hidden Day tab retains text/grade ownership. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
+| Revision | Date-owned Day editors retain text/grade, ratings, grouping and filters when hidden, switched or promoted. One retained owner exists per date; the main day is excluded from history. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
 | Habits | New/edit definition form and retained per-local-date entry drafts; explicit own Save/Cancel, confirmed selected-date Clear |
 | Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
 | Tasks Add Status | Open; explicit Save/Cancel (existing status rows still write on change) |
@@ -606,12 +606,18 @@ Session opening ends the suspension; ordinary standalone Task Cancel remains dis
 focus the title when initialization finishes, without deferred focus/select callbacks that can steal
 subsequent Tags typing or act after closure/reopening.
 
-Day reads/writers validate both selected date and editor identity before applying late continuations.
-Leaving and returning to the same date creates a different owner; same-day refreshes retain the owner.
-Stale Save/Dismiss responses cannot checkpoint another editor, submit its ratings or refresh it.
-Dismiss also validates ownership after confirmation; pending rating writes validate again before
-checkpointing/continuing. Already committed writes remain committed. No rating/domain policy changed.
+Day workspace uses one retained editor root per date. Bottom history starts closed and expands at
+most one non-main editor. Hiding, changing the main date, switching historical cards or promoting a
+historical day retains its form, ratings, grouping and evidence filter. Late reads and write ACKs
+apply only to their captured date/root. Save snapshots text and every rating before its first await;
+known day/rating ACKs checkpoint only submitted fields and retries skip those acknowledged payloads.
+Concurrent edits and hidden other-date drafts stay guarded. Dismiss writes/checkpoints only that
+date's text/grade; Discard restores only that date's drafts and keeps already saved rows. Required
+rating validation and controls are editor-scoped; rating definition policy is unchanged. Partial
+saves remain separate writes, and a lost response can leave an uncertain persisted result. No
+atomic/idempotent/exactly-once transport guarantee is implied.
 
-Caller coverage is in `test_draft_ownership.cjs` and the manual native-browser
-`browser_owner_transitions.js` probe. The appended ticket-01 evidence distinguishes actual browser
-checks from controlled timer/HTTP seams, retained failures and remaining independent review gates.
+Current Day caller coverage is in `test_draft_ownership.cjs`, `test_day_workspace.cjs` and
+`test_day_workspace_api.py`; `browser_day_workspace.js` supplies the current manual native probe.
+Execution and remaining acceptance gates belong in ticket-15 evidence. Earlier ticket-01 native
+probes document their historical single-editor DOM and do not establish acceptance of this workspace.

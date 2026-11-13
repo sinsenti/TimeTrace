@@ -14,7 +14,7 @@ function browser(seed = {}, elements = {}) {
         localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)) },
         document: {
             documentElement: { setAttribute: (k, v) => attrs[k] = v, style: { setProperty: (k, v) => styles[k] = v } },
-            getElementById: id => elements[id] || null,
+            getElementById: id => elements[id] || Object.values(elements).find(el => el.id === id) || null,
             querySelectorAll: () => [],
             addEventListener: (name, fn) => (listeners[name] ||= []).push(fn),
             dispatchEvent: event => (listeners[event.type] || []).forEach(fn => fn(event))
@@ -226,13 +226,38 @@ test('chart appearance changes neutral labels only and restores existing dark st
     assert.equal(chart.options.scales.x.grid.color, '#1a1c26');
 });
 
+
+// Day now clones a date-owned template; these two Preferences scenarios retain their real handlers.
+function installDayEditorFixture(fields) {
+    const textNames=['rating','highlights','friction','notes'];
+    const controls=Object.fromEntries(['date',...textNames,'ratings','status','breakdown','total','created-tasks','filter','filter-label','session-count','sessions'].map(name=>{
+        const control=textNames.includes(name) ? fields[`day_form_${name}`] : {value:'',style:{}};
+        Object.assign(control,{dataset:{day:name},addEventListener(){},replaceChildren(){},querySelectorAll:()=>[]});
+        return [name,control];
+    }));
+    const actions=Object.fromEntries(['save','dismiss','discard','retry','calendar','clear-filter','activity','tasks','promote'].map(action=>[action,{dataset:{action},addEventListener(){},setAttribute(){}}]));
+    const root={...panel(),dataset:{},addEventListener(){},
+        querySelectorAll(selector){
+            if(selector==='[data-day]')return Object.values(controls);
+            if(selector==='[data-action]')return Object.values(actions);
+            if(selector==='[data-day-text]'||selector==='input, select, textarea')return textNames.map(name=>controls[name]);
+            return [];
+        },querySelector(selector){const name=selector.match(/="([^"]+)"/)?.[1];return selector.includes('data-action')?actions[name]:controls[name];}
+    };
+    root.classList.toggle=(name,on)=>on ? root.classList.add(name):root.classList.remove(name);
+    fields.day_fixture_root=root;
+    fields.day_editor_template={content:{firstElementChild:{cloneNode:()=>root}}};
+    for(const id of ['day_main_editor','day_history_editor','day_editor_store'])fields[id]={appendChild(){}};
+}
+
 test('Revision day drafts survive real Preferences Save, color reshuffle and irrelevant settings application', async () => {
     const fields = Object.fromEntries(['day_form_rating', 'day_form_highlights', 'day_form_friction', 'day_form_notes'].map(id => [id, {value:'', style:{}}]));
     fields.day_review_date_input = {value:'2026-11-01'};
     fields.setting_appearance = {value:'dark'};
     fields.rev_tab_btn_sessions = panel();
+    installDayEditorFixture(fields);
     const b = browser({}, fields);
-    b.context.api = {get: async () => ({day_review:null, custom_ratings:[], sessions:[], task_breakdown:[], tag_breakdown:[]})};
+    b.context.api = {get: async url => url.startsWith('/rating-definitions') ? [] : ({day_review:null, custom_ratings:[], sessions:[], task_breakdown:[], tag_breakdown:[]})};
     for (const file of ['revision_nav.js', 'ratings_config.js', 'day_review.js']) vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), b.context);
     b.run("currentActiveRevTab = 'day'");
     await b.run('loadDayReviewData()');
@@ -359,16 +384,19 @@ test('Revision failed Save stays dirty and successful Save clears only its own d
     fields.rev_tab_day = {...panel(),id:'rev_tab_day',querySelectorAll: () => Object.values(fields).filter(el => el.id?.startsWith('day_form_'))};
     fields.settings_modal = {...panel(),dataset:{},id:'settings_modal',querySelectorAll: () => [fields.setting_appearance]};
     fields.setting_appearance = {id:'setting_appearance',value:'light'};
+    installDayEditorFixture(fields);
     const b = browser({}, fields);
     b.context.window.location.href = 'http://localhost/revision';
     b.context.window.confirm = () => false;
     let failed = false;
-    b.context.api = {get: async () => {if (failed) throw Error('synthetic refresh failure'); return {day_review:null,custom_ratings:[]};},post: async () => {if (failed) throw Error('synthetic save failure');}};
+    b.context.api = {get: async url => {if (failed) throw Error('synthetic refresh failure'); return url.startsWith('/rating-definitions') ? [] : {day_review:null,custom_ratings:[]};},post: async () => {if (failed) throw Error('synthetic save failure');}};
     for (const file of ['revision_nav.js','ratings_config.js','day_review.js']) vm.runInContext(fs.readFileSync(path.join(js,file),'utf8'),b.context);
+    b.context.renderCustomRatingsInputs = async () => true; // This Save/Preferences fixture has no mounted rating controls.
     await b.run('loadDayReviewData()');
     fields.day_form_notes.value = 'Unsaved review';
     failed = true;
-    await assert.rejects(b.run('saveDayReviewForm()'),/synthetic save failure/);
+    await b.run('saveDayReviewForm()');
+    assert.match(fields.day_fixture_root.querySelector('[data-day="status"]').textContent,/Save incomplete/);
     assert.equal(b.run('followSettingsLink({})'),false);
     b.run('openSettingsModal()');
     fields.setting_appearance.value = 'dark';

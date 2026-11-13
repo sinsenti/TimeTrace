@@ -3,13 +3,24 @@
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
 **Historical frontier checkpoint:** 03, 05, 06, 08, 09, 13, 14, 15, 18, 20, 21, 24 after bounded tickets **01 + 02 + 04 + 10 + 11 + 12 + 19 completed**; **seven complete/18 pending**. Ticket19 exact reviewed `625e5f2e5525a2307fda6cbe0f8a02f4462ecaf9` was normally FF-integrated from clean a8e (two commits/14paths); ONE exact625-parent five-DOC closure is released, with fresh independent closure DOC Standards+Spec and parent disposition STILL REQUIRED before authoritative19 acceptance or03/20 continuation. Prior12 closure review was disposed before19 activation; historical receipts remain. Already-run468Python/226warnings,237canonicalNode,92syntax,focused2Python/13Node/scopedPython and actual Ruff18 BOTH fixed streams remain evidence, not rerun; all239 source/test/spec bytes immutable. Genuine independent parent13 FIRST invocations/50actualcontexts-pages/errors[] means12 ordinary plus labelled coherent5, NOT all13 original green. Owner explicitly approved ONLY narrow test-only case5 idle-flag simulation/use of departure-guard evidence AFTER parent caught its permission overstep and revoked release BEFORE postgate document edit/stage/commit/cleanup. Originalcase5 FIRST FAILED startup wait and unchanged-source initialization counterexample remain UNFIXED/UNWAIVED/reserved03/whole-delivery follow-up, not real bootstrap/OSidle proof. [Current bounded19 evidence](ticket-19-evidence.md#owner-approved-bounded-closure-and-current-gate-2026-11-06) preserves history/unchanged criteria/fakes/manual limits. Explicitly transferred ONLY-own109363/start817653/18227 cleanup sent sole verified retained-pidfd SIGTERM; initial optional-key existence error and immediate PID-absence assertion failure retained. Parent-authorized later read-only audit observed actual PIDabsence13:36:28.080063UTC/socket111/healthrefusal/normal appended shutdown/unchanged storage+0013FK/all40Tasks-FTS40-docsize40-data3-idx1-config1. Parent accepted actual later absence, not weaker not-live; DB/timer/logs/venv retained, optional source-defined key absent.03/20 continuation stays HELD, not new DAG edges. Unchanged graph:07/17 blocked05,16 blocked15,22 blocked05/15/21,23 blocked21;20's19 predecessor is bounded delivered, not continuation permission;25 not done.13/14 separately coordinated; both stopped13 unit/TDD checkpoints are NOT donors/completed acceptance/SQL runtime permission. All11 original/stopped checkpoints and owner228 dirty root preserved. `/settings` Browser, `/settings/ai` AI, `/settings?category=providers` Providers; generic navbar still `/settings/ai` until03, old Preferences retained, Timer unintegrated. Quick Add04 distinct from Assistant21–23; Grouped/Outline06/07 and AI behavior Cancel20 deferred. Spec **Approved, not Built**; contrast/comparison/caption/initialization/manual/provider-SQL/transport/whole-delivery-adversarial-tuicr-human limits UNWAIVED; no whole25/human/push/PR/dev merge acceptance.
-**Codex continuation — 2026-11-13:** nine completed / sixteen pending in the local tracker.
-Tickets05 and14 are delivered;06 has a reviewed, verified local implementation candidate, and15
-has a reviewed/tested Day workspace with bounded native proof. They remain in-progress while
-closure/integration gates are resolved. The historical frontier paragraph above is preserved as
-history; current continuation state and evidence are recorded outside these worktrees in
+**Codex continuation — 2026-11-13:** eleven software-completed / fourteen pending in the local tracker.
+Tickets01/02/04/05/06/10/11/12/14/15/19 are delivered as bounded software completion.
+Ticket06 records integrated534 Python/376 canonical Node and a separate real Grouped Timer entry
+run (two scenario groups, actual exit0). Its original native3 remains101 returned checks with actual
+exit1/DELETE204 CDP UNKNOWN; separate original HTTP/readback proof remains distinct.
+[Ticket06 five-criterion mapping and limits](ticket-06-evidence.md#bounded-software-completion-2026-11-13)
+and [Ticket15 seven-criterion mapping and receipts](ticket-15-evidence.md#bounded-software-closure-2026-11-13)
+retain their separate evidence. Ticket15 records537 Python/397 canonical Node, exact18 inherited
+Ruff diagnostics, native-v2 seven Day plus three repair groups, real shared compatibility three groups
+and actual task/direct Calendar handoff two groups, all three actual browser exits0. Original native
+exit1/CDP UNKNOWN and prior failures remain retained. Both closure metadata axes report zero confirmed
+findings; the local Day candidate is committed and this metadata reconciliation awaits independent
+review before the local merge is completed. Historical frontier/counts above remain history.
+Current continuation state/evidence is outside these worktrees in
 `/home/user/git/personal/TimeTrace/.scratch/codex-continuation/README.md`. Local ticket updates,
-commits and integration are explicitly approved; dev merge/push/PR and acceptance waivers are not.
+commits and integration are explicitly approved. Manual/shared accessibility, explicit human and
+whole25 acceptance and final whole-delivery review remain separate and open. No dev merge, push,
+PR or acceptance waiver is granted.
 
 **Execution record:** [Implementation and review gates](implementation.md), including the fixed base and external reference evidence.
 
