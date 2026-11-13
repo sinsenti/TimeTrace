@@ -259,3 +259,12 @@ for (const declined of [true, false]) {
         assert.equal(blurred, declined ? 0 : 1);
     });
 }
+
+test('details opens its own recorded session without publishing task history as a global calendar list',()=>{
+    const p=sessionPage();
+    p.context.recorded={id:'own-session',task_id:null,start_time:'2026-11-10T23:45:00Z',end_time:'2026-11-11T00:30:00Z',notes:'Own history'};
+    p.run('openEditSessionModal("own-session", null, recorded)');
+    assert.equal(p.elements.get('edit_session_id').value,'own-session');
+    assert.equal(p.elements.get('session_modal_notes').value,'Own history');
+    assert.equal(p.context.allSessions.length,0,'own history must not become Timer global hints');
+});

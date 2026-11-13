@@ -247,7 +247,7 @@ async function openEditTaskModal(id) {
     if (statusSelect) statusSelect.value = t.status || 'To Do';
 
     const catSelect = document.getElementById('modal_input_category');
-    if (catSelect) catSelect.value = t.category || 'work';
+    if (catSelect) catSelect.value = t.category ?? 'work';
 
     const estInput = document.getElementById('modal_input_est');
     if (estInput) estInput.value = formatMinutesToDuration(t.estimated_minutes);

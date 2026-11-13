@@ -1,0 +1,50 @@
+/* Task details and Revision's optional task inspector only; no day/rating-admin adoption. */
+.task-details main, #rev_tab_task_inspector {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    font-size: 13px;
+}
+.task-details main { padding: 24px; }
+.task-details :is(h1, h2, h3, p, a), #rev_tab_task_inspector :is(h3, p, a) { min-width: 0; }
+.task-details main .flex, #rev_tab_task_inspector > .flex { flex-wrap: wrap; gap: 10px; }
+.task-details main .grid > *, #rev_tab_task_inspector .grid > * { min-width: 0; }
+.task-details :is(input, select, textarea) { max-width: 100%; }
+.task-detail-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-details main button, #rev_tab_task_inspector > button, .task-detail-actions button {
+    min-height: 32px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-muted);
+    border-radius: 7px;
+    background: var(--bg-card);
+    color: var(--text-main);
+}
+.task-details #inspector_save_btn { background: var(--accent-primary, #7c3aed); color: #fff; }
+.task-details main :is([class*="text-"], a),
+#rev_tab_task_inspector :is([class*="text-"], a):not(#task_quick_chips_bar *, [style*="background"] *) {
+    color: var(--text-main) !important;
+}
+.task-details main :is([class*="bg-blue-"], [class*="bg-purple-"], [class*="bg-black/"]),
+#rev_tab_task_inspector :is([class*="bg-purple-"], [class*="bg-black/"]):not(#task_quick_chips_bar *) {
+    background: var(--bg-card);
+}
+.task-details main #inspector_save_btn { color: #fff !important; }
+.task-accounting-explanation { font-size: 12px; line-height: 1.6; }
+#task_inspector_kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; text-align: left; }
+#inspect_task_sessions_list > button { display: block; width: 100%; text-align: left; }
+.task-details :is(#subtask_modal, #task_modal, #session_modal) > div {
+    width: min(100%, 560px);
+    max-height: 90dvh;
+    overflow-y: auto;
+}
+.task-details :is(#subtask_modal, #task_modal, #session_modal) { padding: 12px; }
+.task-details #subtask_modal :is(input, select) { min-height: 34px; }
+.task-details #subtask_modal :is([class*="text-"]) { color: var(--text-main); }
+.task-details #subtask_modal [class*="bg-purple-600"] { color: #fff; }
+.task-details button:disabled { opacity: .65; cursor: wait; }
+@media (max-width: 767px) {
+    .task-details main { padding: 12px; }
+    .task-details .subtask-children { padding-left: 6px; }
+    .task-details .subtask-node { padding: 10px; }
+    #task_inspector_kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+    #rev_tab_task_inspector > .flex { align-items: stretch; }
+}

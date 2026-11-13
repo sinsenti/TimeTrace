@@ -26,19 +26,19 @@ function parseDurationToMinutes(val) {
     if (clean === '-' || clean === '' || clean === 'none' || clean === 'null') {
         return null;
     }
-    const daysMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(d|day|days)$/);
+    const daysMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(d|day|days)$/);
     if (daysMatch) {
         return Math.round(parseFloat(daysMatch[1]) * 1440);
     }
-    const hoursMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/);
+    const hoursMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/);
     if (hoursMatch) {
         return Math.round(parseFloat(hoursMatch[1]) * 60);
     }
-    const minsMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)$/);
+    const minsMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)$/);
     if (minsMatch) {
         return Math.round(parseFloat(minsMatch[1]));
     }
-    const numMatch = clean.match(/^(\d+(?:\.\d+)?)$/);
+    const numMatch = clean.match(/^(-?\d+(?:\.\d+)?)$/);
     if (numMatch) {
         return Math.round(parseFloat(numMatch[1]));
     }

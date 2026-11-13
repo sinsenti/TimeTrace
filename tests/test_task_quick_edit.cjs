@@ -401,3 +401,13 @@ test('matching nested owner receives ACK before fallible metadata; superseding S
         assert.equal(p.attachments.length, supersede ? 0 : 1);
     }
 });
+
+test('shared task editor preserves an explicit empty category on unrelated Save',async()=>{
+    const p=editor(async request=>({body:request.method==='GET'
+        ? {id:'empty-category',title:'Neutral title',category:'',status:'To Do',estimated_minutes:15}
+        : {id:'empty-category',...request.body}}));
+    await p.run('openEditTaskModal("empty-category")');
+    assert.equal(p.elements.get('modal_input_category').value,'');
+    p.set('modal_input_desc','Unrelated change');await p.run('saveTask()');
+    assert.equal(p.requests.find(request=>request.method==='PUT').body.category,'');
+});

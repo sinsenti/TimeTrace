@@ -1,5 +1,10 @@
 let currentTagChips = [];
 let activeTagSuggestionIndex = -1;
+let sessionTagHistory = [];
+
+function setSessionTagHistory(sessions) {
+    sessionTagHistory = sessions;
+}
 
 function setTagChips(tagStr) {
     if (!tagStr) {
@@ -40,10 +45,16 @@ function renderTagChips() {
         const chip = document.createElement('span');
         chip.className = 'tag-chip px-2 py-0.5 rounded text-xs font-bold text-white flex items-center space-x-1 shadow-sm';
         chip.style.backgroundColor = color;
-        chip.innerHTML = `
-            <span>${tag}</span>
-            <button type="button" onclick="removeTagChip(${idx})" class="hover:text-red-200 text-[10px] font-black ml-1">&times;</button>
-        `;
+        const label = document.createElement('span');
+        label.textContent = tag;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'hover:text-red-200 text-[10px] font-black ml-1';
+        remove.textContent = '×';
+        remove.ariaLabel = `Remove ${tag}`;
+        remove.addEventListener('click', () => removeTagChip(idx));
+        chip.appendChild(label);
+        chip.appendChild(remove);
         container.insertBefore(chip, input);
     });
 }
@@ -51,15 +62,14 @@ function renderTagChips() {
 function getAllSystemTags() {
     let tagSet = new Set(['#progr', '#backend', '#frontend', '#meeting', '#planning', '#review', '#design', '#bugfix']);
     
-    if (typeof allSessions !== 'undefined') {
-        allSessions.forEach(s => {
-            if (s.tags) {
-                s.tags.split(' ').forEach(t => {
-                    if (t.startsWith('#')) tagSet.add(t.trim());
-                });
-            }
-        });
-    }
+    const sessions = typeof allSessions !== 'undefined' ? [...allSessions, ...sessionTagHistory] : sessionTagHistory;
+    sessions.forEach(s => {
+        if (s.tags) {
+            s.tags.split(' ').forEach(t => {
+                if (t.startsWith('#')) tagSet.add(t.trim());
+            });
+        }
+    });
 
     return Array.from(tagSet);
 }
@@ -81,12 +91,21 @@ function renderTagSuggestions(query) {
     }
 
     activeTagSuggestionIndex = 0;
-    dropdown.innerHTML = filtered.map((tag, idx) => `
-        <div onclick="selectTagSuggestion('${tag}')" class="tag-suggestion-item px-3 py-1.5 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}">
-            <span class="font-bold text-purple-300">${tag}</span>
-            <span class="text-[10px] text-slate-500">Press Enter</span>
-        </div>
-    `).join('');
+    dropdown.replaceChildren();
+    filtered.forEach((tag, idx) => {
+        const item = document.createElement('div');
+        item.className = `tag-suggestion-item px-3 py-1.5 hover:bg-[#1a1c28] cursor-pointer text-xs flex items-center justify-between transition ${idx === 0 ? 'bg-[#1a1c28]' : ''}`;
+        item.addEventListener('click', () => selectTagSuggestion(tag));
+        const label = document.createElement('span');
+        label.className = 'font-bold text-purple-300';
+        label.textContent = tag;
+        const hint = document.createElement('span');
+        hint.className = 'text-[10px] text-slate-500';
+        hint.textContent = 'Press Enter';
+        item.appendChild(label);
+        item.appendChild(hint);
+        dropdown.appendChild(item);
+    });
 
     dropdown.classList.remove('hidden');
 }

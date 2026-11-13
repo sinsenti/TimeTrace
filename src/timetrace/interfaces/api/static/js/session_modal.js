@@ -219,8 +219,9 @@ function scheduleSessionModalFocus(inputId) {
     }, 50);
 }
 
-function openEditSessionModal(sessionId, launcher = null) {
-    const session = allSessions.find(s => String(s.id) === String(sessionId));
+function openEditSessionModal(sessionId, launcher = null, recordedSession = null) {
+    const session = recordedSession?.id === sessionId ? recordedSession
+        : typeof allSessions !== 'undefined' ? allSessions.find(s => String(s.id) === String(sessionId)) : null;
     if (!session) return;
     beginSessionModal(launcher);
 

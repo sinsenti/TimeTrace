@@ -634,3 +634,14 @@ for(const entry of ['create','edit']) for(const phase of ['interaction','close',
     assert.equal(selections,before,'late callback must not select title after interaction');
     assert.equal(f.modal_input_tags.value,'#typed');assert.equal(b.writes.length,0);
 });
+
+test('Revision dedicated-details link retains an unsaved inline review when departure is declined',async()=>{
+    const {b,fields,text}=reviewBrowser('task');
+    fields.inspect_task_details_link=node('inspect_task_details_link');
+    await b.run("loadTaskInspectorStats('task')");text.value='Unsaved inline review';
+    assert.equal(fields.inspect_task_details_link.href,'/task-inspector/task');
+    assert.equal(fields.inspect_task_details_link.onclick({}),false);
+    assert.equal(b.confirmations.length,1);
+    assert.equal(text.value,'Unsaved inline review');
+    assert.equal(b.writes.length,0);
+});

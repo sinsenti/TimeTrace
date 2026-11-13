@@ -32,14 +32,14 @@ function renderTaskQuickChipsBar() {
 
     const tasks = taskKnowledge.values();
     if (tasks.length === 0) {
-        bar.innerHTML = '<span class="text-xs text-slate-500">No tasks created yet.</span>';
+        bar.innerHTML = `<span class="text-xs text-slate-500">${taskKnowledge.state().status === 'fresh' ? 'No tasks created yet.' : 'Task metadata unavailable. Retry refresh to load tasks.'}</span>`;
         return;
     }
 
     bar.innerHTML = tasks.map((t, idx) => {
         const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
         return `
-            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${escapeHtml(color)};">
+            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${escapeHtml(color)}; color: ${typeof getContrastingTextColor === 'function' ? getContrastingTextColor(color) : '#fff'};">
                 <span>${escapeHtml(t.title)}</span>
                 <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${escapeHtml(t.status)}</span>
             </button>
@@ -132,6 +132,8 @@ function highlightTaskInspectItem(items) {
 }
 
 function selectTaskInspectorById(taskId) {
+    if (taskId !== selectedInspectedTaskId && typeof hasSettingsDrafts === 'function' &&
+        hasSettingsDrafts(['task_inspector_body']) && !window.confirm('Discard this task review draft and select another task?')) return;
     const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');
     const dropdown = document.getElementById('task_inspector_dropdown');
@@ -143,7 +145,7 @@ function selectTaskInspectorById(taskId) {
     }
     if (dropdown) dropdown.classList.add('hidden');
 
-    loadTaskInspectorStats(taskId);
+    loadTaskInspectorStats(taskId, initializedTaskReviewId === taskId);
 }
 
 async function loadTaskInspectorStats(taskId, preserveEdits = false) {
@@ -175,45 +177,42 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 
         const kpiContainer = document.getElementById('task_inspector_kpis');
         if (kpiContainer) {
-            const ratioStr = data.progress_pct !== null ? `${data.progress_pct}%` : 'N/A';
-            kpiContainer.innerHTML = `
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Logged</span>
-                    <span class="text-lg font-black text-purple-400">${data.logged_hours}h</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimated</span>
-                    <span class="text-lg font-black text-slate-300">${data.estimated_hours}h</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimation Ratio</span>
-                    <span class="text-lg font-black text-blue-400">${ratioStr}</span>
-                </div>
-            `;
+            const ratioStr = data.progress_pct != null ? `${data.progress_pct}%` : 'N/A';
+            const balance = value => value == null ? 'Unbounded' : `${value}h`;
+            const metrics = [
+                ['Logged', `${data.logged_hours}h`], ['Scheduled', `${data.scheduled_hours}h`],
+                [task.is_recurring ? 'Estimate per occurrence' : 'Estimated', `${data.estimated_hours}h`],
+                ['Logged / estimate', ratioStr], ['Remaining', balance(data.remaining_hours)],
+                ['Unscheduled', balance(data.unscheduled_hours)]
+            ];
+            kpiContainer.innerHTML = metrics.map(([label, value]) => `
+                <div><span class="text-xs block">${label}</span><strong>${value}</strong></div>
+            `).join('');
         }
-
-        const pBar = document.getElementById('inspect_task_progress_bar');
-        if (pBar) {
-            const pct = data.progress_pct !== null ? Math.min(data.progress_pct, 100) : 0;
-            pBar.style.width = `${pct}%`;
+        const details = document.getElementById('inspect_task_details_link');
+        if (details) {
+            details.href = `/task-inspector/${taskId}`;
+            details.onclick = event => followSettingsLink(event);
         }
+        const status = document.getElementById('task_inspector_status');
+        if (status) status.textContent = 'Showing this task only. Descendant sessions are not included.';
 
         const list = document.getElementById('inspect_task_sessions_list');
         if (list) {
             if (data.sessions.length === 0) {
-                list.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No sessions logged for this task yet.</div>';
+                list.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No recorded sessions linked directly to this task yet.</div>';
             } else {
                 list.innerHTML = data.sessions.map(s => {
                     const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
                     const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
                     return `
-                        <div onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
+                        <button type="button" onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
                             <div class="flex justify-between items-center font-mono">
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>
                             </div>
                             ${s.notes ? `<div class="text-white font-semibold">${escapeHtml(s.notes)}</div>` : ''}
-                        </div>
+                        </button>
                     `;
                 }).join('');
             }
@@ -236,6 +235,8 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
         return true;
     } catch (e) {
         if (!isCurrent()) return null;
+        const status = document.getElementById('task_inspector_status');
+        if (status) status.textContent = 'Task unavailable or refresh failed. Last-known data and initialized drafts retained. Retry refresh reads only.';
         taskKnowledge.viewResult('inspector-registry', false);
         console.error("Failed to load task inspector stats:", e);
         return false;
