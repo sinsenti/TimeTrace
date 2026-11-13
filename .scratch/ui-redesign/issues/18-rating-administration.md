@@ -4,7 +4,7 @@
 
 **Blocked by:** [01: Calendar shell and shared appearance](01-calendar-shell.md)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Approved decisions:** O8, O5, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -23,3 +23,5 @@
 - Owner approved the 25-ticket granularity/dependency proposal and local publication with “everything feels right, approved”. Implementation-spec/product decision gates remain recorded above. Move to ready-for-agent only after the spec and applicable decisions are explicitly approved; technical blockers still govern execution order.
 
 - 2026-11-01: Owner answered “yes to all answer. and final approve as well” to the full decision questionnaire. All applicable decisions and the final spec/verification plan are approved; status is now ready-for-agent, subject to technical blockers. No implementation has begun.
+
+- Continuation reconciliation: the reviewed freeze02 ten-path implementation is checkpointed at `5e3fbe4fc5315e936c215e2738b459ae9942bd33`; exact incoming AI settings integration `4e75ef02cf478165f6eaa48b0527c3f852b31dcd` was merged without conflicts. Both prior P2 source defects are repaired; independent Standards/Spec review02 reports zero confirmed source findings. Pre-ticket20 automated evidence reports 545 Python / 426 Node passes; these counts do not describe the newly combined tree. Native acceptance remains UNRUN and combined checks remain pending. No completion or acceptance is claimed. See [bounded ticket18 evidence](../ticket-18-evidence.md).
