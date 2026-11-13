@@ -1,374 +1,266 @@
-/**
- * Daily Retrospective Form & Day Timeline
- */
-
-let currentDaySummary = null;
-let dayBreakdownFilter = null; // { type: 'tag'|'task', value } or null
-let dayReviewDate = null;
-let dayReviewTextReady = false;
-let dayReviewRatingsReady = false;
-let dayReviewLoadGeneration = 0;
-let dayReviewLoading = false;
-let dayReviewReadFailed = false;
-// Same-day reads may refresh one editor; leaving and returning creates a different owner.
+/** Date-owned Day workspace. Hidden editors stay mounted for departure ownership. */
+const dayEditors = new Map();
 let dayReviewEditor = null;
+let expandedHistoryDate = null;
+let dayHistoryVisible = false;
 
-function isCurrentDayReviewEditor(editor) {
-    return editor === dayReviewEditor && editor?.date === document.getElementById('day_review_date_input')?.value;
+function dayField(editor, name) { return editor.root.querySelector(`[data-day="${name}"]`); }
+function dayEditorCurrent(editor) { return dayEditors.get(editor.date) === editor; }
+function localDayToday() {
+    if (typeof getLocalTodayStr === 'function') return getLocalTodayStr();
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
 }
-
-function dayTextCheckpoint() {
-    return typeof settingsDraftCheckpoint === 'function'
-        ? settingsDraftCheckpoint('rev_tab_day', '[id^="day_form_"]') : () => {};
-}
-
-function setDayReviewToday() {
-    const dateInput = document.getElementById('day_review_date_input');
-    if (dateInput) {
-        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
-        loadDayReviewData();
-    }
-}
-
-function jumpToCalendarForDay() {
-    const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput || !dateInput.value) return;
-
-    let url = `/dashboard?date=${dateInput.value}`;
-    if (dayBreakdownFilter) {
-        if (dayBreakdownFilter.type === 'tag') {
-            url += `&tag=${encodeURIComponent(dayBreakdownFilter.value)}`;
-        } else if (dayBreakdownFilter.type === 'task') {
-            url += `&task=${encodeURIComponent(dayBreakdownFilter.value)}`;
+function getDayEditor(date) {
+    if (dayEditors.has(date)) return dayEditors.get(date);
+    const root = document.getElementById('day_editor_template').content.firstElementChild.cloneNode(true);
+    root.id = `day_editor_${date}`;
+    root.dataset.settingsDraftRetained = 'true';
+    root.querySelectorAll('[data-day]').forEach(el => { el.id = `${root.id}_${el.dataset.day}`; });
+    const editor = {date, root, summary:null, textReady:false, ratingsReady:false, loading:false,
+        generation:0, saving:false, filter:null, group:'tag', acknowledged:null, baseline:null};
+    dayEditors.set(date, editor);
+    document.getElementById('day_editor_store').appendChild(root);
+    dayField(editor,'date').textContent = date;
+    root.addEventListener('keydown', event => {
+        if (event.ctrlKey && event.key === 'Enter') {
+            event.preventDefault(); event.stopPropagation(); saveDayReviewForm(editor);
         }
-    }
-    window.location.href = url;
+    });
+    root.querySelectorAll('[data-action]').forEach(button => button.addEventListener('click', () => {
+        const action = button.dataset.action;
+        if (action === 'save') saveDayReviewForm(editor);
+        if (action === 'dismiss') dismissDayReview(editor);
+        if (action === 'discard') discardDayReview(editor);
+        if (action === 'retry') {
+            const unchanged = editor.retryDiscard === JSON.stringify(snapshotCustomRatings('day',editor.date,dayField(editor,'ratings')).map(entry=>[entry.signature,entry.rawValue]));
+            if (unchanged) discardDayReview(editor, true);
+            else { editor.retryDiscard = null; loadDayEditor(editor); }
+        }
+        if (action === 'calendar') jumpToCalendarForDay(editor);
+        if (action === 'clear-filter') { editor.filter = null; renderDayEvidence(editor); }
+        if (action === 'activity' || action === 'tasks') { editor.group = action === 'tasks' ? 'task' : 'tag'; renderDayEvidence(editor); }
+        if (action === 'promote') jumpToDayReview(editor.date);
+    }));
+    dayField(editor,'rating').addEventListener('change', () => applyDayRatingColor(editor));
+    return editor;
 }
-
-function markDayFormDirty() {
-    const btn = document.getElementById('day_form_save_btn');
-    if (btn) {
-        btn.innerText = dayReviewHasExisting ? "Save Updates" : "Save Day Review";
-        btn.className = "w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition shadow-lg shadow-purple-600/30";
+function positionDayEditors() {
+    const main = document.getElementById('day_main_editor');
+    const history = document.getElementById('day_history_editor');
+    const store = document.getElementById('day_editor_store');
+    for (const editor of dayEditors.values()) {
+        const isMain = editor === dayReviewEditor;
+        const historical = dayHistoryVisible && editor.date === expandedHistoryDate && !isMain;
+        (isMain ? main : historical ? history : store).appendChild(editor.root);
+        editor.root.classList.toggle('hidden', !isMain && !historical);
+        editor.root.querySelector('[data-action="promote"]').hidden = isMain;
     }
 }
-
 async function loadDayReviewData() {
-    const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput) return;
-
-    if (!dateInput.value) {
-        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
-    }
-
-    const dateStr = dateInput.value;
-    const generation = ++dayReviewLoadGeneration;
-    const sameDay = dayReviewDate === dateStr;
-    const keepText = sameDay && dayReviewTextReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['rev_tab_day']);
-    const keepRatings = sameDay && dayReviewRatingsReady && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']);
-    if (!sameDay) {
-        dayReviewEditor = { date: dateStr };
-        const ratings = document.getElementById('day_custom_ratings_container');
-        if (ratings) ratings.innerHTML = '';
-    }
-    const editor = dayReviewEditor;
-    dayReviewDate = dateStr;
-    if (!sameDay) {
-        dayReviewTextReady = false;
-        dayReviewRatingsReady = false;
-    }
-    dayReviewLoading = true;
-    dayReviewReadFailed = false;
-    const textFields = ['rating', 'highlights', 'friction', 'notes'].map(name => document.getElementById(`day_form_${name}`));
-    textFields.forEach(el => { if (el) el.disabled = true; });
-    if (typeof rememberSettingsDraft === 'function' && !sameDay) rememberSettingsDraft('rev_tab_day', '[id^="day_form_"]');
+    const input = document.getElementById('day_review_date_input');
+    if (!input) return;
+    input.value ||= localDayToday();
+    dayReviewEditor = getDayEditor(input.value);
+    if (expandedHistoryDate === input.value) expandedHistoryDate = null;
+    positionDayEditors();
+    if (typeof renderDayHistoryGrid === 'function') renderDayHistoryGrid();
+    return loadDayEditor(dayReviewEditor);
+}
+function setDayReviewToday() {
+    document.getElementById('day_review_date_input').value = localDayToday();
+    return loadDayReviewData();
+}
+function dayText(editor, skipped = false) {
+    return {date_str:editor.date, rating:Number(dayField(editor,'rating').value) || 3,
+        highlights:dayField(editor,'highlights').value || '', friction:dayField(editor,'friction').value || '',
+        notes:dayField(editor,'notes').value || '', review_skipped:skipped};
+}
+function populateDayText(editor, payload) {
+    for (const name of ['rating','highlights','friction','notes']) dayField(editor,name).value = payload[name];
+    applyDayRatingColor(editor);
+}
+function dayCheckpoint(editor) {
+    return typeof settingsDraftCheckpoint === 'function'
+        ? settingsDraftCheckpoint(editor.root.id, '[data-day-text]') : () => {};
+}
+function setDayStatus(editor, text) { dayField(editor,'status').textContent = text; }
+async function loadDayEditor(editor) {
+    if (editor.saving) return;
+    const generation = ++editor.generation;
+    editor.loading = true;
+    editor.ratingsFresh = false;
+    if (!editor.textReady) editor.root.querySelectorAll('[data-day-text]').forEach(el => { el.disabled = true; });
+    setDayStatus(editor,'Loading…');
     try {
-        const data = await api.get(`/revision/day-summary?date_str=${dateStr}`);
-        if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
-        currentDaySummary = data;
-        dayBreakdownFilter = null;
-
-        const badge = document.getElementById('day_review_status_badge');
-        const saveBtn = document.getElementById('day_form_save_btn');
-
-        if (data.day_review && !data.day_review.review_skipped) {
-            dayReviewHasExisting = true;
-            if (badge) {
-                const gradeClasses = typeof getGradeColorClasses === 'function'
-                    ? getGradeColorClasses(data.day_review.rating, 1, 5).badge
-                    : "bg-emerald-900/60 text-emerald-300 border border-emerald-700";
-                badge.innerText = `Reviewed (${data.day_review.rating}/5)`;
-                badge.className = `px-2.5 py-1 rounded text-xs font-bold ${gradeClasses}`;
-            }
-            if (saveBtn) {
-                saveBtn.innerText = "Save Updates";
-                saveBtn.className = "w-full bg-[#222536] hover:bg-[#2d3046] text-slate-300 font-bold py-2 rounded-lg text-xs transition border border-[var(--border-muted)]";
-            }
-        } else if (data.day_review && data.day_review.review_skipped) {
-            dayReviewHasExisting = true;
-            if (badge) {
-                badge.innerText = "Dismissed";
-                badge.className = "px-2.5 py-1 rounded text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700";
-            }
-            if (saveBtn) {
-                saveBtn.innerText = "Save Updates";
-                saveBtn.className = "w-full bg-[#222536] hover:bg-[#2d3046] text-slate-300 font-bold py-2 rounded-lg text-xs transition border border-[var(--border-muted)]";
-            }
-        } else {
-            dayReviewHasExisting = false;
-            if (badge) {
-                badge.innerText = "Missing Review";
-                badge.className = "px-2.5 py-1 rounded text-xs font-bold bg-amber-900/60 text-amber-300 border border-amber-700";
-            }
-            if (saveBtn) {
-                saveBtn.innerText = "Save Day Review";
-                saveBtn.className = "w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition";
-            }
+        const data = await api.get(`/revision/day-summary?date_str=${encodeURIComponent(editor.date)}`);
+        if (!dayEditorCurrent(editor) || generation !== editor.generation) return;
+        editor.summary = data;
+        // A refresh updates evidence, never replaces an initialized date's unsaved form.
+        if (!editor.textReady) {
+            const review = data.day_review;
+            editor.baseline = {date_str:editor.date, rating:review?.rating ?? 3,
+                highlights:review?.highlights || '', friction:review?.friction || '', notes:review?.notes || '', review_skipped:!!review?.review_skipped};
+            populateDayText(editor,editor.baseline);
+            dayCheckpoint(editor)();
+            editor.textReady = true;
         }
-
-        const kpiContainer = document.getElementById('day_kpi_badges');
-        if (kpiContainer) {
-            kpiContainer.innerHTML = `
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Focus Time</span>
-                    <span class="text-lg font-black text-purple-400">${data.total_hours}h</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Sessions</span>
-                    <span class="text-lg font-black text-emerald-400">${data.total_sessions}</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Tasks Completed</span>
-                    <span class="text-lg font-black text-blue-400">${data.completed_tasks_count}</span>
-                </div>
-            `;
+        editor.root.querySelectorAll('[data-day-text]').forEach(el => { el.disabled = false; });
+        renderDayEvidence(editor);
+        {
+            const ratings = dayField(editor,'ratings');
+            const hydrated = await renderCustomRatingsInputs('day',editor.date,ratings.id,data.custom_ratings || [],
+                () => dayEditorCurrent(editor) && generation === editor.generation, ratings, editor.ratingsReady);
+            if (!dayEditorCurrent(editor) || generation !== editor.generation) return;
+            if (!hydrated) { setDayStatus(editor,'Load failed. Retry load before saving. Existing drafts retained.'); return; }
+            if (!editor.ratingsReady) {
+                ratings.ratingBaselines = new Map(Array.from(ratings.querySelectorAll('.custom-rating-input')).map(input=>[input.id,JSON.stringify([input.value,input.disabled])]));
+                if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(ratings.id,'.custom-rating-input');
+            }
+            ratings.dataset.settingsDraftRetained = 'true';
+            editor.ratingsReady = true; editor.ratingsFresh = true;
         }
-
-        const review = data.day_review;
-        if (!keepText) {
-            document.getElementById('day_form_rating').value = review ? review.rating : 3;
-            document.getElementById('day_form_highlights').value = review ? (review.highlights || "") : "";
-            document.getElementById('day_form_friction').value = review ? (review.friction || "") : "";
-            document.getElementById('day_form_notes').value = review ? (review.notes || "") : "";
-            dayTextCheckpoint()();
-        }
-        textFields.forEach(el => { if (el) el.disabled = false; });
-        dayReviewTextReady = true;
-        applyDayRatingColor();
-        renderDayBreakdown();
-        renderDaySessionsTimeline();
-
-        if (!keepRatings) {
-            let hydrated = false;
-            await renderCustomRatingsInputs('day', dateStr, 'day_custom_ratings_container', data.custom_ratings, () => {
-                hydrated = generation === dayReviewLoadGeneration && isCurrentDayReviewEditor(editor) && !(sameDay && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['day_custom_ratings_container']));
-                return hydrated;
-            });
-            if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
-            if (hydrated && typeof rememberSettingsDraft === 'function') rememberSettingsDraft('day_custom_ratings_container', '.custom-rating-input');
-        }
-        dayReviewRatingsReady = true;
-
-    } catch (e) {
-        if (generation !== dayReviewLoadGeneration || !isCurrentDayReviewEditor(editor)) return;
-        dayReviewReadFailed = true;
-        const saveBtn = document.getElementById('day_form_save_btn');
-        if (saveBtn) saveBtn.innerText = 'Load failed — retry before saving';
-        console.error("Failed to load day review:", e);
+        setDayStatus(editor,data.day_review?.review_skipped ? 'Dismissed' : data.day_review ? `Reviewed (${data.day_review.rating}/5)` : 'Missing review');
+    } catch (error) {
+        if (dayEditorCurrent(editor) && generation === editor.generation) setDayStatus(editor,'Load failed. Retry load before saving. Existing drafts retained.');
     } finally {
-        if (generation === dayReviewLoadGeneration) dayReviewLoading = false;
+        if (generation === editor.generation) editor.loading = false;
     }
 }
-
-function applyDayRatingColor() {
-    const select = document.getElementById('day_form_rating');
-    if (!select || typeof getGradeColorClasses !== 'function') return;
-    const classes = getGradeColorClasses(parseInt(select.value), 1, 5);
-    select.style.color = classes.hex;
+function applyDayRatingColor(editor = dayReviewEditor) {
+    if (!editor || typeof getGradeColorClasses !== 'function') return;
+    dayField(editor,'rating').style.color = getGradeColorClasses(dayField(editor,'rating').value,1,5).hex;
 }
-
-function sessionMatchesDayFilter(s) {
-    if (!dayBreakdownFilter) return true;
-    if (dayBreakdownFilter.type === 'tag') {
-        const tagStr = s.tags || '#general';
-        const tokens = tagStr.split(/\s+/).filter(t => t.startsWith('#'));
-        const effectiveTokens = tokens.length ? tokens : ['#general'];
-        return effectiveTokens.includes(dayBreakdownFilter.value);
-    }
-    if (dayBreakdownFilter.type === 'task') {
-        if (dayBreakdownFilter.value === '__none__') return !s.task_id;
-        return String(s.task_id) === String(dayBreakdownFilter.value);
-    }
-    return true;
+function markDayFormDirty() {} // Retained callers; ownership is derived from field snapshots.
+function sessionMatchesDayFilter(session, editor = dayReviewEditor) {
+    const filter = editor?.filter;
+    if (!filter) return true;
+    if (filter.type === 'task') return filter.value === '__none__' ? !session.task_id : String(session.task_id) === String(filter.value);
+    const tags = (session.tags || '').split(/\s+/).filter(tag => tag.startsWith('#'));
+    return (tags.length ? tags : ['#general']).includes(filter.value);
 }
-
-function toggleDayBreakdownFilter(type, value) {
-    if (dayBreakdownFilter && dayBreakdownFilter.type === type && String(dayBreakdownFilter.value) === String(value)) {
-        dayBreakdownFilter = null;
-    } else {
-        dayBreakdownFilter = { type, value };
-    }
-    renderDayBreakdown();
-    renderDaySessionsTimeline();
+function toggleDayBreakdownFilter(type, value, editor = dayReviewEditor) {
+    if (!editor) return;
+    editor.filter = editor.filter?.type === type && String(editor.filter.value) === String(value) ? null : {type,value};
+    renderDayEvidence(editor);
 }
-
-function renderDayBreakdown() {
-    if (!currentDaySummary) return;
-
-    const totalEl = document.getElementById('day_breakdown_total');
-    if (totalEl) totalEl.innerText = `${currentDaySummary.total_hours}h`;
-
-    const chip = document.getElementById('day_breakdown_filter_chip');
-    if (chip) {
-        if (dayBreakdownFilter) {
-            const label = dayBreakdownFilter.type === 'tag'
-                ? dayBreakdownFilter.value
-                : (dayBreakdownFilter.value === '__none__' ? 'Direct Session Log' : (currentDaySummary.task_breakdown.find(r => String(r.task_id) === String(dayBreakdownFilter.value)) || {}).title || 'Task');
-            chip.classList.remove('hidden');
-            chip.classList.add('flex');
-            chip.innerHTML = `<span>Filtered: ${label}</span><button type="button" onclick="toggleDayBreakdownFilter('${dayBreakdownFilter.type}', '${dayBreakdownFilter.value}')" class="text-purple-300 hover:text-white font-black">&times;</button>`;
-        } else {
-            chip.classList.add('hidden');
-            chip.classList.remove('flex');
-            chip.innerHTML = '';
+function jumpToCalendarForDay(editor = dayReviewEditor) {
+    if (!editor) return;
+    const query = new URLSearchParams({date:editor.date});
+    if (editor.filter) query.set(editor.filter.type,editor.filter.value);
+    window.location.href = `/dashboard?${query}`;
+}
+function renderDayEvidence(editor) {
+    const data = editor.summary;
+    if (!data) return;
+    dayField(editor,'created-tasks').hidden = editor.group !== 'task';
+    const group = editor.group;
+    const rows = (editor.group === 'tag' ? data.tag_breakdown : data.task_breakdown) || [];
+    const list = dayField(editor,'breakdown');
+    list.replaceChildren();
+    dayField(editor,'total').textContent = `${data.total_hours ?? 0}h recorded`;
+    dayField(editor,'created-tasks').textContent = `${data.completed_tasks_count ?? 0} done tasks created on ${editor.date}`;
+    editor.root.querySelector('[data-action="activity"]').setAttribute('aria-pressed',String(editor.group === 'tag'));
+    editor.root.querySelector('[data-action="tasks"]').setAttribute('aria-pressed',String(editor.group === 'task'));
+    for (const row of rows) {
+        const value = editor.group === 'tag' ? row.tag : row.task_id ?? '__none__';
+        const button = document.createElement('button'); button.type = 'button'; button.className = 'day-breakdown-row';
+        button.setAttribute('aria-pressed',String(editor.filter?.type === editor.group && String(editor.filter.value) === String(value)));
+        const label = document.createElement('span'); label.textContent = editor.group === 'tag' ? row.tag : row.title;
+        const hours = document.createElement('span'); hours.textContent = `${row.total_hours}h`;
+        const bar = document.createElement('span'); bar.className = 'day-breakdown-bar';
+        bar.style.width = `${data.total_hours > 0 ? Math.max(0,Math.min(100,Number(row.total_hours)/data.total_hours*100)) : 0}%`;
+        button.append(label,hours,bar);
+        button.addEventListener('click',()=>toggleDayBreakdownFilter(group,value,editor)); list.appendChild(button);
+    }
+    if (!rows.length) list.textContent = 'No activity logged.';
+    const filter = editor.filter;
+    const chip = dayField(editor,'filter'); chip.hidden = !filter;
+    if (filter) {
+        const label = filter.type === 'tag' ? filter.value : filter.value === '__none__' ? 'Direct Session Log'
+            : (data.task_breakdown || []).find(row=>String(row.task_id) === String(filter.value))?.title || 'Task';
+        dayField(editor,'filter-label').textContent = `${filter.type}: ${label}`;
+    }
+    const sessions = (data.sessions || []).filter(session=>sessionMatchesDayFilter(session,editor));
+    dayField(editor,'session-count').textContent = filter ? `${sessions.length}/${data.total_sessions ?? 0} matching recorded sessions` : `${data.total_sessions ?? 0} recorded sessions`;
+    const timeline = dayField(editor,'sessions'); timeline.replaceChildren();
+    for (const session of sessions) {
+        const button = document.createElement('button');button.type = 'button';button.className = 'day-session-row';
+        const start = session.start_time ? new Date(session.start_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
+        button.textContent = `${start} · ${session.task?.title || session.notes || 'Direct Session Log'} · ${Math.round((session.duration_seconds || 0)/60)}m · ${session.tags || '#general'}`;
+        button.addEventListener('click',()=>openSessionReviewModal(session.id));timeline.appendChild(button);
+    }
+    if (!sessions.length) timeline.textContent = 'No matching sessions for this day.';
+}
+function renderDayBreakdown() { if (dayReviewEditor) renderDayEvidence(dayReviewEditor); }
+function renderDaySessionsTimeline() { renderDayBreakdown(); }
+async function saveDayReviewForm(editor = dayReviewEditor) {
+    if (!editor || editor.saving || editor.loading) return;
+    if (!editor.textReady || !editor.ratingsReady || !editor.ratingsFresh) { await loadDayEditor(editor); return; }
+    const ratings = dayField(editor,'ratings');
+    if (!validateRequiredCustomRatings('day',editor.date,ratings)) return;
+    const payload = dayText(editor);
+    const signature = JSON.stringify(payload);
+    const checkpoint = dayCheckpoint(editor);
+    const submitted = snapshotCustomRatings('day',editor.date,ratings);
+    editor.saving = true;
+    try {
+        if (editor.acknowledged !== signature) {
+            await api.post('/revision/day-review',payload);
+            if (!dayEditorCurrent(editor)) return;
+            editor.acknowledged = signature; editor.baseline = {...payload}; checkpoint();
         }
-    }
-
-    const renderRow = (row, type, idOrValue) => {
-        const isActive = dayBreakdownFilter && dayBreakdownFilter.type === type && String(dayBreakdownFilter.value) === String(idOrValue);
-        const isDimmed = dayBreakdownFilter && !isActive;
-        const rowClass = `bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}`;
-        const label = type === 'tag' ? row.tag : row.title;
-        return `
-            <div onclick="toggleDayBreakdownFilter('${type}', '${idOrValue}')" class="${rowClass}">
-                <span class="text-xs font-bold ${type === 'tag' ? 'text-emerald-400' : 'text-purple-300'} truncate">${label}</span>
-                <span class="text-xs font-black text-white shrink-0 ml-2">${row.total_hours}h <span class="text-slate-500 font-medium">(${row.percent}%)</span></span>
-            </div>
-        `;
-    };
-
-    const tagsList = document.getElementById('day_breakdown_tags_list');
-    if (tagsList) {
-        const rows = currentDaySummary.tag_breakdown || [];
-        tagsList.innerHTML = rows.length === 0
-            ? '<div class="text-xs text-slate-500">No activity logged.</div>'
-            : rows.map(row => renderRow(row, 'tag', row.tag)).join('');
-    }
-
-    const tasksList = document.getElementById('day_breakdown_tasks_list');
-    if (tasksList) {
-        const rows = currentDaySummary.task_breakdown || [];
-        tasksList.innerHTML = rows.length === 0
-            ? '<div class="text-xs text-slate-500">No activity logged.</div>'
-            : rows.map(row => renderRow(row, 'task', row.task_id === null ? '__none__' : row.task_id)).join('');
-    }
+        await submitCustomRatings('day',editor.date,()=>dayEditorCurrent(editor),ratings,submitted);
+        if (dayEditorCurrent(editor)) setDayStatus(editor,'Saved submitted values. Later edits remain unsaved.');
+    } catch (error) {
+        if (dayEditorCurrent(editor)) setDayStatus(editor,'Save incomplete. Acknowledged writes remain saved; retry sends unfinished values. A lost response may have saved.');
+    } finally { editor.saving = false; }
 }
-
-function renderDaySessionsTimeline() {
-    const timeline = document.getElementById('day_sessions_timeline');
-    if (!timeline || !currentDaySummary) return;
-
-    const sessions = (currentDaySummary.sessions || []).filter(sessionMatchesDayFilter);
-
-    if (sessions.length === 0) {
-        timeline.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No sessions logged for this day.</div>';
-        return;
-    }
-
-    timeline.innerHTML = sessions.map(s => {
-        const stStr = s.start_time ? new Date(s.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '00:00';
-        const etStr = s.end_time ? new Date(s.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'NOW';
-        const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
-
-        const mainHeading = s.task ? s.task.title : (s.notes || 'Direct Session Log');
-        const subDesc = s.task ? (s.task.description || '') : '';
-        const notesBody = s.task ? (s.notes || '') : '';
-
-        return `
-            <div onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg flex flex-col space-y-1.5 text-xs cursor-pointer transition">
-                <div class="flex justify-between items-center">
-                    <span class="font-mono text-purple-300 font-bold">[${stStr} - ${etStr}] (${durMins}m)</span>
-                    <span class="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-900/40 text-purple-300 border border-purple-800">${s.tags || '#general'}</span>
-                </div>
-                <div class="space-y-0.5">
-                    <div class="font-black text-sm text-white">${mainHeading}</div>
-                    ${subDesc ? `<div class="text-xs text-slate-400 line-clamp-1">${subDesc}</div>` : ''}
-                </div>
-                ${notesBody ? `<div class="text-slate-200 font-medium">${notesBody}</div>` : ''}
-            </div>
-        `;
-    }).join('');
+async function dismissDayReview(editor = dayReviewEditor) {
+    if (!editor || editor.loading || editor.saving) return;
+    if (!editor.textReady) { await loadDayEditor(editor); return; }
+    editor.saving = true;
+    // Confirmation and payload belong to this date even if the main date changes.
+    const payload = dayText(editor,true); const checkpoint = dayCheckpoint(editor);
+    try {
+        if (!await showCustomConfirm('Dismiss Day Review',`Mark day review for ${editor.date} as dismissed?`)) return;
+        if (!dayEditorCurrent(editor)) return;
+        await api.post('/revision/day-review',payload);
+        if (!dayEditorCurrent(editor)) return;
+        editor.baseline = {...payload}; editor.acknowledged = JSON.stringify(payload); checkpoint();
+        setDayStatus(editor,'Dismissed. Custom rating drafts retained.');
+    } catch (error) { setDayStatus(editor,'Dismiss incomplete. A lost response may have saved; drafts retained.'); }
+    finally { editor.saving = false; }
 }
-
-async function saveDayReviewForm() {
-    const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput || !dateInput.value) return;
-
-    const dateStr = dateInput.value;
-    if (dayReviewLoading) return;
-    if (dayReviewReadFailed || !dayReviewTextReady || !dayReviewRatingsReady || dayReviewDate !== dateStr) {
-        await loadDayReviewData();
-        return;
-    }
-
-    if (!validateRequiredCustomRatings('day', dateStr)) {
-        return;
-    }
-
-    const ratingEl = document.getElementById('day_form_rating');
-    const parsedRating = ratingEl ? parseInt(ratingEl.value) : 3;
-
-    const payload = {
-        date_str: dateStr,
-        rating: isNaN(parsedRating) ? 3 : parsedRating,
-        highlights: document.getElementById('day_form_highlights') ? document.getElementById('day_form_highlights').value || "" : "",
-        friction: document.getElementById('day_form_friction') ? document.getElementById('day_form_friction').value || "" : "",
-        notes: document.getElementById('day_form_notes') ? document.getElementById('day_form_notes').value || "" : "",
-        review_skipped: false
-    };
-
-    const editor = dayReviewEditor;
-    const markSaved = dayTextCheckpoint();
-    await api.post('/revision/day-review', payload);
-    if (!isCurrentDayReviewEditor(editor)) return;
-    markSaved();
-    await submitCustomRatings('day', dateStr, () => isCurrentDayReviewEditor(editor));
-    if (isCurrentDayReviewEditor(editor)) loadDayReviewData();
-}
-
-async function dismissDayReview() {
-    const dateInput = document.getElementById('day_review_date_input');
-    if (!dateInput || !dateInput.value || dayReviewLoading) return;
-    if (dayReviewReadFailed || !dayReviewTextReady || dayReviewDate !== dateInput.value) {
-        await loadDayReviewData();
-        return;
-    }
-
-    const dateStr = dateInput.value;
-    const editor = dayReviewEditor;
-
-    const confirmed = await showCustomConfirm(
-        "Dismiss Day Review",
-        `Mark day review for ${dateStr} as dismissed?`
-    );
-
-    if (confirmed && isCurrentDayReviewEditor(editor)) {
-        const ratingEl = document.getElementById('day_form_rating');
-        const parsedRating = ratingEl ? parseInt(ratingEl.value) : 3;
-
-        const payload = {
-            date_str: dateStr,
-            rating: isNaN(parsedRating) ? 3 : parsedRating,
-            highlights: document.getElementById('day_form_highlights') ? document.getElementById('day_form_highlights').value || "" : "",
-            friction: document.getElementById('day_form_friction') ? document.getElementById('day_form_friction').value || "" : "",
-            notes: document.getElementById('day_form_notes') ? document.getElementById('day_form_notes').value || "" : "",
-            review_skipped: true
-        };
-
-        const markSaved = dayTextCheckpoint();
-        await api.post('/revision/day-review', payload);
-        if (!isCurrentDayReviewEditor(editor)) return;
-        markSaved();
-        loadDayReviewData();
-    }
+async function discardDayReview(editor = dayReviewEditor, retry = false) {
+    if (!editor || editor.saving || editor.loading || editor.discarding || !editor.textReady) return;
+    editor.discarding = true;
+    let confirmed;
+    try { confirmed = retry || await showCustomConfirm('Discard day drafts',`Discard unsaved text and ratings for ${editor.date}? Saved rows remain.`); }
+    finally { editor.discarding = false; }
+    if (!confirmed) return;
+    if (!dayEditorCurrent(editor) || editor.saving || editor.loading) return;
+    if (!retry) { populateDayText(editor,editor.baseline); dayCheckpoint(editor)(); }
+    // Read persisted rating entries afresh; failed reads retain their initialized drafts.
+    editor.loading = true;
+    const generation = ++editor.generation;
+    const ratings = dayField(editor,'ratings');
+    const before = JSON.stringify(snapshotCustomRatings('day',editor.date,ratings).map(entry=>[entry.signature,entry.rawValue]));
+    const unchanged = () => dayEditorCurrent(editor) && generation === editor.generation && before === JSON.stringify(snapshotCustomRatings('day',editor.date,ratings).map(entry=>[entry.signature,entry.rawValue]));
+    try {
+        const data = await api.get(`/revision/day-summary?date_str=${encodeURIComponent(editor.date)}`);
+        if (!dayEditorCurrent(editor) || generation !== editor.generation) return;
+        const hydrated = await renderCustomRatingsInputs('day',editor.date,ratings.id,data.custom_ratings || [],unchanged,ratings);
+        if (!dayEditorCurrent(editor) || generation !== editor.generation) return;
+        if (!hydrated) { setDayStatus(editor,'Newer rating edits retained.'); return; }
+        ratings.ratingBaselines = new Map(Array.from(ratings.querySelectorAll('.custom-rating-input')).map(input=>[input.id,JSON.stringify([input.value,input.disabled])]));
+        editor.retryDiscard = false; editor.ratingsReady = true; editor.ratingsFresh = true;
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(ratings.id,'.custom-rating-input');
+        setDayStatus(editor,'Drafts discarded for this date.');
+    } catch (error) {
+        if (dayEditorCurrent(editor) && generation === editor.generation) {
+            editor.retryDiscard = before;
+            setDayStatus(editor,'Rating reload failed; rating drafts retained. Retry load.');
+        }
+    } finally { if (generation === editor.generation) editor.loading = false; }
 }

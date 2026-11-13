@@ -1,131 +1,151 @@
-/**
- * Custom Rating Definitions & Entry Binding Engine
- */
+/** Custom ratings shared by Day, Session Review and Task Inspector. */
+function ratingEscape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'}[c]));
+}
 
-async function renderCustomRatingsInputs(targetType, targetId, containerId, existingEntries = [], isCurrent = () => true) {
+async function renderCustomRatingsInputs(targetType, targetId, containerId, existingEntries = [], isCurrent = () => true, editorRoot = null, preserveDrafts = false) {
     const container = document.getElementById(containerId);
     if (!container) return;
-
+    const generation = (container.ratingRenderGeneration || 0) + 1;
+    container.ratingRenderGeneration = generation;
+    container.ratingTarget = `${targetType}:${targetId}`;
     const defs = await api.get(`/rating-definitions?target_type=${targetType}`) || [];
-    if (!isCurrent()) return;
-
-    if (!defs || defs.length === 0) {
-        container.innerHTML = '';
-        return;
+    if (!isCurrent() || document.getElementById(containerId) !== container || container.ratingRenderGeneration !== generation) return;
+    const previous = preserveDrafts ? Array.from(container.querySelectorAll('[data-rating-def-id]')) : [];
+    const dirty = new Map(previous.filter(card => {
+        const input = card.querySelector('.custom-rating-input');
+        return container.ratingBaselines?.get(input.id) !== JSON.stringify([input.value, input.disabled]);
+    }).map(card => [card.getAttribute('data-rating-def-id'), card]));
+    const prefix = editorRoot ? `${container.id}_` : '';
+    const html = defs.map(d => {
+        const entry = existingEntries.find(e => e.rating_definition_id === d.id);
+        const dismissed = entry?.dismissed === true;
+        const score = entry?.score ?? Math.ceil((d.min_score + d.max_score) / 2);
+        const key = `${prefix}${d.id}`;
+        const color = typeof getGradeColorClasses === 'function' ? getGradeColorClasses(score, d.min_score, d.max_score).text : 'text-purple-400';
+        return `<div class="rev-card space-y-2" data-rating-def-id="${ratingEscape(d.id)}" data-required="${!!d.is_required}">
+            <div class="flex justify-between gap-2 text-xs"><span class="font-bold">${ratingEscape(d.name)}${d.is_required ? ' *' : ''}</span>
+            <span id="score_label_${key}" class="font-mono ${color}">${dismissed ? 'Dismissed' : `${score} / ${d.max_score}`}</span>
+            <button type="button" id="dismiss_btn_${key}" onclick="toggleDismissRatingInput('${key}', ${d.min_score}, ${d.max_score})">${dismissed ? 'Undismiss' : 'Dismiss'}</button></div>
+            <p class="text-xs">${ratingEscape(d.description)}</p>
+            <input type="range" min="${d.min_score}" max="${d.max_score}" value="${score}" ${dismissed ? 'disabled' : ''}
+                id="rating_range_input_${key}" oninput="onRatingRangeInput('${key}', ${d.min_score}, ${d.max_score})" class="custom-rating-input w-full accent-purple-600">
+        </div>`;
+    }).join('');
+    if (preserveDrafts && container.ratingHTML === html && !container.ratingUnavailable) return true;
+    container.innerHTML = html;
+    container.ratingHTML = html;
+    container.ratingUnavailable = false;
+    container.ratingBaselines ||= new Map();
+    for (const card of preserveDrafts ? container.querySelectorAll('[data-rating-def-id]') : []) {
+        const id = card.getAttribute('data-rating-def-id');
+        let input = card.querySelector('.custom-rating-input');
+        const old = dirty.get(id);
+        if (old) {
+            const retained = old.querySelector('.custom-rating-input');
+            // Range inputs clamp on bounds changes. Keep an invalid draft visible and editable.
+            retained.type = 'number';
+            retained.min = input.min; retained.max = input.max;
+            retained.setAttribute('oninput', input.getAttribute('oninput'));
+            if (Number(retained.value) >= Number(input.min) && Number(retained.value) <= Number(input.max)) retained.type = 'range';
+            input.replaceWith(retained); input = retained;
+            const key = input.id.replace('rating_range_input_', '');
+            const button = card.querySelector('button');
+            if (button) button.innerText = input.disabled ? 'Undismiss' : 'Dismiss';
+            onRatingRangeInput(key, Number(input.min), Number(input.max));
+            dirty.delete(id);
+        } else {
+            container.ratingBaselines.set(input.id, JSON.stringify([input.value, input.disabled]));
+            if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(container.id, `#${input.id}`);
+        }
     }
-
-    const existingMap = {};
-    const dismissedMap = {};
-    if (existingEntries) {
-        existingEntries.forEach(e => {
-            existingMap[e.rating_definition_id] = e.score;
-            dismissedMap[e.rating_definition_id] = e.dismissed === true;
-        });
+    for (const card of dirty.values()) {
+        const wasUnavailable = card.getAttribute('data-rating-unavailable') === 'true';
+        card.setAttribute('data-rating-unavailable', 'true');
+        const message = document.createElement('p');
+        message.textContent = 'This rating definition is unavailable. Discard day drafts to remove it, or restore the definition and Refresh.';
+        if (!wasUnavailable) card.appendChild(message);
+        container.appendChild(card); container.ratingUnavailable = true;
     }
-
-    container.innerHTML = `
-        <div class="text-xs font-bold text-slate-300 mb-2 border-b border-[var(--border-muted)] pb-1">Custom Ratings (${targetType.toUpperCase()})</div>
-        ${defs.map(d => {
-            const isDismissed = dismissedMap[d.id] === true;
-            const currentScore = existingMap[d.id] !== undefined && existingMap[d.id] !== null ? existingMap[d.id] : Math.ceil((d.min_score + d.max_score) / 2);
-            const scoreColorClass = typeof getGradeColorClasses === 'function' ? getGradeColorClasses(currentScore, d.min_score, d.max_score).text : 'text-purple-400';
-            return `
-                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-1.5" data-rating-def-id="${d.id}" data-required="${d.is_required}">
-                    <div class="flex justify-between items-center text-xs">
-                        <span class="font-bold text-slate-200">${d.name} ${d.is_required ? '<span class="text-red-400">*</span>' : ''}</span>
-                        <div class="flex items-center space-x-2">
-                            <span id="score_label_${d.id}" class="font-mono ${isDismissed ? 'text-slate-500' : scoreColorClass} font-bold">${isDismissed ? 'Dismissed' : `${currentScore} / ${d.max_score}`}</span>
-                            <button type="button" onclick="toggleDismissRatingInput('${d.id}', ${d.min_score}, ${d.max_score})" id="dismiss_btn_${d.id}" class="px-1.5 py-0.5 rounded text-[9px] font-bold ${isDismissed ? 'bg-purple-900/60 text-purple-300 border border-purple-700' : 'bg-slate-800 text-slate-400 hover:text-white'}">${isDismissed ? 'Undismiss' : 'Dismiss'}</button>
-                        </div>
-                    </div>
-                    ${d.description ? `<p class="text-[10px] text-slate-400">${d.description}</p>` : ''}
-                    <input type="range" min="${d.min_score}" max="${d.max_score}" value="${currentScore}" ${isDismissed ? 'disabled' : ''} id="rating_range_input_${d.id}" oninput="onRatingRangeInput('${d.id}', ${d.min_score}, ${d.max_score})" class="custom-rating-input w-full accent-purple-600 ${isDismissed ? 'opacity-30 cursor-not-allowed' : ''}">
-                </div>
-            `;
-        }).join('')}
-    `;
+    // Preserve known ACKs across definition refreshes for this retained owner.
+    if (!preserveDrafts) container.ratingAcknowledged = new Map();
+    return true;
 }
 
-function onRatingRangeInput(defId, minScore, maxScore) {
-    const input = document.getElementById(`rating_range_input_${defId}`);
-    const label = document.getElementById(`score_label_${defId}`);
+function onRatingRangeInput(key, minScore, maxScore) {
+    const input = document.getElementById(`rating_range_input_${key}`);
+    const label = document.getElementById(`score_label_${key}`);
     if (!input || !label) return;
-
-    label.innerText = `${input.value} / ${maxScore}`;
-    const colorClass = typeof getGradeColorClasses === 'function'
-        ? getGradeColorClasses(input.value, minScore, maxScore).text
-        : 'text-purple-400';
-    label.className = `font-mono ${colorClass} font-bold`;
-
-    if (typeof markDayFormDirty === 'function') markDayFormDirty();
+    label.innerText = input.disabled ? 'Dismissed' : `${input.value} / ${maxScore}`;
+    label.className = typeof getGradeColorClasses === 'function'
+        ? getGradeColorClasses(input.value, minScore, maxScore).text : 'text-purple-400';
 }
 
-function toggleDismissRatingInput(defId, minScore, maxScore) {
-    const input = document.getElementById(`rating_range_input_${defId}`);
-    const label = document.getElementById(`score_label_${defId}`);
-    const btn = document.getElementById(`dismiss_btn_${defId}`);
-    if (!input || !label || !btn) return;
-
-    const isCurrentlyDismissed = input.disabled;
-    if (isCurrentlyDismissed) {
-        input.disabled = false;
-        input.classList.remove('opacity-30', 'cursor-not-allowed');
-        label.innerText = `${input.value} / ${maxScore}`;
-        const colorClass = typeof getGradeColorClasses === 'function'
-            ? getGradeColorClasses(input.value, minScore, maxScore).text
-            : 'text-purple-400';
-        label.className = `font-mono ${colorClass} font-bold`;
-        btn.innerText = "Dismiss";
-        btn.className = "px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 hover:text-white";
-    } else {
-        input.disabled = true;
-        input.classList.add('opacity-30', 'cursor-not-allowed');
-        label.innerText = "Dismissed";
-        label.className = "font-mono text-slate-500 font-bold";
-        btn.innerText = "Undismiss";
-        btn.className = "px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-900/60 text-purple-300 border border-purple-700";
-    }
-
-    if (typeof markDayFormDirty === 'function') markDayFormDirty();
+function toggleDismissRatingInput(key, minScore, maxScore) {
+    const input = document.getElementById(`rating_range_input_${key}`);
+    const button = document.getElementById(`dismiss_btn_${key}`);
+    if (!input || !button) return;
+    input.disabled = !input.disabled;
+    button.innerText = input.disabled ? 'Undismiss' : 'Dismiss';
+    onRatingRangeInput(key, minScore, maxScore);
 }
 
-function validateRequiredCustomRatings(targetType, targetId) {
-    const inputs = document.querySelectorAll(`[data-rating-def-id]`);
-    for (let el of inputs) {
-        const isReq = el.getAttribute('data-required') === 'true';
-        const input = el.querySelector('.custom-rating-input');
-        const isDismissed = input ? input.disabled : false;
-        if (isReq && !isDismissed && input && (!input.value || input.value === '')) {
-            alert(`Please complete essential rating: ${el.querySelector('.font-bold').innerText}`);
+function customRatingsRoot(targetType, editorRoot) {
+    return editorRoot || document.getElementById(`${targetType}_custom_ratings_container`);
+}
+
+function validateRequiredCustomRatings(targetType, targetId, editorRoot = null) {
+    const root = customRatingsRoot(targetType, editorRoot);
+    for (const card of root?.querySelectorAll('[data-rating-def-id]') || []) {
+        const input = card.querySelector('.custom-rating-input');
+        if (card.getAttribute('data-rating-unavailable') === 'true') {
+            alert('A rating definition is unavailable. Discard day drafts or restore it and Refresh before saving.');
+            return false;
+        }
+        if (input && !input.disabled && (Number(input.value) < Number(input.min) || Number(input.value) > Number(input.max)
+            || input.type === 'number' && (input.value === '' || !Number.isInteger(Number(input.value))))) {
+            alert('A rating draft is outside its current scale. Adjust the value or dismiss it before saving.');
+            return false;
+        }
+        if (card.getAttribute('data-required') === 'true' && input && !input.disabled && input.value === '') {
+            alert('Please complete essential rating.');
             return false;
         }
     }
     return true;
 }
 
-async function submitCustomRatings(targetType, targetId, isCurrent = () => true) {
-    const container = document.getElementById(`${targetType}_custom_ratings_container`);
-    const cards = container ? container.querySelectorAll('[data-rating-def-id]') : [];
-    const ownerId = targetType === 'task' ? 'task_inspector_body'
-        : targetType === 'session' ? 'session_review_modal' : 'day_custom_ratings_container';
-    for (let card of cards) {
-        if (!isCurrent()) return;
-        const defId = card.getAttribute('data-rating-def-id');
+function snapshotCustomRatings(targetType, targetId, editorRoot = null) {
+    const root = customRatingsRoot(targetType, editorRoot);
+    if (root?.ratingTarget && root.ratingTarget !== `${targetType}:${targetId}`) return [];
+    const owner = editorRoot?.id || (targetType === 'task' ? 'task_inspector_body'
+        : targetType === 'session' ? 'session_review_modal' : 'day_custom_ratings_container');
+    return Array.from(root?.querySelectorAll('[data-rating-def-id]') || []).flatMap(card => {
         const input = card.querySelector('.custom-rating-input');
-        if (input) {
-            const isDismissed = input.disabled;
-            const parsedScore = parseInt(input.value);
-            const markSaved = typeof settingsDraftCheckpoint === 'function'
-                ? settingsDraftCheckpoint(ownerId, `#${input.id}`) : () => {};
-            await api.post('/rating-entries', {
-                rating_definition_id: defId,
-                target_type: targetType,
-                target_id: String(targetId),
-                score: isDismissed || isNaN(parsedScore) ? 0 : parsedScore,
-                dismissed: isDismissed
-            });
-            if (isCurrent() && document.getElementById(input.id) === input) markSaved();
-        }
+        if (!input) return [];
+        const parsed = Number.parseInt(input.value);
+        const body = {rating_definition_id:card.getAttribute('data-rating-def-id'), target_type:targetType,
+            target_id:String(targetId), score:input.disabled || Number.isNaN(parsed) ? 0 : parsed, dismissed:input.disabled};
+        return [{root, input, rawValue:input.value, body, signature:JSON.stringify(body), checkpoint:typeof settingsDraftCheckpoint === 'function'
+            ? settingsDraftCheckpoint(owner, `#${input.id}`) : () => {}}];
+    });
+}
+
+async function submitCustomRatings(targetType, targetId, isCurrent = () => true, editorRoot = null, submitted = null) {
+    const entries = submitted || snapshotCustomRatings(targetType, targetId, editorRoot);
+    for (const entry of entries) {
+        if (!isCurrent()) return;
+        const {root, input, rawValue, body, signature, checkpoint} = entry;
+        if (root.ratingTarget && root.ratingTarget !== `${body.target_type}:${body.target_id}`) return;
+        root.ratingAcknowledged ||= new Map();
+        if (root.ratingAcknowledged.get(body.rating_definition_id) === signature) continue;
+        await api.post('/rating-entries', body);
+        if (!isCurrent() || document.getElementById(input.id) !== input ||
+            root.ratingTarget && root.ratingTarget !== `${body.target_type}:${body.target_id}`) return;
+        root.ratingAcknowledged.set(body.rating_definition_id, signature);
+        root.ratingBaselines ||= new Map();
+        root.ratingBaselines.set(input.id, JSON.stringify([String(rawValue), body.dismissed]));
+        checkpoint();
     }
 }
 

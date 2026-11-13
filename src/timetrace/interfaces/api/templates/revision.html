@@ -31,6 +31,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/task_details.css">
+    <link rel="stylesheet" href="/static/css/day_workspace.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -38,7 +39,7 @@
         {% include "components/navbar.html" %}
 
         <div class="flex items-center space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
-            <button onclick="switchRevisionTab('overview')" id="rev_tab_btn_overview" class="h-6 px-3 rounded font-bold bg-purple-600 text-white text-[11px]">Days History & Overview</button>
+            <button onclick="switchRevisionTab('day')" id="rev_tab_btn_day" class="h-6 px-3 rounded font-bold bg-purple-600 text-white text-[11px]">Day workspace</button>
             <button onclick="switchRevisionTab('sessions')" id="rev_tab_btn_sessions" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Sessions Review</button>
             <button onclick="switchRevisionTab('task_inspector')" id="rev_tab_btn_task_inspector" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Task Inspector</button>
             <button onclick="switchRevisionTab('ratings_config')" id="rev_tab_btn_ratings_config" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Custom Ratings</button>
@@ -51,107 +52,73 @@
 
     <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
 
-        <section id="rev_tab_day" data-settings-draft-retained="true" class="hidden space-y-6">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div class="flex items-center space-x-3">
-                    <button onclick="switchRevisionTab('overview')" class="text-xs font-bold text-purple-400 hover:text-purple-300 underline">&lt; Back to Days Overview</button>
-                    <span class="text-slate-600">|</span>
-                    <label class="text-xs text-slate-400 font-semibold">Review Date:</label>
-                    <input id="day_review_date_input" type="date" onchange="loadDayReviewData()" class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-purple-500">
-                    <button onclick="setDayReviewToday()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 font-bold px-3 py-1.5 rounded-lg text-xs border border-[var(--border-muted)]">Today</button>
-                    <button onclick="jumpToCalendarForDay()" class="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-bold px-3 py-1.5 rounded-lg text-xs border border-purple-700/60 flex items-center space-x-1">Open in Calendar</button>
-                    <span id="day_review_status_badge" class="px-2.5 py-1 rounded text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">Checking...</span>
-                </div>
-
-                <div id="day_kpi_badges" class="flex space-x-6 text-right"></div>
+        <section id="rev_tab_day" class="space-y-6">
+            <div class="day-workspace-toolbar">
+                <h1>Day workspace</h1>
+                <label for="day_review_date_input">Review date</label>
+                <input id="day_review_date_input" type="date" onchange="loadDayReviewData()">
+                <button type="button" onclick="setDayReviewToday()">Today</button>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="rev-card space-y-4">
-                    <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                        <h3 class="font-bold text-base text-white">Daily Retrospective Form</h3>
-                        <button onclick="dismissDayReview()" class="text-[10px] bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/80 px-2 py-0.5 rounded font-bold transition">Dismiss Day</button>
+            <div id="day_main_editor"></div>
+            <div class="day-history-bottom">
+                <button type="button" id="day_history_toggle" aria-expanded="false" aria-controls="day_history_panel" onclick="toggleDayHistory()">Show history</button>
+                <section id="day_history_panel" class="hidden space-y-4">
+                    <h2>Other days</h2>
+                    <div class="day-history-filters" role="group" aria-label="Filter day history">
+                        <button type="button" onclick="setHistoryFilter('all')" id="hist_filter_all">All days</button>
+                        <button type="button" onclick="setHistoryFilter('reviewed')" id="hist_filter_reviewed">Reviewed</button>
+                        <button type="button" onclick="setHistoryFilter('missed')" id="hist_filter_missed">Missed reviews</button>
+                        <button type="button" onclick="setHistoryFilter('dismissed')" id="hist_filter_dismissed">Dismissed</button>
                     </div>
-                    
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Day Performance Score (1 - 5)</label>
-                        <select id="day_form_rating" onchange="markDayFormDirty(); applyDayRatingColor()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold">
-                            <option value="5">5 / 5 - Exceptional Focus</option>
-                            <option value="4">4 / 5 - Productive Day</option>
-                            <option value="3" selected>3 / 5 - Average Day</option>
-                            <option value="2">2 / 5 - Distracted / Friction</option>
-                            <option value="1">1 / 5 - Off Track</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Key Highlights / Progress</label>
-                        <textarea id="day_form_highlights" rows="3" oninput="markDayFormDirty()" placeholder="Key highlights from today..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Daily Friction / Setbacks</label>
-                        <textarea id="day_form_friction" rows="3" oninput="markDayFormDirty()" placeholder="What slowed progress or caused friction..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">General Notes / Journal</label>
-                        <textarea id="day_form_notes" rows="3" oninput="markDayFormDirty()" placeholder="Additional thoughts..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div id="day_custom_ratings_container" class="space-y-3 pt-2 border-t border-[var(--border-muted)]"></div>
-
-                    <button id="day_form_save_btn" onclick="saveDayReviewForm()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition">Save Day Review</button>
-                </div>
-
-                <div class="md:col-span-2 space-y-4">
-                    <div class="rev-card space-y-3">
-                        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                            <h3 class="font-bold text-base text-white">Day Breakdown</h3>
-                            <div class="flex items-center space-x-3">
-                                <span id="day_breakdown_filter_chip" class="hidden items-center space-x-2 bg-purple-900/50 border border-purple-700/60 px-2 py-1 rounded-lg text-[10px] font-bold text-purple-200"></span>
-                                <span id="day_breakdown_total" class="text-sm font-black text-purple-400">0.0h</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">By Activity (#tags)</span>
-                                <div id="day_breakdown_tags_list" class="space-y-1.5"></div>
-                                <p class="text-[10px] text-slate-500 mt-2">Sessions with multiple tags are counted in full under each tag, so percentages can add up to more than 100%.</p>
-                            </div>
-                            <div>
-                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">By Task</span>
-                                <div id="day_breakdown_tasks_list" class="space-y-1.5"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="rev-card space-y-4">
-                        <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Logged Sessions Timeline (Click session to inspect)</h3>
-                        <div id="day_sessions_timeline" class="space-y-3 max-h-[520px] overflow-y-auto pr-1"></div>
-                    </div>
-                </div>
+                    <p id="day_history_status" role="status"></p>
+                    <div id="day_history_grid" class="day-history-grid"></div>
+                    <div id="day_history_editor"></div>
+                </section>
             </div>
+            <div id="day_editor_store" class="hidden"></div>
         </section>
-
-        <section id="rev_tab_overview" class="space-y-6">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div>
-                    <h2 class="text-lg font-bold text-white">Day Revisions Overview</h2>
-                    <p class="text-xs text-slate-400">View all days with activity. Jump to any day to review or update.</p>
+        <template id="day_editor_template">
+            <article class="day-editor rev-card" data-settings-draft-retained="true">
+                <div class="day-workspace-toolbar">
+                    <h2 data-day="date"></h2>
+                    <button type="button" data-action="promote">Use as main day</button>
+                    <button type="button" data-action="calendar">Open in Calendar</button>
+                    <span data-day="filter" hidden><span data-day="filter-label"></span> <button type="button" data-action="clear-filter" aria-label="Clear evidence filter">Clear</button></span>
                 </div>
-
-                <div class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)] text-xs">
-                    <button onclick="setHistoryFilter('all')" id="hist_filter_all" class="px-3 py-1 rounded font-bold bg-purple-600 text-white">All Days</button>
-                    <button onclick="setHistoryFilter('reviewed')" id="hist_filter_reviewed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Reviewed</button>
-                    <button onclick="setHistoryFilter('missed')" id="hist_filter_missed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Missed Reviews</button>
-                    <button onclick="setHistoryFilter('dismissed')" id="hist_filter_dismissed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Dismissed</button>
+                <p data-day="status" role="status" aria-live="polite">Loading…</p>
+                <button type="button" data-action="retry">Refresh / retry load</button>
+                <div class="day-editor-columns">
+                    <div class="day-form-fields">
+                        <h3>Daily retrospective</h3>
+                        <label>Day performance score (1–5)<select data-day="rating" data-day-text disabled>
+                            <option value="5">5 / 5 — Exceptional focus</option><option value="4">4 / 5 — Productive day</option>
+                            <option value="3" selected>3 / 5 — Average day</option><option value="2">2 / 5 — Distracted / friction</option><option value="1">1 / 5 — Off track</option>
+                        </select></label>
+                        <label>Key highlights / progress<textarea data-day="highlights" data-day-text rows="3" disabled></textarea></label>
+                        <label>Daily friction / setbacks<textarea data-day="friction" data-day-text rows="3" disabled></textarea></label>
+                        <label>General notes / journal<textarea data-day="notes" data-day-text rows="3" disabled></textarea></label>
+                        <div data-day="ratings" data-settings-draft-retained="true"></div>
+                        <div class="day-form-actions">
+                            <button type="button" data-action="save">Save day review</button>
+                            <button type="button" data-action="discard">Discard drafts</button>
+                            <button type="button" data-action="dismiss">Dismiss day</button>
+                        </div>
+                        <p>Ctrl+Enter saves this editor. Enter adds a line in text fields.</p>
+                    </div>
+                    <div class="day-evidence">
+                        <div class="day-breakdown-heading"><h3>Breakdown</h3><div role="group" aria-label="Breakdown grouping">
+                            <button type="button" data-action="activity" aria-pressed="true">Activity</button><button type="button" data-action="tasks" aria-pressed="false">Tasks</button>
+                        </div></div>
+                        <p data-day="total"></p>
+                        <p data-day="created-tasks"></p>
+                        <div data-day="breakdown" class="day-breakdown-list"></div>
+                        <p>Bars compare with full-day recorded session time by session start day, including supplied scheduled rows; they are not completion bars. Multi-tag time fans out: overlapping tag totals can exceed the day total.</p>
+                        <h3>Recorded sessions <span data-day="session-count"></span></h3>
+                        <div data-day="sessions" class="day-sessions-list"></div>
+                    </div>
                 </div>
-            </div>
-
-            <div id="day_history_grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-        </section>
+            </article>
+        </template>
 
         <section id="rev_tab_sessions" class="hidden space-y-4">
             <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">

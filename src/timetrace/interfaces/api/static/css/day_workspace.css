@@ -1,0 +1,28 @@
+.day-workspace-toolbar, .day-form-actions { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.day-workspace-toolbar h1 { font-size:20px; font-weight:700; margin-right:auto; }
+.day-workspace-toolbar h2 { font-size:18px; font-weight:700; }
+.day-editor { min-width:0; }
+.day-editor button, .day-history-bottom button, .day-workspace-toolbar button { min-height:36px; border:1px solid var(--border-muted); border-radius:6px; padding:6px 12px; color:var(--text-main); background:var(--bg-card); }
+.day-editor button:focus-visible, .day-history-bottom button:focus-visible { outline:2px solid currentColor; outline-offset:3px; }
+.day-editor button[aria-pressed="true"] { border-color:currentColor; font-weight:700; }
+.day-editor-columns { display:grid; grid-template-columns:minmax(240px,1fr) minmax(0,2fr); gap:24px; margin-top:16px; }
+.day-form-fields, .day-evidence { display:flex; flex-direction:column; gap:12px; min-width:0; }
+.day-editor h3 { font-size:15px; font-weight:700; }
+.day-editor p, .day-editor label, .day-editor button, .day-history-card { font-size:13px; }
+.day-editor p { line-height:1.5; }
+.day-form-fields label { display:flex; flex-direction:column; gap:6px; }
+.day-form-fields textarea, .day-form-fields select, .day-workspace-toolbar input { width:100%; color:var(--text-main); background:var(--bg-main); border:1px solid var(--border-muted); border-radius:6px; padding:8px; }
+.day-workspace-toolbar input { width:auto; }
+.day-breakdown-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.day-breakdown-heading > div { display:flex; flex-shrink:0; }
+.day-breakdown-list, .day-sessions-list { display:flex; flex-direction:column; gap:8px; }
+.day-editor .day-breakdown-row { display:flex; align-items:center; justify-content:space-between; text-align:left; gap:16px; min-height:46px; position:relative; overflow:hidden; padding-bottom:12px; }
+.day-breakdown-row > span:first-child { overflow-wrap:anywhere; }
+.day-breakdown-row > span:nth-child(2) { flex-shrink:0; }
+.day-breakdown-bar { position:absolute; bottom:0; left:0; height:4px; background:currentColor; opacity:.65; }
+.day-editor .day-session-row, .day-history-card { text-align:left; white-space:normal; overflow-wrap:anywhere; }
+.day-history-bottom { border-top:1px solid var(--border-muted); padding-top:20px; }
+.day-history-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr)); gap:10px; }
+.day-history-filters { display:flex; gap:8px; flex-wrap:wrap; }
+#day_history_panel { margin-top:16px; }
+@media (max-width:760px) { .day-editor-columns { grid-template-columns:minmax(0,1fr); } main { padding:12px !important; } header { height:auto !important; flex-wrap:wrap; } header > div { flex-wrap:wrap; min-width:0; } }

@@ -1,9 +1,11 @@
 # Ticket 06: Grouped task list evidence
 
-Implementation is in progress from `653012aca42b21446fdf5848a02f6964ba4f9493` on
-`codex/ui-redesign-06-grouped-tasks`. Spec B3/O2 and the five unchanged ticket criteria are the boundary.
-Independent code review, native acceptance and parent integration remain pending. No commit or release
-is claimed by this draft.
+Current disposition: **bounded software-completed**, subject to independent closure metadata review
+and parent disposition. Reviewed product/test/probe bytes are locally integrated at
+`563a7838a3fa52c6b7a31925ae860559ea79645f` on `codex/ui-redesign-06-grouped-tasks`.
+Spec B3/O2 and the five unchanged ticket criteria are the boundary. Earlier sections below retain their
+historical in-progress/unrun/authorization states; the final completion section is current authority.
+Human/manual/whole25 acceptance and final whole-delivery review remain separate.
 
 ## Changes and contracts
 
@@ -243,3 +245,79 @@ boundary. Manual/human/whole25 gates remain open. All five acceptance boxes stay
 
 Only this evidence, issue comments and the backlog's current-state note are released for metadata
 closure; product, tests and probe remain byte-identical to the reviewed/tested source.
+
+
+## Bounded software completion (2026-11-13)
+
+This updates the preceding historical checkpoints without replacing their receipts or failed attempts.
+No confirmed software blocker is demonstrated by the reviewed evidence. The local tracker records
+`completed` for delivered implementation with recorded criteria evidence and disclosed manual limits.
+This is software completion, subject to independent closure metadata review and parent disposition;
+it supplies neither blanket acceptance nor a waiver. No specification or criterion text changed.
+
+### Five unchanged criteria
+
+| Criterion | Recorded implementation evidence | Retained limits |
+| --- | --- | --- |
+| Normal selector/per-browser retention | Native3 Grouped reload/details navigation and unchanged neighboring appearance; Node selection/fallback and Python shared page composition | Sampled browser adoption, not all historical profiles |
+| Grouping/search/filter/hierarchy/CRUD/shared quick edit/schedule/timer/completion | Node ordered/id-first/unknown/hidden groups/stale reads; native3 Filter Apply/Clear, child/context/literal title, Cancel/Create/retry/Delete, explicit Session Save, completion Keep and authoritative reads; separate real Timer run below | Shared arbitrary custom-status editing remains inherited08; frozen/recovery/OS-idle and lost-ACK Timer behavior untested here |
+| Existing services/title/status parsing/inherited tags/queued children | Focused Python HTTP characterization; native3 one parsed parent and each child once with effective tags; parent1/First1/Second2 attempts distinguish declared child400 from real retry | Existing separate-write/lost-response uncertainty; no atomicity promise or view-specific domain policy |
+| Navigation/reload/empty/long lists/access/cancel/errors |101 native3 returned checks,27 initial rows/unbroken title, empty search, Escape/focus, nested Task Cancel retaining Session draft, partial-child failure/read-only Retry;32 layouts measuring document/container/descendant bounds and44px buttons; Node loading/stale-read/drag teardown/focus regressions | Physical touch, screen reader, second engine, full keyboard/focus matrix, zoom/reduced-motion and all dialog/transient/error contrasts unrun; sampled sizes/contrast do not certify accessibility |
+| Shared acceptance/focused regressions/honest checks/privacy | Integrated534Python/214warnings, focused6Python; canonical376Node/23files, focused97Node;116syntax, scoped Ruff/format/changed-line/new-file whitespace pass; independently reviewed source axes report no new confirmed defects; isolated synthetic data/providers0 | Full Ruff exit1/18 baseline; native3 exit1/CDP UNKNOWN; human/whole25/manual acceptance and final whole-delivery checks/review against82fabdc remain separate |
+
+### Exact integrated receipts and source bridge
+
+External evidence root is
+`/home/user/git/personal/TimeTrace/.scratch/codex-continuation/evidence/ticket-06/`.
+`integrated-validation/validation/integrated-full-python-01.result.json` records exit0 and stdout
+534passed/214warnings. `integrated-canonical-node-02.result.json` records exit0 with376pass/0fail/
+0skipped in stdout. These ran on integrated feature bytes over83fb87f, before implementation commit
+abc828f. `integrated-validation/local-commit-result.json` preserves seven product/test/probe hashes;
+all seven still match563a783. `merge-status-correction.json` bridges the sole later formal-status
+correction. No fresh suite run on563a783 or this metadata amendment is claimed.
+
+`integrated-final-integrity-04.stdout` records477 unchanged hashes, no private test data/key/timer,
+and both full Ruff streams equal to retained baseline:18 findings (16E501/2E741), exit1. Earlier audit
+helper failures, inherited kanban whitespace, offline cache-lock failure, initial Node file-level counts
+and earlier native failures remain retained; none is substituted for a clean process result.
+
+### Separate actual Grouped Timer entry evidence
+
+`timer-entry-run/browser.json`, `browser.json.probe-1.json` and `disposition.json` return **two scenario
+groups**, actual browser exit0: Grouped Schedule / Timer → shared Session Timer Now → Calendar
+navigation → public header Stop. Original real-local-route-fetch captures show exactly one POST
+`/timer/start`200 and one `/timer/stop`200; no fake domain ACK/response is declared. Public reads show
+zero Sessions while running, then one performed Session duration5 for the owned unchanged Task,
+matching notes/start/end. Timer status remains running across navigation, then stopped/reset.
+Probe/page/driver/source-pin errors, guard violations, routeActions, captureErrors, handlerErrors and
+requestFailures are zero. `featureAcceptance=false` remains; this runner does not grant acceptance.
+Duplicate CDP bodies are UNOBSERVED, not independently captured originals.
+
+Actual timer-file observations begin absent, then running JSON383bytes/hash
+`4d3f4f69b7583c78cc81e5ac3cf3707c0daf8f4ce5de8c5e8c15873ccce847c5` unchanged across navigation,
+then persisted stopped JSON262bytes/hash
+`22f50dc2d3e7acbb2d1043476bb0fd05afaef683270f0b1621ed6ef6c8365410`.
+Stopped JSON persists by contract: no absence-after-stop claim. Final status is stopped/not frozen,
+pending_idle_gap null. Controller PID397396/port18347 records one SIGTERM, actual exit-15, reaped,
+process absent, refusal111, absent key and logical storage equality after stop. `after-storage.json`
+contains providers0/FKempty and only stopped active_timer.json in privateFiles; one owned Task and
+one performed Session intentionally remain in isolated storage. No runtime was rerun for closure.
+
+### Original native3 disposition and remaining acceptance
+
+Native3 still returns101 checks/32 layouts/192 first-match opaque Grouped text samples, minimum
+10.704942004960031 (96 inherited samples without recorded failure), but actual browser exit is **1**,
+`disposition=FAILED`, `captureDisposition=REQUIRES_PARENT_INSPECTION`, `featureAcceptance=false`:
+one DELETE204 CDP body remains **UNKNOWN**. The separate original HTTP real-local-route-fetch
+records status204/bodyBytes0/empty SHA256 before unchanged delivery; public readback verifies owned
+deletion and retained scheduled parent Session. These channels do not repair or reconstruct CDP.
+Native3 violations/handlerErrors/requestFailures/page errors are0; its owned one-SIGTERM/exit-15/
+reaped/absent/refusal111/storageequal/keytimerabsent cleanup remains independently recorded.
+Native1 missing browser receipt and native2 guard/capture failures remain failed history.
+
+The new real running/navigation/Stop seam narrows the old blanket Timer-unrun statement only.
+Frozen/recovery/OS-idle/lost-ACK Timer coverage, inherited08 arbitrary custom-status editing,
+physical touch/screen-reader/second-engine/full accessibility matrix, broad shared cross-page checks,
+human/whole25 acceptance and final whole-delivery review against82fabdc remain open. This amendment
+runs no tests, browser, daemon or provider and makes no product/test/probe/Git mutation. Local commits
+and integration are authorized separately; dev merge, push, PR and acceptance waivers are not.
