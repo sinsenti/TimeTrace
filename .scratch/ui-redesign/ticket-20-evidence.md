@@ -237,3 +237,116 @@ record exact current hashes plus unchanged source/base/branch/status metadata. N
 or product tests changed. No author checks, browser, daemon, HTTP, Git writes, provider calls or
 whole-product test reruns were performed for this diagnostic probe change. Fresh parent review,
 authoritative check execution and native retry remain pending; no completion or waiver is claimed.
+
+
+## Integrated initial-instruction repair, freeze07 (2026-11-13)
+
+Independent integrated Standards and initial-instruction Spec followup confirmed the same P2:
+an instruction accepted while the first behavior GET was held could be lost when that older
+response initialized Settings; an unrelated tag Save then submitted the stale instruction, and
+Cancel restored it. The real proposal accept callback now reconciles custom instructions before
+behavior readiness. Initialization retains the acknowledged instruction baseline across older
+responses and failed-load retries, preserving locally typed instruction text and unrelated drafts.
+Existing initialized-refresh, Save ownership and latest-status behavior are unchanged.
+
+Changed product files: `ai_assistant.js` removes the readiness return and records acknowledgment;
+`ai_settings_page.js` includes that instruction baseline in initial-read reconciliation.
+`test_ai_settings_page.cjs` adds actual proposal-button, held-first-GET, tag Save payload/HTTP
+readback and Cancel regressions with/without local instruction typing, plus failed-first-read,
+older-retry and locally cleared instruction coverage. These tests failed before their respective
+fixes. The probe route-policy fixture now implements async context close and asserts exactly one
+close while preserving the original stopped error identity and every exact CDN guard assertion.
+The authored browser probe and mandatory native harness are unchanged.
+
+Fresh private 0700 environment `/tmp/timetrace-codex-20-repair07-zthy4w27` uses offline frozen
+Python 3.14.6, isolated HOME/XDG/DB/timer/key locations, disabled tracing and fake providers only.
+Raw command/stdout/stderr/result receipts are external in `evidence/ticket-20/repair07`.
+Initial acceptance RED: 0/2; failed-initial-load retry RED: 0/1; fixture RED: original AggregateError
+reproduced. Focused Node: 52/52; final canonical Node: 449/449; full safe-path Python: 551 passed,
+214 warnings. Changed JS/CJS syntax and whitespace checks pass. Scoped integrated Python Ruff
+passes. Full Ruff retains exactly the previous 18 findings and model-noqa warning, with both
+streams byte-identical to integrated validation. No Python formatting was needed or performed.
+The first sandbox Node subprocess startup failure is retained as a tooling observation; actual
+RED/GREEN and full-suite receipts use the authorized elevated execution.
+
+Native v2's existing bounded candidate PASS and raw receipts remain immutable; they predate this
+JS repair and do not certify its new initialization cases. The first native attempt remains FAILED
+with unknown primary cause. No daemon/browser/native/provider execution or Git writes occurred
+for this repair. Freeze06 and its 487-path manifest remain immutable; freeze07 and the external
+06-to07 bridge record only these product/test/documentation changes. Fresh independent two-axis
+amendment review, integration and owner acceptance remain pending; ticket20 stays in progress.
+
+
+## Bounded software closure candidate (2026-11-13)
+
+This section supersedes earlier pending checkpoint summaries for the current software state while
+preserving their historical statements and receipts. Ticket20 is software-completed in this local
+candidate under `docs/agents/triage-labels.md`; deferred manual acceptance is separate. No confirmed
+software finding remains after repair07's independent Standards and Spec reviews (both zero).
+Fresh metadata review on both axes and parent local integration are still required. Candidate HEAD
+is `6e20fafb7216bd88880abbba83f5e7c77ee7df98` plus frozen07 amendments and this four-document closure.
+Freeze07 manifest SHA256 is `3761db52ef616d04fa1e23fdebfb79165f46893004814215fed87069117391d8`;
+all487 paths were verified before editing. No product/test/probe bytes change for this closure.
+
+External receipts below are under
+`/home/user/git/personal/TimeTrace/.scratch/codex-continuation/evidence/ticket-20/`.
+
+| Original criterion, unchanged | Recorded bounded evidence |
+| --- | --- |
+| Default task/session scope, sensitive opt-in, structured scheduling, custom instructions and existing providers | Real settings API/provider construction regressions and retained scope controls; `repair07/final-full-node.*` and `repair07/full-python.*`. The current targeted instruction run records actual hash-checked proposal acceptance, unrelated tag Save, Cancel and final settings GET with exactly the original six typed scope booleans. |
+| Independent settings/instruction, provider and browser save/discard ownership | Caller-level Node coverage executes page handlers, shared draft/client helpers and actual Assistant proposal callback, including held initial GET, typed/cleared instructions, failed initial load/retry, unrelated drafts and submitted-field ACKs. Native-v2 supplies real provider Save/rejected-Save/Cancel/readback; current targeted native supplies accepted instruction versus stale initial GET and real unrelated Save/Cancel. Wider native interleavings remain deferred. |
+| Masked keep/replace/clear and safe diagnostics | Real ASGI projection and fake SDK controls cover primary/extra-key masking, keep/null/replace/clear, capped forwarding and safe construction/decrypt/JSON failures. Known-path diagnostic regressions cover settings/providers/status; native-v2 real CRUD persists credential intents with safe output. This is bounded known-path evidence, not general arbitrary-secret certification. |
+| Explicit activation, confirmed deletion, catalogs, saved/inline probes and Pi authentication ownership | Native-v2 confirmed Delete uses actual204 original-response capture and real list readback. Catalog, Test and Activate are explicitly fake browser UI-dispatch checks; fake Activate does not activate the DB. Separate ASGI tests prove actual DB active-row selection with a forbidden SDK stub, and fake SDK tests cover saved/inline probes, caps and Pi forwarding. No real Pi/provider process or credentials are used. |
+| Fake-only failure/retry, correct credential clearing, unsaved navigation and existing compatibility | Node page/shared-owner/browser controls cover read/probe/status failures, retry without mutation replay, stale outcomes, navigation/departure draft protection and Assistant compatibility. Native-v2 declares static-catalog, Test-saved, Test-clear, rejected-PUT, post-ACK-list-failure and Activate-dispatch-only fakes. All real provider CRUD uses isolated synthetic data. Full suites include inherited Day/shared controls; broader native/manual compatibility remains deferred. |
+| Shared acceptance, focused regressions and honest unrun checks; no personal data/live providers | Full/focused software receipts, independent source reviews, bounded real daemon/browser runs and independent storage/lifecycle audit are recorded below. Manual/presentation/human/whole25 limits remain open and explicitly listed. All runtimes are isolated/private and provider execution uses fakes. |
+
+Current software verification: repair07 full safe-path Python **551 passed/214 warnings**, final
+canonical default-isolation Node **449 passed**, focused Node **52 passed**; syntax, scoped Ruff and
+diff whitespace pass. Full Ruff exits1 with **18 inherited findings** and model-noqa warning; BOTH
+stdout and stderr match integrated validation exactly, whose baseline comparison also checks both
+streams. Initial integrated Node **445 passed/1 failed** is retained; missing mock `context.close`
+was repaired with original exception identity and one-close assertions preserved. Ruff0.16.4 whole-file
+formatter check still flags the same two files/three exception-tuple parenthesis removals at exact
+integration1671f9f, previous20 5cd0099 and freeze06; `integrated-validation/format-attribution.json`
+proves inheritance. No formatter writes or new formatting pass are claimed. All earlier RED, fixture,
+sandbox and native failures remain available; no repeat run erased a failure.
+
+Native evidence has distinct scopes and outcomes:
+
+- `native-run/` remains **FAILED**, actual browser1; cleanup masked the primary error and its cause
+  remains unknown. No later run reconstructs that primary error.
+- `native-run-v2/` remains bounded **PASS**, actual browser0/**29 checks**, at freeze06 before the
+  initialization repair. Real create201/update200/update200/delete204 originals were captured
+  before unchanged delivery. The catalog/Test/Activate/rejected-write/list-failure fakes remain
+  explicit; Activate is UI dispatch only and actual DB activation remains false. Page/guard/
+  handler/capture/request errors are zero; duplicate CDP body observations remain unobserved.
+- `instruction-native-run/` uses current hash-pinned freeze07: actual browser0/**7 checks**, actual
+  hash-checked instruction accept ACK followed by release of the unchanged older initial GET,
+  real unrelated settings PUT, Cancel and matching final GET. Only the empty catalog is fake;
+  accept/settings ACKs are real. Its controller disposition remains **FAILED** with
+  `AssertionError('aisettings')`, and its `featureAcceptance:false` stays unchanged.
+- `parent-readonly-storage-audit.json` / `.md` independently report **PASS/592 assertions** for the
+  bounded logical-storage contract: all497 sealed pins including487 source files match; only the
+  declared private database was opened with SQLite `mode=ro`; database bytes did not change. All90
+  schema objects/28 tables/every column and row, FK results, migration head and private file hashes
+  match after/stopped snapshots. Only the intended settings/proposal rows changed from before.
+  `data_scope_json` retains exactly the same six typed booleans; only its encoding whitespace
+  differs, exactly as pinned `AIProviderService.update_settings` lines567–569 canonicalize it.
+  Raw original lengths/hashes/bodies and the real ACK ordering validate. This resolves an omitted
+  canonicalization allowance in the controller's measurement contract, not a product waiver or
+  relabeled controller PASS. Original sole-SIGTERM/reap/absence/refusal/storage lifecycle receipts
+  remain preserved; no provider/key/timer residue is introduced by the audit.
+
+Deferred acceptance remains: dirty-buffer initial-load **native** case (unit caller regression passes),
+other held-response/lost-ACK/status/shared-drawer/category/history/departure native races, full layout/
+theme/contrast/focus/keyboard/touch/reduced-motion/zoom/screen-reader/other-engine presentation,
+general secret certification, explicit human acceptance and whole25 integrated verification/review.
+The whole-delivery base remains82fabdc; this closure neither builds the whole spec nor waives any
+manual gate. No runtime, tests, database writes, migrations, provider calls, Git writes or cleanup
+were performed for this metadata edit.
+
+Candidate-local tracker is **twelve software-completed/thirteen open**, adding only20 to
+01/02/04/05/06/10/11/12/14/15/19. Actual integration remains
+`1671f9fecc677c64fc806b3f2160a17179771101` with **eleven/fourteen** until parent integration.
+Two fresh metadata axes, parent disposition and local merger remain pending. No dev merge, push,
+PR, human acceptance or authorization beyond the current local workflow is implied.

@@ -585,6 +585,73 @@ test('API client preserves thrown error and other-endpoint diagnostics while sup
     assert.equal(b.logs.join('\n').includes(sentinel), true, 'Unrelated endpoint logging remains unchanged');
 });
 
+for (const typed of [false, true]) {
+    test(`initial held settings read preserves accepted instruction baseline with local typing=${typed}`, async () => {
+        const held = deferred();
+        const accepted = 'Accepted standing instructions';
+        let canonical = { ...settings };
+        let settingsReads = 0;
+        const b = await page(req => {
+            if (req.method === 'GET' && req.url === '/api/ai/settings') return ++settingsReads === 1
+                ? held.promise : { json: canonical };
+            if (req.url.endsWith('/accept')) {
+                canonical = { ...canonical, custom_instructions: accepted };
+                return { json: { settings: canonical, proposal: { id: 'initial-proposal', status: 'accepted' } } };
+            }
+            if (req.method === 'PUT') { canonical = { ...canonical, ...req.body }; return { json: canonical }; }
+            return null;
+        });
+        if (typed) b.get('ai_setting_custom_instructions').value = 'Locally typed instructions';
+        b.get('ai_setting_preferred_tags').value = 'local-tag';
+        const card = b.run("aiBuildInstructionProposalNode({id:'initial-proposal', status:'pending', proposed_instruction:'Remember this'})");
+        b.root.appendChild(card);
+        await requiredButton(card, /^Save to custom instructions$/, 'actual proposal accept callback').click();
+        held.resolve({ json: settings }); await tick();
+        assert.equal(b.get('ai_setting_custom_instructions').value, typed ? 'Locally typed instructions' : accepted);
+        assert.equal(b.get('ai_setting_preferred_tags').value, 'local-tag');
+        if (typed) {
+            await b.get('ai_settings_cancel_btn').click();
+            assert.equal(b.get('ai_setting_custom_instructions').value, accepted);
+            b.get('ai_setting_preferred_tags').value = 'local-tag';
+        }
+        await b.get('ai_settings_save_btn').click();
+        assert.deepEqual(b.writes.map(r => r.method), ['POST', 'PUT']);
+        assert.equal(b.writes[1].body.custom_instructions, accepted);
+        assert.deepEqual(b.writes[1].body.preferred_tags, ['local-tag']);
+        const readback = await b.run("api.get('/api/ai/settings')");
+        assert.equal(readback.custom_instructions, accepted);
+        b.get('ai_setting_custom_instructions').value = 'Discard me';
+        await b.get('ai_settings_cancel_btn').click();
+        assert.equal(b.get('ai_setting_custom_instructions').value, accepted);
+    });
+}
+
+test('accepted instructions survive failed initial load and older retry read while retaining a later empty draft', async () => {
+    const first = deferred(), retry = deferred(); let reads = 0;
+    const accepted = 'Accepted before initialization retry';
+    const b = await page(req => {
+        if (req.url === '/api/ai/settings') return ++reads === 1 ? first.promise : retry.promise;
+        if (req.url.endsWith('/accept')) return { json: {
+            settings: { ...settings, custom_instructions: accepted },
+            proposal: { id: 'retry-proposal', status: 'accepted' },
+        } };
+        return null;
+    });
+    const card = b.run("aiBuildInstructionProposalNode({id:'retry-proposal', status:'pending', proposed_instruction:'Remember this'})");
+    b.root.appendChild(card);
+    await requiredButton(card, /^Save to custom instructions$/, 'actual proposal accept callback').click();
+    first.resolve({ status: 503, json: { detail: 'synthetic initial read failure' } }); await tick();
+    const pending = requiredButton(b.get('ai_settings_save_status'), /^Retry load$/, 'behavior load retry').click();
+    b.get('ai_setting_custom_instructions').value = '';
+    b.get('ai_setting_preferred_tags').value = 'retained-draft';
+    retry.resolve({ json: settings }); await pending;
+    assert.equal(b.get('ai_setting_custom_instructions').value, '', 'empty local draft survives initialization');
+    assert.equal(b.get('ai_setting_preferred_tags').value, 'retained-draft');
+    await b.get('ai_settings_cancel_btn').click();
+    assert.equal(b.get('ai_setting_custom_instructions').value, accepted, 'Cancel restores the accepted canonical text');
+    assert.equal(b.writes.length, 1, 'load retry is read-only');
+});
+
 test('old behavior ACK cannot replace a newer authoritative instruction baseline', async () => {
     const held = deferred();
     const b = await page(req => req.method === 'PUT' ? held.promise : null);
@@ -710,15 +777,18 @@ test('current catalog Retry uses only its GET and retains custom model draft', a
 // Pure route-policy unit check: no browser, daemon, HTTP, or provider is started.
 test('authored native guard delegates exact real Tailwind asset to parent guard without substituting CSS', async () => {
     let guard;
+    let closeCount = 0;
     const stopped = Error('synthetic stop before private health read');
     const context = {
         newPage: async () => ({ on() {} }), addInitScript: async () => {},
         route: async (pattern, fn) => { guard = fn; },
         request: { get: async () => { throw stopped; } },
+        close: async () => { ++closeCount; },
     };
     const probe = vm.runInNewContext(fs.readFileSync(path.join(__dirname, 'browser_ai_settings_providers.js'), 'utf8'), { URL });
     await assert.rejects(probe({ context: () => ({ browser: () => ({ newContext: async () => context }) }) },
         'http://127.0.0.1:18347'), error => error === stopped);
+    assert.equal(closeCount, 1, 'cleanup closes its context and preserves the primary error identity');
     for (const [url, method, expected] of [
         ['https://cdn.tailwindcss.com/', 'GET', 'fallback'],
         ['https://cdn.tailwindcss.com/other.js', 'GET', 'abort'],

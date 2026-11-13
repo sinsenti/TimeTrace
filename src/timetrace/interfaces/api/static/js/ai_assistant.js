@@ -301,7 +301,8 @@ function aiInstructionTextBlock(label, value, className = 'ai-instruction-propos
 function aiSyncCustomInstructions(settings) {
     if (!settings || typeof settings.custom_instructions !== 'string') return;
     const textarea = document.getElementById('ai_setting_custom_instructions');
-    if (!textarea || (typeof aiBehaviorReady !== 'undefined' && !aiBehaviorReady)) return;
+    if (!textarea) return;
+    if (typeof aiBehaviorInstructionsAcknowledged !== 'undefined') aiBehaviorInstructionsAcknowledged = true;
     const selector = '#ai_setting_custom_instructions';
     const draft = typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['ai_behavior_settings'], selector)
         ? textarea.value : null;

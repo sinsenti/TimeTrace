@@ -4,7 +4,7 @@
 
 **Blocked by:** [19: Tabbed browser preferences](19-browser-preferences.md)
 
-**Status:** in-progress
+**Status:** completed
 
 **Approved decisions:** O8, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
@@ -12,12 +12,12 @@
 
 ## Acceptance criteria
 
-- [ ] Retain default task/session scope with sensitive domains opt-in, structured scheduling constraints, custom instructions and existing provider capabilities.
-- [ ] Keep settings/instruction and provider save/discard ownership independent from each other and from browser preferences.
-- [ ] Support masked credential keep/replace/clear according to existing API semantics; never disclose keys in rendered output, diagnostics, logs or responses.
-- [ ] Retain explicit activation, confirmed deletion, model catalogs, safe saved/inline probes and Pi-owned authentication; adding an activation confirmation is not required.
-- [ ] Use fake providers only; verify failure/retry, credential clearing without mistaken replacement, unsaved navigation and existing Assistant/settings compatibility.
-- [ ] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
+- [x] Retain default task/session scope with sensitive domains opt-in, structured scheduling constraints, custom instructions and existing provider capabilities.
+- [x] Keep settings/instruction and provider save/discard ownership independent from each other and from browser preferences.
+- [x] Support masked credential keep/replace/clear according to existing API semantics; never disclose keys in rendered output, diagnostics, logs or responses.
+- [x] Retain explicit activation, confirmed deletion, model catalogs, safe saved/inline probes and Pi-owned authentication; adding an activation confirmation is not required.
+- [x] Use fake providers only; verify failure/retry, credential clearing without mistaken replacement, unsaved navigation and existing Assistant/settings compatibility.
+- [x] Satisfy shared acceptance, include focused regression evidence and record unrun checks honestly; no personal data or real provider calls.
 
 ## Comments
 
@@ -45,3 +45,28 @@
   whole-tree 18 Ruff findings match both baseline streams exactly. All RED receipts are preserved in
   [evidence](../ticket-20-evidence.md#confirmed-review-repair-and-authored-probe-fidelity-freeze03-2026-11-13).
   Parent re-review, native/daemon verification, integration and acceptance remain pending; no done claim.
+
+
+- 2026-11-13 integrated amendment: repaired confirmed initial-load custom-instruction P2 using
+  the real proposal accept callback and canonical-baseline reconciliation, retaining typed drafts.
+  Fixed only the diagnostic route-policy fixture's missing context close; browser probe/harness
+  remain unchanged. Freeze07 checks: 551 Python/214 warnings, 449 canonical Node, 52 focused Node;
+  syntax/scoped Ruff/diff pass; full Ruff exactly matches 18 baseline findings. RED receipts,
+  freeze06-to07 bridge and prior native failure/PASS provenance are recorded in
+  [evidence](../ticket-20-evidence.md#integrated-initial-instruction-repair-freeze07-2026-11-13).
+  Fresh independent amendment review and owner acceptance remain pending; status stays in progress.
+
+
+- 2026-11-13 bounded software closure candidate: all six unchanged criteria are mapped to
+  [current bounded evidence](../ticket-20-evidence.md#bounded-software-closure-candidate-2026-11-13).
+  `completed` follows the local software-delivery convention, with deferred manual acceptance
+  recorded separately. Freeze07 source Standards and Spec amendments both report zero findings.
+  The current instruction-native browser exits0 with seven checks; its controller remains FAILED
+  solely on unchanged logical data encoded with different JSON whitespace. The independent
+  read-only storage audit resolves that measurement contract without relabeling the controller.
+  The first native run remains FAILED with unknown primary cause; native-v2's earlier29-check
+  bounded PASS remains scoped to freeze06. Fresh closure metadata Standards/Spec review and parent
+  local integration remain pending. This candidate alone counts twelve software-completed /
+  thirteen open; actual integration remains1671f9f with eleven/fourteen until the parent merges.
+  Manual presentation/races, dirty-buffer initial-load native proof, general secret certification,
+  explicit human acceptance and whole25 gates remain separate; no acceptance waiver is made.

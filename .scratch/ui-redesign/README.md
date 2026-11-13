@@ -192,3 +192,29 @@ The published graph above is the approved execution breakdown; don't mix the two
 The 09→01 edge was omitted as transitively satisfied through 04. Unnecessary day-review blockers
 were removed from task post-mortems and rating administration as approved in the proposal. Tests
 remain inside every ticket; 25 adds whole-app adoption verification.
+
+
+## Ticket20 bounded software closure candidate — current (2026-11-13)
+
+Ticket20 is software-completed in this candidate, with its six unchanged criteria mapped to
+[current bounded evidence](ticket-20-evidence.md#bounded-software-closure-candidate-2026-11-13).
+Repair07 independent source Standards/Spec reviews report zero findings; full551Python/214warnings,
+449canonicalNode and52focusedNode pass. Ruff retains18 inherited findings with BOTH streams matched;
+the two-file formatter failure is attributed to the same three inherited exception-tuple edits.
+Initial integrated445pass/1mockfailure remains retained alongside its narrow close-fixture repair.
+
+Native-v2 browser0/29checks is bounded freeze06 real-CRUD proof with explicit catalog/Test/Activate/
+rejection/list fakes (Activate UI-dispatch only). Current instruction-native browser0/7checks proves
+real hash-checked acceptance, stale-initial-GET ordering and real unrelated Save/Cancel/final GET.
+Its controller remains FAILED on JSON-whitespace storage comparison; independent read-only storage
+audit PASS/592assertions validates497pins/487source, actual unchanged six scope booleans and service
+canonicalization, original ACKs and lifecycle. That measurement resolution is not a controller PASS
+or product waiver. First native remains FAILED with unknown primary cause; all receipts are retained.
+
+Candidate-local count is twelve software-completed/thirteen open, adding20 to
+01/02/04/05/06/10/11/12/14/15/19. Actual integration remains1671f9f with eleven/fourteen until parent
+merge. Fresh closure metadata Standards/Spec reviews and parent disposition/integration remain
+pending. Dirty-buffer initial-load native proof, broader races/compatibility, presentation/accessibility,
+general secret certification, explicit human acceptance and whole25 gates remain separate. Historical
+checkpoint wording above is preserved; spec remains Approved, not Built. No runtime/test/provider/
+database/Git writes or cleanup accompanied these documentation edits.

@@ -486,6 +486,7 @@ function aiUpdateDataScopeWarning(providers) {
 let aiBehaviorReady = false;
 let aiBehaviorLoading = false;
 let aiBehaviorInitialFields = null;
+let aiBehaviorInstructionsAcknowledged = false;
 let aiBehaviorSaving = false;
 let aiBehaviorRevision = 0;
 
@@ -521,7 +522,9 @@ async function aiLoadBehaviorSettings() {
     try {
         const s = await api.get('/api/ai/settings');
         const newerBaselines = fields.map(el => [el.id, settingsDrafts.get('ai_behavior_settings')?.fields.get(el.id)])
-            .filter(([id, baseline]) => baseline !== readBaselines.get(id));
+            .filter(([id, baseline]) => baseline !== readBaselines.get(id)
+                // An accepted/conflict snapshot remains canonical across failed initial reads and retries.
+                || (!aiBehaviorReady && aiBehaviorInstructionsAcknowledged && id === 'ai_setting_custom_instructions'));
         const drafts = fields.filter(el => aiBehaviorReady
             ? hasSettingsDrafts(['ai_behavior_settings'], `#${el.id}`)
             : valueOf(el) !== aiBehaviorInitialFields.get(el.id)).map(el => [el, valueOf(el)]);
