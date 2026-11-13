@@ -110,3 +110,107 @@ visual/accessibility, Timer, human acceptance and whole-delivery gates remain op
 in-progress and no acceptance criterion is closed. Shared README, implementation and development
 notes were not edited for ticket07; their incoming ticket20 changes are retained. External
 `evidence/ticket-07/freeze03/` records the full source inventory and exact preservation bridges.
+
+
+## Bounded software-completion candidate (2026-11-13)
+
+Recommend ticket07 software completion under the local tracker's bounded delivery convention,
+subject to fresh independent closure metadata Standards and Spec reviews and parent disposition.
+This is a metadata-only candidate on `212680779190867c4c5c1da4010cdaa9dd75c47b` (freeze07).
+The five original issue criteria remain verbatim. Existing historical sections above retain their
+then-current UNRUN/open wording; this section supplies the current evidence and its limits.
+No product, test, native helper, acceptance spec or historical receipt is changed by this closure.
+
+External receipts are rooted at
+`/home/user/git/personal/TimeTrace/.scratch/codex-continuation/evidence/ticket-07/`.
+`freeze07/report.md`, `incoming-owned-bridge.json`, `full-source-freeze.json` and
+`integrated-after24/report.md` establish the current combined source identity. Source-product
+Standards/Spec reviews02 both report zero confirmed findings on their exact feature candidate;
+focused probe-only/harness reviews04 have zero blockers in that separate scope. Neither substitutes
+for the two fresh closure metadata reviews still required here.
+
+### Five unchanged criteria: evidence and limits
+
+| Criterion | Current bounded software evidence | Precise limits retained |
+| --- | --- | --- |
+| Dedicated route, optional normal Outline view and per-browser persistence | Actual rendered-route tests `test_outline_tasks.py` verify one shared editor on Tasks and retained dedicated details routes. CJS `outline preference renders Outline and retains unrelated preferences across three views` covers normal dispatch and valid settings. Native02 returned invalid-default, unrelated-setting preservation and cross-reload Outline assertions; dedicated own-history route was reached. | Native02 is FAILED overall. These are returned functional observations, not a clean 69-workflow certification. Broader browser/engine acceptance is pending. |
+| Hierarchy, shared operations, own history/accounting and accessible selection | CJS filtered ancestor/orphan/cycle/root-order and literal-text cases; shared-controller child, deletion, Session-focus and shortcut cases; actual composition tests. Native02 observed exactly three own rows with ancestor context, own-vs-descendant history, shared accounting/negative overspend, real Save and child creation, Grouped Task Edit/Cancel and Schedule/Cancel, existing Session Cancel, actual Kanban click/Enter departures, literal unsafe text and inline Close. | Native02's 69 assertions are qualified by its fatal transport failure. Physical touch/screen-reader access, contrast measurement, other engines and exhaustive theme/zoom/motion remain unrun. Shared Session Save/nested Task handoff, queued-child fault recovery and recurrence mutation are not newly native-covered. Native02's disabled Cancel click hit the actual control; bounded Enter focus stayed BODY, so Enter targeting Cancel is unclaimed. |
+| Stable selected identity/draft across refresh and stale-response protection | Current CJS dirty-selection/view-refresh, pending child ACK refresh, held parent/stats A→B→A continuations and concurrent-typing Save ACK regressions pass in the combined canonical run. Native02 observed retained hidden/filter drafts and held Save's later draft, with its FAILED-overall qualifier. Separate clean held03 proves actual Other→held Parent→Child→latest Parent ordering and canonical enabled Parent owner/title before and after stale delivery. | Dirty-preserving metadata refresh is established by controller regressions, not native02's replacement reload, which had a clean baseline. Held03 uses three synthetic Tasks and zero UI writes; it does not establish new Save/Delete boundary runtime certification. |
+| Selection, Save/Cancel, stale/deleted tasks, narrow layouts and completion prompts with regressions and a real workflow | Current CJS covers failed initial reads/current retry, delayed delete confirmation, successful/failed held DELETE and actual Cancel handler, selection/close guards, explicit Save/Cancel, pending writes, visible completion follow-up and actual Kanban departures. Native02 returned the real mutation/readback/Cancel/Keep workflow, public deleted404, actual disabled Cancel click and widths1440/768/390 without horizontal overflow. Held03 provides a clean focused real-browser inspector-selection workflow and delivery ordering, independently of those returned69. | Native01/native02 failures remain fatal within their own runs. No clean rerun of all69 exists. Source06's completion helper now covers tree/Save/Delete; only the tree boundary has the new held03 native proof. Completion Clear/subtree independence, real idle/frozen Timer closure, other-engine and human acceptance remain outside this bounded evidence. |
+| Shared safety, focused regressions, honest unrun checks and no personal/provider data | Combined full Python/Node, syntax, scoped lint/format, exact Ruff baseline comparison and whitespace receipts below; source/helper hash bridges; isolated synthetic native runs with original response captures, actual ACK/storage/FTS reconciliation and verified shutdown. Selection IDs remain UUIDv7 strings; no backend/model/schema/API change or migration is introduced. | Fakes and inert controls are explicitly identified below. No OS idle, physical accessibility, provider, whole25, owner acceptance or dev-merge gate is waived. See the remaining-gates paragraph; `completed` means bounded software delivery only. |
+
+### Current combined checks and source bridge
+
+`integrated-after24/report.md` records exactly one full run on freeze07, with all501 regular
+tracked/nonignored files matching membership, lengths and SHA256 before/after, unchanged HEAD,
+index and refs: **564 Python passed / 214 warnings**, **485 actual TAP cases passed** across27
+canonical files under default Node process isolation, **127 JavaScript syntax checks passed**.
+Scoped Ruff/format on the three relevant Python tests and both whitespace checks passed.
+Full uncached Ruff reports **18 inherited findings** (16 E501/2 E741) and the existing invalid-noqa
+stderr warning; stdout and stderr both byte-match an independently Git-audited493-file disposable
+snapshot of incoming `564e25a51807c6809d191fa0f31e27d0d7bf6b6c`. The214 warnings are206 SQLite
+datetime deprecations and8 Pydantic serialization warnings. Initial sandbox setup lock failure and
+successful escalated setup receipts are retained. There was no daemon/browser/native rerun in
+that combined check, and no suite is rerun for this metadata edit.
+
+Freeze06 contains the source-local bounded delivery observer: it resolves only after the actual
+fulfillment returns, preserves callback errors and original cause, times out after10,000ms without
+advancing to removal, and uses exact handler identity for tree/Save/Delete. Its inert actual-source
+controls retain original and removed-wait mutant RED failures and repaired GREEN; they model
+transport and cannot reconstruct historical native event order. Freeze07 checkpoints the two
+previously modified tests and merges incoming24 without conflicts. All17 paths differing from
+incoming retain the ticket07 checkpoint bytes; all13 incoming changed/added paths match incoming.
+Thus current combined checks and the source/helper bridges connect earlier observations to retained
+feature bytes, without treating a historical run as a fresh combined browser run.
+
+### Native history, focused repair and storage
+
+- Native01 remains **FAILED** at its selector assertion. Native02 remains **FAILED** despite69
+  returned assertions and zero page errors: one guard violation and two handler errors record
+  `route.fulfill: Route is already handled!`. Its causal account remains uncertain: removal before
+  completion is a demonstrated mechanism, but historical contender ordering is not established.
+  No clean rerun or retrospective PASS is claimed.
+- Native02 retained330 original captures and13 actual successful domain ACKs (six Task POSTs,
+  three parent PUTs, one DELETE, three Session POSTs). Full final fields reconcile to ACKs;
+  five Tasks/three Sessions remain, schema/FKs/unrelated/config state reconcile, copied-memory
+  rank1 FTS integrity passes without changing copied logical storage, and post-browser/post-stop
+  storage/private files match. These successful observations do not erase its failed transport gate.
+- `native-execution-held03/report.md`, `observed-summary.json` and `held-action-timeline.json`
+  report **PASS for the bounded focused transport proof only**: seven checks, three actual public
+  Task201 ACKs, zero Session ACKs and zero UI domain writes. All47 original captures verify.
+  Actual held fulfillment returned action452, callback finished453, explicit completion wait455,
+  exact-handler removal456→457; latest callback436 and wait449 precede release450. All route,
+  registration, capture and callback identities agree. Guard, handler/capture/request, unresolved
+  callback, page, runner, emergency and source/driver errors are all zero; teardown completes.
+  Full Task fields/topology, all logical tables/config/FK/FTS and private files reconcile;
+  copied-memory rank1 integrity passes, with no physical shadow-delta replay claim. Post-browser
+  and post-stop storage/private snapshots match. Sole pidfd SIGTERM of owned PID724009 reaped
+  actual−15, with actual process absence and refused18385/errno111. Native02 separately retained
+  its own sole−15 shutdown/process absence/refused18373; no lifecycle result is relabeled.
+
+Held03 independently pinned all495 then-current source files,10 new helpers and both old9-helper
+sets before/after. Freeze07's complete byte bridge carries those source bytes into the current501
+source membership, adding incoming24 and its metadata/tests. The held03 proof is deliberately
+narrow: no inherited Save/Delete/fake-response/Session grants and no69-workflow rerun. The native02
+single503 stats seam is declared synthetic; CJS DOM/HTTP controls and source06 transport controls
+are modeled seams, not real server failures or writes. All application storage was private synthetic
+scratch data; no personal DB, provider, paid call, credential exposure or OS-idle test occurred.
+
+### Remaining gates and candidate counts
+
+No genuine failed gate is waived. Native01/native02 retain FAILED status and native02's causal
+uncertainty. A clean complete69-workflow rerun, fresh Save/Delete completion-latch native checks,
+dirty metadata-refresh native exercise, remaining shared Session Save/nested handoff/queued-child
+fault recovery/Completion Clear-subtree/recurrence workflows, contrast/physical touch/screen readers/
+other engines/exhaustive theme/zoom/motion and actual OS idle/frozen Timer remain unrun here.
+These limits bound the software-completion recommendation; they are not claims of full shared,
+physical accessibility or product acceptance. Whole25 still requires its fixed-base integrated review
+and owner acceptance; any future dev merge retains the separate automated/adversarial/human gate.
+Spec status stays **Approved, not Built**. Fresh closure metadata reviews and parent disposition
+are still required before committing or integrating this five-path candidate.
+
+Authoritative integration `564e25a51807c6809d191fa0f31e27d0d7bf6b6c` remains13 software-completed/
+12 open. Candidate-local14 completed/11 open adds only07 to
+01/02/04/05/06/10/11/12/14/15/19/20/24, conditional on review and integration. The metadata hash
+bridge in external `closure-metadata/` proves all source/tests/native evidence unchanged; no new
+runtime, full test, Git write, provider or personal-data operation accompanies this recommendation.
