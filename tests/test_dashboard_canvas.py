@@ -9,7 +9,7 @@ def test_canvas_existing_customized_and_deleted_seeds_are_not_reinserted(client)
     assert client.delete(f"{path}/widgets/{removed['id']}").status_code == 204
     assert client.put(f"{path}/widgets/{renamed['id']}", json={"title": "My unchanged custom name"}).status_code == 200
     for _ in range(2):
-        assert client.get("/api/dashboards").json()[0]["widget_count"] == 8
+        assert client.get("/api/dashboards").json()[0]["widget_count"] == 9
         detail = client.get(path).json()
         assert removed["id"] not in [widget["id"] for widget in detail["widgets"]]
         assert (
@@ -20,7 +20,7 @@ def test_canvas_existing_customized_and_deleted_seeds_are_not_reinserted(client)
 
     reset = client.post(f"{path}/reset")
     assert reset.status_code == 200
-    assert len(reset.json()["widgets"]) == 9
+    assert len(reset.json()["widgets"]) == 10
     assert set(widget["id"] for widget in reset.json()["widgets"]).isdisjoint(widget["id"] for widget in original)
 
 
@@ -37,7 +37,7 @@ def test_canvas_empty_named_dashboard_survives_overview_deletion_and_last_delete
     seeded = client.get("/api/dashboards").json()
     assert len(seeded) == 1
     assert seeded[0]["slug"] == "overview"
-    assert seeded[0]["widget_count"] == 9
+    assert seeded[0]["widget_count"] == 10
     assert seeded[0]["id"] != overview["id"]
 
 

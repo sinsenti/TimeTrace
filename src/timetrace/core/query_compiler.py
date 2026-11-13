@@ -201,7 +201,8 @@ def _build_filter_clause(
                 if predicate is None:
                     raise ValidationError("session_time_relative must be one of 'past', 'future', or 'ongoing'")
                 predicates.append(f"({predicate})")
-            params["__now_utc"] = ctx.now_utc
+            # Match SQLModel's fixed-width SQLite timestamps, including whole-second instants.
+            params["__now_utc"] = ctx.now_utc.isoformat(sep=" ", timespec="microseconds")
             conditions.append(" OR ".join(predicates) if len(predicates) == 1 else f"({' OR '.join(predicates)})")
             continue
 

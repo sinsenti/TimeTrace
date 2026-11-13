@@ -27,8 +27,15 @@ const ACCENT_CLASSES = {
  * opens are how *these specific* charts have always looked, not properties of a widget spec.
  * A user-built widget gets a generic presentation derived from its result's column unit.
  */
+// Alias only untouched historical default titles; never rewrite saved rows or custom names.
+function _widgetDisplayTitle(widget) {
+    if (widget.seed_key === 'total_time' && widget.title === 'Total Time Logged') return 'Recorded session time';
+    if (widget.seed_key === 'total_sessions' && widget.title === 'Logged Sessions') return 'Recorded sessions';
+    return widget.title;
+}
+
 const SEED_PRESENTATION = {
-    total_time: { accent: 'purple', badge: 'LOGGED' },
+    total_time: { accent: 'purple', badge: 'RECORDED' },
     total_sessions: { accent: 'emerald', badge: 'SESSIONS' },
     total_tasks: { accent: 'amber', badge: 'TASKS' },
     estimation_score: { accent: 'blue', badge: 'ACCURACY', subtitle: 'estimation_ratio' },
@@ -512,11 +519,11 @@ function renderWidget(widget, data, index) {
     let card;
     if (data.loading && data.loading[widget.id]) {
         card = _el('div', 'widget-card space-y-2');
-        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
         card.appendChild(_el('p', 'canvas-loading', 'Loading…'));
     } else if (error || (!result && !sqlResult)) {
         card = _el('div', 'widget-card space-y-2');
-        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
         card.appendChild(_el('div', 'canvas-error', error || 'This widget produced no result.'));
         const retry = _el('button', 'canvas-button', 'Retry');
         retry.onclick = () => _loadWidget(widget, data);
@@ -562,7 +569,7 @@ function _addWidgetControls(card, widget, data, index) {
     const mkBtn = (label, title, handler, disabled) => {
         const btn = _el('button', 'px-1 text-slate-400 hover:text-white text-xs font-bold', label);
         btn.title = title;
-        btn.setAttribute('aria-label', `${title}: ${widget.title}`);
+        btn.setAttribute('aria-label', `${title}: ${_widgetDisplayTitle(widget)}`);
         if (disabled) {
             btn.disabled = true;
             btn.className += ' opacity-30 cursor-default';
@@ -608,7 +615,7 @@ async function deleteWidget(widgetId) {
     if (dashboardWritePending) return;
     const data = currentDashboardData;
     const widget = getWidgetById(widgetId);
-    if (!widget || !confirm(`Remove the widget "${widget.title}" from this dashboard?`)) return;
+    if (!widget || !confirm(`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`)) return;
     await _writeDashboard(() => api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`), () => {
         if (data !== currentDashboardData) {
             if (currentDashboardId === widget.dashboard_id) return reloadCurrentDashboard();
@@ -650,8 +657,16 @@ function renderTileWidget(widget, result, data, seed) {
     card.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
 
     const body = _el('div', 'min-w-0');
-    body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', widget.title));
+    body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', _widgetDisplayTitle(widget)));
     body.appendChild(_el('span', `text-2xl font-black ${accent.text}`, format(result.total)));
+    const query = widget.spec?.mode === 'structured' ? widget.spec.query : null;
+    const recordedMeasure = widget.seed_key === 'total_time' ? 'sum_duration'
+        : widget.seed_key === 'total_sessions' ? 'session_count' : null;
+    if (recordedMeasure && query?.source === 'sessions' && query.measure === recordedMeasure &&
+        !query.filters?.length && !query.group_by?.length && (query.date_range?.preset || 'all_time') === 'all_time') {
+        body.appendChild(_el('span', 'text-[11px] text-slate-400 block mt-0.5',
+            'Includes past and future recorded rows, not only performed work.'));
+    }
 
     if (seed && seed.subtitle === 'estimation_ratio') {
         const tracked = _seedTotal(data, 'total_time');
@@ -716,7 +731,7 @@ function _deltaLine(result, unit) {
 
 function renderTableWidget(widget, result) {
     const card = _el('div', 'widget-card space-y-2');
-    card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+    card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
 
     const table = _el('table', 'w-full text-xs text-slate-300');
     const tbody = _el('tbody');
@@ -745,7 +760,7 @@ function renderChartWidget(widget, result, seed) {
 
     const header = _el('div', 'flex justify-between items-center pr-24');
     header.appendChild(_el('h3', 'font-bold text-sm text-slate-200',
-        widget.title + (clickable ? ' (Click to inspect)' : '')));
+        _widgetDisplayTitle(widget) + (clickable ? ' (Click to inspect)' : '')));
 
     if (result.meta.totals_overlap) {
         const note = _el('span', 'text-[10px] text-amber-400 font-semibold', 'Totals overlap');
@@ -785,7 +800,7 @@ function renderChartWidget(widget, result, seed) {
     const chartType = kind === 'doughnut' ? 'doughnut' : (kind === 'line' ? 'line' : 'bar');
 
     let datasets = [{
-        label: widget.title,
+        label: _widgetDisplayTitle(widget),
         data: values,
         backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
         borderColor: chartType === 'line' ? (palette[0] || '#8b5cf6') : undefined,
@@ -919,7 +934,7 @@ function renderSqlWidget(widget, sqlResult) {
 
     const card = _el('div', 'widget-card space-y-2');
     const header = _el('div', 'flex justify-between items-center pr-24');
-    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
     header.appendChild(_el('span', 'text-[10px] text-slate-500 font-semibold', 'SQL'));
     card.appendChild(header);
 

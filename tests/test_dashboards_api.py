@@ -5,7 +5,7 @@ def test_overview_dashboard_is_seeded_and_runnable(client):
     dashboards = response.json()
     assert len(dashboards) == 1
     assert dashboards[0]["slug"] == "overview"
-    assert dashboards[0]["widget_count"] == 9
+    assert dashboards[0]["widget_count"] == 10
 
     dashboard_id = dashboards[0]["id"]
     data = client.post(
@@ -15,8 +15,8 @@ def test_overview_dashboard_is_seeded_and_runnable(client):
 
     assert data.status_code == 200
     payload = data.json()
-    assert len(payload["widgets"]) == 9
-    assert len(payload["results"]) == 9
+    assert len(payload["widgets"]) == 10
+    assert len(payload["results"]) == 10
     assert payload["errors"] == {}
 
 

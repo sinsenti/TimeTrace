@@ -54,6 +54,9 @@
                 <p class="canvas-description">Saved queries, independent ranges and comparisons.</p>
             </div>
             <div class="canvas-actions">
+                <button type="button" onclick="openPerformedTimePreset()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition">
+                    Performed time preset
+                </button>
                 <button type="button" onclick="openWidgetBuilder()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition">
                     + Add Widget
                 </button>
@@ -101,6 +104,7 @@
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/stats.js"></script>
     <script src="/static/js/dashboards.js"></script>
+    <script id="performed_time_preset" type="application/json">{{ performed_time_preset | tojson }}</script>
     <script src="/static/js/widget_builder.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>

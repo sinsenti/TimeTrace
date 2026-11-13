@@ -156,7 +156,41 @@ async function _wbLoadCapabilities(modal) {
     return generation;
 }
 
-async function openWidgetBuilder(dashboardId) {
+function _wbHydrateStructuredQuery(q) {
+    wbOriginalQuery = JSON.parse(JSON.stringify(q));
+    _wbSetValue('wb_source', q.source);
+    _onWidgetBuilderSourceChange();
+    _wbSetValue('wb_sort', q.sort || 'value_desc');
+    _wbSetValue('wb_limit', q.limit === undefined ? '200' : String(q.limit));
+    document.getElementById('wb_fill_gaps').checked = !!q.fill_gaps;
+    _wbSetValue('wb_range_start', q.date_range?.start_date || '');
+    _wbSetValue('wb_range_end', q.date_range?.end_date || '');
+    _wbSetValue('wb_measure', q.measure);
+    _wbSetValue('wb_group_by_1', (q.group_by && q.group_by[0]) || '');
+    _wbSetValue('wb_group_by_2', (q.group_by && q.group_by[1]) || '');
+    _wbSetValue('wb_chart', q.chart || 'bar');
+    _wbSetValue('wb_date_range', (q.date_range && q.date_range.preset) || 'all_time');
+    _wbSetValue('wb_tag_attribution', q.tag_attribution || 'fan_out');
+    if (q.comparison) {
+        _wbSetValue('wb_comparison', q.comparison.mode || 'none');
+        _wbSetValue('wb_comparison_start', q.comparison.start_date || '');
+        _wbSetValue('wb_comparison_end', q.comparison.end_date || '');
+    }
+    const filter = (q.filters || [])[0];
+    if (filter) {
+        _wbSetValue('wb_filter_field', filter.field);
+        _wbSetValue('wb_filter_op', filter.op);
+        _wbSetValue('wb_filter_value', JSON.stringify(filter.values || []));
+    }
+    (q.filters || []).slice(1).forEach(filter => wbAddFilter(filter));
+}
+
+async function openPerformedTimePreset() {
+    const preset = document.getElementById('performed_time_preset');
+    if (preset) await openWidgetBuilder(null, JSON.parse(preset.textContent));
+}
+
+async function openWidgetBuilder(dashboardId, preset = null) {
     const modal = document.getElementById('widget_builder_modal');
     if (!modal) return;
 
@@ -169,7 +203,13 @@ async function openWidgetBuilder(dashboardId) {
     _wbResetForm();
 
     if (await _wbLoadCapabilities(modal) !== wbOpenGeneration) return;
-    _onWidgetBuilderSourceChange();
+    if (preset) {
+        _wbSetValue('wb_title', preset.title);
+        _wbSetValue('wb_width', preset.width);
+        _wbHydrateStructuredQuery(preset.query);
+    } else {
+        _onWidgetBuilderSourceChange();
+    }
     wbSwitchMode('structured');
 
     wbOnComparisonChange(false);
@@ -225,33 +265,7 @@ async function openWidgetEditor(dashboardId, widgetId) {
             wbRunSqlPreview();
         }
     } else if (spec && spec.mode === 'structured') {
-        const q = spec.query;
-        wbOriginalQuery = JSON.parse(JSON.stringify(q));
-        _wbSetValue('wb_source', q.source);
-        _onWidgetBuilderSourceChange();
-        _wbSetValue('wb_sort', q.sort || 'value_desc');
-        _wbSetValue('wb_limit', q.limit === undefined ? '200' : String(q.limit));
-        document.getElementById('wb_fill_gaps').checked = !!q.fill_gaps;
-        _wbSetValue('wb_range_start', q.date_range?.start_date || '');
-        _wbSetValue('wb_range_end', q.date_range?.end_date || '');
-        _wbSetValue('wb_measure', q.measure);
-        _wbSetValue('wb_group_by_1', (q.group_by && q.group_by[0]) || '');
-        _wbSetValue('wb_group_by_2', (q.group_by && q.group_by[1]) || '');
-        _wbSetValue('wb_chart', q.chart || 'bar');
-        _wbSetValue('wb_date_range', (q.date_range && q.date_range.preset) || 'all_time');
-        _wbSetValue('wb_tag_attribution', q.tag_attribution || 'fan_out');
-        if (q.comparison) {
-            _wbSetValue('wb_comparison', q.comparison.mode || 'none');
-            _wbSetValue('wb_comparison_start', q.comparison.start_date || '');
-            _wbSetValue('wb_comparison_end', q.comparison.end_date || '');
-        }
-        const filter = (q.filters || [])[0];
-        if (filter) {
-            _wbSetValue('wb_filter_field', filter.field);
-            _wbSetValue('wb_filter_op', filter.op);
-            _wbSetValue('wb_filter_value', JSON.stringify(filter.values || []));
-        }
-        (q.filters || []).slice(1).forEach(filter => wbAddFilter(filter));
+        _wbHydrateStructuredQuery(spec.query);
         wbSwitchMode('structured');
         wbOnComparisonChange(false);
     } else {
