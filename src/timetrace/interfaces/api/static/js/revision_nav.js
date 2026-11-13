@@ -2,7 +2,7 @@
  * Revision Engine Navigation & Hash Router
  */
 
-let currentActiveRevTab = 'overview';
+let currentActiveRevTab = 'day';
 let dayReviewHasExisting = false;
 let currentDayHistoryFilter = 'all';
 let currentSessionReviewFilter = 'all';
@@ -17,7 +17,7 @@ const TAB_HASH_MAP = {
 
 const HASH_TAB_MAP = {
     '#day': 'day',
-    '#overview': 'overview',
+    '#overview': 'day',
     '#sessions': 'sessions',
     '#tasks': 'task_inspector',
     '#ratings': 'ratings_config'
@@ -31,12 +31,13 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const dateInput = document.getElementById('day_review_date_input');
     if (dateInput && !dateInput.value) {
-        dateInput.value = typeof getLocalTodayStr === 'function' ? getLocalTodayStr() : new Date().toISOString().slice(0, 10);
+        dateInput.value = localDayToday();
     }
 
-    const initialHash = window.location.hash || '#overview';
-    const initialTab = HASH_TAB_MAP[initialHash] || 'overview';
+    const initialHash = window.location.hash || '#day';
+    const initialTab = HASH_TAB_MAP[initialHash] || 'day';
     switchRevisionTab(initialTab, false);
+    if (initialHash === '#overview') toggleDayHistory(true);
 });
 
 function updateSessionReviewTabVisibility() {
@@ -47,16 +48,17 @@ function updateSessionReviewTabVisibility() {
         else button.classList.add('hidden');
     }
     // Settings changes must not reload the active editor's text or ratings.
-    if (!enabled && currentActiveRevTab === 'sessions') switchRevisionTab('overview', false);
+    if (!enabled && currentActiveRevTab === 'sessions') switchRevisionTab('day', false);
 }
 
 function handleHashChange() {
-    const currentHash = window.location.hash || '#overview';
-    let targetTab = HASH_TAB_MAP[currentHash] || 'overview';
+    const currentHash = window.location.hash || '#day';
+    let targetTab = HASH_TAB_MAP[currentHash] || 'day';
+    if (currentHash === '#overview') toggleDayHistory(true);
     
     const s = typeof getUserSettings === 'function' ? getUserSettings() : { enableSessionReview: true };
     if (targetTab === 'sessions' && s.enableSessionReview === false) {
-        targetTab = 'overview';
+        targetTab = 'day';
     }
 
     if (targetTab !== currentActiveRevTab) {
@@ -95,11 +97,12 @@ function setupRevisionKeyboardShortcuts() {
 }
 
 function switchRevisionTab(tabName, updateHash = true) {
+    if (tabName === 'overview') { tabName = 'day'; toggleDayHistory(true); }
     const s = typeof getUserSettings === 'function' ? getUserSettings() : { enableSessionReview: true };
     const isSessionReviewEnabled = s.enableSessionReview !== false;
 
     if (tabName === 'sessions' && !isSessionReviewEnabled) {
-        tabName = 'overview';
+        tabName = 'day';
     }
 
     currentActiveRevTab = tabName;
@@ -134,6 +137,7 @@ function switchRevisionTab(tabName, updateHash = true) {
 function loadCurrentRevisionView() {
     if (currentActiveRevTab === 'day') {
         loadDayReviewData();
+        if (dayHistoryVisible) loadDayHistoryOverview();
     } else if (currentActiveRevTab === 'overview') {
         loadDayHistoryOverview();
     } else if (currentActiveRevTab === 'sessions') {

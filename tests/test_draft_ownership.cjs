@@ -10,25 +10,30 @@ function node(id = '', value = '', tag = 'input') {
     const classes = new Set(), children = [], listeners = {};
     return {id, value, tagName:tag.toUpperCase(), type:'text', style:{}, dataset:{}, children, listeners, disabled:false,
         classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)), remove:(...xs)=>xs.forEach(x=>classes.delete(x)), contains:x=>classes.has(x), toggle(x, on = !classes.has(x)) {on ? classes.add(x) : classes.delete(x);}},
-        appendChild(el) {children.push(el); return el;}, addEventListener:(name, fn)=>listeners[name]=fn,
-        focus(){}, select(){}, setAttribute(){}, removeEventListener(){}, remove(){this.removed = true;}, replaceWith(el){this.replacement = el;},
+        appendChild(el) { if(el.parentNode) {const i=el.parentNode.children.indexOf(el);if(i>=0)el.parentNode.children.splice(i,1);} children.push(el);el.parentNode=this; return el;}, append(...els){els.forEach(el=>this.appendChild(el));}, replaceChildren(...els){children.splice(0);els.forEach(el=>this.appendChild(el));}, addEventListener:(name, fn)=>listeners[name]=fn,
+        focus(){}, select(){}, setAttribute(k,v){this[k]=v;}, getAttribute(k){return this[k];}, removeEventListener(){}, remove(){this.removed = true;}, replaceWith(el){this.replacement = el;},
         querySelectorAll(selector) {return children.flatMap(el => [el, ...el.querySelectorAll(selector)]).filter(el => selector.split(',').some(s => {
             s = s.trim();
             if (s.includes(':not')) return el.id !== 'ai_setting_custom_instructions';
+            if (s === '[data-day-text]') return !!el.dayText;
+            if (s === '[data-day]') return !!el.dataset.day;
+            if (s === '[data-action]') return !!el.dataset.action;
+            if (s.startsWith('[data-day=')) return el.dataset.day === s.match(/="([^"]+)"/)[1];
+            if (s.startsWith('[data-action=')) return el.dataset.action === s.match(/="([^"]+)"/)[1];
             if (s.startsWith('#')) return el.id === s.slice(1);
             if (s.startsWith('[id^=')) return el.id.startsWith(s.match(/\[id\^="([^"]+)"\]/)[1]);
             if (s.startsWith('.')) return el.classList.contains(s.slice(1));
             return el.tagName.toLowerCase() === s;
-        }));}, querySelector(){return null;}
+        }));}, querySelector(selector){return this.querySelectorAll(selector)[0] || null;}
     };
 }
 function browser(elements, files, respond) {
     const writes = [], confirmations = [], events = {};
-    const context = vm.createContext({URL, Intl, Event, TextDecoder, console:{error(){}}, setTimeout:fn=>fn(),
+    const context = vm.createContext({URL, URLSearchParams, Intl, Event, TextDecoder, console:{error(){}}, setTimeout:fn=>fn(),
         localStorage:{getItem:()=>null,setItem(){}},
         document:{body:node('body'), getElementById:id=>elements[id] || null, createElement:tag=>node('', '', tag), querySelectorAll:()=>[], querySelector:()=>null,
             addEventListener:(name, fn)=>(events[name] ||= []).push(fn), documentElement:{style:{setProperty(){}},setAttribute(){}}},
-        window:{location:{href:'http://localhost/revision'},addEventListener(){},confirm:message=>{confirmations.push(message);return false;}},
+        window:{location:{href:'http://localhost/revision'},history:{pushState(){}},addEventListener(){},confirm:message=>{confirmations.push(message);return false;}},
         fetch:async (url, options)=>{
             if(options.method !== 'GET') writes.push({url, body:JSON.parse(options.body)});
             const result = await respond(url, options);
@@ -40,10 +45,29 @@ function browser(elements, files, respond) {
     return {run, context, writes, confirmations, events};
 }
 function dayElements() {
-    const fields = Object.fromEntries(['day_form_rating','day_form_highlights','day_form_friction','day_form_notes','day_form_save_btn','day_review_date_input','rev_tab_day','day_custom_ratings_container'].map(id=>[id,node(id)]));
-    fields.day_review_date_input.value = '2026-11-01';
-    fields.rev_tab_day.children.push(...['day_form_rating','day_form_highlights','day_form_friction','day_form_notes'].map(id=>fields[id]));
-    return fields;
+    const fields = Object.fromEntries(['day_review_date_input','rev_tab_day','day_main_editor','day_history_editor','day_editor_store','day_history_toggle','day_history_panel','day_history_status','day_history_grid'].map(id=>[id,node(id)]));
+    fields.day_review_date_input.value='2026-11-01';
+    const names=['date','rating','highlights','friction','notes','ratings','status','breakdown','total','created-tasks','filter','filter-label','session-count','sessions'];
+    fields.day_editor_template={content:{firstElementChild:{cloneNode(){
+        const root=node();root.children.push(...names.map(name=>{
+            const el=node();el.dataset.day=name;el.dayText=['rating','highlights','friction','notes'].includes(name);
+            if(el.dayText)el.value=name==='rating'?'3':'';return el;
+        }));
+        root.children.push(...['save','dismiss','discard','retry','calendar','clear-filter','activity','tasks','promote'].map(action=>{
+            const el=node('','','button');el.dataset.action=action;return el;
+        }));return root;
+    }}}};
+    const pending=fields.day_editor_template.content.firstElementChild.cloneNode(true);
+    const clone=fields.day_editor_template.content.firstElementChild.cloneNode;let first=true;
+    fields.day_editor_template.content.firstElementChild.cloneNode=()=>{if(first){first=false;return pending;}return clone();};
+    return new Proxy(fields,{get(target,key){
+        if(key in target)return target[key];
+        const roots=[...target.day_main_editor.children,...target.day_history_editor.children,...target.day_editor_store.children];
+        const alias=key==='day_custom_ratings_container'?'ratings':String(key).startsWith('day_form_')?String(key).slice(9):null;
+        const main=target.day_main_editor.children[0] || pending;
+        if(alias)return main?.querySelector(`[data-day="${alias}"]`);
+        return roots.flatMap(root=>[root,...root.querySelectorAll('input, select, textarea'),...root.children,...root.children.flatMap(el=>el.children)]).find(el=>el.id===key) || null;
+    }});
 }
 for(const fail of [false,true]) test(`Day text/grade remains guarded across ${fail ? '503' : 'held successful'} rating-definition GET`,async()=>{
     const fields = dayElements(), held = deferred();
@@ -271,8 +295,8 @@ for(const failWrite of [false,true]) test(`Dismiss ${failWrite ? 'failure keeps 
     let refresh=false;
     const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>options.method==='POST' ? (failWrite ? {status:503,json:{detail:'Synthetic Dismiss failure'}} : {json:{}}) : refresh ? {status:503,json:{detail:'Synthetic refresh failure'}} : {json:url.startsWith('/rating-definitions') ? [] : {day_review:null,custom_ratings:[]}});
     await b.run('loadDayReviewData()');fields.day_form_notes.value='Saved by Dismiss';rating.value=5;refresh=true;
-    if(failWrite) await assert.rejects(b.run('dismissDayReview()'),/Synthetic Dismiss failure/);
-    else await b.run('dismissDayReview()');await tick();
+    await b.run('dismissDayReview()');
+    if(failWrite) assert.match(fields.day_main_editor.children[0].querySelector('[data-day="status"]').textContent,/Dismiss incomplete/);await tick();
     assert.equal(b.run('followSettingsLink({})'),false);
     rating.value=3;assert.equal(b.run('followSettingsLink({})'),failWrite ? false : true);
 });
@@ -287,7 +311,8 @@ test('Partial day Save cleans only successful text and rating writes; failed rat
     ratings.forEach(input=>fields[input.id]=input);
     b.context.document.querySelectorAll=()=>cards;
     await b.run('loadDayReviewData()');fields.day_form_notes.value='Saved text';ratings.forEach(el=>el.value=5);
-    await assert.rejects(b.run('saveDayReviewForm()'),/Second rating failed/);
+    await b.run('saveDayReviewForm()');
+    assert.match(fields.day_main_editor.children[0].querySelector('[data-day="status"]').textContent,/Save incomplete/);
     assert.equal(b.run('followSettingsLink({})'),false);
     ratings[1].value=3;assert.equal(b.run('followSettingsLink({})'),true);
     assert.equal(b.writes.length,3);
@@ -331,10 +356,10 @@ test('Widget failed capabilities GET exposes retry without editable unknown fiel
 
 test('Day same-owner rating hydration cannot absorb edits made after the refresh started',async()=>{
     const fields=dayElements(),rating=node('rating_range_input_one',3),held=deferred();rating.classList.add('custom-rating-input');
-    fields.day_custom_ratings_container.children.push(rating);let hold=false;
-    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js'],url=>url.startsWith('/rating-definitions') ? hold ? held.promise : {json:[]} : {json:{day_review:null,custom_ratings:[]}});
+    fields.day_custom_ratings_container.children.push(rating);let hold=false, reads=0;
+    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js'],url=>url.startsWith('/rating-definitions') ? (reads++, hold ? held.promise : {json:[]}) : {json:{day_review:null,custom_ratings:[]}});
     await b.run('loadDayReviewData()');hold=true;
-    const refresh=b.run('loadDayReviewData()');await tick();rating.value=5;held.resolve({json:[]});await refresh;
+    const refresh=b.run('loadDayReviewData()');await tick();assert.equal(reads,2,'second definitions GET actually started');rating.value=5;held.resolve({json:[]});await refresh;
     assert.equal(b.run('followSettingsLink({})'),false);assert.equal(rating.value,5);assert.equal(b.writes.length,0);
 });
 
@@ -387,7 +412,7 @@ for(const fail of [false,true]) test(`Task detail unknown ${fail ? '503 and retr
 for(const edit of ['notes','rating']) test(`Hidden retained Day ${edit} warns on Settings, survives show and reverted fields are clean`,async()=>{
     const fields=dayElements(); fields.rev_tab_day.dataset.settingsDraftRetained='true';
     fields.rev_tab_overview=node('rev_tab_overview');
-    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js','day_history.js'],url=>({json:url.startsWith('/rating-definitions') || url.startsWith('/revision/day-reviews') ? [] : {day_review:null,custom_ratings:[]}}));
+    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js','day_history.js'],url=>({json:url.startsWith('/rating-definitions') || url.startsWith('/revision/day-reviews') || url.startsWith('/revision/day-history') ? [] : {day_review:null,custom_ratings:[]}}));
     await b.run('loadDayReviewData()');
     const field=fields[`day_form_${edit}`], original=field.value;field.value=edit==='notes' ? 'Retained text' : 5;
     b.run("switchRevisionTab('overview',false)");
@@ -551,7 +576,7 @@ test('Clean/reverted suspension and standalone Task Cancel stay clean; unrelated
     assert.equal(b.run('followSettingsLink({})'),true);
 });
 
-for(const action of ['saveDayReviewForm','dismissDayReview']) test(`Day ${action} A→B→A is a new editor even with the same date`,async()=>{
+for(const action of ['saveDayReviewForm','dismissDayReview']) test(`Day ${action} A→B→A retains its owner and acknowledges only captured A fields`,async()=>{
     const f=dayElements(),held=deferred();let reads=0;
     const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>{
         if(options.method==='POST') return held.promise;
@@ -561,16 +586,18 @@ for(const action of ['saveDayReviewForm','dismissDayReview']) test(`Day ${action
     f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
     f.day_review_date_input.value='2026-11-01';await b.run('loadDayReviewData()');f.day_form_notes.value='X';
     const before=reads;held.resolve({json:{}});await saving;await tick();
-    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(reads,before);assert.equal(f.day_form_notes.value,'X');
+    assert.equal(b.run('followSettingsLink({})'),true);assert.equal(reads,before);assert.equal(f.day_form_notes.value,'X');
+    assert.equal(b.writes[0].body.date_str,'2026-11-01');
 });
 
-test('Day Dismiss confirmation must still belong to its editor before collecting payload',async()=>{
+test('Day Dismiss confirmation retains its captured date and never collects B payload',async()=>{
     const f=dayElements(),held=deferred();
     const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],url=>({json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}}));
     await b.run('loadDayReviewData()');b.context.showCustomConfirm=()=>held.promise;
     const dismissing=b.run('dismissDayReview()');f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
     f.day_form_notes.value='B private draft';held.resolve(true);await dismissing;
-    assert.equal(b.writes.length,0);assert.equal(b.run('followSettingsLink({})'),false);
+    assert.equal(b.writes.length,1);assert.equal(b.writes[0].body.date_str,'2026-11-01');
+    assert.notEqual(b.writes[0].body.notes,'B private draft');assert.equal(b.run('followSettingsLink({})'),false);
 });
 
 for(const boundary of ['write','read']) test(`Changing Day input before its next read completes invalidates old ${boundary} continuation`,async()=>{
@@ -593,7 +620,7 @@ test('Same-day refresh does not invalidate a legitimate successful Day writer ch
 });
 
 function mountDayRatings(f,values=[3,3]) {
-    const inputs=values.map((value,i)=>{const input=node(`rating_range_input_${i}`,value);input.classList.add('custom-rating-input');f[input.id]=input;return input;});
+    const inputs=values.map((value,i)=>{const input=node(`rating_range_input_${f.day_review_date_input.value}_${i}`,value);input.classList.add('custom-rating-input');f[input.id]=input;return input;});
     f.day_custom_ratings_container.children.splice(0,Infinity,...inputs);
     const query=f.day_custom_ratings_container.querySelectorAll.bind(f.day_custom_ratings_container);
     f.day_custom_ratings_container.querySelectorAll=s=>s==='[data-rating-def-id]'?inputs.map((input,i)=>({getAttribute:()=>String(i),querySelector:()=>input})):query(s);
@@ -611,8 +638,8 @@ for(const phase of ['day POST','rating POST']) test(`Day Save cannot post anothe
     b.run("rememberSettingsDraft('day_custom_ratings_container','.custom-rating-input')");inputs[0].value=5;inputs[1].value=1;
     const before=reads;hold=false;held.resolve({json:{}});await saving;await tick();
     assert.equal(b.run('followSettingsLink({})'),false);assert.equal(reads,before);
-    assert.equal(b.writes.length,phase==='day POST'?1:2,'no subsequent ratings from stale editor');
-    assert.ok(b.writes.filter(w=>w.url==='/rating-entries').every(w=>w.body.target_id==='2026-11-01'&&w.body.score===5));
+    assert.equal(b.writes.length,3,'retained A finishes its frozen ratings only');
+    assert.deepEqual(b.writes.filter(w=>w.url==='/rating-entries').map(w=>[w.body.target_id,w.body.score]),[['2026-11-01',5],['2026-11-01',3]]);
 });
 
 for(const entry of ['create','edit']) for(const phase of ['interaction','close','reopen']) test(`Task ${entry} initial focus yields after ${phase} without a stale title selection`,async()=>{
@@ -644,4 +671,181 @@ test('Revision dedicated-details link retains an unsaved inline review when depa
     assert.equal(b.confirmations.length,1);
     assert.equal(text.value,'Unsaved inline review');
     assert.equal(b.writes.length,0);
+});
+
+test('Day workspace retains independent history drafts, grouping and filters through hide and promotion',async()=>{
+    const f=dayElements();
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js','day_history.js'],url=>({json:url.startsWith('/rating-definitions')?[]:url.startsWith('/revision/day-history')?[
+        {date_str:'2026-11-01',has_review:false},{date_str:'2026-11-02',has_review:false},{date_str:'2026-11-03',has_review:false}
+    ]:{day_review:null,custom_ratings:[],sessions:[],tag_breakdown:[],task_breakdown:[]}}));
+    await b.run('loadDayReviewData()');f.day_form_notes.value='A';
+    b.run("toggleDayBreakdownFilter('tag','#a');dayReviewEditor.group='task';toggleDayHistory(true)");await tick();
+    await b.run("expandDayHistory('2026-11-02')");
+    const history=b.run("dayEditors.get('2026-11-02')");history.root.querySelector('[data-day="notes"]').value='B';
+    b.run("toggleDayBreakdownFilter('task','__none__',dayEditors.get('2026-11-02'));toggleDayHistory(false);toggleDayHistory(true)");await tick();
+    assert.equal(history.root.querySelector('[data-day="notes"]').value,'B');
+    await b.run("expandDayHistory('2026-11-03')");assert.equal(history.root.classList.contains('hidden'),true);
+    await b.run("expandDayHistory('2026-11-02')");
+    b.run("jumpToDayReview('2026-11-02')");await tick();
+    assert.equal(f.day_form_notes.value,'B');assert.equal(b.run('dayEditors.size'),3);
+    assert.equal(b.run('expandedHistoryDate'),null);
+    assert.deepEqual(JSON.parse(b.run('JSON.stringify(dayReviewEditor.filter)')),{type:'task',value:'__none__'});
+    f.day_review_date_input.value='2026-11-01';await b.run('loadDayReviewData()');
+    assert.equal(f.day_form_notes.value,'A');assert.equal(b.run('dayReviewEditor.group'),'task');
+    assert.deepEqual(JSON.parse(b.run('JSON.stringify(dayReviewEditor.filter)')),{type:'tag',value:'#a'});
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(b.writes.length,0);
+});
+
+test('Day workspace partial-save retry skips acknowledged text and first rating while retaining B',async()=>{
+    const f=dayElements();let fail=true;
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>{
+        if(url==='/rating-entries'&&JSON.parse(options.body).rating_definition_id==='1'&&fail){fail=false;return {status:503,json:{detail:'Controlled failure'}};}
+        return {json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}};
+    });
+    await b.run('loadDayReviewData()');const inputs=mountDayRatings(f);b.run("rememberSettingsDraft(dayField(dayReviewEditor,'ratings').id,'.custom-rating-input')");
+    f.day_form_notes.value='A saved';inputs[0].value=1;inputs[1].value=2;
+    await b.run('saveDayReviewForm()');assert.equal(b.writes.length,3);
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');f.day_form_notes.value='B private';
+    f.day_review_date_input.value='2026-11-01';await b.run('loadDayReviewData()');
+    await b.run('saveDayReviewForm()');assert.equal(b.writes.length,4);
+    assert.deepEqual(b.writes.slice(3).map(w=>[w.url,w.body.target_id,w.body.rating_definition_id]),[['/rating-entries','2026-11-01','1']]);
+    assert.equal(b.run('followSettingsLink({})'),false,'B draft remains guarded after all A ACKs');
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');assert.equal(f.day_form_notes.value,'B private');
+});
+
+test('Day Save freezes all ratings before day POST and ACK keeps later same-owner edits dirty',async()=>{
+    const f=dayElements(),held=deferred();
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],(url,options)=>url==='/revision/day-review'&&options.method==='POST'?held.promise:{json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}});
+    await b.run('loadDayReviewData()');const inputs=mountDayRatings(f,[1,2]);b.run("rememberSettingsDraft(dayField(dayReviewEditor,'ratings').id,'.custom-rating-input')");
+    f.day_form_notes.value='Submitted';const saving=b.run('saveDayReviewForm()');await tick();
+    inputs[1].value=5;inputs[1].disabled=true;f.day_form_notes.value='Typed after submit';held.resolve({json:{}});await saving;
+    assert.deepEqual(b.writes.filter(w=>w.url==='/rating-entries').map(w=>[w.body.score,w.body.dismissed]),[[1,false],[2,false]]);
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(f.day_form_notes.value,'Typed after submit');
+});
+
+test('Day late summary hydrates its retained date without replacing a newer main-date draft',async()=>{
+    const f=dayElements(),held=deferred();
+    const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],url=>url.includes('date_str=2026-11-01')?held.promise:{json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}});
+    const loading=b.run('loadDayReviewData()');f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');f.day_form_notes.value='B private';
+    held.resolve({json:{day_review:{rating:4,notes:'A persisted'},custom_ratings:[]}});await loading;
+    assert.equal(f.day_form_notes.value,'B private');
+    assert.equal(b.run("dayEditors.get('2026-11-01').root.querySelector('[data-day=\"notes\"]').value"),'A persisted');
+    assert.equal(b.run('followSettingsLink({})'),false);assert.equal(b.writes.length,0);
+});
+for(const [type,value] of [['tag','#project'],['task','01920000-0000-7000-8000-000000000001'],['task','__none__']]) test(`Day Calendar handoff keeps its own date and ${type} ${value}`,async()=>{
+    const f=dayElements();const b=browser(f,['revision_nav.js','ratings_config.js','day_review.js'],url=>({json:url.startsWith('/rating-definitions')?[]:{day_review:null,custom_ratings:[]}}));
+    await b.run('loadDayReviewData()');const a=b.run('dayReviewEditor');
+    f.day_review_date_input.value='2026-11-02';await b.run('loadDayReviewData()');
+    b.context.handoffOwner=a;b.context.handoffType=type;b.context.handoffValue=value;
+    b.run('toggleDayBreakdownFilter(handoffType,handoffValue,handoffOwner);jumpToCalendarForDay(handoffOwner)');
+    const url=new URL(b.context.window.location.href,'http://localhost');
+    assert.equal(url.searchParams.get('date'),'2026-11-01');assert.equal(url.searchParams.get(type),value);
+    assert.equal(b.writes.length,0);
+});
+
+// Minimal rating markup fixture: exercise real renderer/Day handlers without a browser dependency.
+function parseDayRatingControls(root) {
+    Object.defineProperty(root,'innerHTML',{set(html){
+        root.children.splice(0);
+        for (const match of html.matchAll(/<div class="rev-card[^]*?<\/div>\s*<p[^]*?<\/div>/g)) {
+            const text=match[0], card=node(), input=node(text.match(/id="(rating_range_input_[^"]+)"/)[1],text.match(/value="([^"]*)"/)[1]);
+            card['data-rating-def-id']=text.match(/data-rating-def-id="([^"]+)"/)[1];
+            card['data-required']=text.match(/data-required="([^"]+)"/)[1];
+            input.type='range';input.min=text.match(/min="([^"]+)"/)[1];input.max=text.match(/max="([^"]+)"/)[1];
+            input.disabled=/value="[^"]*" disabled/.test(text);input.classList.add('custom-rating-input');
+            const label=node(text.match(/id="(score_label_[^"]+)"/)[1]);const button=node('','','button');
+            card.append(label,button,input);input.replaceWith=function(other){const i=card.children.indexOf(this);card.children[i]=other;other.parentNode=card;};
+            root.appendChild(card);
+        }
+    }});
+    const original=root.querySelectorAll.bind(root);
+    root.querySelectorAll=selector=>selector==='[data-rating-def-id]' ? root.children.filter(c=>c['data-rating-def-id']) : original(selector);
+}
+function ratingsDayBrowser() {
+    const fields=dayElements();let defs=[{id:'scale',name:'Scale',min_score:1,max_score:10}], reads=0, fail=false, held=null, summaryHeld=null;
+    const clone=fields.day_editor_template.content.firstElementChild.cloneNode;
+    fields.day_editor_template.content.firstElementChild.cloneNode=()=>{const root=clone();parseDayRatingControls(root.querySelector('[data-day="ratings"]'));return root;};
+    const b=browser(fields,['revision_nav.js','ratings_config.js','day_review.js'],url=>{
+        if(url.startsWith('/rating-definitions')) {reads++;return held ? held.promise : fail ? {status:503,json:{detail:'held failure'}} : {json:defs};}
+        return summaryHeld ? summaryHeld.promise : {json:{day_review:null,custom_ratings:[]}};
+    });
+    b.context.alert=()=>{};
+    return {fields,b,setDefs:value=>defs=value,setFail:value=>fail=value,setHeld:value=>held=value,setSummaryHeld:value=>summaryHeld=value,reads:()=>reads,
+        input:()=>fields.day_custom_ratings_container.querySelector('.custom-rating-input')};
+}
+test('Day admin add/range/delete Refresh reconciles clean controls and Save targets only fresh definitions',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');
+    h.setDefs([{id:'scale',name:'Scale',min_score:1,max_score:10},{id:'new',name:'New scale',min_score:1,max_score:10}]);await h.b.run('loadDayReviewData()');
+    assert.equal(h.fields.day_custom_ratings_container.querySelectorAll('[data-rating-def-id]').length,2,'admin add is visible');
+    h.setDefs([{id:'scale',name:'Scale',min_score:1,max_score:10},{id:'new',name:'Changed scale',min_score:2,max_score:4}]);await h.b.run('loadDayReviewData()');
+    assert.equal(h.fields.day_custom_ratings_container.querySelectorAll('.custom-rating-input')[1].max,'4','range edit is visible');
+    h.setDefs([{id:'new',name:'Changed scale',min_score:2,max_score:4}]);await h.b.run('loadDayReviewData()');
+    assert.equal(h.reads(),4);assert.match(h.input().id,/_new$/);assert.equal(h.input().min,'2');assert.equal(h.input().max,'4');
+    await h.b.run('saveDayReviewForm()');assert.deepEqual(h.b.writes.filter(w=>w.url==='/rating-entries').map(w=>w.body.rating_definition_id),['new']);
+});
+test('Day dirty A/B, dismissal, ACKs and out-of-range/deleted drafts survive fresh definitions until explicit correction or Discard',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');const a=h.input();a.value='9';a.disabled=true;
+    h.fields.day_review_date_input.value='2026-11-02';await h.b.run('loadDayReviewData()');const b=h.input();b.value='8';
+    h.fields.day_review_date_input.value='2026-11-01';h.setDefs([{id:'scale',name:'Narrow',min_score:1,max_score:5}]);await h.b.run('loadDayReviewData()');
+    assert.equal(h.input(),a);assert.equal(a.value,'9');assert.equal(a.disabled,true);assert.equal(a.type,'number','dirty out-of-range value is not clamped by a range input');assert.equal(b.value,'8');
+    a.disabled=false;await h.b.run('saveDayReviewForm()');assert.equal(h.b.writes.length,0,'invalid rating blocks day POST');
+    h.setDefs([]);await h.b.run('loadDayReviewData()');assert.equal(h.input(),a);assert.equal(h.fields.day_custom_ratings_container.ratingUnavailable,true);
+    await h.b.run('saveDayReviewForm()');assert.equal(h.b.writes.length,0);
+    await h.b.run('discardDayReview()');assert.equal(h.input(),null);assert.equal(b.value,'8');
+});
+test('Day refresh definition race preserves edits made during GET and stale reads cannot replace newer definitions',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');const input=h.input(),held=deferred();h.setHeld(held);
+    const first=h.b.run('loadDayReviewData()');await tick();assert.equal(h.reads(),2);input.value='8';input.disabled=true;
+    h.setHeld(null);h.setDefs([{id:'scale',name:'Newer',min_score:1,max_score:9}]);await h.b.run('loadDayReviewData()');
+    held.resolve({json:[{id:'old',name:'Old',min_score:1,max_score:3}]});await first;
+    assert.equal(h.input(),input);assert.equal(input.value,'8');assert.equal(input.disabled,true);assert.equal(input.max,'9');assert.equal(h.b.run('followSettingsLink({})'),false);
+});
+test('failed Day Discard Retry load retries definitions and does not silently keep initialized draft forever',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');h.input().value='9';h.setFail(true);
+    await h.b.run('discardDayReview()');assert.equal(h.reads(),2);assert.equal(h.input().value,'9');
+    h.setFail(false);const root=h.fields.day_main_editor.children[0];await root.querySelector('[data-action="retry"]').listeners.click();await tick();
+    assert.equal(h.reads(),3);assert.equal(h.input().value,'6');assert.equal(h.b.run('followSettingsLink({})'),true);
+});
+
+test('definition refresh preserves known rating ACKs and only pending scores retry after partial failure',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');h.input().value='8';await h.b.run('saveDayReviewForm()');
+    const ratings=h.fields.day_custom_ratings_container, ack=ratings.ratingAcknowledged.get('scale');
+    h.setDefs([{id:'scale',name:'Renamed',min_score:1,max_score:10}]);await h.b.run('loadDayReviewData()');
+    assert.equal(ratings.ratingAcknowledged.get('scale'),ack);
+    h.input().value='8';await h.b.run('saveDayReviewForm()');assert.equal(h.b.writes.length,2,'known day/rating captures are not resent');
+});
+test('failed Discard retry preserves newer rating and text edits rather than consuming them',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');h.input().value='9';h.setFail(true);await h.b.run('discardDayReview()');
+    h.input().value='8';h.fields.day_form_notes.value='Newer note';h.setFail(false);
+    await h.fields.day_main_editor.children[0].querySelector('[data-action="retry"]').listeners.click();await tick();
+    assert.equal(h.reads(),3);assert.equal(h.input().value,'8');assert.equal(h.fields.day_form_notes.value,'Newer note');assert.equal(h.b.run('followSettingsLink({})'),false);
+});
+
+test('stale Discard summary cannot start definitions or cancel newer Refresh hydration',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');
+    const summary=deferred(),definitions=deferred();h.setSummaryHeld(summary);
+    const discard=h.b.run('discardDayReview()');await tick();assert.equal(h.reads(),1,'Discard is held at summary');
+    h.setSummaryHeld(null);h.setHeld(definitions);
+    const refresh=h.b.run('loadDayReviewData()');await tick();assert.equal(h.reads(),2,'Refresh definitions actually started');
+    assert.equal(h.b.run('dayReviewEditor.ratingsFresh'),false);
+    summary.resolve({json:{day_review:null,custom_ratings:[]}});await tick();
+    const readsAfterSummary=h.reads();
+    definitions.resolve({json:[{id:'new-scale',name:'Fresh scale',min_score:2,max_score:4}]});
+    await Promise.all([discard,refresh]);
+    assert.equal(readsAfterSummary,2,'stale Discard must not issue a third definitions GET');
+    assert.match(h.input().id,/_new-scale$/);assert.equal(h.input().min,'2');assert.equal(h.input().max,'4');
+    assert.equal(h.b.run('dayReviewEditor.ratingsFresh'),true,'freshness follows actual winning hydration');
+    await h.b.run('saveDayReviewForm()');
+    assert.deepEqual(h.b.writes.filter(w=>w.url==='/rating-entries').map(w=>w.body.rating_definition_id),['new-scale']);
+});
+test('Day load cannot mark ratings fresh when its renderer was superseded without hydrating',async()=>{
+    const h=ratingsDayBrowser();await h.b.run('loadDayReviewData()');const held=deferred();h.setHeld(held);
+    const refresh=h.b.run('loadDayReviewData()');await tick();assert.equal(h.reads(),2);
+    // Supersede the container render without advancing the Day load generation.
+    const other=h.b.run("renderCustomRatingsInputs('day',dayReviewEditor.date,dayField(dayReviewEditor,'ratings').id,[],()=>false,dayField(dayReviewEditor,'ratings'))");
+    await tick();assert.equal(h.reads(),3);
+    held.resolve({json:[{id:'new',name:'New',min_score:1,max_score:4}]});await Promise.all([refresh,other]);
+    assert.equal(h.b.run('dayReviewEditor.ratingsFresh'),false,'rejected renderer did not hydrate controls');
+    assert.match(h.fields.day_main_editor.children[0].querySelector('[data-day="status"]').textContent,/Retry load/);
+    h.setHeld(null);await h.b.run('saveDayReviewForm()');assert.equal(h.b.writes.length,0,'Save reloads before any write');
 });

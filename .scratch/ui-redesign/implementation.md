@@ -600,3 +600,36 @@ Assistant approval/recovery and actual exports; responsive light/dark, keyboard/
 physical touch, screen readers and browser-engine checks. Each ticket owns its applicable regression
 and isolated workflow evidence; final whole-app verification cannot postpone basic per-ticket checks.
 No human acceptance or accessibility certification is claimed.
+
+
+## Ticket15 bounded software closure — Codex continuation (2026-11-13)
+
+Ticket15 is completed as bounded software delivery in this candidate, with all seven unchanged
+criteria mapped to [current evidence](ticket-15-evidence.md#bounded-software-closure-2026-11-13).
+Candidate is HEAD `563a7838a3fa52c6b7a31925ae860559ea79645f` plus fourteen frozen Day feature
+paths; the integrated manifest records 482 files and exactly ten incoming Ticket06 paths. Independent
+Standards/Spec source axes report zero confirmed findings. Closure metadata review and subsequent
+local commit/integration are parent-owned and not claimed performed here.
+
+Integrated checks: 537 Python /214 warnings; 397 canonical default-isolation Node; focused 3 Day API,
+69 ownership and19 Calendar controls (overlapping);118 JS/CJS syntax; scoped Python lint/format and
+whitespace pass. Full Ruff exits1 with exactly18 inherited diagnostics and zero new; initial setup
+and two evidence-helper failures remain retained. The integrated tester started no daemon/browser
+and removed only its newly allocated private runtime after verifying its data directory empty.
+
+Native-v2 exits0, seven Day plus three real definition-repair groups,32 layouts/192 bounded contrast
+samples/minimum6.443541189917267. Separate actual compatibility exits0/three Session/Task/admin groups;
+actual task/direct Calendar handoff exits0/two groups. Each passing native controller sent one SIGTERM
+to its own daemon, actual exit-15/reap/process absent/refusal111/storage equal/key-timer absent.
+The original native run stays exit1 with one UNKNOWN read-only Calendar-overlay CDP body; the sole
+readiness probe correction changed no product bytes. Receipt-level details and all seven mappings
+are in the linked evidence; this metadata edit repeats no runtime/check execution.
+
+This candidate adds only15 to the previously recorded nine software-completed tickets.06 remains
+separately pending closure disposition and is not counted completed here; no parallel-lane aggregate
+count is asserted.16's implementation predecessor15 is delivered,22 still depends on21; unchanged
+DAG/frontier scheduling remains parent-owned pending reviewed local integration.13 and25 remain open.
+Manual races/lost-ACK/failed-refresh timing, complete keyboard/focus/touch/accessibility/presentation,
+explicit human acceptance and final whole25 checks plus independent review against
+`82fabdc652c59da87de0f57d7770d0aa32fb7f64` remain outstanding. No atomicity/idempotency/exactly-once/
+cross-tab/persisted-draft guarantee, acceptance waiver, dev merge, push or PR is inferred.
