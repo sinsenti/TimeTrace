@@ -38,7 +38,9 @@ class ApiClient {
 
             return await response.json();
         } catch (error) {
-            console.error(`[API Error] ${options.method || 'GET'} ${url}:`, error.message);
+            const privateSettings = /^\/api\/ai\/(?:settings$|status$|providers(?:\/|$))/.test(url);
+            if (privateSettings) console.error('[API Error] AI settings request failed.');
+            else console.error(`[API Error] ${options.method || 'GET'} ${url}:`, error.message);
             throw error;
         }
     }

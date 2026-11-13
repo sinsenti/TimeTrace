@@ -167,3 +167,22 @@ read-only through explicit typed tools, while day-review create/update is an app
 Embeddings/RAG, cross-conversation semantic memory, external integrations, multi-user ownership, and
 a CLI AI command are also out of scope. Do not add groundwork for those features without an explicit
 owner decision.
+
+## AI Settings editors
+
+AI behavior Cancel restores the latest acknowledged field baselines, including custom instructions
+reconciled by Assistant approval/conflict handling. It performs no read or write. A pending Save
+still completes on the daemon; its acknowledgement updates only the submitted field baselines and
+cannot erase newer typing or a newer authoritative instruction baseline.
+
+Provider drafts have independent Save/Cancel ownership. A blank saved-key field keeps the key;
+typing replaces it; **Clear saved key** sends the explicit empty string on Save. Cancel disposes the
+typed password and clear intent. Acknowledged creates adopt the saved ID before a subsequent edit,
+and post-write refresh Retry reads only. Unexposed extra parameters and the native OpenRouter option
+remain preserved. Pi authentication stays with Pi.
+
+Connectivity failures return stable, safe text for SDK construction/invocation and saved credential/
+JSON extraction failures. Malformed-request domain errors remain distinct. Provider response extras
+omit the known `api_key` option while stored values and SDK forwarding remain unchanged; this is not
+arbitrary-secret detection or a storage migration. The shared API client logs static diagnostics only
+for the known AI settings/provider paths, while preserving thrown errors and other endpoint logging.
