@@ -5,7 +5,10 @@ async (page, baseURL) => {
     const longText = '<script>window.exportExecuted=true</script>\n' + 'unbroken-literal-'.repeat(1500);
     for (const timezoneId of ['America/New_York','Pacific/Kiritimati']) {
         const context = await page.context().browser().newContext({timezoneId,viewport:{width:390,height:900}});
-        await context.addInitScript(()=>localStorage.setItem('timetrace_user_settings',JSON.stringify({idleDetectorEnabled:false})));
+        await context.addInitScript(ownedOrigin => {
+            if (location.origin !== ownedOrigin) return;
+            localStorage.setItem('timetrace_user_settings',JSON.stringify({idleDetectorEnabled:false}));
+        }, new URL(baseURL).origin);
         const p = await context.newPage(); p.on('pageerror',e=>errors.push(e.message));
         try {
             const response = await context.request.post(baseURL+'/api/tasks',{data:{title:'Literal export long text '+timezoneId,description:longText}});

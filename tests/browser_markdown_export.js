@@ -4,7 +4,8 @@ async (page, baseURL) => {
     const results = [], downloads = [], measurements = [], errors = [], traffic = [];
     const check = (ok, message) => { if (!ok) throw Error(message); results.push(message); };
     const context = await page.context().browser().newContext({viewport:{width:1440,height:1000},timezoneId:'America/New_York'});
-    await context.addInitScript(() => {
+    await context.addInitScript(ownedOrigin => {
+        if (location.origin !== ownedOrigin) return;
         localStorage.setItem('timetrace_user_settings', JSON.stringify({idleDetectorEnabled:false}));
         window.clipboardCopies = []; window.clipboardMode = 'ok';
         Object.defineProperty(navigator, 'clipboard', {configurable:true,value:{writeText: text => {
@@ -13,7 +14,7 @@ async (page, baseURL) => {
             if (window.clipboardMode === 'hold') return new Promise(resolve => window.releaseClipboard = resolve);
             return Promise.resolve();
         }}});
-    });
+    }, new URL(baseURL).origin);
     const p = await context.newPage();
     p.on('pageerror', e => errors.push(e.message));
     p.on('request', r => {if(new URL(r.url()).origin === baseURL) traffic.push({method:r.method(),path:new URL(r.url()).pathname});});

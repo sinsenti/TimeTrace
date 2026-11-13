@@ -32,3 +32,13 @@ Native probes are authored and syntax checked only: **native execution UNRUN**. 
 Fresh full combined integration checks, independent Standards/Spec review after reconciliation, guarded native lifecycle and hit-testing, human acceptance, and the fixed-base whole-delivery review for all 25 tickets remain pending. There are no waivers. Shared README, implementation and development notes were not independently edited in this ticket; incoming documentation was preserved.
 
 External receipts: `.scratch/codex-continuation/evidence/ticket-24/worker-report.md`, `freeze02/worker-report.md`, `freeze02/candidate-source-sha256.json`, `standards-review01.md`, `spec-review01.md`, and `freeze03/` in the main workspace.
+
+## Native probe origin initialization repair (freeze05)
+
+This section updates the earlier native-unrun statement for the retained later receipts. The original `native-run-v2` remains **FAILED**: its probes returned 553 and 61 results and six actual download files matched original response bytes, but three about:blank localStorage SecurityErrors remained. This amendment does not reclassify that run or claim a native pass.
+
+Only the two browser probe init callbacks changed. Each receives the passed private loopback base URL's exact origin and returns before touching storage or installing mocks on opaque/about:blank or foreign origins. The existing preferences, clipboard success/deny/hold fake, scenarios and assertions remain intact. Production, transport policy and sealed native tools are unchanged; a separate guard-range issue remains outside this amendment.
+
+External `freeze05/probe-init-regression.cjs` captures each actual callback with inert browser/context mocks. Under the retained strict24 `native-tools-v2/config.json` environment, the original two callback snapshots each fail by accessing opaque-origin storage. The repaired callbacks pass **14 inert cases**: five opaque/foreign-origin scenarios per probe, owned-origin exact preferences, and original clipboard fake behavior (success, rejection and held resolution). Both probe `node --check` commands pass. Raw command/result/stdout/stderr receipts use `validation/probe-init-freeze05-*`; original source bytes are preserved in external `freeze05/original-source/`.
+
+No browser, daemon, HTTP, app/DB import or provider call was used for this test-only repair. Full Python/Node suites were not rerun: the prior **562 Python / 464 canonical Node** receipts remain product-code evidence for their recorded source. Freeze05 records the exact bridge from freeze04; only these two probes and this scoped evidence note change among all 493 frozen paths. Fresh native execution and remaining acceptance gates are still pending.
