@@ -1,0 +1,48 @@
+/* Outline is an optional Tasks workspace, with a persistent shared details panel. */
+#tasks_workspace.outline-workspace {
+    display: grid;
+    grid-template-columns: minmax(240px, .8fr) minmax(0, 1.4fr);
+    align-items: start;
+    overflow: auto;
+}
+.outline-task-list, #outline_inspector, .task-detail-panel { min-width: 0; overflow-wrap: anywhere; }
+.outline-task-list ul { list-style: none; padding: 0; margin: 0; }
+.outline-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 8px 10px calc(8px + var(--outline-depth, 0) * 8px);
+    border-bottom: 1px solid var(--border-muted);
+}
+.outline-row button, .outline-inspector-tools :is(button, a) {
+    min-height: 36px;
+    padding: 6px 10px;
+    background: var(--bg-card);
+    color: var(--text-main);
+    border: 1px solid var(--border-muted);
+    border-radius: 6px;
+}
+.outline-select { text-align: left; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
+.outline-select[aria-current="true"] { outline: 2px solid var(--text-main); outline-offset: 2px; font-weight: 700; }
+.outline-context, .outline-row > span { font-size: 12px; }
+.outline-leaf { width: 24px; }
+.outline-inspector-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+#outline_selection_notice { font-size: 12px; margin-bottom: 12px; }
+.task-detail-panel > * + * { margin-top: 16px; }
+.task-detail-panel .detail-card { background: var(--bg-card); border: 1px solid var(--border-muted); border-radius: 10px; padding: 14px; }
+.task-detail-panel .flex { flex-wrap: wrap; gap: 8px; }
+.task-detail-panel .grid > * { min-width: 0; }
+.task-detail-panel :is(input, select, textarea) { min-width: 0; max-width: 100%; }
+.task-detail-panel :is([class*="text-"], a) { color: var(--text-main) !important; }
+.task-detail-panel :is([class*="bg-blue-"], [class*="bg-purple-"], [class*="bg-black/"]) { background: var(--bg-card); }
+.task-detail-panel button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-muted); border-radius: 6px; }
+.task-detail-panel .subtask-children { padding-left: 6px !important; }
+.task-detail-panel button:disabled { opacity: .65; cursor: wait; }
+.outline-workspace :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
+#outline_inspector[hidden], #outline_inspector_panel[hidden] { display: none !important; }
+@media (max-width: 900px) {
+    #tasks_workspace.outline-workspace { grid-template-columns: minmax(0, 1fr); }
+    .outline-task-list { max-height: 40dvh; overflow: auto; }
+    .task-detail-panel .grid { grid-template-columns: minmax(0, 1fr); }
+}
