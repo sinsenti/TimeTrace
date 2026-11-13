@@ -293,6 +293,19 @@ window.addEventListener('keydown', function(e) {
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 
+        // Rating administration sits above the Assistant. A newer focused Task/Session or
+        // a higher policy prompt still owns Escape, including when its close is declined.
+        const ratingDialog = document.getElementById('rating_def_modal');
+        if (ratingDialog && !ratingDialog.classList.contains('hidden')) {
+            const focusedEditor = ['task_modal', 'session_modal'].find(id => {
+                const modal = document.getElementById(id);
+                return modal && !modal.classList.contains('hidden') && modal.contains(focusBeforeClose);
+            });
+            const priority = ['completion_policy_modal', 'recurring_delete_modal', focusedEditor, 'rating_def_modal'];
+            const rank = item => priority.includes(item.id) ? priority.indexOf(item.id) : priority.length;
+            modalOrder.sort((a, b) => rank(a) - rank(b));
+        }
+
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
             const isOpen = el && el.dataset?.settingsPageEditor !== 'true' &&
