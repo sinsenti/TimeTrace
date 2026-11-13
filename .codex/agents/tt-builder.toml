@@ -53,10 +53,10 @@ gateways, never live providers or personal data in automated tests.
 
 ## Never do this
 
-- **Never run the daemon or a migration against `~/.timetrace/timetrace.db`.** That is the user's
-  real tracked data. Always copy it to a scratch path and point at the copy:
-  `TIMETRACE_DB_FILE=/tmp/scratch.db TIMETRACE_PORT=8091 uv run timetrace daemon`.
-- Never `git push`, open a PR, or merge to `dev`. Commit on your branch and stop.
+- Use a separate temporary directory for each scratch database, timer state and encryption key.
+  Set `TIMETRACE_DB_FILE` before imports and follow `docs/development.md#isolated-development`.
+  When an existing DB is needed, use a consistent backup rather than a live main-file copy.
+- Commit, push, open a PR or merge only when the user has explicitly authorized that action.
 - Never widen scope past your spec. If you find an unrelated bug, report it; don't fix it inline.
 
 ## Reporting back

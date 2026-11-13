@@ -7,5 +7,5 @@ before coding. Keep it code-grounded and concise: problem, observable behavior, 
 time and identifier semantics, edge cases, exclusions, and verification. Small bug fixes, copy changes,
 and behavior-preserving refactors do not need a spec.
 
-There are currently no active feature specs. Use the `spec-driven-workflow` skill and follow
-`AGENTS.md` for the implementation and testing policy.
+Use Matt Pocock's `to-spec` skill to synthesize a spec when requested. Follow `AGENTS.md` and
+`docs/agents/workflow.md` for approval, implementation, testing, and whole-delivery review.

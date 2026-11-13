@@ -17,12 +17,14 @@ Shared working instructions for coding assistants in this repository.
 - Specs and roadmap notes contain historical code snapshots. Check current source and tests before
   treating a feature as missing. Report a conflict with an owner decision rather than quietly
   changing either the decision or the behavior.
-- Use `.agents/skills/spec-driven-workflow/SKILL.md` for non-trivial features. Specs live in
-  `specs/<feature>.md` and require explicit owner approval before implementation; see
+- Specs live in `specs/<feature>.md` and require explicit owner approval before implementation; see
   [`specs/README.md`](specs/README.md).
 
 ## Agent skills
 
+- Shared skills live in `.agents/skills/`; `.pi/skills` points to the same directory. Read
+  [docs/agents/workflow.md](docs/agents/workflow.md) for skill invocation, updates, whole-delivery
+  review, and the pre-merge gate. Project rules here take precedence over generic skill recipes.
 - Before reading or publishing tickets, read [docs/agents/issue-tracker.md](docs/agents/issue-tracker.md).
 - When triaging issues, read [docs/agents/triage-labels.md](docs/agents/triage-labels.md).
 - Before exploring domain concepts or decisions, read [docs/agents/domain.md](docs/agents/domain.md).
@@ -39,7 +41,7 @@ Shared working instructions for coding assistants in this repository.
 4. Update the relevant documentation when behavior, commands, or architectural constraints change.
    Keep this file short and durable; put detailed maps/runbooks in `docs/`, not another history here.
 5. Do not commit, push, merge, or open a PR unless asked. Before a feature merge into `dev`, follow
-   [.claude/skills/merge-review/SKILL.md](.claude/skills/merge-review/SKILL.md): automated checks,
+   [docs/agents/workflow.md](docs/agents/workflow.md#pre-merge-gate): automated checks,
    adversarial review, then explicit human review/approval. Passing tests is not merge permission.
 6. No new emoji in UI copy or code unless matching an existing convention in that file.
 7. When drafting commit messages, follow [docs/commit-conventions.md](docs/commit-conventions.md).

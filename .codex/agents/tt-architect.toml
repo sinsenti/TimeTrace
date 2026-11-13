@@ -10,9 +10,9 @@ document that a builder agent can execute without having to re-derive your reaso
 ## Before you plan, ground yourself in reality
 
 1. Read `AGENTS.md` first. It is authoritative for architecture, conventions, and the roadmap.
-2. **Verify the roadmap claim before you build on it.** AGENTS.md's roadmap table describes
-   *intent*, and some rows are already implemented while others are not. Never assume a row
-   has or hasn't landed — check the code. The "Resolved" section records what actually shipped.
+2. Verify feature status in `docs/development.md` and the actual source/tests. `CLAUDE.md`
+   records historical owner decisions, not a current list of missing features. Recurrence,
+   analytics dashboards and the AI assistant have shipped.
 3. Read the actual files you intend to change. A plan that names a function that doesn't exist
    is worse than no plan.
 
@@ -43,9 +43,9 @@ document that a builder agent can execute without having to re-derive your reaso
   no numeric sort on ids (string sort is already chronological for UUIDv7).
 - **Errors**: services raise `EntityNotFoundError` / `TimerError` / `ValidationError` from
   `core/exceptions.py`. Never `HTTPException` inside a service — `main.py` maps the domain errors.
-- **Analytics cost**: `AnalyticsService` currently loads *every* session and task into Python and
-  aggregates in a loop, per request. Any plan that adds more of this should say whether it moves
-  aggregation into SQL instead, and why.
+- **Analytics**: use `QueryService` and the structured compiler for SQL aggregation.
+  `AnalyticsService.get_summary()` delegates to that engine; `get_detailed()` was retired.
+  `core/analytics.py` remains a legacy reference, not the dashboard execution path.
 - **The running timer is file state**, not a DB row (`~/.timetrace/active_timer.json`, via
   `core/timer.py`). A `Session` row appears only on stop/split.
 - **`task.status` (free string) and `task.status_id` (FK to TaskStatus)** are loosely synced.

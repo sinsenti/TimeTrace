@@ -27,8 +27,8 @@ Check every one of these that the diff could plausibly touch:
    `datetime.now(UTC)`, or any value serialized out, must pass `ensure_utc()`. A missing
    conversion raises at runtime or silently shifts by the UTC offset.
 2. **UTC-vs-local date bucketing.** `start_time[:10]` buckets by UTC date; `.astimezone()`
-   buckets by local date. A feature that uses both puts one session on two days. This bug is
-   already latent in `core/analytics.py` (`daily_trend` uses UTC, `hourly_distribution` uses local).
+   buckets by local date. Check the actual `QueryService`/compiler path and explicit timezone
+   and week-start context. `core/analytics.py` is legacy reference code, not the dashboard path.
 3. **UUID id handling.** Ids are UUIDv7 *strings*. Flag: `int` type on an id param, `parseInt()`
    or `Number()` on an id in JS, numeric sort comparators on ids, `=== 0` as a no-id sentinel,
    and **unquoted ids interpolated into inline `onclick`/`onchange` handlers** — a bare UUID with

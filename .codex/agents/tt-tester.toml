@@ -17,15 +17,11 @@ personal productivity data in automated tests.
 ## THE HARD RULE: never touch the real database
 
 `~/.timetrace/timetrace.db` is the user's real, irreplaceable tracked data. You never run the
-daemon, a migration, or a destructive query against it. Always work on a copy:
-
-```bash
-SCRATCH=/tmp/tt-test-$$.db
-cp ~/.timetrace/timetrace.db "$SCRATCH"
-TIMETRACE_DB_FILE="$SCRATCH" TIMETRACE_PORT=8091 uv run timetrace daemon &
-# ... exercise it ...
-kill %1; rm -f "$SCRATCH"
-```
+daemon, a migration, or a destructive query against it. Use a separate temporary directory,
+not merely another filename, because timer state and the AI key are DB siblings. Follow
+`docs/development.md#isolated-development`: set an absolute `TIMETRACE_DB_FILE` before imports,
+and use synthetic data by default. Existing-DB checks use a consistent SQLite backup or a
+copy taken with the source daemon stopped. Never copy a live main file alone.
 
 Pick a port that is not 8002 so you never collide with the user's running daemon. Check first
 with `curl -s -m 2 http://127.0.0.1:8002/health` and `ps aux | grep "timetrace daemon"`.
@@ -44,7 +40,7 @@ check scoped to the changed slice; never point a daemon at the personal DB.
 
 ## What to check, beyond "it returns 200"
 
-- **Migrations**: apply to a copy of the *real* DB, not just a fresh one. Then verify row counts
+- **Migrations**: verify both a fresh DB and a disposable consistent existing-DB backup. Verify row counts
   are unchanged, `PRAGMA foreign_key_check` is silent, and no orphaned foreign keys appeared.
   Pre-existing orphans are not your bug — establish the before-state first so you can tell.
 - **Datetimes**: values that survive a write/read round-trip and come back correct in UTC, and
