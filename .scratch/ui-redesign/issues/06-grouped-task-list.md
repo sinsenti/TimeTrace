@@ -4,7 +4,7 @@
 
 **Blocked by:** [04: Kanban and task quick editing](04-kanban-quick-edit.md)
 
-**Status:** ready-for-agent
+**Status:** in-progress
 
 **Approved decisions:** O8, O2, resolved by the owner's acceptance of all recommendations and final specification on 2026-11-01. Apply the approved spec; technical blockers remain in force. No implementation start is requested by this approval record.
 
