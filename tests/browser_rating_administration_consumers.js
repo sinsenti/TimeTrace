@@ -1,20 +1,84 @@
 /* Current post-15 caller acceptance, authored but not executed before parent native approval.
  * Real daemon writes/readbacks. Only the declared one-shot rating rejection is synthetic. */
-async (page, baseURL) => {
+(() => {
+    // Native execution and inert controls use this exact lifecycle and cleanup seam.
+    const runWithCleanup = async (resources, body) => {
+        const diagnostics = {status:'running',primary:null,cleanupErrors:[],breadcrumbs:[]};
+        let stage = 'initialization', primary, failed = false, result;
+        const describe = error => ({message:String(error?.message ?? error),stack:String(error?.stack ?? error)});
+        const at = async (name, action) => {
+            stage = name; diagnostics.breadcrumbs.push({stage:name,event:'before'});
+            const value = await action();
+            diagnostics.breadcrumbs.push({stage:name,event:'after'});
+            return value;
+        };
+        const registerRatingRoute = async handler => {
+            await at('rating-route-register', () => resources.p.route('**/rating-entries', handler));
+            resources.ratingRouteHandler = handler;
+            resources.ratingRouteRegistered = true;
+        };
+        const cleanup = async (operation, action) => {
+            try {await at(operation, action);}
+            catch (error) {diagnostics.cleanupErrors.push({operation,...describe(error)});}
+        };
+        try {
+            result = await body({at,registerRatingRoute});
+        } catch (error) {
+            // Capture before the first cleanup await, retaining the original thrown object.
+            failed = true; primary = error; diagnostics.primary = {stage,...describe(error)};
+            console.error('RATING18_CONSUMER_DIAGNOSTICS ' + JSON.stringify({...diagnostics,event:'primary-captured',status:'failed'}));
+        } finally {
+            try {
+                if (resources.ratingRouteRegistered) {
+                    await cleanup('rating-route-remove', () => resources.p.unroute('**/rating-entries', resources.ratingRouteHandler));
+                }
+                if (resources.p) {
+                    let current;
+                    await cleanup('definitions-list', async () => {
+                        const value = await resources.api('/rating-definitions');
+                        if (!Array.isArray(value)) throw Error('Definition cleanup list is not an array');
+                        current = value;
+                    });
+                    if (current) for (const definition of resources.definitions) {
+                        if (current.some(candidate => candidate.id === definition.id)) {
+                            await cleanup(`definition-delete:${definition.id}`, () => resources.api(`/rating-definitions/${definition.id}`, 'DELETE'));
+                        }
+                    }
+                    if (resources.session) await cleanup('session-delete', () => resources.api(`/sessions/${resources.session.id}`, 'DELETE'));
+                    if (resources.task) await cleanup('task-delete', () => resources.api(`/api/tasks/${resources.task.id}`, 'DELETE'));
+                }
+            } finally {
+                if (resources.context) await cleanup('context-close', () => resources.context.close());
+            }
+        }
+        diagnostics.status = failed || diagnostics.cleanupErrors.length ? 'failed' : 'passed';
+        console.error('RATING18_CONSUMER_DIAGNOSTICS ' + JSON.stringify({...diagnostics,event:'settled'}));
+        if (failed) throw primary;
+        if (diagnostics.cleanupErrors.length) {
+            const error = new Error('Consumer cleanup failed: ' + diagnostics.cleanupErrors.map(item => item.operation).join(', '));
+            error.consumerDiagnostics = diagnostics;
+            throw error;
+        }
+        return {...result,diagnostics};
+    };
+    const probe = async (page, baseURL) => {
+    const resources = {definitions:[],ratingRouteRegistered:false};
+    return runWithCleanup(resources, async ({at,registerRatingRoute}) => {
+
     const check = (ok, message) => {if (!ok) throw Error(message);};
-    const context = await page.context().browser().newContext(), origin = new URL(baseURL).origin;
-    await context.addInitScript(({origin}) => {
+    const context = resources.context = await at('context-create', () => page.context().browser().newContext()), origin = new URL(baseURL).origin;
+    await at('context-init-script', () => context.addInitScript(({origin}) => {
         if (location.protocol !== 'http:' || location.origin !== origin) return;
         localStorage.setItem('timetrace_user_settings', JSON.stringify({idleDetectorEnabled:false,enableVimMotions:false,enableSessionReview:true}));
-    }, {origin});
-    const p = await context.newPage(), definitions = [], errors = [], readbacks = [], samples = [], writes = [];
+    }, {origin}));
+    const p = resources.p = await at('page-create', () => context.newPage()), definitions = resources.definitions, errors = [], readbacks = [], samples = [], writes = [];
     p.on('pageerror', e => errors.push(e.message));
     p.on('request', r => {if (['POST','PUT','DELETE'].includes(r.method())) writes.push({url:r.url(),body:r.postDataJSON()});});
-    const api = async (url, method='GET', data) => {
+    const api = resources.api = async (url, method='GET', data) => at(`api:${method}:${url}`, async () => {
         const r = await p.request.fetch(baseURL+url,{method,data});
         check(r.ok(), `${method} ${url}: ${r.status()} ${await r.text()}`);
         return r.status() === 204 ? null : r.json();
-    };
+    });
     const dates = ['2026-10-11','2026-10-12'];
     const root = date => p.locator(`#day_editor_${date}`);
     const ready = date => p.waitForFunction(date => {const e=dayEditors.get(date);return e?.ratingsReady&&!e.loading;}, date);
@@ -33,34 +97,34 @@ async (page, baseURL) => {
         check(await input.inputValue() === String(value), `Actual score control reached ${value}`);
     };
     const setScore = (date, value) => setScoreInput(score(date), value);
-    const main = async date => {await p.locator('#day_review_date_input').fill(date);await p.locator('#day_review_date_input').dispatchEvent('change');await ready(date);};
+    const main = async date => at('day-select:'+date, async () => {await p.locator('#day_review_date_input').fill(date);await p.locator('#day_review_date_input').dispatchEvent('change');await ready(date);});
     let task, session;
-    try {
+    return at('consumer-body', async () => {
         for (const type of ['day','session','task']) definitions.push(await api('/rating-definitions','POST',{name:`Rating18 ${type}`,target_type:type,min_score:0,max_score:10,is_required:true}));
         const dayDef = definitions[0];
-        task = await api('/api/tasks','POST',{title:'Rating18 synthetic task'});
-        session = await api('/sessions','POST',{task_id:task.id,start_time:'2026-10-11T12:00:00Z',end_time:'2026-10-11T13:00:00Z',notes:'Rating18 synthetic session',review_skipped:true});
+        task = resources.task = await api('/api/tasks','POST',{title:'Rating18 synthetic task'});
+        session = resources.session = await api('/sessions','POST',{task_id:task.id,start_time:'2026-10-11T12:00:00Z',end_time:'2026-10-11T13:00:00Z',notes:'Rating18 synthetic session',review_skipped:true});
         for (const date of dates) await api('/revision/day-review','POST',{date_str:date,rating:3,notes:`Baseline ${date}`});
-        await p.goto(baseURL+'/revision#sessions');
+        await at('revision-open', () => p.goto(baseURL+'/revision#sessions'));
         const sessionCard = () => p.locator('#sessions_review_list .rev-card').filter({hasText:'Rating18 synthetic session'});
-        await sessionCard().click();
+        await at('session-select', () => sessionCard().click());
         const sessionScore = p.locator('#session_custom_ratings_container .custom-rating-input');
-        await setScoreInput(sessionScore, 0);
-        await p.locator('#session_review_modal').getByRole('button',{name:/^Save /}).click();await p.locator('#session_review_modal').waitFor({state:'hidden'});
+        await at('session-score-zero', () => setScoreInput(sessionScore, 0));
+        await at('session-save', async () => {await p.locator('#session_review_modal').getByRole('button',{name:/^Save /}).click();await p.locator('#session_review_modal').waitFor({state:'hidden'});});
         let entry = (await api(`/rating-entries?target_type=session&target_id=${session.id}`))[0];check(entry.score===0&&!entry.dismissed,'Session zero score');
         for (const dismissed of [true,false]) {
-            await sessionCard().click();await p.locator('#session_custom_ratings_container [id^="dismiss_btn_"]').click();
-            await p.locator('#session_review_modal').getByRole('button',{name:/^Save /}).click();await p.locator('#session_review_modal').waitFor({state:'hidden'});
+            await at('session-select', () => sessionCard().click());await p.locator('#session_custom_ratings_container [id^="dismiss_btn_"]').click();
+            await at('session-save', async () => {await p.locator('#session_review_modal').getByRole('button',{name:/^Save /}).click();await p.locator('#session_review_modal').waitFor({state:'hidden'});});
             check((await api(`/rating-entries?target_type=session&target_id=${session.id}`))[0].dismissed===dismissed,'Session dismissal/undismissal');
         }
-        check((await api(`/sessions/${session.id}`)).review_skipped===true,'Session exemption retained');
-        await p.locator('#rev_tab_btn_task_inspector').click();
-        await p.locator('#task_inspector_search').fill(task.title);
-        await p.locator('#task_inspector_dropdown .task-inspect-item').filter({hasText:task.title}).click();
-        await setScoreInput(p.locator('#task_custom_ratings_container .custom-rating-input'), 10);
+        await at('session-readback', async () => {check((await api(`/sessions/${session.id}`)).review_skipped===true,'Session exemption retained');});
+        await at('task-tab', () => p.locator('#rev_tab_btn_task_inspector').click());
+        await at('task-search', () => p.locator('#task_inspector_search').fill(task.title));
+        await at('task-select', () => p.locator('#task_inspector_dropdown .task-inspect-item').filter({hasText:task.title}).click());
+        await at('task-score', () => setScoreInput(p.locator('#task_custom_ratings_container .custom-rating-input'), 10));
         await p.locator('#task_rev_takeaways').fill('Rating18 preserved task draft');
-        await p.getByRole('button',{name:'Save Task Review',exact:true}).click();
-        await p.waitForFunction(()=>!hasSettingsDrafts(['task_inspector_body']));
+        await at('task-save', () => p.getByRole('button',{name:'Save Task Review',exact:true}).click());
+        await at('task-save-settled', () => p.waitForFunction(()=>!hasSettingsDrafts(['task_inspector_body'])));
         const taskAfter = await api(`/api/tasks/${task.id}`);
         check(taskAfter.status===task.status,'Task review retained status');
         check((await api(`/sessions/${session.id}`)).start_time===session.start_time,'Task review retained schedule');
@@ -98,17 +162,17 @@ async (page, baseURL) => {
         await root(dates[1]).getByRole('button',{name:'Refresh / retry load',exact:true}).click();await ready(dates[1]);
         check(await score(dates[1]).isDisabled(),'Independent historical dismissal retained');
         const beforeInvalid=writes.length;
-        p.once('dialog',d=>d.accept());await root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click();
+        p.once('dialog',d=>d.accept());await at('day-save', () => root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click());
         check(writes.length===beforeInvalid,'Invalid raw draft blocked before write');
         await setScore(dates[0],0);
         let reject=true;
-        await p.route('**/rating-entries',async route=>{
+        await registerRatingRoute(async route=>{
             if(route.request().method()==='POST'&&route.request().postDataJSON().target_id===dates[0]&&reject){reject=false;return route.fulfill({status:400,json:{detail:'Declared one-shot rating rejection'}});}
             return route.continue();
         });
-        await root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click();
+        await at('day-save', () => root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click());
         await root(dates[0]).locator('[data-day="status"]').filter({hasText:'Save incomplete'}).waitFor();
-        await root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click();
+        await at('day-save', () => root(dates[0]).getByRole('button',{name:'Save day review',exact:true}).click());
         await root(dates[0]).locator('[data-day="status"]').filter({hasText:'Saved submitted'}).waitFor();
         entry=(await api(`/rating-entries?target_type=day&target_id=${dates[0]}`)).find(e=>e.rating_definition_id===dayDef.id);
         check(entry.score===0&&!entry.dismissed,'Main exact target zero score persisted');
@@ -133,15 +197,12 @@ async (page, baseURL) => {
         await root(dates[0]).getByRole('button',{name:'Discard drafts',exact:true}).click();await p.locator('#confirm_modal_proceed_btn').click();
         await root(dates[0]).locator('[data-day="status"]').filter({hasText:'Drafts discarded'}).waitFor();
         check(await root(dates[0]).locator('[data-rating-unavailable="true"]').count()===0,'Explicit Discard removes deleted draft');
-        await p.locator('#rev_tab_btn_task_inspector').click();check(await p.locator('#task_rev_takeaways').inputValue()==='Independent task draft','Admin retained unrelated Task draft');
+        await at('task-tab', () => p.locator('#rev_tab_btn_task_inspector').click());check(await p.locator('#task_rev_takeaways').inputValue()==='Independent task draft','Admin retained unrelated Task draft');
         check(errors.length===0,errors.join('; '));
         return {readbacks,samples,writes,errors,fakes:['One declared rating-entry rejection'],unrun:['Physical touch and screen reader acceptance']};
-    } finally {
-        await p.unroute('**/rating-entries');
-        const current = await api('/rating-definitions');
-        for(const d of definitions) if(current.some(x=>x.id===d.id)) await api(`/rating-definitions/${d.id}`,'DELETE');
-        if(session) await api(`/sessions/${session.id}`,'DELETE');
-        if(task) await api(`/api/tasks/${task.id}`,'DELETE');
-        await context.close();
-    }
-};
+    });
+    });
+    };
+    probe.runWithCleanup = runWithCleanup;
+    return probe;
+})();
