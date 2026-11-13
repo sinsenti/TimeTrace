@@ -601,6 +601,16 @@ physical touch, screen readers and browser-engine checks. Each ticket owns its a
 and isolated workflow evidence; final whole-app verification cannot postpone basic per-ticket checks.
 No human acceptance or accessibility certification is claimed.
 
+## Ticket20 fresh continuation — implementation pending review/native, 2026-11-13
+
+Parent released20 against the clean continuation integration
+`563a7838a3fa52c6b7a31925ae860559ea79645f`; the earlier19 hold above is historical.
+One fresh builder adopted only the two hash-verified frozen regression additions and implemented
+approved B7/O8 in its reserved worktree. See [ticket20 evidence](ticket-20-evidence.md).
+The issue remains **in-progress**: native guarded execution, fresh independent Standards/Spec axes
+and parent disposition/integration are pending. `docs/development.md` remains15-owned until parent
+release; no Git action, daemon/native or provider call was performed by this builder. This append
+records only20 and does not recompute or certify the other tickets' frontier/completion states.
 
 ## Ticket06 bounded software completion — pre-reconciliation checkpoint (2026-11-13)
 
@@ -673,3 +683,43 @@ are retained evidence, not rerun.07/08 adoption remains serialized around task-l
 Manual/native races, lost ACK, complete accessibility/presentation, explicit human acceptance and
 final whole25 checks plus independent review against `82fabdc652c59da87de0f57d7770d0aa32fb7f64`
 remain open. Software completion grants no acceptance waiver, dev merge, push or PR permission.
+
+## Ticket20 incoming15 reconciliation — in-progress checkpoint (2026-11-13)
+
+The preceding entries retain their checkpoint chronology. Exact integrated15 tip
+`1671f9fecc677c64fc806b3f2160a17179771101` is reconciled into20; the integration
+branch itself remains unchanged. Current tracker count remains eleven software-completed / fourteen
+pending, with20 **in-progress**. The original20 native attempt remains **FAILED**: its primary
+exception was masked and remains unknown. Repair05 has not received new combined checks or a native
+retry; earlier checks are historical receipts, not validation of this reconciled checkpoint.
+Parent has now released the held development note for narrow reconciliation after15 integration.
+All20 product/probe/test bytes are preserved, and incoming15 product/probe/test bytes match that exact
+integration. No tests, runtime, native execution or provider calls accompany this local checkpoint;
+fresh independent review, native evidence and parent disposition remain required. No software
+completion, acceptance waiver, dev merge, push or PR permission is claimed.
+
+
+## Ticket20 bounded software closure candidate — current (2026-11-13)
+
+Ticket20 is software-completed in this candidate, with its six unchanged criteria mapped to
+[current bounded evidence](ticket-20-evidence.md#bounded-software-closure-candidate-2026-11-13).
+Repair07 independent source Standards/Spec reviews report zero findings; full551Python/214warnings,
+449canonicalNode and52focusedNode pass. Ruff retains18 inherited findings with BOTH streams matched;
+the two-file formatter failure is attributed to the same three inherited exception-tuple edits.
+Initial integrated445pass/1mockfailure remains retained alongside its narrow close-fixture repair.
+
+Native-v2 browser0/29checks is bounded freeze06 real-CRUD proof with explicit catalog/Test/Activate/
+rejection/list fakes (Activate UI-dispatch only). Current instruction-native browser0/7checks proves
+real hash-checked acceptance, stale-initial-GET ordering and real unrelated Save/Cancel/final GET.
+Its controller remains FAILED on JSON-whitespace storage comparison; independent read-only storage
+audit PASS/592assertions validates497pins/487source, actual unchanged six scope booleans and service
+canonicalization, original ACKs and lifecycle. That measurement resolution is not a controller PASS
+or product waiver. First native remains FAILED with unknown primary cause; all receipts are retained.
+
+Candidate-local count is twelve software-completed/thirteen open, adding20 to
+01/02/04/05/06/10/11/12/14/15/19. Actual integration remains1671f9f with eleven/fourteen until parent
+merge. Fresh closure metadata Standards/Spec reviews and parent disposition/integration remain
+pending. Dirty-buffer initial-load native proof, broader races/compatibility, presentation/accessibility,
+general secret certification, explicit human acceptance and whole25 gates remain separate. Historical
+checkpoint wording above is preserved; spec remains Approved, not Built. No runtime/test/provider/
+database/Git writes or cleanup accompanied these documentation edits.

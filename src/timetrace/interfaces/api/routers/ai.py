@@ -120,7 +120,7 @@ def _provider_response(config) -> AIProviderConfigResponse:
         request_timeout_seconds=config.request_timeout_seconds,
         sanitization_level=config.sanitization_level,
         use_native_openrouter=config.use_native_openrouter,
-        extra_params=json.loads(config.extra_params_json or "{}"),
+        extra_params=AIProviderService.public_extra_params(config),
         is_active=config.is_active,
         created_at=config.created_at,
         updated_at=config.updated_at,

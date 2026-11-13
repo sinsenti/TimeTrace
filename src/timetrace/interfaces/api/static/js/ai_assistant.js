@@ -301,7 +301,8 @@ function aiInstructionTextBlock(label, value, className = 'ai-instruction-propos
 function aiSyncCustomInstructions(settings) {
     if (!settings || typeof settings.custom_instructions !== 'string') return;
     const textarea = document.getElementById('ai_setting_custom_instructions');
-    if (!textarea || (typeof aiBehaviorReady !== 'undefined' && !aiBehaviorReady)) return;
+    if (!textarea) return;
+    if (typeof aiBehaviorInstructionsAcknowledged !== 'undefined') aiBehaviorInstructionsAcknowledged = true;
     const selector = '#ai_setting_custom_instructions';
     const draft = typeof hasSettingsDrafts === 'function' && hasSettingsDrafts(['ai_behavior_settings'], selector)
         ? textarea.value : null;
@@ -610,10 +611,16 @@ function aiRunPresetPrompt(prompt) {
 }
 window.aiRunPresetPrompt = aiRunPresetPrompt;
 
+let aiStatusBadgeGeneration = 0;
+
+// Existing callers may ignore the result; Settings uses false to offer read-only retry.
+// Report each read outcome, but only the newest request may repaint the shared badge.
 async function refreshAiStatusBadge() {
+    const generation = ++aiStatusBadgeGeneration;
     const badge = document.getElementById('ai_launcher_badge');
     try {
         const status = await api.get('/api/ai/status');
+        if (generation !== aiStatusBadgeGeneration) return true;
         const count = (status.pending_draft_count || 0) + (status.undoable_batch_count || 0);
         if (badge) {
             if (count > 0) {
@@ -623,10 +630,11 @@ async function refreshAiStatusBadge() {
                 badge.classList.add('hidden');
             }
         }
-    } catch (err) {
-        // Non-fatal: badge just stays as last known state (or hidden if a provider isn't
-        // configured yet -- /status still returns 200 with configured=false in that case).
-        console.error('Failed to refresh AI status badge:', err);
+        return true;
+    } catch {
+        // Non-fatal for ordinary callers: retain the last known badge state.
+        console.error('Failed to refresh AI status badge.');
+        return false;
     }
 }
 
