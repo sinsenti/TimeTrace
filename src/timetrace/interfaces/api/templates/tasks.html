@@ -43,6 +43,7 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/grouped_tasks.css">
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
@@ -53,20 +54,20 @@
     </header>
 
     <section id="tasks_tools" class="px-4 py-3 border-b border-[var(--border-muted)] flex flex-wrap items-center gap-3 shrink-0">
-        <div class="mr-auto"><h1 class="font-bold text-lg">Tasks</h1><p class="text-xs text-slate-400">Plan work, then open a task for details.</p></div>
+        <div class="mr-auto"><h1 id="tasks_heading" tabindex="-1" class="font-bold text-lg">Tasks</h1><p class="text-xs text-slate-400">Plan work, then open a task for details.</p></div>
         <label class="text-xs">View
             <select id="task_view_selector" onchange="selectTaskView(this.value)" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-2 py-2 rounded-lg">
                 <option value="kanban">Kanban</option><option value="grouped">Grouped list</option><option value="outline">Outline + inspector</option>
             </select>
         </label>
-        <label class="text-xs"><span class="sr-only">Search tasks</span><input id="tasks_search" type="search" placeholder="Search tasks or tags" oninput="renderKanbanColumns()" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-3 py-2 rounded-lg"></label>
+        <label class="text-xs"><span class="sr-only">Search tasks</span><input id="tasks_search" type="search" placeholder="Search tasks or tags" oninput="renderCurrentTaskView()" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-3 py-2 rounded-lg"></label>
         <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Filter</button>
         <button onclick="openStatusManagerModal()" class="border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Statuses Config</button>
         <button onclick="clearCompletedTasks()" class="text-red-400 border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Clear Completed</button>
         <button onclick="openNewTaskModal()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-lg text-xs">+ Create Task</button>
         <p id="task_view_notice" role="status" class="basis-full text-xs text-slate-400 empty:hidden"></p>
     </section>
-    <main class="flex-1 min-h-0 p-4 overflow-x-auto flex gap-4" aria-label="Kanban board">
+    <main id="tasks_workspace" class="flex-1 min-h-0 p-4 overflow-x-auto flex gap-4" aria-label="Kanban board">
         <div id="kanban_columns_container" class="flex gap-4 h-full w-full"></div>
     </main>
 
@@ -74,6 +75,7 @@
     {% include "components/confirm_modal.html" %}
     {% include "components/completion_policy_modal.html" %}
     {% include "components/task_modal.html" %}
+    {% include "components/session_modal.html" %}
     {% include "components/custom_filter_modal.html" %}
     {% include "components/ai_drawer.html" %}
 
@@ -137,6 +139,8 @@
     <script src="/static/js/task_modal.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/kanban.js"></script>
+    <script src="/static/js/session_modal.js"></script>
+    <script src="/static/js/grouped_tasks.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

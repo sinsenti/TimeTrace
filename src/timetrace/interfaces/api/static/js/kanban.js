@@ -7,6 +7,8 @@ let kanbanTasks = [];
 let sortableCardInstances = [];
 let sortableColumnInstance = null;
 let sortableStatusListInstance = null;
+let taskBoardReadVersion = 0;
+let selectedTaskView = 'kanban';
 
 document.addEventListener('DOMContentLoaded', () => {
     setupTaskViewSelector();
@@ -18,21 +20,26 @@ function setupTaskViewSelector() {
     const selector = document.getElementById('task_view_selector');
     if (!selector) return;
     selector.value = getUserSettings().taskView;
+    selectedTaskView = selector.value;
     showTaskViewAvailability(selector.value);
 }
 
 function showTaskViewAvailability(view) {
     const notice = document.getElementById('task_view_notice');
-    if (notice) notice.textContent = view === 'kanban' ? ''
-        : `${view === 'grouped' ? 'Grouped list' : 'Outline + inspector'} is not available yet. Showing Kanban; your view preference is kept.`;
+    if (notice) notice.textContent = view === 'outline'
+        ? 'Outline + inspector is not available yet. Showing Kanban; your view preference is kept.' : '';
 }
 
 function selectTaskView(view) {
     if (!['kanban', 'grouped', 'outline'].includes(view)) return;
     const settings = getUserSettings();
     settings.taskView = view;
+    selectedTaskView = view;
+    const selector = document.getElementById('task_view_selector');
+    if (selector) selector.value = view;
     saveUserSettings(settings);
     showTaskViewAvailability(view);
+    renderCurrentTaskView();
 }
 
 function matchesKanbanSearch(task) {
@@ -42,29 +49,57 @@ function matchesKanbanSearch(task) {
 
 async function loadKanbanBoard() {
     const generation = taskKnowledge.state().generation;
+    const request = ++taskBoardReadVersion;
+    const workspace = document.getElementById('tasks_workspace');
+    const container = document.getElementById('kanban_columns_container');
+    workspace?.setAttribute('aria-busy', 'true');
+    if (container && !container.innerHTML) container.textContent = 'Loading tasks…';
     try {
         const statuses = await api.get('/api/tasks/statuses') || [];
         const tasks = await api.get('/api/tasks?status=all&sort=smart_gap_filler') || [];
-        if (generation !== taskKnowledge.state().generation) return;
+        if (generation !== taskKnowledge.state().generation || request !== taskBoardReadVersion) return null;
+        if (!Array.isArray(statuses) || !Array.isArray(tasks)) throw new Error('Task list unavailable');
         allStatuses = statuses;
         kanbanTasks = tasks;
-        renderKanbanColumns();
+        renderCurrentTaskView();
         taskKnowledge.viewResult('kanban', true);
         return true;
     } catch (e) {
-        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('kanban', false);
+        if (generation !== taskKnowledge.state().generation || request !== taskBoardReadVersion) return null;
+        taskKnowledge.viewResult('kanban', false);
         console.error("Failed to load Kanban board:", e);
+        if (container && !kanbanTasks.length && !allStatuses.length) container.textContent = 'Tasks could not be loaded. Use Retry refresh to try again.';
         return false;
+    } finally {
+        if (request === taskBoardReadVersion) workspace?.setAttribute('aria-busy', 'false');
     }
+}
+
+function destroyKanbanSorting() {
+    sortableCardInstances.forEach(inst => inst.destroy());
+    sortableCardInstances = [];
+    if (sortableColumnInstance) sortableColumnInstance.destroy();
+    sortableColumnInstance = null;
+}
+
+function renderCurrentTaskView() {
+    const container = document.getElementById('kanban_columns_container');
+    if (!container) return;
+    const restoreFocus = container.contains?.(document.activeElement);
+    const grouped = selectedTaskView === 'grouped';
+    destroyKanbanSorting();
+    document.getElementById('tasks_workspace')?.setAttribute('aria-label', grouped ? 'Grouped task list' : 'Kanban board');
+    container.className = grouped ? 'grouped-task-list' : 'flex gap-4 h-full w-full';
+    if (grouped) renderGroupedTasks(container, allStatuses, kanbanTasks);
+    else renderKanbanColumns();
+    if (restoreFocus) document.getElementById('tasks_heading')?.focus({preventScroll: true});
 }
 
 function renderKanbanColumns() {
     const container = document.getElementById('kanban_columns_container');
     if (!container) return;
 
-    sortableCardInstances.forEach(inst => inst.destroy());
-    sortableCardInstances = [];
-    if (sortableColumnInstance) sortableColumnInstance.destroy();
+    destroyKanbanSorting();
 
     const visibleStatuses = allStatuses.filter(st => !st.is_hide_by_default);
 

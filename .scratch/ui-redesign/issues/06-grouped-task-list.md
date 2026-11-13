@@ -23,3 +23,27 @@
 - Owner approved the 25-ticket granularity/dependency proposal and local publication with “everything feels right, approved”. Implementation-spec/product decision gates remain recorded above. Move to ready-for-agent only after the spec and applicable decisions are explicitly approved; technical blockers still govern execution order.
 
 - 2026-11-01: Owner answered “yes to all answer. and final approve as well” to the full decision questionnaire. All applicable decisions and the final spec/verification plan are approved; status is now ready-for-agent, subject to technical blockers. No implementation has begun.
+
+- 2026-11-13: Authorized continuation implementation is underway on
+  `codex/ui-redesign-06-grouped-tasks`, starting at `653012a`. The optional view now has an actual
+  status-group renderer using shared task/session contracts; no API/schema changes. Producer checks,
+  retained first failures and pending independent/native gates are recorded in
+  [ticket06 evidence](../ticket-06-evidence.md). Criteria remain unchecked until the bounded review gate.
+
+- 2026-11-13: Current-base independent Standards/Spec reviews report0 actionable findings/code defects.
+  Parent native3 returned101 workflow checks,32 viewport/theme layouts and192 bounded RGB samples
+  (minimum10.704942004960031), while actual browser exit1 and the DELETE204 CDP body UNKNOWN remain
+  preserved. Separate real-local HTTP status204/empty-body capture and public readbacks acknowledge
+  the owned deletion and preserved parent Session. All three scratch controller cleanups passed.
+  [Bounded validation record](../ticket-06-evidence.md#bounded-current-base-validation-record-after-native3)
+  distinguishes earlier failed runs, controlled Timer/read/child faults, capture limits and pending
+  user Git authorization/post-integration checks. This ticket is **not complete**; criteria stay unchecked.
+
+### Authorized local implementation checkpoint — 2026-11-13
+
+Owner approved local ticket updates/commits/integration; branch FF83fb preserved all feature bytes.
+Fresh integrated534Python/376canonicalNode, scoped checks and exact18-Ruff baseline passed as
+recorded in [evidence](../ticket-06-evidence.md#authorized-integrated-implementation-checkpoint-2026-11-13).
+Two fresh integrated review axes found no new confirmed defects. Local implementation commit is
+authorized; this issue remains in-progress, with acceptance criteria unchecked and native transport,
+Timer/manual/human/whole25 boundaries unchanged. No dev merge, push or PR is authorized.
