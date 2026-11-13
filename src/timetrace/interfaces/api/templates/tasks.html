@@ -44,6 +44,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/grouped_tasks.css">
+    <link rel="stylesheet" href="/static/css/status_management.css">
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
@@ -62,7 +63,9 @@
         </label>
         <label class="text-xs"><span class="sr-only">Search tasks</span><input id="tasks_search" type="search" placeholder="Search tasks or tags" oninput="renderCurrentTaskView()" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-3 py-2 rounded-lg"></label>
         <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Filter</button>
-        <button onclick="openStatusManagerModal()" class="border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Statuses Config</button>
+        <span id="status_board_feedback" role="status"></span>
+        <button id="status_board_order_retry" type="button" hidden onclick="continueStatusOrder(statusBoardOrder)">Retry remaining column order writes</button>
+        <button id="status_manager_entry" onclick="openStatusManagerModal()" class="border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Statuses Config</button>
         <button onclick="clearCompletedTasks()" class="text-red-400 border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Clear Completed</button>
         <button onclick="openNewTaskModal()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-lg text-xs">+ Create Task</button>
         <p id="task_view_notice" role="status" class="basis-full text-xs text-slate-400 empty:hidden"></p>
@@ -79,51 +82,33 @@
     {% include "components/custom_filter_modal.html" %}
     {% include "components/ai_drawer.html" %}
 
-    <!-- Zoom-Safe Statuses Manager Modal -->
-    <div id="status_manager_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[580px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <div>
-                    <h3 class="font-bold text-base text-white">Configure Kanban Statuses &amp; Behaviors</h3>
-                    <p class="text-[11px] text-slate-400">Click and drag rows to reorder. Toggle "Hide" to remove status from board.</p>
-                </div>
-                <button type="button" onclick="closeStatusManagerModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-            
-            <div id="status_manager_list" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-between items-center">
-                <button type="button" onclick="openAddStatusModal()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Status</button>
-                <button type="button" onclick="closeStatusManagerModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Done</button>
-            </div>
+    <div id="status_manager_modal" class="status-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="status_manager_title">
+        <div class="status-panel">
+            <h2 id="status_manager_title">Task statuses</h2>
+            <p>Edit each row, then Save or Cancel. Hide removes a column from the board. Drag or use Move up / Move down to save order immediately.</p>
+            <button type="button" onclick="closeStatusManagerModal()">Close / discard unsaved drafts</button>
+            <div id="status_manager_feedback" role="status"></div>
+            <button type="button" onclick="refreshStatusManagement()">Retry refresh</button>
+            <button id="status_order_retry" type="button" hidden onclick="continueStatusOrder()">Retry remaining order writes</button>
+            <div id="status_manager_list"></div>
+            <button id="status_add_entry" type="button" onclick="openAddStatusModal()">+ Add Status</button>
+            <button type="button" onclick="closeStatusManagerModal()">Done / discard unsaved drafts</button>
         </div>
     </div>
 
-    <!-- Zoom-Safe Styled App Modal for Adding a New Status -->
-    <div id="add_status_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-sm max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 class="font-bold text-sm text-white">Add New Status Column</h3>
-                <button type="button" onclick="closeAddStatusModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-            
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Status Name</label>
-                    <input id="modal_new_status_name" type="text" placeholder="e.g. In Review, Testing" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-                </div>
-                <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Column Color</label>
-                    <div class="flex items-center space-x-2">
-                        <input id="modal_new_status_color" type="color" value="#7c3aed" oninput="document.getElementById('new_status_color_hex').innerText = this.value.toUpperCase();" class="w-8 h-8 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
-                        <span id="new_status_color_hex" class="text-xs font-mono text-slate-300">#7C3AED</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button type="button" onclick="closeAddStatusModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                <button type="button" onclick="saveNewStatusFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">Add Status <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+    <div id="add_status_modal" class="status-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="status_add_title">
+        <div class="status-panel status-add-panel">
+            <h2 id="status_add_title">Add status</h2>
+            <label for="modal_new_status_name">Status name</label>
+            <input id="modal_new_status_name" type="text" placeholder="e.g. In Review, Testing">
+            <label for="modal_new_status_color">Color</label>
+            <input id="modal_new_status_color" type="color" value="#7c3aed" oninput="document.getElementById('new_status_color_hex').textContent = this.value.toUpperCase()">
+            <span id="new_status_color_hex">#7C3AED</span>
+            <p id="status_add_feedback" role="status"></p>
+            <button id="status_add_retry" type="button" hidden onclick="refreshStatusManagement(statusManagerOwner, addStatusOwner)">Retry refresh</button>
+            <div class="status-actions">
+                <button type="button" onclick="closeAddStatusModal()">Cancel / Close</button>
+                <button id="status_add_save" type="button" onclick="saveNewStatusFromModal()">Save status</button>
             </div>
         </div>
     </div>

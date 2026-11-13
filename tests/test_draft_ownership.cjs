@@ -241,7 +241,8 @@ for(const sql of [false,true]) test(`Widget ${sql ? 'SQL' : 'structured'} editor
 });
 
 test('Add Status explicit Save form guards Settings and Cancel discards without a write',()=>{
-    const fields=Object.fromEntries(['add_status_modal','modal_new_status_name','modal_new_status_color','new_status_color_hex'].map(id=>[id,node(id)]));
+    const fields=Object.fromEntries(['add_status_modal','modal_new_status_name','modal_new_status_color','new_status_color_hex',
+        'status_add_feedback','status_add_retry','status_add_save'].map(id=>[id,node(id, '', id === 'status_add_feedback' ? 'p' : id.startsWith('status_add_') ? 'button' : 'input')]));
     fields.add_status_modal.children.push(fields.modal_new_status_name,fields.modal_new_status_color);
     const b=browser(fields,['kanban.js'],()=>({json:[]}));
     b.run('openAddStatusModal()');fields.modal_new_status_name.value='Draft status';

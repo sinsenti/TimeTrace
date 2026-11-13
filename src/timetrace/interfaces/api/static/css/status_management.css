@@ -1,0 +1,21 @@
+/* Neutral labels stay readable regardless of a user-defined status color. */
+.status-dialog { position: fixed; inset: 0; z-index: 60; background: #000a; display: flex; align-items: center; justify-content: center; padding: 16px; color: var(--text-main); }
+.status-dialog.hidden { display: none; }
+#add_status_modal { z-index: 61; }
+.status-dialog .status-panel { background: var(--bg-card); color: var(--text-main); border: 1px solid currentColor; border-radius: 12px; padding: 20px; width: min(850px, 100%); max-height: 92dvh; overflow: auto; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.status-dialog h2 { font-size: 18px; font-weight: 700; }
+.status-dialog p { overflow-wrap: anywhere; }
+.status-dialog button, .status-dialog input { color: var(--text-main); background: var(--bg-main); border: 1px solid currentColor; border-radius: 6px; padding: 8px; min-height: 36px; }
+.status-dialog button { font-weight: 600; }
+.status-dialog button:focus-visible, .status-dialog input:focus-visible { outline: 3px solid var(--text-main); outline-offset: 3px; }
+.status-dialog button:disabled { cursor: wait; opacity: .65; }
+.status-dialog [hidden] { display: none; }
+.status-dialog label { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.status-dialog input[type="text"] { width: 100%; min-width: 0; }
+.status-dialog input[type="checkbox"] { width: 20px; height: 20px; min-height: 20px; accent-color: var(--text-main); }
+.status-dialog .status-manager-row { padding: 12px; border: 1px solid currentColor; border-radius: 8px; margin: 12px 0; display: flex; flex-direction: column; gap: 10px; }
+.status-dialog .status-fields { display: grid; grid-template-columns: minmax(140px, 2fr) minmax(100px, 1fr) repeat(3, minmax(50px, auto)); gap: 12px; align-items: start; }
+.status-dialog .status-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.status-dialog .status-reorder-handle { cursor: grab; font-size: 12px; }
+.status-dialog .status-add-panel { width: min(420px, 100%); }
+@media (max-width: 620px) { .status-dialog .status-fields { grid-template-columns: repeat(3, minmax(0, 1fr)); } .status-dialog .status-fields label:first-child { grid-column: 1 / -1; } .status-dialog .status-fields label:nth-child(2) { grid-column: 1 / -1; } .status-dialog .status-panel { padding: 12px; } }

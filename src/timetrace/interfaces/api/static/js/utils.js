@@ -771,7 +771,8 @@ function showCustomConfirm(title, message) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 e.stopPropagation();
-                onProceed();
+                if (document.activeElement === cancelBtn) onCancel();
+                else onProceed();
             } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
                 e.stopPropagation();
