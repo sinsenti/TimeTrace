@@ -177,33 +177,7 @@
                     </div>
                 </div>
 
-                <div class="rev-card space-y-4">
-                    <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Task Post-Mortem & Review</h3>
-                    
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Difficulty Score (1 - 10)</label>
-                        <input id="task_rev_difficulty" type="number" min="1" max="10" value="3" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold focus:outline-none focus:border-purple-500">
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">What Went Well</label>
-                        <textarea id="task_rev_went_well" rows="3" placeholder="Successful factors..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Blockers / Delays</label>
-                        <textarea id="task_rev_blockers" rows="3" placeholder="What slowed progress..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Key Takeaways</label>
-                        <textarea id="task_rev_takeaways" rows="3" placeholder="Learnings for future tasks..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div id="task_custom_ratings_container" class="space-y-3 pt-2 border-t border-[var(--border-muted)]"></div>
-
-                    <button onclick="saveTaskReviewForm()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition">Save Task Review</button>
-                </div>
+                {% with task_review_prefix="revision" %}{% include "components/task_postmortem.html" %}{% endwith %}
             </div>
         </section>
 
@@ -336,6 +310,7 @@
     <script src="/static/js/day_review.js"></script>
     <script src="/static/js/day_history.js"></script>
     <script src="/static/js/session_review.js"></script>
+    <script src="/static/js/task_postmortem.js"></script>
     <script src="/static/js/task_inspector.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>

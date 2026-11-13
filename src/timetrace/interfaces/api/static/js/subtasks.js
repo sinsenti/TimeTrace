@@ -144,6 +144,8 @@ function setupInspectorKeyboardShortcuts() {
                                (confirmModal && !confirmModal.classList.contains('hidden'));
 
         if (isAnyModalOpen || e.defaultPrevented) return;
+        const reviewRoot = document.getElementById('details_task_postmortem');
+        if (reviewRoot?.contains(e.target)) return;
 
         if (e.ctrlKey && e.key === 'Enter') {
             e.preventDefault();
@@ -162,6 +164,10 @@ async function loadTaskDetailTree(preserveEdits = false) {
     if (!taskIdEl || !taskIdEl.value) return;
 
     const taskId = taskIdEl.value;
+    const postmortemRoot = document.getElementById('details_task_postmortem');
+    if (postmortemRoot && typeof createTaskPostmortemEditor === 'function') {
+        createTaskPostmortemEditor(postmortemRoot).begin(taskId);
+    }
     const isCurrent = () => request === taskDetailRequest && generation === taskKnowledge.state().generation &&
         taskIdEl.value === taskId;
     if (initializedTaskDetailId !== taskId) {
@@ -250,6 +256,11 @@ async function loadTaskDetailTree(preserveEdits = false) {
         if (estimateLabel) estimateLabel.textContent = tree.is_recurring ? 'Estimate per occurrence' : 'Estimated duration';
         const stats = await api.get(`/api/tasks/${taskId}/stats`);
         if (!isCurrent()) return null;
+        const reviewRoot = document.getElementById('details_task_postmortem');
+        if (reviewRoot && typeof createTaskPostmortemEditor === 'function') {
+            // Review definitions are independent of this task’s recorded evidence.
+            void createTaskPostmortemEditor(reviewRoot).hydrate(taskId, stats, isCurrent, true);
+        }
         detailRecordedSessions = stats.sessions || [];
         if (typeof setSessionTagHistory === 'function') setSessionTagHistory(detailRecordedSessions);
         const trackedEl = document.getElementById('detail_task_tracked');

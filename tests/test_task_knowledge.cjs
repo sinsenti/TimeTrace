@@ -606,6 +606,33 @@ test('task rename/create/delete updates calendar, sidebar, kanban and visible at
     assert.deepEqual(p.alerts, []);
 });
 
+// Task-review callers use the real controller and scoped renderer, with only their DOM fixture upgraded.
+function taskReviewFixture(p) {
+    p.load('task_postmortem.js');
+    const make=(tag,id)=>{const el=p.element(tag);el.id=id;p.elements.set(id,el);return el;};
+    const root=make('section','revision_task_postmortem');
+    const textIds={difficulty:'task_rev_difficulty',what_went_well:'task_rev_went_well',blockers:'task_rev_blockers',key_takeaways:'task_rev_takeaways'};
+    const fields=Object.fromEntries(Object.entries(textIds).map(([name,id])=>{const el=p.elements.get(id)||make(name==='difficulty'?'input':'textarea',id);el.id=id;el.dataset.taskReview=name;return [name,el];}));
+    for(const name of ['fields','save','discard','retry','status'])fields[name]=make(name==='fields'?'fieldset':name==='status'?'p':'button',root.id+'_'+name);
+    const ratings=make('div',root.id+'_ratings');fields.ratings=ratings;p.elements.set('task_custom_ratings_container',ratings);
+    root.querySelector=selector=>fields[selector.match(/data-task-review="([^"]+)"/)?.[1]]||null;
+    root.querySelectorAll=selector=>Object.values(fields).filter(el=>selector.split(',').some(s=>s.trim()==='#'+el.id));
+    root.contains=target=>Object.values(fields).includes(target)||ratings.children.includes(target);
+    ratings.querySelectorAll=selector=>selector==='[data-rating-def-id]'?ratings.children:ratings.children.flatMap(card=>card.querySelectorAll(selector));
+    Object.defineProperty(ratings,'innerHTML',{get(){return this.markup||'';},set(html){
+        this.markup=html;this.children=[];
+        for(const match of html.matchAll(/data-rating-def-id="([^"]+)"[^]*?<input([^]*?)>/g)){
+            const attrs=Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+            const input=make('input',attrs.id);input.value=attrs.value;input.type='range';input.min=attrs.min;input.max=attrs.max;input.disabled=/\sdisabled(?:\s|$)/.test(match[2]);input.classList.add('custom-rating-input');
+            const card=p.element();card.getAttribute=name=>name==='data-rating-def-id'?match[1]:name==='data-required'?'false':null;
+            card.querySelector=selector=>selector==='.custom-rating-input'?input:null;
+            card.querySelectorAll=selector=>selector==='.custom-rating-input'||selector==='input, select, textarea'?[input]:[];
+            this.children.push(card);
+        }
+    }});
+    return {root,ratings};
+}
+
 test('the selected revision task display refreshes without replacing unsaved review or rating inputs', async () => {
     const p = workflowPage();
     p.load('ratings_config.js');
@@ -614,15 +641,19 @@ test('the selected revision task display refreshes without replacing unsaved rev
         'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
         p.elements.set(id, p.element());
     }
+    const review = taskReviewFixture(p);
+    const get = p.context.api.get;
+    p.context.api.get = url => url === '/rating-definitions?target_type=task'
+        ? Promise.resolve([{ id:'task-quality', name:'Quality', min_score:1, max_score:5 }]) : get(url);
     await p.run('loadTaskInspectorStats("task-1")');
     p.elements.get('task_rev_went_well').value = 'Unsaved review';
-    p.elements.get('task_custom_ratings_container').innerHTML = 'Unsaved rating';
+    review.ratings.querySelectorAll('.custom-rating-input')[0].value = '5';
     p.elements.get('edit_task_id').value = 'task-1';
     p.elements.get('modal_input_title').value = 'Selected task renamed';
     await p.run('saveTask()');
     assert.equal(p.elements.get('inspect_task_title').innerText, 'Selected task renamed');
     assert.equal(p.elements.get('task_rev_went_well').value, 'Unsaved review');
-    assert.equal(p.elements.get('task_custom_ratings_container').innerHTML, 'Unsaved rating');
+    assert.equal(review.ratings.querySelectorAll('.custom-rating-input')[0].value, '5');
 });
 
 for (const replacementFails of [false, true]) {
@@ -635,6 +666,7 @@ for (const replacementFails of [false, true]) {
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
             p.elements.set(id, p.element());
         }
+        taskReviewFixture(p);
         const old = deferred();
         const get = p.context.api.get;
         let reads = 0;
@@ -692,6 +724,7 @@ for (const nextTask of ['task-2', 'task-3']) {
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
             p.elements.set(id, p.element());
         }
+        taskReviewFixture(p);
         const definitions = deferred();
         const started = deferred();
         const defs = [{ id: 'rating-1', name: 'Quality', min_score: 1, max_score: 5 }];
@@ -737,6 +770,7 @@ test('a superseded inspector failure cannot mark the newly selected task stale',
         'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways']) {
         p.elements.set(id, p.element());
     }
+    taskReviewFixture(p);
     await p.run('loadTaskInspectorStats("task-1")');
     const old = deferred();
     const started = deferred();
@@ -869,6 +903,7 @@ for (const view of ['task_card_list', 'kanban_columns_container', 'task_suggesti
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways',
             'subtasks_tree_container', 'inspector_task_id', 'parent_task_banner', 'task_breadcrumbs',
             'weekly_totals_list', 'breakdown_filter_chip']) p.elements.set(id, p.element());
+        taskReviewFixture(p);
         p.elements.set('timer_task_select', taskSelect());
         p.elements.get('inspector_task_id').value = 'task-1';
         let parses = 0;
@@ -961,6 +996,7 @@ test('AI Accept keeps session notes and tags inert in refreshed task histories a
         'inspect_task_sessions_list', 'detail_task_sessions_list', 'inspector_task_id', 'activity_totals_list']) {
         p.elements.set(id, p.element());
     }
+    taskReviewFixture(p);
     p.elements.get('activity_totals_list').insertAdjacentHTML = () => {};
     p.elements.get('inspector_task_id').value = 'task-1';
     const get = p.context.api.get;
