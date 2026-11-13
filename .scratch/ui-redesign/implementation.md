@@ -602,7 +602,26 @@ and isolated workflow evidence; final whole-app verification cannot postpone bas
 No human acceptance or accessibility certification is claimed.
 
 
-## Ticket15 bounded software closure — Codex continuation (2026-11-13)
+## Ticket06 bounded software completion — pre-reconciliation checkpoint (2026-11-13)
+
+Ticket06 is software-completed under the local tracker convention, with closure metadata subject to
+independent Standards/Spec review and parent disposition. Reviewed product/test/probe bytes remain
+at563a783 (implementation abc828f plus sole status correction); integrated534Python/214warnings,
+376canonicalNode/23files, focused6Python/97Node,116syntax/scoped/whitespace checks are recorded,
+not rerun for this amendment. Full Ruff remains exit1/18 baseline. Separate real Grouped Timer entry
+returned two scenario groups/browser exit0 with real start/navigation/public Stop and one performed
+Session; original native3 remains101 returned checks/browser exit1/DELETE204 CDP UNKNOWN with
+separate original HTTP204 zero-byte capture/readback. No claim merges those channels.
+
+[Five unchanged criteria and exact receipts](ticket-06-evidence.md#bounded-software-completion-2026-11-13)
+retain physical touch/screen reader/second engine/full accessibility, frozen/recovery/OS-idle Timer,
+inherited08 custom-status editing, manual/human/whole25 and final whole-delivery review against82fabdc.
+Ten software-completed/fifteen pending:01/02/04/05/06/10/11/12/14/19 delivered.15 remains in-progress;
+03/13 and other residual gates remain separate.07/08 adoption must be serialized around task-list
+ownership; completion does not alter dependencies, grant a waiver or approve dev/push/PR.
+Historical state/counts above remain historical checkpoints.
+
+## Ticket15 bounded software closure — pre-reconciliation checkpoint (2026-11-13)
 
 Ticket15 is completed as bounded software delivery in this candidate, with all seven unchanged
 criteria mapped to [current evidence](ticket-15-evidence.md#bounded-software-closure-2026-11-13).
@@ -633,3 +652,24 @@ Manual races/lost-ACK/failed-refresh timing, complete keyboard/focus/touch/acces
 explicit human acceptance and final whole25 checks plus independent review against
 `82fabdc652c59da87de0f57d7770d0aa32fb7f64` remain outstanding. No atomicity/idempotency/exactly-once/
 cross-tab/persisted-draft guarantee, acceptance waiver, dev merge, push or PR is inferred.
+
+## Tickets06 and15 local metadata reconciliation — current (2026-11-13)
+
+The two preceding closure entries preserve their independent chronological checkpoints and counts;
+their statements about the other lane being pending/in-progress are historical. Both bounded software
+closures have independent Standards and Spec dispositions with zero confirmed findings. Current
+tracker count is eleven software-completed / fourteen pending:01/02/04/05/06/10/11/12/14/15/19
+completed. The Day candidate is now local commit `aa909e3b5a6f2883fcd6222c98cc28422ccb7d3d`,
+with all sixteen expected paths and the exact reviewed source/test/probe bytes. Integration tip
+`7ac2baab11d2b65e4c23d4248a616774f7171a3e` is being reconciled into that candidate; only this
+record and the backlog README required conflict resolution. The merge remains uncommitted pending
+fresh metadata review. No integration ref update is claimed.
+
+All478 non-closure hashes and four exact reviewed closure hashes matched before the candidate
+commit. Reconciliation changes metadata only; all product/test/probe and development-document bytes
+remain identical to the integrated validation manifest. Previously recorded tests/native receipts
+are retained evidence, not rerun.07/08 adoption remains serialized around task-list ownership;
+16's15 predecessor is delivered,22 still depends on21. Unchanged DAG scheduling remains parent-owned.
+Manual/native races, lost ACK, complete accessibility/presentation, explicit human acceptance and
+final whole25 checks plus independent review against `82fabdc652c59da87de0f57d7770d0aa32fb7f64`
+remain open. Software completion grants no acceptance waiver, dev merge, push or PR permission.
