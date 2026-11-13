@@ -376,3 +376,36 @@ test('failed DELETE restores Cancel availability and retains the pending-time dr
     assert.equal(p.elements.inspector_edit_title.value,'a-uuid');
     assert.equal(p.writes.length,0);
 });
+
+
+test('search caller retains each ancestor in its own row and probe uses the same row boundary', () => {
+    const p = fixture();
+    p.context.rows = [
+        {id: 'parent-uuid', title: 'Parent', status: 'To Do'},
+        {id: 'child-uuid', parent_id: 'parent-uuid', title: 'Child', status: 'To Do'},
+        {id: 'grandchild-uuid', parent_id: 'child-uuid', title: 'Grandchild', status: 'To Do'},
+        {id: 'other-uuid', title: 'Other', status: 'To Do'}];
+    p.run('kanbanTasks = rows; allStatuses = [{name: "To Do"}]; setupTaskViewSelector(); renderCurrentTaskView()');
+    const template = fs.readFileSync(path.join(source, '../../templates/tasks.html'), 'utf8');
+    const searchTag = template.match(/<input\b[^>]*id="tasks_search"[^>]*>/)[0];
+    const handler = searchTag.match(/oninput="([^"]+)"/)[1];
+    p.elements.tasks_search.value = 'Grandchild';
+    p.run(handler);
+    const html = p.elements.kanban_columns_container.innerHTML;
+    const rows = [...html.matchAll(/<li data-task-id="([^"]+)"><div class="outline-row"[^>]*>([\s\S]*?)<\/div><ul/g)];
+    assert.deepEqual(rows.map(row => row[1]), ['parent-uuid', 'child-uuid', 'grandchild-uuid']);
+    for (const [id, expected] of [['parent-uuid', 1], ['child-uuid', 1], ['grandchild-uuid', 0]]) {
+        const ownRows = rows.filter(row => row[1] === id);
+        assert.equal(ownRows.length, 1);
+        assert.equal((ownRows[0][2].match(/class="outline-context"/g) || []).length, expected);
+    }
+    assert.equal((html.match(/class="outline-context"/g) || []).length, 2,
+        'Both ancestors retain context; descendant labels must not be counted as the parent row');
+    const probe = fs.readFileSync(path.join(__dirname, 'browser_outline_tasks.js'), 'utf8');
+    assert.ok(probe.includes('[data-task-id="${parent.id}"] > .outline-row > .outline-context'),
+        'Browser acceptance must count context in the parent own row');
+    assert.ok(probe.includes('[data-task-id="${child.id}"] > .outline-row > .outline-context'),
+        'Browser acceptance must retain child context too');
+    assert.ok(probe.includes('[data-task-id="${grandchild.id}"] > .outline-row > .outline-context'),
+        'Browser acceptance must check that the matching grandchild has no context label');
+});
