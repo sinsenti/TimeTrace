@@ -19,6 +19,8 @@ from timetrace.core.ai.secrets import decrypt_secret, encrypt_secret, key_last4
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.db.models import AIProviderConfig, AISettings, utc_now
 
+PROBE_FAILURE_MESSAGE = "Connection failed. Check the provider, model, credentials and URL, then retry."
+
 KNOWN_SANITIZATION_LEVELS = ("off", "standard", "strict")
 AI_DATA_SCOPE_DEFAULTS: dict[str, bool] = {
     "tasks": True,
@@ -92,6 +94,12 @@ class AIProviderService:
         if config is None:
             raise EntityNotFoundError("AIProviderConfig", config_id)
         return config
+
+    @staticmethod
+    def public_extra_params(config: AIProviderConfig) -> dict[str, Any]:
+        """Project known SDK credentials out of responses without changing stored options."""
+        extras = json.loads(config.extra_params_json or "{}")
+        return {key: value for key, value in extras.items() if key != "api_key"}
 
     # -- CRUD -------------------------------------------------------------------------------
 
@@ -260,12 +268,15 @@ class AIProviderService:
             provider = config.provider
             model = config.model
             base_url = config.base_url
-            api_key = decrypt_secret(config.api_key_encrypted) if config.api_key_encrypted else None
+            try:
+                api_key = decrypt_secret(config.api_key_encrypted) if config.api_key_encrypted else None
+                extra_params = json.loads(config.extra_params_json or "{}")
+            except Exception:
+                return {"success": False, "error": PROBE_FAILURE_MESSAGE}
             temperature = config.temperature
             max_output_tokens = config.max_output_tokens
             request_timeout_seconds = config.request_timeout_seconds
             use_native_openrouter = config.use_native_openrouter
-            extra_params = json.loads(config.extra_params_json or "{}")
         elif inline_config is not None:
             provider = inline_config.get("provider")
             model = inline_config.get("model")
@@ -298,8 +309,8 @@ class AIProviderService:
                 extra_params=extra_params,
             )
             chat_model.invoke("Reply with a single word: pong")
-        except Exception as exc:
-            return {"success": False, "error": str(exc)}
+        except Exception:
+            return {"success": False, "error": PROBE_FAILURE_MESSAGE}
         return {"success": True, "error": None}
 
     # -- model catalog / listing ---------------------------------------------------------

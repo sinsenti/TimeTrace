@@ -207,7 +207,10 @@ def test_connectivity_probe_returns_provider_error_shape(db, monkeypatch, stage,
     else:
         result = service.test_config(inline_config=config)
 
-    assert result == {"success": False, "error": "fake provider failure"}
+    assert result == {
+        "success": False,
+        "error": "Connection failed. Check the provider, model, credentials and URL, then retry.",
+    }
 
 
 def test_connectivity_probe_distinguishes_malformed_requests_from_provider_failures(db):
@@ -219,7 +222,7 @@ def test_connectivity_probe_distinguishes_malformed_requests_from_provider_failu
         service.test_config(config_id="missing")
     result = service.test_config(inline_config={"provider": "unsupported", "model": "test-model"})
     assert result["success"] is False
-    assert result["error"].startswith("Unknown provider 'unsupported'")
+    assert result["error"] == "Connection failed. Check the provider, model, credentials and URL, then retry."
 
 
 @pytest.mark.parametrize("saved", [False, True], ids=["inline", "saved"])

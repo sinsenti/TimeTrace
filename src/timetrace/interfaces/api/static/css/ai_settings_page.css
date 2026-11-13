@@ -1,0 +1,20 @@
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-settings-section { background: var(--bg-card); border: 1px solid var(--border-muted); border-radius: 12px; padding: 20px; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-settings-section h2 { color: var(--text-main); font-size: 1.05rem; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-form-row, .ai-provider-card) { gap: 16px; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-form-row > div { min-width: 0; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(label, .ai-toggle-row-label, .ai-provider-card-name) { color: var(--text-main); }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-settings-hint, .ai-toggle-row-hint, .ai-secret-note, .ai-provider-card-meta, .ai-provider-help, #ai_provider_key_status) { color: var(--text-muted, var(--text-main)); line-height: 1.6; overflow-wrap: anywhere; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(input:not([type="checkbox"]), select, textarea) { box-sizing: border-box; max-width: 100%; background: var(--bg-main) !important; border: 1px solid var(--border-muted) !important; color: var(--text-main) !important; font-size: .875rem !important; padding: 8px 10px !important; border-radius: 6px; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-btn, .ai-btn-item) { min-height: 36px; padding: 7px 12px; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-main); background: var(--bg-header); }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-btn, .ai-btn-item):disabled { opacity: .6; cursor: wait; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(button, input, select, textarea):focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-provider-actions, #ai_provider_form_section .flex) { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-provider-card { border-color: var(--border-muted); background: var(--bg-main); }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-provider-card > div:first-child { min-width: 0; overflow-wrap: anywhere; }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) :is(.ai-test-result-fail, .ai-test-result-ok, .ai-scope-warning) { color: var(--text-main); }
+.settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-test-result { display: block; margin-top: 10px; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+    .settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-form-row { display: flex; flex-direction: column; }
+    .settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-provider-card { align-items: stretch; flex-direction: column; }
+    .settings-workspace :is(#settings_ai_category, #settings_providers_category) .ai-settings-section { padding: 14px; }
+}

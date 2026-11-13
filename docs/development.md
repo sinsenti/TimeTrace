@@ -621,3 +621,15 @@ Current Day caller coverage is in `test_draft_ownership.cjs`, `test_day_workspac
 `test_day_workspace_api.py`; `browser_day_workspace.js` supplies the current manual native probe.
 Execution and remaining acceptance gates belong in ticket-15 evidence. Earlier ticket-01 native
 probes document their historical single-editor DOM and do not establish acceptance of this workspace.
+
+### Ticket20 AI Settings — in-progress checkpoint
+
+AI Settings provide owner-local behavior Cancel, provider key keep/replace/explicit Clear,
+submitted-field ACK checkpoints and read-only list/catalog retry. Known provider credential extras
+are excluded from responses; probe failures use stable safe diagnostics. Stored extras and SDK
+forwarding, Pi authentication and independent Browser drafts remain preserved.
+
+See `.scratch/ui-redesign/ticket-20-evidence.md` for actual software checks and limitations. The
+original native attempt failed with a masked, unknown primary exception; repair05 and this reconciled
+checkpoint still require fresh combined checks, native execution, independent review and parent
+disposition. Ticket20 remains in-progress; no native acceptance or software completion is claimed.
