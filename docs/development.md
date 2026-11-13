@@ -633,3 +633,25 @@ See `.scratch/ui-redesign/ticket-20-evidence.md` for actual software checks and 
 original native attempt failed with a masked, unknown primary exception; repair05 and this reconciled
 checkpoint still require fresh combined checks, native execution, independent review and parent
 disposition. Ticket20 remains in-progress; no native acceptance or software completion is claimed.
+
+
+### Ticket24 Markdown export — bounded software closure candidate (2026-11-13)
+
+Calendar Export retains all six real agenda Markdown scopes with generated inert preview,
+explicit Copy/Download, Ctrl+Enter, UTC date-range/session-start caveats and merged upcoming
+recurrence. Export focus/selection ownership prevents late reads or nested Task/Session/Assistant
+operations from replacing the current owner. Existing backend/legacy contracts are unchanged.
+
+Current evidence: `.scratch/ui-redesign/ticket-24-evidence.md` maps all six unchanged criteria.
+Combined product checks pass562Python/464Node/123syntax; full Ruff retains18 byte-matched inherited
+findings. Freeze05 only changes two native origin-guard callbacks and their evidence note;14 inert
+cases/two syntax checks pass, with no full-suite rerun after that test-only amendment. Native-v3
+binds493 pins and exits0 with614assertions, six actual downloads matched to original response bytes,
+16 width/theme combinations/288 contrast samples/12 pointer checks. Sole pidfd shutdown gives actual
+exit-15/reaping/process absence/refused111; FTS rank1 and logical/private storage equality pass.
+Original pidfd launch failure and native-v2 FAILED remain retained. Clipboard uses explicit fakes;
+OS clipboard/save, physical accessibility/other engines, inherited contrast limits and human
+acceptance remain open. Candidate software count13/12 is conditional on parent integration; actual
+integration4e75ef02 remains12/13. Fresh closure metadata reviews and parent disposition are pending.
+This does not complete whole25, waive acceptance or authorize dev merge/push/PR. No new tests,
+runtime, provider, personal database operations or cleanup accompany this metadata preparation.
