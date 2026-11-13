@@ -723,3 +723,29 @@ pending. Dirty-buffer initial-load native proof, broader races/compatibility, pr
 general secret certification, explicit human acceptance and whole25 gates remain separate. Historical
 checkpoint wording above is preserved; spec remains Approved, not Built. No runtime/test/provider/
 database/Git writes or cleanup accompanied these documentation edits.
+
+
+## Ticket24 bounded software closure candidate — current (2026-11-13)
+
+Ticket24 is software-completed in this candidate; its six unchanged criteria map to
+[current evidence](ticket-24-evidence.md#bounded-software-closure-candidate-2026-11-13).
+Combined product checks pass562Python/214warnings,464canonicalNode and123syntax; full Ruff retains18
+inherited findings with both streams byte-identical to baseline. Fresh repaired source Standards/
+Spec reviews report zero findings. Freeze05 changes only two native init callbacks and their evidence
+note (490/493 pins unchanged), with14 inert origin cases/two syntax checks; product suites were not
+rerun after that probe-only amendment. All current493 pins bind native-v3.
+
+Native-v3 browser0/614assertions includes six original-response-byte-matched actual download files,
+16 width/theme combinations/288 contrast samples and12 pointer ownership checks. Zero guard/browser/
+capture/handler errors; actual exit-15/reaped/sole pidfd signal/process absence/refused111, FTS rank1
+and logical/private storage equality pass. Original first pidfd launch failure and native-v2 FAILED
+(three opaque-origin errors/nine denied legitimate Calendar reads) remain retained, not relabeled.
+Clipboard success/denial/hold is explicitly faked; OS clipboard/save, physical accessibility/other
+engines, inherited contrast limitations and owner acceptance remain pending and unwaived.
+
+Candidate-local count is thirteen software-completed/twelve open, adding24 to
+01/02/04/05/06/10/11/12/14/15/19/20. Actual integration remains4e75ef02 with twelve/thirteen until
+parent integration. Fresh closure metadata Standards/Spec reviews and parent disposition remain
+pending; historical shared checkpoints above are preserved. No whole25 completion, acceptance waiver,
+dev merge, push or PR. Spec remains Approved, not Built. Metadata preparation runs no new tests,
+providers, personal database operations, runtime or cleanup.
