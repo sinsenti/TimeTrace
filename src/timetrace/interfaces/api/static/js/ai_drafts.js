@@ -141,7 +141,10 @@ function aiBuildDraftItemNode(item, batch, options) {
         editBtn.type = 'button';
         editBtn.className = 'ai-btn-item';
         editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => aiToggleInlineEdit(row, item, batch));
+        editBtn.addEventListener('click', () => {
+            if (aiDraftBlockForHistoryUndo()) return;
+            aiToggleInlineEdit(row, item, batch);
+        });
         actions.appendChild(editBtn);
 
         const rejectBtn = document.createElement('button');
@@ -149,6 +152,13 @@ function aiBuildDraftItemNode(item, batch, options) {
         rejectBtn.className = 'ai-btn-item';
         rejectBtn.textContent = 'Reject';
         rejectBtn.addEventListener('click', async () => {
+            if (aiDraftBlockForHistoryUndo()) return;
+            if (aiDraftEditorHasUnsavedChanges(row)) {
+                let card = row;
+                while (card && !card.classList.contains('ai-draft-batch')) card = card.parentNode;
+                if (card) aiDraftActionWarning(card);
+                return;
+            }
             if (aiPendingDraftActions.has(batch.id)) return;
             aiPendingDraftActions.add(batch.id);
             rejectBtn.disabled = true;
@@ -451,6 +461,7 @@ function aiToggleInlineEdit(row, item, batch) {
     saveBtn.className = 'ai-btn-item';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', async () => {
+        if (aiDraftBlockForHistoryUndo()) return;
         if (aiPendingDraftEditors.has(editBox) || aiPendingDraftActions.has(batch.id)) return;
         const updates = {};
         collectors.forEach((collect) => {
@@ -472,6 +483,9 @@ function aiToggleInlineEdit(row, item, batch) {
                 body: JSON.stringify({ proposed: updates })
             });
             markSaved();
+            let batchCard = editBox;
+            while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+            aiClearDraftActionWarning(batchCard);
             if (typeof aiRefreshCurrentBatchView === 'function') await aiRefreshCurrentBatchView(batch.id);
         } catch (err) {
             aiUnconfirmedDraftActions.add(batch.id);
@@ -493,7 +507,12 @@ function aiToggleInlineEdit(row, item, batch) {
     cancelBtn.type = 'button';
     cancelBtn.className = 'ai-btn-item';
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => editBox.remove());
+    cancelBtn.addEventListener('click', () => {
+        editBox.remove();
+        let batchCard = row;
+        while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+        aiClearDraftActionWarning(batchCard);
+    });
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
     editBox.appendChild(btnRow);
@@ -507,6 +526,39 @@ function aiBatchStatusBadge(status) {
     span.className = `ai-batch-status ai-batch-status-${status}`;
     span.textContent = (status || '').replace(/_/g, ' ');
     return span;
+}
+
+function aiDraftEditorHasUnsavedChanges(row) {
+    const editor = row?.querySelector('.ai-inline-edit-box');
+    return Boolean(editor && editor.id && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts([editor.id]));
+}
+
+function aiDraftBlockForHistoryUndo() {
+    if (typeof aiHistoryUndoPending === 'undefined' || !aiHistoryUndoPending) return false;
+    if (typeof aiNotice === 'function') aiNotice('Undo all is still finishing; wait for history review before editing or changing a proposal.');
+    return true;
+}
+
+function aiDraftBatchHasSelectedUnsavedEdit(card, itemIds) {
+    const selected = itemIds === null ? null : new Set(itemIds || []);
+    return Array.from(card.querySelectorAll('.ai-draft-item')).some(row =>
+        (selected === null || selected.has(row.dataset.itemId)) && aiDraftEditorHasUnsavedChanges(row));
+}
+
+function aiDraftActionWarning(card) {
+    let warning = card.querySelector('.ai-draft-edit-action-warning');
+    if (!warning) {
+        warning = document.createElement('div');
+        warning.className = 'ai-draft-edit-action-warning';
+        warning.setAttribute('role', 'status');
+        card.appendChild(warning);
+    }
+    warning.textContent = 'Save or cancel the selected proposal edit before accepting or rejecting it.';
+}
+
+function aiClearDraftActionWarning(card) {
+    if (!card || aiDraftBatchHasSelectedUnsavedEdit(card, null)) return;
+    card.querySelector('.ai-draft-edit-action-warning')?.remove();
 }
 
 const aiDraftActionResults = new Map();
@@ -611,10 +663,11 @@ function aiBuildDraftBatchNode(batch, options) {
         return Array.from(checked).map((cb) => cb.dataset.itemId);
     };
 
-    const runAction = async (fn, changesTasks = true) => {
+    const runAction = async (fn, changesTasks = true, itemIds = null) => {
         if (aiPendingDraftActions.has(batch.id)) return;
-        if (typeof aiHistoryUndoPending !== 'undefined' && aiHistoryUndoPending) {
-            if (typeof aiNotice === 'function') aiNotice('Undo all is still finishing; wait for history review before another proposal action.');
+        if (aiDraftBlockForHistoryUndo()) return;
+        if (aiDraftBatchHasSelectedUnsavedEdit(card, itemIds)) {
+            aiDraftActionWarning(card);
             return;
         }
         aiPendingDraftActions.add(batch.id);
@@ -657,21 +710,27 @@ function aiBuildDraftBatchNode(batch, options) {
         acceptBtn.type = 'button';
         acceptBtn.className = 'ai-btn ai-btn-accept';
         acceptBtn.textContent = 'Accept';
-        acceptBtn.addEventListener('click', () => runAction(async () => {
-            const result = await api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/accept`, {
-                item_ids: getSelectedItemIds()
-            });
-            aiHandleCompletionPolicies(result.completion_policies, card);
-            return result;
-        }));
+        acceptBtn.addEventListener('click', () => {
+            const itemIds = getSelectedItemIds();
+            return runAction(async () => {
+                const result = await api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/accept`, {
+                    item_ids: itemIds
+                });
+                aiHandleCompletionPolicies(result.completion_policies, card);
+                return result;
+            }, true, itemIds);
+        });
 
         const rejectBtn = document.createElement('button');
         rejectBtn.type = 'button';
         rejectBtn.className = 'ai-btn ai-btn-reject';
         rejectBtn.textContent = 'Reject';
-        rejectBtn.addEventListener('click', () => runAction(() =>
-            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: getSelectedItemIds() }), false
-        ));
+        rejectBtn.addEventListener('click', () => {
+            const itemIds = getSelectedItemIds();
+            return runAction(() =>
+                api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: itemIds }), false, itemIds
+            );
+        });
 
         actions.appendChild(rejectBtn);
         actions.appendChild(acceptBtn);

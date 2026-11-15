@@ -683,7 +683,8 @@
 
 .ai-draft-action-results,
 .ai-draft-read-status,
-.ai-draft-completion-policies {
+.ai-draft-completion-policies,
+.ai-draft-edit-action-warning {
     display: grid;
     gap: 5px;
     margin-top: 8px;
@@ -693,6 +694,7 @@
     color: #cbd5e1;
     font-size: 11px;
 }
+.ai-draft-edit-action-warning { color: #fbbf24; }
 
 .ai-draft-action-result,
 .ai-draft-completion-policy,

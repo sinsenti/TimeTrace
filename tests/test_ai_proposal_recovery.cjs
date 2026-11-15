@@ -59,7 +59,7 @@ function response(value, status = 200) {
 }
 
 function setup(respond) {
-    const root = element(), requests = [], reads = [];
+    const root = element(), requests = [], reads = [], dirtyEditorIds = new Set();
     const context = vm.createContext({
         URL, URLSearchParams, console: {error() {}, warn() {}}, CSS: {escape: value => value},
         alert() {}, window: {}, document: {
@@ -75,14 +75,17 @@ function setup(respond) {
             requests.push({url, options});
             if ((options.method || 'GET') === 'GET') reads.push(url);
             return respond(url, options);
-        }
+        },
+        hasSettingsDrafts: ids => ids.some(id => dirtyEditorIds.has(id)),
+        rememberSettingsDraft() {},
+        settingsDraftCheckpoint: () => () => {}
     });
     vm.runInContext(fs.readFileSync(path.join(js, 'api_client.js'), 'utf8'), context);
     vm.runInContext(fs.readFileSync(path.join(js, 'ai_drafts.js'), 'utf8'), context);
     context.taskKnowledge = {changed: async () => { reads.push('/taskKnowledge.changed'); }};
     context.loadAiDraftOverlay = async () => { reads.push('/overlay'); };
     context.refreshAiStatusBadge = async () => { reads.push('/badge'); };
-    return {context, root, requests, reads};
+    return {context, root, requests, reads, dirtyEditorIds};
 }
 
 test('accept shows partial results even when batch detail cannot refresh', async () => {
@@ -375,4 +378,75 @@ test('accepting one proposal keeps another item editor and its selection intact'
     await updated.querySelectorAll('button').find(button => button.textContent === 'Undo').listeners.click[0]();
     const undoRequest = b.requests.find(request => request.url.endsWith('/undo'));
     assert.equal(JSON.parse(undoRequest.options.body).item_ids, null, 'Undo remains a batch action over applied items');
+});
+
+test('batch Accept waits when its selected proposal has unsaved edits', async () => {
+    let accepts = 0;
+    const batch = {id: 'dirty-accept', status: 'pending', items: [
+        {id: 'edited-item', entity_type: 'task', op: 'update', status: 'pending', proposed: {title: 'Original'}}
+    ]};
+    const b = setup((url, options) => {
+        if (url.endsWith('/accept')) {
+            accepts += 1;
+            return Promise.resolve(response({batch_id: batch.id, items: [{item_id: 'edited-item', status: 'applied'}]}));
+        }
+        return Promise.resolve(response(batch));
+    });
+    const card = b.context.aiBuildDraftBatchNode(batch);
+    b.root.appendChild(card);
+    card.querySelectorAll('button').find(button => button.textContent === 'Edit').listeners.click[0]();
+    const editor = card.querySelector('.ai-inline-edit-box');
+    editor.querySelector('input').value = 'Unsaved title';
+    b.dirtyEditorIds.add(editor.id);
+    await card.querySelectorAll('button').find(button => button.textContent === 'Accept').listeners.click[0]();
+    assert.equal(accepts, 0, 'Accept cannot apply the pre-edit proposal or replace its dirty editor');
+    assert.match(card.textContent, /Save or cancel the selected proposal edit/);
+    editor.querySelectorAll('button').find(button => button.textContent === 'Cancel').listeners.click[0]();
+    await card.querySelectorAll('button').find(button => button.textContent === 'Accept').listeners.click[0]();
+    assert.equal(accepts, 1, 'Accept proceeds after the unsaved edit is canceled');
+});
+
+test('item Reject waits when its proposal editor contains unsaved changes', async () => {
+    let rejects = 0;
+    const batch = {id: 'dirty-reject', status: 'pending', items: [
+        {id: 'edited-item', entity_type: 'task', op: 'update', status: 'pending', proposed: {title: 'Original'}}
+    ]};
+    const b = setup(url => {
+        if (url.endsWith('/edited-item/reject')) rejects += 1;
+        return Promise.resolve(response(batch));
+    });
+    const card = b.context.aiBuildDraftBatchNode(batch);
+    b.root.appendChild(card);
+    const row = card.querySelector('.ai-draft-item');
+    row.querySelectorAll('button').find(button => button.textContent === 'Edit').listeners.click[0]();
+    const editor = row.querySelector('.ai-inline-edit-box');
+    editor.querySelector('input').value = 'Unsaved title';
+    b.dirtyEditorIds.add(editor.id);
+    await row.querySelectorAll('button').find(button => button.textContent === 'Reject').listeners.click[0]();
+    assert.equal(rejects, 0);
+    assert.match(card.textContent, /Save or cancel the selected proposal edit/);
+    editor.querySelectorAll('button').find(button => button.textContent === 'Cancel').listeners.click[0]();
+    await row.querySelectorAll('button').find(button => button.textContent === 'Reject').listeners.click[0]();
+    assert.equal(rejects, 1, 'Reject proceeds after the edit is canceled');
+});
+
+test('item Reject and inline Save wait while Undo all owns proposal actions', async () => {
+    const batch = {id: 'history-lock', status: 'pending', items: [
+        {id: 'pending-item', entity_type: 'task', op: 'update', status: 'pending', proposed: {title: 'Original'}}
+    ]};
+    const b = setup(() => Promise.resolve(response(batch)));
+    const card = b.context.aiBuildDraftBatchNode(batch);
+    b.root.appendChild(card);
+    const row = card.querySelector('.ai-draft-item');
+    row.querySelectorAll('button').find(button => button.textContent === 'Edit').listeners.click[0]();
+    const editor = row.querySelector('.ai-inline-edit-box');
+    editor.querySelector('input').value = 'Unsaved title';
+    b.dirtyEditorIds.add(editor.id);
+    b.context.aiHistoryUndoPending = true;
+
+    await editor.querySelectorAll('button').find(button => button.textContent === 'Save').listeners.click[0]();
+    await row.querySelectorAll('button').find(button => button.textContent === 'Reject').listeners.click[0]();
+
+    assert.equal(b.requests.filter(request => ['PATCH', 'POST'].includes(request.options.method)).length, 0);
+    assert.equal(editor.querySelector('input').value, 'Unsaved title');
 });
