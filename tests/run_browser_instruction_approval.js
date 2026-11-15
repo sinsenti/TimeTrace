@@ -103,7 +103,7 @@ function loadSourceBinding() {
             destination[relativePath] = hash;
         }
     }
-    return {path: absoluteMapPath, sha256: mapHash, sourceHead, repositoryRoot, commonRoot, files, contextFiles};
+    return {path: absoluteMapPath, sha256: mapHash, sourceHead, repositoryRoot, commonRoot, files, contextFiles, runtime: map.runtime};
 }
 function verifySourceBinding(binding) {
     const currentHead = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: worktree, encoding: 'utf8'}).stdout.trim();
@@ -354,16 +354,14 @@ function allowlisted(method, pathAndQuery) {
 
 async function main() {
     requireExact(typeof modulePath === 'string' && typeof executablePath === 'string', 'Set the exact external Playwright module and Chromium executable paths');
-    const realModule = fs.realpathSync(modulePath);
-    const realExecutable = fs.realpathSync(executablePath);
-    fs.accessSync(realExecutable, fs.constants.X_OK);
-    const {chromium} = require(realModule);
     const evidenceDir = path.resolve(worktree, '../../evidence/ticket-23/native');
     fs.mkdirSync(evidenceDir, {recursive: true});
     const attemptId = process.env.TICKET23_ATTEMPT_ID || `attempt-${Date.now()}`;
     requireExact(/^[a-z0-9][a-z0-9-]{0,63}$/.test(attemptId), 'Attempt id must be a short lowercase filename token');
     let root = null, tmp, home, runtime, browserEnv, launchOptions, daemonExecutable, dbFile, fixtureFile, origin, port, sourceBinding = null, appStorage = null;
-    let browser, context, daemon, daemonLog, primaryError = null, result = null, health = null, timerStatus = null, browserVersion = null;
+    let realModule = null, realExecutable = null, chromium = null;
+    let browser, context, daemon, daemonLog, constructorProbe = null, primaryError = null, result = null, health = null, timerStatus = null, browserVersion = null;
+    let preflightBrowserClosed = true;
     let browserClosed = false, contextClosed = false, daemonExit = null, daemonExitProof = null, shutdownError = null, scratchAudit = null, daemonLogCapture = null;
     let evidenceDurable = false, rootRemoved = false, cleanupError = null;
     const routeDenials = [], expectedNetworkBlocks = [], requestLedger = [], bootstrapLedger = [];
@@ -375,6 +373,26 @@ async function main() {
     const captureState = {perBodyLimit: responseCaptureLimit, totalLimit: responseCaptureTotalLimit, bytes: 0, requestBytes: 0, ledgerLimit: 120, overflow, mutations};
     try {
         sourceBinding = loadSourceBinding();
+        const runtimePin = sourceBinding.runtime;
+        requireExact(runtimePin && typeof runtimePin === 'object', 'Source map must pin the browser runtime');
+        requireExact(typeof runtimePin.playwrightModule === 'string' && typeof runtimePin.playwrightVersion === 'string', 'Source map must pin Playwright path and version');
+        requireExact(typeof runtimePin.chromiumExecutable === 'string' && typeof runtimePin.chromiumVersion === 'string', 'Source map must pin Chromium path and version');
+        requireExact(Number.isSafeInteger(runtimePin.chromiumSizeBytes) && runtimePin.chromiumSizeBytes > 0, 'Source map must pin Chromium executable size');
+        requireExact(runtimePin.chromiumMode === '0755', 'Source map Chromium mode must be the reviewed executable mode');
+        realModule = fs.realpathSync(modulePath);
+        requireExact(realModule === runtimePin.playwrightModule, 'Playwright module does not match the source-map path pin');
+        const packagePath = path.join(realModule, 'package.json');
+        const packageStat = fs.lstatSync(packagePath);
+        requireExact(packageStat.isFile() && !packageStat.isSymbolicLink() && fs.realpathSync(packagePath) === packagePath, 'Playwright package metadata must be a regular pinned file');
+        const packageMetadata = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+        requireExact(packageMetadata.version === runtimePin.playwrightVersion, 'Playwright package version does not match the source-map pin');
+        realExecutable = fs.realpathSync(executablePath);
+        requireExact(realExecutable === runtimePin.chromiumExecutable, 'Chromium executable does not match the source-map path pin');
+        const executableStat = fs.statSync(realExecutable);
+        requireExact(executableStat.isFile() && executableStat.size === runtimePin.chromiumSizeBytes, 'Chromium executable size does not match the source-map pin');
+        requireExact((executableStat.mode & 0o777).toString(8).padStart(4, '0') === runtimePin.chromiumMode, 'Chromium executable mode does not match the source-map pin');
+        fs.accessSync(realExecutable, fs.constants.X_OK);
+        ({chromium} = require(realModule));
         root = fs.mkdtempSync('/tmp/t23-');
         const rootStat = fs.statSync(root);
         requireExact((rootStat.mode & 0o777) === 0o700, 'Scratch root must be private mode 0700');
@@ -405,9 +423,13 @@ async function main() {
         requireExact(Buffer.byteLength(path.join(tmp, 'playwright_chromiumdev_profile-xxxxxxxx')) < 108, 'Chromium profile/socket path exceeds the short-path bound');
 
         // Exact executable/config constructor probe is completed before the app starts.
-        const constructorProbe = await chromium.launch(launchOptions);
+        constructorProbe = await chromium.launch(launchOptions);
+        preflightBrowserClosed = false;
         browserVersion = constructorProbe.version();
         await constructorProbe.close();
+        constructorProbe = null;
+        preflightBrowserClosed = true;
+        requireExact(browserVersion === runtimePin.chromiumVersion, 'Chromium constructor version does not match the source-map pin');
 
         dbFile = path.join(root, 'timetrace.db');
         fixtureFile = path.join(root, 'fixture.json');
@@ -480,6 +502,7 @@ async function main() {
         requireExact(JSON.stringify(Object.keys(config).sort()) === JSON.stringify(['acceptDownloads', 'serviceWorkers', 'viewport']), 'Unexpected browser context config');
         browser = await chromium.launch(launchOptions);
         assert.equal(browser.version(), browserVersion);
+        assert.equal(browser.version(), sourceBinding.runtime.chromiumVersion, 'Browser runtime matches the pinned Chromium version');
         context = await browser.newContext(config);
         const page = await context.newPage();
         page.on('response', response => {
@@ -616,6 +639,15 @@ async function main() {
     } catch (error) {
         primaryError = String(error?.stack || error);
     } finally {
+        if (constructorProbe) {
+            try {
+                await constructorProbe.close();
+                constructorProbe = null;
+                preflightBrowserClosed = true;
+            } catch (error) {
+                shutdownError = `Preflight Chromium close failed: ${String(error)}`;
+            }
+        }
         if (context) {
             try { await context.close(); contextClosed = true; }
             catch (error) { shutdownError = `Browser context close failed: ${String(error)}`; }
@@ -694,7 +726,7 @@ async function main() {
             faults,
             scratchAudit,
             daemonLog: daemonLogCapture,
-            shutdown: {pid: daemon?.pid || null, executable: daemonExecutable || null, contextClosed, browserClosed, daemonExit, daemonExitProof, error: shutdownError},
+            shutdown: {pid: daemon?.pid || null, executable: daemonExecutable || null, preflightBrowserClosed, contextClosed, browserClosed, daemonExit, daemonExitProof, error: shutdownError},
             cleanup: {rootRemoval: 'pending-after-pre-cleanup-receipt', rootRemoved: null, evidenceDurable: false, error: null},
         };
         const evidencePath = path.join(evidenceDir, `${attemptId}.json`);
@@ -711,7 +743,7 @@ async function main() {
         catch (error) { cleanupError = `Could not durably write pre-cleanup receipt: ${String(error)}`; }
         const sourceAndRouteChecksPassed = !primaryError && Boolean(result) && routeDenials.length === 0 && Object.values(overflow).every(count => count === 0);
         const daemonStoppedCleanly = daemonExit?.code === 0 && daemonExitProof?.portClosed === true && /Application shutdown complete/.test(`${daemonLogCapture?.head || ''}${daemonLogCapture?.tail || ''}`);
-        const safeToRemove = Boolean(root && daemonStoppedCleanly && contextClosed && browserClosed && scratchAudit?.matchesExpected && evidenceDurable && sourceAndRouteChecksPassed && !shutdownError);
+        const safeToRemove = Boolean(root && daemonStoppedCleanly && preflightBrowserClosed && contextClosed && browserClosed && scratchAudit?.matchesExpected && evidenceDurable && sourceAndRouteChecksPassed && !shutdownError);
         if (safeToRemove) {
             try { fs.rmSync(root, {recursive: true, force: false}); rootRemoved = true; }
             catch (error) { cleanupError = String(error); }
