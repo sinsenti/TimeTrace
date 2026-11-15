@@ -79,7 +79,15 @@ test('Apply and Clear reach real Kanban and Grouped dispatcher with search and e
     for (const view of ['kanban','grouped']) {
         const b = browser({}, '/tasks');
         for (const id of ['task_view_selector','task_view_notice','tasks_search','kanban_columns_container','tasks_heading','tasks_workspace']) {
-            b.elements[id] = {value:'',textContent:'',innerHTML:'',classList:{add(){},remove(){}},setAttribute(){},contains(){return false;}};
+            const classes = new Set();
+            b.elements[id] = {value:'',textContent:'',innerHTML:'',classList:{
+                add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x),
+                toggle(x, force) {
+                    const on = force === undefined ? !classes.has(x) : Boolean(force);
+                    on ? classes.add(x) : classes.delete(x);
+                    return on;
+                }
+            },setAttribute(){},contains(){return false;}};
         }
         b.elements.tasks_search.value='needle';
         b.ctx.getUserSettings = () => ({taskView:view}); b.ctx.saveUserSettings = () => {};
