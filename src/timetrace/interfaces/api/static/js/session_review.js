@@ -2,6 +2,7 @@
  * Sessions Review List & Inspector Modal
  */
 
+let allRevisionSessions = [];
 let sessionReviewListGeneration = 0;
 function sessionReviewListStatus(message) {
     const status = document.getElementById('session_rev_list_status');

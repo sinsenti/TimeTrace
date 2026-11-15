@@ -44,7 +44,7 @@ function browser(respond = () => ({})) {
     const handlers=[];
     const document={body:node('body'),activeElement:null,getElementById:id=>fields[id]||Object.values(fields).flatMap(el=>el.querySelectorAll('*')).find(el=>el.id===id)||null,createElement:tag=>node(tag),querySelectorAll:()=>[],addEventListener(type,fn,capture=false){handlers.push({type,fn,capture});},removeEventListener(type,fn){const i=handlers.findIndex(h=>h.type===type&&h.fn===fn);if(i>=0)handlers.splice(i,1);},documentElement:{style:{setProperty(){}},setAttribute(){}}};
     activeDocument=document;
-    const context=vm.createContext({document,URL,URLSearchParams,Intl,Event,TextDecoder,console:{error(){}},setTimeout:fn=>fn(),alert(){},localStorage:{getItem:()=>null,setItem(){}},window:{location:{href:'http://localhost/revision'},addEventListener(){},confirm:()=>false},allRevisionSessions:[],currentSessionReviewFilter:'all',roundVal:(v,p)=>Math.round(v*10**p)/10**p,loadCurrentRevisionView:async()=>{},showCustomConfirm:async(...args)=>{confirms.push(args);return confirm(...args);},fetch:async(url,options)=>{
+    const context=vm.createContext({document,URL,URLSearchParams,Intl,Event,TextDecoder,console:{error(){}},setTimeout:fn=>fn(),alert(){},localStorage:{getItem:()=>null,setItem(){}},window:{location:{href:'http://localhost/revision'},addEventListener(){},confirm:()=>false},currentSessionReviewFilter:'all',roundVal:(v,p)=>Math.round(v*10**p)/10**p,loadCurrentRevisionView:async()=>{},showCustomConfirm:async(...args)=>{confirms.push(args);return confirm(...args);},fetch:async(url,options)=>{
         const request={url,method:options.method,body:options.body?JSON.parse(options.body):null};(options.method==='GET'?reads:writes).push(request);
         const result=await respond(request)||{};return {ok:(result.status||200)<400,status:result.status||200,headers:{get:()=> 'application/json'},json:async()=>result.json};
     }});
@@ -58,6 +58,30 @@ function browser(respond = () => ({})) {
 const defs=[{id:'one',name:'Required zero scale',is_required:true,min_score:0,max_score:4},{id:'two',name:'Second scale',min_score:2,max_score:8}];
 const row=id=>({id,start_time:'2026-11-01T10:00:00Z',end_time:'2026-11-01T11:00:00Z',tags:'#seed',notes:'Baseline',review_skipped:false});
 function standard(request){if(request.url.startsWith('/rating-definitions'))return {json:defs};if(request.url.startsWith('/rating-entries'))return {json:[]};if(request.url.startsWith('/sessions/'))return {json:row(request.url.slice(10))};return {json:[]};}
+
+test('fresh Sessions tab renders API rows and preserves independent review filters without preloaded list state',async()=>{
+    const b=browser(r=>r.url==='/sessions'?{json:[
+        {...row('reviewed-and-exempt'),review_skipped:true},
+        {...row('task-exempt'),task_id:'T'},
+        {...row('missed-one'),notes:'First missed'},
+        {...row('missed-two'),notes:'Second missed'}
+    ]}:r.url==='/api/tasks?status=all'?{json:[{id:'T',title:'Exempt task',requires_session_review:false}]}:
+        r.url==='/rating-entries?target_type=session&target_id=all'?{json:[{target_id:'reviewed-and-exempt',dismissed:false}]}:standard(r));
+    b.fields.rev_tab_sessions=node('section','rev_tab_sessions');b.fields.rev_tab_sessions.classList.add('hidden');
+    b.run(fs.readFileSync(path.join(js,'revision_nav.js'),'utf8'));
+    b.run("switchRevisionTab('sessions', false)");await tick();
+    const list=b.fields.sessions_review_list;
+    const titles=()=>list.querySelectorAll('strong').map(el=>el.textContent);
+    assert.equal(b.fields.rev_tab_sessions.classList.contains('hidden'),false);
+    assert.equal(b.fields.session_rev_list_status.textContent,'');
+    assert.deepEqual(titles(),['Baseline','Exempt task','First missed','Second missed']);
+    assert.equal(list.querySelectorAll('article').length,4);
+    b.run("setSessionReviewFilter('reviewed')");assert.deepEqual(titles(),['Baseline']);
+    b.run("setSessionReviewFilter('dismissed')");assert.deepEqual(titles(),['Baseline','Exempt task']);
+    b.run("setSessionReviewFilter('missed')");assert.deepEqual(titles(),['First missed','Second missed']);
+    b.run("setSessionReviewFilter('all')");assert.equal(list.querySelectorAll('article').length,4);
+    assert.equal(b.writes.length,0);
+});
 
 test('cancel invalidates late session hydration and cannot reopen its dialog',async()=>{
     const held=deferred(),b=browser(r=>r.url==='/sessions/A'?held.promise:standard(r));
@@ -110,14 +134,15 @@ for(const action of ['resetSessionReview','deleteSessionFromReviewModal']) test(
 
 test('quick exemption writes only review_skipped and preserves independent reviewed filter membership',async()=>{
     const b=browser(r=>r.url==='/sessions'?{json:[{...row('A'),review_skipped:true,task_id:'T'}]}:r.url==='/api/tasks?status=all'?{json:[{id:'T',title:'Task',requires_session_review:false}]}:r.url.includes('target_id=all')?{json:[{target_id:'A',dismissed:false}]}:standard(r));
-    await b.run('loadAllSessionsReview()');assert.equal(b.run('allRevisionSessions[0].is_reviewed'),true);assert.equal(b.run('allRevisionSessions[0].is_exempt'),true);assert.equal(b.run('allRevisionSessions[0].is_missed'),false);
+    await b.run('loadAllSessionsReview()');assert.equal(b.fields.sessions_review_list.querySelectorAll('article').length,1);
     b.run("setSessionReviewFilter('reviewed')");assert.match(b.fields.session_rev_count_badge.textContent,/1/);b.run("setSessionReviewFilter('dismissed')");assert.match(b.fields.session_rev_count_badge.textContent,/1/);b.run("setSessionReviewFilter('missed')");assert.match(b.fields.session_rev_count_badge.textContent,/0/);
     await b.run("quickDismissSessionReview('A')");assert.deepEqual(b.writes.map(r=>[r.method,r.url,r.body]),[['PUT','/sessions/A',{review_skipped:true}]]);
 });
 
 test('failed list classifications remain unknown instead of manufacturing missed reviews',async()=>{
     const b=browser(r=>r.url==='/sessions'?{json:[row('A')]}:r.url.includes('target_id=all')||r.url==='/api/tasks?status=all'?{status:503,json:{detail:'Synthetic metadata failure'}}:standard(r));
-    await b.run('loadAllSessionsReview()');assert.notEqual(b.run('allRevisionSessions[0].is_missed'),true);assert.match(b.fields.session_rev_list_status.textContent,/unavailable|fail|retry/i);
+    await b.run('loadAllSessionsReview()');assert.equal(b.fields.sessions_review_list.querySelectorAll('article').length,1);assert.match(b.fields.session_rev_list_status.textContent,/unavailable|fail|retry/i);
+    b.run("setSessionReviewFilter('missed')");assert.equal(b.fields.sessions_review_list.querySelectorAll('article').length,0);
 });
 
 test('session list untrusted notes tags and task labels render only as text',async()=>{
