@@ -194,6 +194,87 @@ test('uncertain Undo all remains locked until successful history review', async 
     assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
 });
 
+test('a history GET started before uncertain Undo all cannot unlock the required later review', async () => {
+    const staleHistory = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return Response.json({detail: 'Synthetic uncertain Undo'}, {status: 503});
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? staleHistory.promise : response([]);
+        }
+        return normal(url);
+    });
+    const staleRead = b.run('aiLoadAssistantHistory()');
+    await tick();
+    const undoing = b.click('ai_undo_all_btn');
+    await undoing;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+
+    staleHistory.resolve(response([]));
+    await staleRead;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true, 'pre-Undo history cannot clear post-uncertainty review lock');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+
+    await b.run('aiLoadAssistantHistory()');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false, 'a new successful history read clears the review lock');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('a history GET started during uncertain Undo all cannot repaint the old history afterward', async () => {
+    const undo = held(), inFlightHistory = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return undo.promise;
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? inFlightHistory.promise : response([]);
+        }
+        return normal(url);
+    });
+    const undoing = b.click('ai_undo_all_btn');
+    await tick();
+    const lateRead = b.run('aiLoadAssistantHistory()');
+    await tick();
+    undo.resolve(Response.json({detail: 'Synthetic uncertain Undo'}, {status: 503}));
+    await undoing;
+    assert.match(b.fields.ai_assistant_notice.textContent, /Could not confirm Undo all/);
+    inFlightHistory.resolve(response([]));
+    await lateRead;
+    assert.match(b.fields.ai_assistant_notice.textContent, /Could not confirm Undo all/,
+        'the late history response does not replace the uncertain-write state');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+
+    assert.equal(await b.run('aiLoadAssistantHistory()'), true);
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('hiding the history panel during acknowledged Undo-all keeps the lock until reopen review', async () => {
+    const acknowledgedRead = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return response([]);
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? acknowledgedRead.promise : response([]);
+        }
+        return normal(url);
+    });
+    const undoing = b.click('ai_undo_all_btn');
+    await tick();
+    b.fields.ai_drafts_panel.classList.add('hidden');
+    acknowledgedRead.resolve(response([]));
+    await undoing;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true, 'a hidden-panel no-op is not a successful history review');
+    assert.equal(b.run('aiHistoryHasLoaded'), false, 'incomplete ACK history read requires reopening to load again');
+
+    b.fields.ai_drafts_panel.classList.remove('hidden');
+    assert.equal(await b.run('aiLoadAssistantHistory()'), true);
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
 test('a pending card action cannot overlap batch-wide Undo all', async () => {
     const accept = held();
     const batch = {id: 'batch', status: 'pending', items: [{id: 'item', status: 'pending', entity_type: 'task', op: 'create', proposed: {title: 'Synthetic'}}]};

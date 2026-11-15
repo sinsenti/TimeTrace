@@ -359,6 +359,7 @@ let aiHistoryReadGeneration = 0;
 let aiHistoryInteractionGeneration = 0;
 let aiHistoryUndoPending = false;
 let aiHistoryUndoNeedsReview = false;
+let aiHistoryUndoReviewReadBarrier = 0;
 let aiHistoryHasLoaded = false;
 const aiHistoryCardHomes = new Map();
 
@@ -399,7 +400,7 @@ function aiRestoreHistoryCards() {
 
 async function aiLoadAssistantHistory() {
     const list = document.getElementById('ai_batches_list');
-    if (!list) return;
+    if (!list) return false;
     const request = ++aiHistoryReadGeneration;
     const conversation = aiConversationGeneration;
     const interaction = aiHistoryInteractionGeneration;
@@ -432,8 +433,9 @@ async function aiLoadAssistantHistory() {
             }
         }
         aiHistoryHasLoaded = true;
-        if (aiHistoryUndoNeedsReview) {
+        if (aiHistoryUndoNeedsReview && request > aiHistoryUndoReviewReadBarrier) {
             aiHistoryUndoNeedsReview = false;
+            aiHistoryUndoReviewReadBarrier = 0;
             aiHistoryUndoPending = false;
             const undoButton = document.getElementById('ai_undo_all_btn');
             if (undoButton) undoButton.disabled = false;
@@ -456,6 +458,9 @@ async function aiUndoAssistantHistory() {
         aiNotice('Save or cancel proposal edits before Undo all.');
         return;
     }
+    // A read already in flight may only describe the pre-Undo state. Keep it stale even if the
+    // mutation transport later becomes uncertain and that read resolves after its failure.
+    ++aiHistoryReadGeneration;
     aiHistoryUndoPending = true;
     const button = document.getElementById('ai_undo_all_btn');
     if (button) button.disabled = true;
@@ -464,9 +469,16 @@ async function aiUndoAssistantHistory() {
         results = await api.post('/api/ai/drafts/undo', {});
     } catch (_err) {
         aiNotice('Could not confirm Undo all. Refresh history to review before trying again.');
+        // Invalidate reads that started while the mutation was in flight. They may still carry
+        // the pre-Undo state even though they began after the first generation barrier.
+        ++aiHistoryReadGeneration;
         aiHistoryUndoNeedsReview = true;
+        aiHistoryUndoReviewReadBarrier = aiHistoryReadGeneration;
         return;
     }
+    // Ignore any history read started while the mutation request was unresolved. The display
+    // refresh below is the first read that can review an acknowledged Undo-all.
+    ++aiHistoryReadGeneration;
     aiRenderUndoAllResults(results);
     aiNotice('Undo all saved. Refreshing views; Retry reads only.');
     const reads = [];
@@ -478,7 +490,11 @@ async function aiUndoAssistantHistory() {
     startRead(() => aiLoadAssistantHistory());
     const settled = await Promise.allSettled(reads);
     const historyRead = settled[historyReadIndex];
-    if (historyRead.status === 'rejected' || historyRead.value === false) aiHistoryUndoNeedsReview = true;
+    if (historyRead.status !== 'fulfilled' || historyRead.value !== true) {
+        aiHistoryUndoNeedsReview = true;
+        aiHistoryUndoReviewReadBarrier = aiHistoryReadGeneration;
+        aiHistoryHasLoaded = false;
+    }
     if (settled.some(entry => entry.status === 'fulfilled' && entry.value === false)) {
         aiNotice('Undo all saved; history could not refresh. Refresh retries reads only.');
     } else if (settled.some(entry => entry.status === 'rejected')) {
@@ -1256,6 +1272,10 @@ function aiSetupDrawer() {
 
     const batchesRefresh = document.getElementById('ai_batches_refresh_btn');
     if (batchesRefresh) batchesRefresh.addEventListener('click', () => {
+        if (aiHistoryUndoPending && !aiHistoryUndoNeedsReview) {
+            aiNotice('Undo all is still finishing; wait for its history review before refreshing again.');
+            return;
+        }
         if (aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
             aiNotice('Save or cancel proposal edits before refreshing history.');
             return;
