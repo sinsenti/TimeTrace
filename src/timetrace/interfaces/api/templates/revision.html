@@ -33,6 +33,7 @@
     <link rel="stylesheet" href="/static/css/rating_admin.css">
     <link rel="stylesheet" href="/static/css/task_details.css">
     <link rel="stylesheet" href="/static/css/day_workspace.css">
+    <link rel="stylesheet" href="/static/css/session_reviews.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -121,21 +122,23 @@
             </article>
         </template>
 
-        <section id="rev_tab_sessions" class="hidden space-y-4">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div class="flex items-center space-x-3">
-                    <input id="session_rev_search" type="text" oninput="filterSessionsReviewList()" placeholder="Filter by #tag, notes, or task..." class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-xs w-80 focus:outline-none focus:border-purple-500">
-                    <div class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)] text-xs">
-                        <button onclick="setSessionReviewFilter('all')" id="sess_filter_all" class="px-2.5 py-0.5 rounded font-bold bg-purple-600 text-white">All Sessions</button>
-                        <button onclick="setSessionReviewFilter('reviewed')" id="sess_filter_reviewed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Reviewed</button>
-                        <button onclick="setSessionReviewFilter('missed')" id="sess_filter_missed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Missed Review</button>
-                        <button onclick="setSessionReviewFilter('dismissed')" id="sess_filter_dismissed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Dismissed</button>
-                    </div>
+        <section id="rev_tab_sessions" class="session-reviews hidden space-y-4" aria-label="Session reviews">
+            <div class="session-reviews-toolbar rev-card">
+                <label for="session_rev_search">Search sessions
+                    <input id="session_rev_search" type="search" oninput="filterSessionsReviewList()" placeholder="Tag, notes or task">
+                </label>
+                <div class="session-reviews-filters" role="group" aria-label="Review state">
+                    <button type="button" onclick="setSessionReviewFilter('all')" id="sess_filter_all" aria-pressed="true">All sessions</button>
+                    <button type="button" onclick="setSessionReviewFilter('reviewed')" id="sess_filter_reviewed" aria-pressed="false">Reviewed</button>
+                    <button type="button" onclick="setSessionReviewFilter('missed')" id="sess_filter_missed" aria-pressed="false">Missed review</button>
+                    <button type="button" onclick="setSessionReviewFilter('dismissed')" id="sess_filter_dismissed" aria-pressed="false">Exempt</button>
                 </div>
-
-                <span id="session_rev_count_badge" class="text-xs text-slate-400 font-semibold">0 sessions</span>
+                <span id="session_rev_count_badge">0 sessions</span>
             </div>
-
+            <div class="session-reviews-notice">
+                <p id="session_rev_list_status" role="status" aria-live="polite"></p>
+                <button type="button" onclick="retrySessionReviewRefresh()">Refresh sessions</button>
+            </div>
             <div id="sessions_review_list" class="space-y-3"></div>
         </section>
 
@@ -225,49 +228,33 @@
 
     </main>
 
-    <div id="session_review_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[480px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <div>
-                    <h3 class="font-bold text-base text-white">Session Inspector & Review</h3>
-                    <span id="session_rev_modal_time" class="text-[10px] font-mono text-purple-300 font-bold">00:00 - 00:00</span>
-                </div>
-                <button onclick="closeSessionReviewModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
+    <div id="session_review_modal" class="session-review-overlay fixed inset-0 hidden z-50" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="session_rev_modal_title" aria-describedby="session_rev_modal_description">
+        <div class="session-review-dialog">
+            <header>
+                <div><h3 id="session_rev_modal_title">Session inspector and review</h3>
+                    <p id="session_rev_modal_time"></p></div>
+                <button type="button" onclick="closeSessionReviewModal()" aria-label="Close session review">Close</button>
+            </header>
+            <p id="session_rev_modal_description">Review this session. Reviewed and exempt are independent; saving never completes its task or clears schedules.</p>
             <input type="hidden" id="session_rev_modal_id">
-
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Tags</label>
-                    <input id="session_rev_modal_tags" type="text" placeholder="#general #progr" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-500">
-                </div>
-
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Session Notes / Description</label>
-                    <input id="session_rev_modal_notes" type="text" placeholder="Session details..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-                </div>
-
-                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer">
-                    <div>
-                        <span class="font-bold text-slate-200 block text-xs">Does Not Need Review</span>
-                        <span class="text-[10px] text-slate-400">Exempt this session from missed reviews</span>
-                    </div>
-                    <input id="session_rev_modal_skip_check" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-                </label>
-
-                <div id="session_custom_ratings_container" class="space-y-3 pt-1"></div>
-            </div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-between items-center">
-                <div class="flex space-x-2">
-                    <button onclick="deleteSessionFromReviewModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete</button>
-                    <button onclick="resetSessionReview()" class="bg-amber-900/40 hover:bg-amber-800 text-amber-300 border border-amber-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Reset Review</button>
-                </div>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeSessionReviewModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveSessionReviewModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
-                </div>
-            </div>
+            <label for="session_rev_modal_tags">Tags</label>
+            <input id="session_rev_modal_tags" type="text" placeholder="#general #project" disabled>
+            <label for="session_rev_modal_notes">Session notes</label>
+            <textarea id="session_rev_modal_notes" rows="4" placeholder="Session details" disabled></textarea>
+            <label class="session-review-exemption" for="session_rev_modal_skip_check">
+                <input id="session_rev_modal_skip_check" type="checkbox" disabled>
+                Exempt this session from missed reviews
+            </label>
+            <div id="session_custom_ratings_container" class="space-y-3"></div>
+            <p id="session_rev_modal_status" role="status" aria-live="polite"></p>
+            <button id="session_rev_retry" type="button" onclick="retrySessionReviewLoad()">Retry load / refresh ratings</button>
+            <button id="session_rev_refresh" class="hidden" type="button" onclick="retrySessionReviewRefresh()">Retry refresh</button>
+            <footer>
+                <button id="session_rev_delete" type="button" onclick="deleteSessionFromReviewModal()">Delete session</button>
+                <button id="session_rev_reset" type="button" onclick="resetSessionReview()">Reset review</button>
+                <button type="button" onclick="closeSessionReviewModal()">Cancel <kbd>Esc</kbd></button>
+                <button id="session_rev_save" type="button" onclick="saveSessionReviewModal()" disabled>Save <kbd>Ctrl+Enter</kbd></button>
+            </footer>
         </div>
     </div>
 
