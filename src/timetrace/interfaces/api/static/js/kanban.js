@@ -26,8 +26,7 @@ function setupTaskViewSelector() {
 
 function showTaskViewAvailability(view) {
     const notice = document.getElementById('task_view_notice');
-    if (notice) notice.textContent = view === 'outline'
-        ? 'Outline + inspector is not available yet. Showing Kanban; your view preference is kept.' : '';
+    if (notice) notice.textContent = '';
 }
 
 function selectTaskView(view) {
@@ -87,10 +86,14 @@ function renderCurrentTaskView() {
     if (!container) return;
     const restoreFocus = container.contains?.(document.activeElement);
     const grouped = selectedTaskView === 'grouped';
+    const outline = selectedTaskView === 'outline';
     destroyKanbanSorting();
-    document.getElementById('tasks_workspace')?.setAttribute('aria-label', grouped ? 'Grouped task list' : 'Kanban board');
-    container.className = grouped ? 'grouped-task-list' : 'flex gap-4 h-full w-full';
-    if (grouped) renderGroupedTasks(container, allStatuses, kanbanTasks);
+    document.getElementById('tasks_workspace')?.setAttribute('aria-label', outline ? 'Task outline and inspector' : grouped ? 'Grouped task list' : 'Kanban board');
+    document.getElementById('tasks_workspace')?.classList.toggle('outline-workspace', outline);
+    if (typeof updateOutlineInspectorVisibility === 'function') updateOutlineInspectorVisibility(outline);
+    container.className = outline ? 'outline-task-list' : grouped ? 'grouped-task-list' : 'flex gap-4 h-full w-full';
+    if (outline) renderOutlineTasks(container, allStatuses, kanbanTasks);
+    else if (grouped) renderGroupedTasks(container, allStatuses, kanbanTasks);
     else renderKanbanColumns();
     if (restoreFocus) document.getElementById('tasks_heading')?.focus({preventScroll: true});
 }
@@ -162,7 +165,7 @@ function renderKanbanCard(task) {
     const parent = task.parent_id ? kanbanTasks.find(t => t.id === task.parent_id) || taskKnowledge.get(task.parent_id) : null;
     const parentLabel = task.parent_id ? `<div class="text-[11px] text-slate-400">Subtask of ${escapeHtml(parent?.title || 'another task')}</div>` : '';
     return `
-        <div data-task-id="${task.id}" tabindex="0" onkeydown="if(event.target === this && event.key === 'Enter') window.location.href='/task-inspector/${task.id}'" onclick="window.location.href='/task-inspector/${task.id}'" class="kanban-card p-3 space-y-2 cursor-pointer">
+        <div data-task-id="${task.id}" tabindex="0" onkeydown="if(event.target === this && event.key === 'Enter') navigateToTaskDetail('${task.id}', true)" onclick="navigateToTaskDetail('${task.id}', true)" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
                 <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${escapeHtml(task.title)}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
