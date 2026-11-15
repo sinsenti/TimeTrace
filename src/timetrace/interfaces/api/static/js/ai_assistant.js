@@ -194,6 +194,7 @@ function aiExitFullscreen() {
 
     drawer.classList.add('ai-drawer-no-transition');
     drawer.classList.remove('ai-drawer-fullscreen');
+    aiSetResizeValues(drawer.getBoundingClientRect().width, aiDrawerMaxWidth());
 
     if (aiCalendarHomeParent) {
         const calendarEl = document.getElementById('calendar');

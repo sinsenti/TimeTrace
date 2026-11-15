@@ -20,20 +20,45 @@ function element(id = '', tag = 'div') {
         addEventListener(name, fn) {(listeners[name] ||= []).push(fn);}, querySelectorAll(selector) {return children.flatMap(child => [child, ...child.querySelectorAll('*')]).filter(child => selector === '*' || selector.split(',').some(part => part.trim().startsWith('.') ? child.classList.contains(part.trim().slice(1)) : child.tagName.toLowerCase() === part.trim()));}, querySelector(selector) {return this.querySelectorAll(selector)[0] || null;}
     };
 }
-function browser(respond) {
+function browser(respond, resize = null) {
     const fields = Object.fromEntries(['ai_drawer', 'ai_composer_input', 'ai_composer_send', 'ai_composer_cancel', 'ai_thread', 'ai_assistant_notice', 'ai_launcher_badge', 'ai_conversation_select', 'ai_drawer_body', 'ai_batches_list', 'ai_drafts_panel', 'ai_batches_refresh_btn', 'ai_undo_all_btn', 'ai_delete_conversation_btn', 'ai_new_conversation_btn', 'ai_quick_actions', 'ai_weekly_review_ask_btn'].map(id => [id, element(id)]));
     const requests = [], events = {};
+    const storage = new Map(resize ? [
+        ['tt_ai_drawer_width_px', String(resize.normal)],
+        ['tt_ai_fullscreen_chat_width_px', String(resize.fullscreen)]
+    ] : []);
+    const properties = new Map();
+    if (resize) {
+        for (const id of ['ai_drawer_resize_handle', 'ai_drawer_calendar_pane', 'ai_fullscreen_toggle_btn', 'ai_drawer_close_btn', 'calendar']) fields[id] = element(id);
+        const template = fs.readFileSync('src/timetrace/interfaces/api/templates/components/ai_drawer.html', 'utf8');
+        const separator = template.match(/<div id="ai_drawer_resize_handle"[^>]*>/)[0];
+        for (const [, name, value] of separator.matchAll(/([\w-]+)="([^"]*)"/g)) fields.ai_drawer_resize_handle.setAttribute(name, value);
+        fields.ai_drawer.getBoundingClientRect = () => ({width: fields.ai_drawer.classList.contains('ai-drawer-fullscreen') ? resize.viewport : parseFloat(fields.ai_drawer.style.width) || 420});
+        // DOM adapter: moving the actual Calendar node removes it from its previous parent.
+        const home = element('calendar-home');
+        home.appendChild(fields.calendar);
+        Object.defineProperty(fields.calendar, 'parentElement', {get() {return this.parentNode;}});
+        for (const parent of [home, fields.ai_drawer_calendar_pane]) {
+            const insert = parent.insertBefore;
+            parent.insertBefore = function(child, before) {child.remove(); insert.call(this, child, before);};
+            parent.appendChild = function(child) {this.insertBefore(child, null); return child;};
+        }
+        fields.calendarHome = home;
+    }
     const context = vm.createContext({AbortController, TextDecoder, console: {error() {}}, CSS: {escape: s => s},
-        window: {localStorage: {getItem() {return null;}}, addEventListener() {}, confirm() {return false;}},
-        document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty() {}}},
-            getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
+        requestAnimationFrame: fn => fn(),
+        getComputedStyle: () => ({getPropertyValue: key => properties.get(key) || ''}),
+        calendar: resize ? {updateSize() {}} : undefined,
+        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value)}, addEventListener() {}, confirm() {return false;}},
+        document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty: (key, value) => properties.set(key, value)}},
+            getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, removeEventListener() {}, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
         fetch: async (url, options) => {requests.push({url, options}); return respond(url, options);}
     });
     vm.runInContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/settings.js', 'utf8'), context);
     events.DOMContentLoaded = [];
     for (const name of ['api_client', 'task_knowledge', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
     for (const fn of events.DOMContentLoaded) fn();
-    return {fields, requests, context, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
+    return {fields, requests, context, storage, properties, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
 }
 const response = value => Response.json(value);
 function normal(url) {
@@ -435,4 +460,36 @@ for (const switchThread of [false, true]) test(`Stopped first Send joined to New
         assert.equal(b.fields.ai_composer_send.disabled, true, 'old creation finalizer cannot release newer Send');
         newer.resolve(response({message:{content:'New reply'}})); await next;
     } else assert.equal(b.fields.ai_composer_input.value, 'Keep stopped first message');
+});
+
+
+for (const size of [
+    {viewport: 1440, normal: 624, fullscreen: 624, normalMax: '1160', fullscreenMax: '1120', afterKey: '648'},
+    {viewport: 1024, normal: 552, fullscreen: 400, normalMax: '744', fullscreenMax: '704', afterKey: '576'}
+]) test(`Closing fullscreen and reopening restores normal separator bounds before keyboard resizing at ${size.viewport}px`, async () => {
+    const b = browser(normal, size);
+    await tick();
+    const handle = b.fields.ai_drawer_resize_handle;
+    const values = () => ['aria-valuemin', 'aria-valuemax', 'aria-valuenow'].map(name => handle.getAttribute(name));
+    b.context.window.openAiDrawer();
+    b.click('ai_fullscreen_toggle_btn');
+    assert.deepEqual(values(), ['320', size.fullscreenMax, String(size.fullscreen)]);
+    assert.equal(b.fields.calendar.parentNode, b.fields.ai_drawer_calendar_pane);
+    b.click('ai_drawer_close_btn');
+    assert.equal(b.fields.calendar.parentNode, b.fields.calendarHome);
+    b.context.window.openAiDrawer();
+    assert.equal(b.fields.ai_drawer.classList.contains('ai-drawer-fullscreen'), false);
+    assert.equal(b.fields.ai_fullscreen_toggle_btn.textContent, 'Fullscreen');
+    assert.equal(b.fields.ai_drawer.getBoundingClientRect().width, size.normal);
+    assert.equal(handle.getAttribute('aria-label'), 'Assistant width');
+    assert.deepEqual(values(), ['320', size.normalMax, String(size.normal)]);
+    handle.listeners.keydown[0]({key: 'ArrowLeft', preventDefault() {}});
+    assert.deepEqual(values(), ['320', size.normalMax, size.afterKey]);
+    assert.equal(b.fields.ai_drawer.getBoundingClientRect().width, Number(size.afterKey));
+    assert.equal(b.storage.get('tt_ai_drawer_width_px'), size.afterKey);
+    assert.equal(b.storage.get('tt_ai_fullscreen_chat_width_px'), String(size.fullscreen));
+    b.click('ai_fullscreen_toggle_btn');
+    assert.deepEqual(values(), ['320', size.fullscreenMax, String(size.fullscreen)]);
+    b.click('ai_fullscreen_toggle_btn');
+    assert.deepEqual(values(), ['320', size.normalMax, size.afterKey]);
 });
