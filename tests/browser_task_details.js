@@ -2,6 +2,13 @@
 async (page, baseURL) => {
     const context = await page.context().browser().newContext({viewport:{width:1440,height:1000}});
     const p = await context.newPage(), results=[], errors=[], traffic=[], measurements=[];
+    const taskReview = p.locator('#revision_task_postmortem');
+    const taskReviewField = name => taskReview.locator(`[data-task-review="${name}"]`);
+    const taskReviewReady = () => p.waitForFunction(() => {
+        const root = document.getElementById('revision_task_postmortem');
+        const save = root?.querySelector('[data-task-review="save"]');
+        return root && root.getAttribute('aria-busy') !== 'true' && save && !save.disabled;
+    });
     const check=(value,message)=>{if(!value) throw Error(message);results.push(message);};
     const write=async(path,data)=>{const r=await context.request.post(baseURL+path,{data});if(!r.ok())throw Error(`POST ${path}: ${r.status()} ${await r.text()}`);return r.json();};
     const get=async path=>{const r=await context.request.get(baseURL+path);if(!r.ok())throw Error(`GET ${path}: ${r.status()}`);return r.json();};
@@ -121,12 +128,14 @@ async (page, baseURL) => {
         await p.locator(`#task_inspector_dropdown .task-inspect-item[onclick*="${parent.id}"]`).waitFor({state:'visible'});
         await p.locator('#task_inspector_search').press('Enter');
         await p.waitForFunction(()=>!document.getElementById('task_inspector_body').classList.contains('hidden'));
+        await taskReviewReady();
         check((await p.locator('#task_inspector_kpis').textContent()).includes('Unscheduled'),'Inline inspector exposes distinct shared balances');
         check(await p.locator('#inspect_task_details_link').getAttribute('href')===`/task-inspector/${parent.id}`,'Inline details link retains dedicated entry');
         check(await p.locator('#inspect_task_sessions_list > button').count()===3,'Inline history uses own recorded rows');
-        await p.locator('#task_rev_takeaways').fill('Review draft remains across metadata retry');
+        await taskReviewField('key_takeaways').fill('Review draft remains across metadata retry');
         await p.locator('#rev_tab_task_inspector').getByRole('button',{name:'Retry refresh',exact:true}).click();
-        check(await p.locator('#task_rev_takeaways').inputValue()==='Review draft remains across metadata retry','Initialized inline review draft survives refresh');
+        await taskReviewReady();
+        check(await taskReviewField('key_takeaways').inputValue()==='Review draft remains across metadata retry','Initialized inline review draft survives refresh');
         check(errors.length===0,'No unexpected browser page errors');
         return {assertions:results.length,results,measurements,errors,parentId:parent.id,childId:created.id,sessionId:past.id,traffic,fakes:['provider catalog','held real property PUT ACK','one stats-read 503'],limits:['No physical touch/drag, screen reader, other engines, zoom or reduced-motion verification','Contrast samples are bounded, not whole accessibility certification']};
     } catch (error) {console.log(JSON.stringify({partialResults:results,measurements,errors,traffic}));throw error;}
