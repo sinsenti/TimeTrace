@@ -29,7 +29,7 @@ function node(id = '', value = '', tag = 'input') {
 }
 function browser(elements, files, respond) {
     const writes = [], confirmations = [], events = {};
-    const context = vm.createContext({URL, URLSearchParams, Intl, Event, TextDecoder, console:{error(){}}, setTimeout:fn=>fn(),
+    const context = vm.createContext({URL, URLSearchParams, Intl, Event, TextDecoder, AbortController, console:{error(){}}, setTimeout:fn=>fn(),
         localStorage:{getItem:()=>null,setItem(){}},
         document:{body:node('body'), getElementById:id=>elements[id] || null, createElement:tag=>node('', '', tag), querySelectorAll:()=>[], querySelector:()=>null,
             addEventListener:(name, fn)=>(events[name] ||= []).push(fn), documentElement:{style:{setProperty(){}},setAttribute(){}}},
