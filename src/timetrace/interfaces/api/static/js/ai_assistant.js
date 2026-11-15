@@ -10,9 +10,43 @@
 let aiCurrentConversationId = null;
 let aiConversationsCache = [];
 let aiConversationsLoadPromise = null;
+let aiConversationsLoaded = false;
+let aiConversationsListGeneration = 0;
 let aiConversationCreatePromise = null;
+let aiConversationCreateIntent = null;
+let aiConversationDeleteOwner = null;
 let aiStreamInFlight = false;
 let aiInstructionEditorSequence = 0;
+let aiComposerRevision = 0;
+let aiConversationGeneration = 0;
+let aiTurnOwner = null;
+let aiConversationReadPromise = null;
+let aiDrawerLauncher = null;
+
+function aiNotice(text) {
+    const notice = document.getElementById('ai_assistant_notice');
+    if (notice) notice.textContent = text;
+}
+
+function aiThreadHasDrafts() {
+    const root = document.getElementById('ai_thread');
+    return aiRootHasDrafts(root);
+}
+
+function aiRootHasDrafts(root) {
+    if (!root || typeof hasSettingsDrafts !== 'function') return false;
+    const owners = Array.from(root.querySelectorAll('.ai-inline-edit-box, .ai-instruction-proposal')).map(node => node.id);
+    if (root.id) owners.push(root.id);
+    return hasSettingsDrafts(owners);
+}
+
+function aiCanChangeConversation() {
+    if (!aiStreamInFlight && !aiThreadHasDrafts() && !aiRootHasDrafts(document.getElementById('ai_batches_list'))) return true;
+    aiNotice('Finish the current response or save/cancel the proposal edit before changing conversations.');
+    const select = document.getElementById('ai_conversation_select');
+    if (select) select.value = aiCurrentConversationId || '';
+    return false;
+}
 
 function aiSetQuickActionsDisabled(disabled) {
     const quickActions = document.getElementById('ai_quick_actions');
@@ -30,6 +64,17 @@ function aiSetQuickActionsDisabled(disabled) {
     }
 }
 
+function aiSelectedConversationDeleting() {
+    return aiConversationDeleteOwner && aiConversationDeleteOwner.id === aiCurrentConversationId;
+}
+
+function aiSyncComposerAvailability() {
+    const disabled = aiStreamInFlight || Boolean(aiSelectedConversationDeleting());
+    const send = document.getElementById('ai_composer_send');
+    if (send) send.disabled = disabled;
+    aiSetQuickActionsDisabled(disabled);
+}
+
 function isAiDrawerOpen() {
     const el = document.getElementById('ai_drawer');
     return Boolean(el && el.classList.contains('ai-drawer-open'));
@@ -37,7 +82,9 @@ function isAiDrawerOpen() {
 
 function openAiDrawer() {
     const el = document.getElementById('ai_drawer');
-    if (!el) return;
+    if (!el || isAiDrawerOpen()) return;
+    aiDrawerLauncher = document.activeElement;
+    el.inert = false;
     el.classList.add('ai-drawer-open');
     if (aiConversationsCache.length === 0) {
         aiLoadConversations();
@@ -49,7 +96,8 @@ function openAiDrawer() {
 function closeAiDrawer() {
     if (isAiFullscreenActive()) aiExitFullscreen(); // never leave the calendar stranded in a hidden drawer
     const el = document.getElementById('ai_drawer');
-    if (el) el.classList.remove('ai-drawer-open');
+    if (el) { el.classList.remove('ai-drawer-open'); el.inert = true; }
+    if (aiDrawerLauncher && aiDrawerLauncher.isConnected) aiDrawerLauncher.focus();
 }
 
 function toggleAiDrawer() {
@@ -65,6 +113,7 @@ window.openAiDrawer = openAiDrawer;
 // exactly where it came from instead of guessing.
 let aiCalendarHomeParent = null;
 let aiCalendarHomeNextSibling = null;
+const aiCalendarControlHomes = [];
 
 function isAiFullscreenActive() {
     const el = document.getElementById('ai_drawer');
@@ -104,7 +153,7 @@ window.addEventListener('resize', aiHandleFullscreenResize);
 function aiEnterFullscreen() {
     const drawer = document.getElementById('ai_drawer');
     const pane = document.getElementById('ai_drawer_calendar_pane');
-    if (!drawer || !pane) return;
+    if (!drawer || !pane || isAiFullscreenActive()) return;
     aiMeasureFullscreenTop();
     aiRestoreFullscreenChatWidth();
     if (!isAiDrawerOpen()) openAiDrawer();
@@ -116,6 +165,12 @@ function aiEnterFullscreen() {
         const calendarEl = document.getElementById('calendar');
         aiCalendarHomeParent = calendarEl.parentElement;
         aiCalendarHomeNextSibling = calendarEl.nextSibling;
+        for (const control of document.querySelectorAll('.planning-header > .calendar-tools, .planning-header > .calendar-panel-controls, .planning-header > #breakdown_filter_chip')) {
+            const marker = document.createComment('Calendar control home');
+            control.parentNode.insertBefore(marker, control);
+            aiCalendarControlHomes.push({control, marker});
+            pane.appendChild(control);
+        }
         pane.appendChild(calendarEl);
         pane.classList.remove('hidden');
     }
@@ -139,6 +194,7 @@ function aiExitFullscreen() {
 
     drawer.classList.add('ai-drawer-no-transition');
     drawer.classList.remove('ai-drawer-fullscreen');
+    aiSetResizeValues(drawer.getBoundingClientRect().width, aiDrawerMaxWidth());
 
     if (aiCalendarHomeParent) {
         const calendarEl = document.getElementById('calendar');
@@ -148,6 +204,11 @@ function aiExitFullscreen() {
         aiCalendarHomeParent = null;
         aiCalendarHomeNextSibling = null;
     }
+    for (const {control, marker} of aiCalendarControlHomes) {
+        if (marker.isConnected) marker.parentNode.insertBefore(control, marker);
+        marker.remove();
+    }
+    aiCalendarControlHomes.length = 0;
     if (pane) pane.classList.add('hidden');
 
     requestAnimationFrame(() => {
@@ -188,13 +249,6 @@ function aiAppendStatusLine(text) {
     return aiAppendThreadNode(line);
 }
 
-function aiAppendToolAnnotation(text) {
-    const line = document.createElement('div');
-    line.className = 'ai-msg-tool';
-    line.textContent = text;
-    return aiAppendThreadNode(line);
-}
-
 function aiClearThread() {
     const thread = document.getElementById('ai_thread');
     if (thread) thread.textContent = '';
@@ -210,9 +264,12 @@ function aiRenderEmptyThreadHint() {
 function aiLoadConversations() {
     if (aiConversationsLoadPromise) return aiConversationsLoadPromise;
 
-    aiConversationsLoadPromise = (async () => {
+    const generation = ++aiConversationsListGeneration;
+    const loading = (async () => {
         try {
             const loadedConversations = await api.get('/api/ai/conversations');
+            if (generation !== aiConversationsListGeneration) return;
+            aiConversationsLoaded = true;
             aiConversationsCache = Array.isArray(loadedConversations) ? loadedConversations : [];
             const select = document.getElementById('ai_conversation_select');
             if (select) {
@@ -227,60 +284,186 @@ function aiLoadConversations() {
             if (aiConversationsCache.length > 0) {
                 const targetId = aiCurrentConversationId || aiConversationsCache[0].id;
                 if (select) select.value = targetId;
-                await aiSelectConversation(targetId);
-            } else {
+                if (!aiCurrentConversationId) await aiSelectConversation(targetId);
+            } else if (!aiCurrentConversationId && !aiThreadHasDrafts() && !aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
                 aiClearThread();
                 aiRenderEmptyThreadHint();
             }
         } catch (err) {
-            console.error('Failed to load AI conversations:', err);
+            if (generation !== aiConversationsListGeneration) return;
+            aiNotice('Could not load conversations. Open Conversations and Refresh to retry.');
         }
-    })().finally(() => {
-        aiConversationsLoadPromise = null;
+    })();
+    aiConversationsLoadPromise = loading;
+    return loading.finally(() => {
+        if (aiConversationsLoadPromise === loading) aiConversationsLoadPromise = null;
     });
-    return aiConversationsLoadPromise;
 }
 
-async function aiSelectConversation(conversationId) {
+function aiSelectConversation(conversationId) {
     if (!conversationId) return;
+    if ((aiCurrentConversationId || aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list'))) && !aiCanChangeConversation()) return;
+    aiRestoreHistoryCards();
+    aiHistoryHasLoaded = false;
+    const generation = ++aiConversationGeneration;
     aiCurrentConversationId = conversationId;
+    aiSyncComposerAvailability();
     const select = document.getElementById('ai_conversation_select');
     if (select) select.value = conversationId;
 
     aiClearThread();
-    try {
-        const detail = await api.get(`/api/ai/conversations/${encodeURIComponent(conversationId)}`);
-        const messages = detail.messages || [];
-        if (messages.length === 0) {
-            aiRenderEmptyThreadHint();
-        }
-        for (const msg of messages) {
-            if (msg.role === 'user') {
-                aiAppendMessageBubble('user', msg.content);
-            } else if (msg.role === 'assistant') {
-                if (msg.content) aiAppendMessageBubble('assistant', msg.content);
-                if (msg.draft_batch_id) {
-                    await aiRenderDraftBatchById(msg.draft_batch_id);
-                }
-            } else if (msg.role === 'tool') {
-                aiAppendToolAnnotation(`tool: ${msg.tool_name || 'unknown'}${msg.error ? ' (error)' : ''}`);
+    const reading = (async () => {
+        try {
+            const detail = await api.get(`/api/ai/conversations/${encodeURIComponent(conversationId)}`);
+            if (generation !== aiConversationGeneration) return;
+            const messages = detail.messages || [];
+            if (messages.length === 0) {
+                aiRenderEmptyThreadHint();
             }
+            for (const msg of messages) {
+                if (msg.role === 'user') {
+                    aiAppendMessageBubble('user', msg.content);
+                } else if (msg.role === 'assistant') {
+                    if (msg.content) aiAppendMessageBubble('assistant', msg.content);
+                    if (msg.draft_batch_id) {
+                        await aiRenderDraftBatchById(msg.draft_batch_id, generation);
+                        if (generation !== aiConversationGeneration) return;
+                    }
+                }
+            }
+            for (const proposal of (detail.instruction_proposals || [])) {
+                aiAppendInstructionProposal(proposal);
+            }
+        } catch (err) {
+            if (generation !== aiConversationGeneration) return;
+            aiAppendMessageBubble('error', 'Failed to load this conversation.');
         }
-        for (const proposal of (detail.instruction_proposals || [])) {
-            aiAppendInstructionProposal(proposal);
-        }
+    })();
+    aiConversationReadPromise = reading;
+    return reading.finally(() => {
+        if (aiConversationReadPromise === reading) aiConversationReadPromise = null;
+    });
+}
+
+async function aiRenderDraftBatchById(batchId, generation = aiConversationGeneration) {
+    try {
+        const batch = await api.get(`/api/ai/drafts/batches/${encodeURIComponent(batchId)}`);
+        if (generation !== aiConversationGeneration) return;
+        aiAppendChatBatch(batch);
     } catch (err) {
-        console.error('Failed to load AI conversation detail:', err);
-        aiAppendMessageBubble('error', 'Failed to load this conversation.');
+        if (generation === aiConversationGeneration) aiNotice('Could not load a proposal. Open Proposals & history to retry.');
     }
 }
 
-async function aiRenderDraftBatchById(batchId) {
+let aiHistoryReadGeneration = 0;
+let aiHistoryInteractionGeneration = 0;
+let aiHistoryUndoPending = false;
+let aiHistoryHasLoaded = false;
+const aiHistoryCardHomes = new Map();
+
+function aiAssistantCardChanged() {
+    aiNotice('Action saved. Refresh history if its card is out of date; Refresh reads only.');
+    refreshAiStatusBadge();
+}
+
+function aiAppendChatBatch(batch) {
+    const existing = document.querySelector(`.ai-draft-batch[data-batch-id="${CSS.escape(batch.id)}"]`);
+    if (existing) return existing;
+    return aiAppendThreadNode(aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged}));
+}
+
+function aiMountChatHistoryCards() {
+    const list = document.getElementById('ai_batches_list');
+    if (!list) return;
+    document.querySelectorAll('#ai_thread > .ai-draft-batch').forEach(card => {
+        const marker = document.createComment('Assistant proposal home');
+        card.parentNode.insertBefore(marker, card);
+        aiHistoryCardHomes.set(card.dataset.batchId, {marker, generation: aiConversationGeneration});
+        list.appendChild(card);
+    });
+}
+
+function aiRestoreHistoryCards() {
+    ++aiHistoryReadGeneration;
+    const list = document.getElementById('ai_batches_list');
+    for (const [id, home] of aiHistoryCardHomes) {
+        const card = list && list.querySelector(`[data-batch-id="${CSS.escape(id)}"]`);
+        if (card && home.marker.isConnected && home.generation === aiConversationGeneration) {
+            home.marker.parentNode.insertBefore(card, home.marker);
+        }
+        home.marker.remove();
+    }
+    aiHistoryCardHomes.clear();
+}
+
+async function aiLoadAssistantHistory() {
+    const list = document.getElementById('ai_batches_list');
+    if (!list) return;
+    const request = ++aiHistoryReadGeneration;
+    const conversation = aiConversationGeneration;
+    const interaction = aiHistoryInteractionGeneration;
+    aiNotice('Loading proposals and action history…');
     try {
-        const batch = await api.get(`/api/ai/drafts/batches/${encodeURIComponent(batchId)}`);
-        aiAppendThreadNode(aiBuildDraftBatchNode(batch, { onChanged: refreshAiStatusBadge }));
-    } catch (err) {
-        console.error('Failed to load draft batch for chat turn:', err);
+        const batches = await api.get('/api/ai/drafts/batches?limit=50');
+        const details = await Promise.all((batches || []).map(batch => api.get(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}`)));
+        if (request !== aiHistoryReadGeneration || conversation !== aiConversationGeneration || document.getElementById('ai_drafts_panel')?.classList.contains('hidden')) return;
+        for (const batch of details) {
+            let existing = document.querySelector(`.ai-draft-batch[data-batch-id="${CSS.escape(batch.id)}"]`);
+            if (existing && !list.contains(existing)) {
+                const marker = document.createComment('Assistant proposal home');
+                existing.parentNode.insertBefore(marker, existing);
+                aiHistoryCardHomes.set(batch.id, {marker, generation: conversation});
+                list.appendChild(existing);
+            } else if (!existing) {
+                list.appendChild(aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged}));
+            } else if (interaction === aiHistoryInteractionGeneration && !aiRootHasDrafts(existing) && !existing.contains(document.activeElement)) {
+                const selection = new Map(Array.from(existing.querySelectorAll('.ai-item-checkbox')).map(input => [input.dataset.itemId, input.checked]));
+                const replacement = aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged});
+                replacement.querySelectorAll('.ai-item-checkbox').forEach(input => {
+                    if (selection.has(input.dataset.itemId)) input.checked = selection.get(input.dataset.itemId);
+                });
+                existing.replaceWith(replacement);
+            }
+        }
+        aiHistoryHasLoaded = true;
+        aiNotice(details.length ? '' : 'No proposals or action history yet.');
+        return true;
+    } catch (_err) {
+        if (request === aiHistoryReadGeneration) aiNotice('Could not refresh history. Existing cards and edits are kept. Refresh retries reads only.');
+        return false;
+    }
+}
+
+async function aiUndoAssistantHistory() {
+    if (aiHistoryUndoPending) return;
+    if (aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
+        aiNotice('Save or cancel proposal edits before Undo all.');
+        return;
+    }
+    aiHistoryUndoPending = true;
+    const button = document.getElementById('ai_undo_all_btn');
+    if (button) button.disabled = true;
+    try {
+        await api.post('/api/ai/drafts/undo', {});
+    } catch (_err) {
+        aiNotice('Could not confirm Undo all. Refresh history to review before trying again.');
+        aiHistoryUndoPending = false;
+        if (button) button.disabled = false;
+        return;
+    }
+    // The write is acknowledged. Every remaining operation is an independent read, never a replay.
+    aiNotice('Undo all saved. Refreshing views…');
+    try {
+        await taskKnowledge.changed();
+        if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
+        refreshAiStatusBadge();
+        const refreshed = await aiLoadAssistantHistory();
+        if (refreshed === false) aiNotice('Undo all saved; history could not refresh. Refresh retries reads only.');
+    } catch (_err) {
+        aiNotice('Undo all saved; views could not refresh. Refresh history to retry reads only.');
+    } finally {
+        aiHistoryUndoPending = false;
+        if (button) button.disabled = false;
     }
 }
 
@@ -419,18 +602,35 @@ function aiBuildInstructionProposalNode(proposal, options = {}) {
 
 function aiAppendInstructionProposal(proposal) {
     if (!proposal || !proposal.id) return;
-    const existing = document.querySelector(`[data-proposal-id="${CSS.escape(proposal.id)}"]`);
+    const existing = document.querySelector(`.ai-instruction-proposal[data-proposal-id="${CSS.escape(proposal.id)}"]`);
+    if (existing) return; // Retain this card's independent edit/pending owner.
     const node = aiBuildInstructionProposalNode(proposal, { onChanged: refreshAiStatusBadge });
     if (existing) existing.replaceWith(node);
     else aiAppendThreadNode(node);
 }
 
 function aiCreateConversation() {
-    if (aiConversationCreatePromise) return aiConversationCreatePromise;
+    if (aiConversationCreatePromise) {
+        const intent = aiConversationCreateIntent;
+        // The first Send may join New while its empty-history creation is still pending.
+        // Transfer that same intent only before any selection, cancellation or newer turn.
+        if (!intent.conversationId && !aiCurrentConversationId && !intent.owner &&
+                intent.generation === aiConversationGeneration && aiTurnOwner && !aiTurnOwner.canceled) {
+            intent.owner = aiTurnOwner;
+        }
+        return aiConversationCreatePromise;
+    }
+    if ((aiCurrentConversationId || aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list'))) && !aiCanChangeConversation()) return Promise.resolve(null);
 
+    const intent = {generation: aiConversationGeneration, owner: aiTurnOwner, conversationId: aiCurrentConversationId};
+    aiConversationCreateIntent = intent;
+    const ownsSelection = () => intent.generation === aiConversationGeneration &&
+        intent.owner === aiTurnOwner && !intent.owner?.canceled;
     aiConversationCreatePromise = (async () => {
         try {
             const conv = await api.post('/api/ai/conversations', {});
+            ++aiConversationsListGeneration;
+            aiConversationsLoaded = true;
             aiConversationsCache.unshift(conv);
             const select = document.getElementById('ai_conversation_select');
             if (select) {
@@ -439,35 +639,42 @@ function aiCreateConversation() {
                 opt.textContent = conv.title || '(untitled conversation)';
                 select.insertBefore(opt, select.firstChild);
             }
+            if (select) select.value = aiCurrentConversationId || '';
+            // The row exists even if a newer selection/turn superseded this request.
+            // Reconcile metadata independently; only its captured owner may select it.
+            if (!ownsSelection()) return null;
             await aiSelectConversation(conv.id);
-            return conv.id;
+            return aiCurrentConversationId === conv.id && !intent.owner?.canceled ? conv.id : null;
         } catch (err) {
+            if (!ownsSelection()) return null;
             console.error('Failed to create AI conversation:', err);
             alert('Failed to start a new conversation: ' + (err.message || err));
             return null;
         }
     })().finally(() => {
         aiConversationCreatePromise = null;
+        aiConversationCreateIntent = null;
     });
     return aiConversationCreatePromise;
 }
 
 async function aiRenameCurrentConversation() {
     if (!aiCurrentConversationId) return;
-    const current = aiConversationsCache.find((c) => c.id === aiCurrentConversationId);
+    const conversationId = aiCurrentConversationId;
+    const current = aiConversationsCache.find((c) => c.id === conversationId);
     const nextTitle = prompt('Rename conversation', (current && current.title) || '');
     if (nextTitle === null) return; // cancelled
     const trimmed = nextTitle.trim();
     if (!trimmed) return;
 
     try {
-        const updated = await api.request(`/api/ai/conversations/${encodeURIComponent(aiCurrentConversationId)}`, {
+        const updated = await api.request(`/api/ai/conversations/${encodeURIComponent(conversationId)}`, {
             method: 'PATCH',
             body: JSON.stringify({ title: trimmed }),
         });
         if (current) current.title = updated.title;
         const select = document.getElementById('ai_conversation_select');
-        const opt = select && select.querySelector(`option[value="${CSS.escape(aiCurrentConversationId)}"]`);
+        const opt = select && select.querySelector(`option[value="${CSS.escape(conversationId)}"]`);
         if (opt) opt.textContent = updated.title || '(untitled conversation)';
     } catch (err) {
         console.error('Failed to rename AI conversation:', err);
@@ -475,7 +682,63 @@ async function aiRenameCurrentConversation() {
     }
 }
 
-async function aiEnsureConversation() {
+async function aiDeleteCurrentConversation() {
+    if (aiConversationDeleteOwner || !aiCurrentConversationId || !aiCanChangeConversation()) return;
+    const id = aiCurrentConversationId;
+    if (!window.confirm('Delete this conversation? Applied changes and their action history are kept.')) return;
+    const owner = {id};
+    aiConversationDeleteOwner = owner;
+    aiSyncComposerAvailability();
+    aiNotice('Deleting conversation. Sending here is paused until deletion finishes.');
+    try {
+        await api.delete(`/api/ai/conversations/${encodeURIComponent(id)}`);
+        ++aiConversationsListGeneration;
+        aiConversationsCache = aiConversationsCache.filter(c => c.id !== id);
+        const select = document.getElementById('ai_conversation_select');
+        const option = select && Array.from(select.children).find(option => option.value === id);
+        if (option) option.remove();
+        if (aiCurrentConversationId === id) {
+            ++aiConversationGeneration;
+            aiCurrentConversationId = null;
+            aiConversationReadPromise = null;
+            if (select) select.value = '';
+            // Retire the deleted identity independently of the retained local proposal cards.
+            if (aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
+                aiNotice('Conversation deleted. Proposal edits are retained here; save or cancel them before changing conversations.');
+                return;
+            }
+            aiClearThread();
+        }
+        if (aiConversationsLoadPromise) await aiConversationsLoadPromise;
+        await aiLoadConversations();
+    } catch (_err) {
+        aiNotice('Could not confirm deletion. Refresh conversations before trying again.');
+    } finally {
+        if (aiConversationDeleteOwner === owner) aiConversationDeleteOwner = null;
+        aiSyncComposerAvailability();
+    }
+}
+
+function aiCancelMessage() {
+    if (!aiTurnOwner) return;
+    aiTurnOwner.canceled = true;
+    aiTurnOwner.controller.abort();
+    // Reads may remain unresolved after abort. Release their ownership immediately and fence
+    // their late callbacks, without promising that server work was canceled.
+    ++aiConversationsListGeneration;
+    ++aiConversationGeneration;
+    aiConversationsLoadPromise = null;
+    aiConversationReadPromise = null;
+    aiTurnOwner = null;
+    aiStreamInFlight = false;
+    document.getElementById('ai_composer_cancel')?.classList.add('hidden');
+    aiSyncComposerAvailability();
+    aiNotice('Stopped receiving. Server work may have persisted; refresh this conversation to review before sending again.');
+}
+
+async function aiEnsureConversation(owner) {
+    if (aiConversationReadPromise) await aiConversationReadPromise;
+    if (owner.canceled) return null;
     if (aiCurrentConversationId) return aiCurrentConversationId;
 
     // A preset can be clicked immediately after opening the drawer. Wait for the initial list
@@ -487,6 +750,7 @@ async function aiEnsureConversation() {
         await aiLoadConversations();
     }
     if (aiCurrentConversationId) return aiCurrentConversationId;
+    if (owner.canceled || !aiConversationsLoaded) return null;
 
     if (aiConversationsCache.length > 0) {
         await aiSelectConversation(aiConversationsCache[0].id);
@@ -495,17 +759,37 @@ async function aiEnsureConversation() {
     return aiCreateConversation();
 }
 
+function aiShowChat() {
+    aiRestoreHistoryCards();
+    document.getElementById('ai_drafts_panel')?.classList.add('hidden');
+    document.getElementById('ai_drawer_body')?.classList.remove('hidden');
+    document.getElementById('ai_drafts_toggle_btn')?.setAttribute('aria-expanded', 'false');
+}
+
 async function aiSendMessage(prompt = null) {
+    if (aiSelectedConversationDeleting()) {
+        aiNotice('Deleting conversation. Sending here is paused until deletion finishes.');
+        return;
+    }
     if (aiStreamInFlight) return;
+    if (!aiCurrentConversationId && (aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list')))) {
+        aiCanChangeConversation();
+        return;
+    }
     const input = document.getElementById('ai_composer_input');
     if (!input) return;
     const composerText = input.value;
+    const composerRevision = aiComposerRevision;
     const text = prompt === null ? composerText.trim() : String(prompt).trim();
     if (!text) return;
 
     // Set the in-flight guard before the first await. This covers both the conversation lookup
     // and the actual stream, so rapid preset clicks cannot race through aiEnsureConversation().
     aiStreamInFlight = true;
+    const owner = {controller: new AbortController(), canceled: false};
+    aiTurnOwner = owner;
+    const cancelBtn = document.getElementById('ai_composer_cancel');
+    if (cancelBtn) cancelBtn.classList.remove('hidden');
     const sendBtn = document.getElementById('ai_composer_send');
     if (sendBtn) sendBtn.disabled = true;
     aiSetQuickActionsDisabled(true);
@@ -514,7 +798,14 @@ async function aiSendMessage(prompt = null) {
     let assistantBubble = null;
     let assistantText = '';
     let sendFailed = false;
+    let terminal = false;
 
+    const consumeSubmittedComposer = () => {
+        if (prompt === null && aiComposerRevision === composerRevision && input.value === composerText) {
+            input.value = '';
+            aiAutoGrowComposer(input);
+        }
+    };
     const setStatus = (label) => {
         if (!statusNode) {
             statusNode = aiAppendStatusLine(label);
@@ -524,23 +815,24 @@ async function aiSendMessage(prompt = null) {
     };
 
     try {
-        const conversationId = await aiEnsureConversation();
+        const conversationId = await aiEnsureConversation(owner);
+        if (owner.canceled) return;
         if (!conversationId) {
             aiAppendMessageBubble('error', 'Failed to start an assistant conversation.');
             return;
         }
 
-        if (prompt === null && input.value === composerText) {
-            input.value = '';
-            aiAutoGrowComposer(input);
-        }
+        aiShowChat();
         const emptyHint = document.querySelector('#ai_thread .ai-thread-empty');
         if (emptyHint) emptyHint.remove();
         aiAppendMessageBubble('user', text);
 
-        await api.stream(`/api/ai/conversations/${encodeURIComponent(conversationId)}/messages`, { text, stream: true }, (evt) => {
+        const generation = ++aiConversationGeneration;
+        const onEvent = (evt) => {
+            if (aiTurnOwner !== owner || owner.canceled || generation !== aiConversationGeneration) return;
             switch (evt.event) {
                 case 'message_start':
+                    consumeSubmittedComposer();
                     setStatus('thinking...');
                     break;
                 case 'status': {
@@ -566,7 +858,7 @@ async function aiSendMessage(prompt = null) {
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     const batch = evt.data;
                     if (batch && batch.id) {
-                        aiAppendThreadNode(aiBuildDraftBatchNode(batch, { onChanged: refreshAiStatusBadge }));
+                        aiAppendChatBatch(batch);
                         if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
                     }
                     break;
@@ -576,9 +868,19 @@ async function aiSendMessage(prompt = null) {
                     aiAppendInstructionProposal(evt.data);
                     break;
                 case 'message_end':
+                    terminal = true;
+                    if (evt.data && evt.data.error) {
+                        sendFailed = true;
+                        aiAppendMessageBubble('error', String(evt.data.error));
+                    }
+                    if (evt.data && typeof evt.data.content === 'string') {
+                        if (!assistantBubble && evt.data.content) assistantBubble = aiAppendMessageBubble('assistant', evt.data.content);
+                        else if (assistantBubble) assistantBubble.textContent = evt.data.content;
+                    }
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     break;
                 case 'error': {
+                    terminal = true;
                     sendFailed = true;
                     if (statusNode) { statusNode.remove(); statusNode = null; }
                     const msg = (evt.data && (evt.data.error || evt.data.message)) || 'The assistant hit an error.';
@@ -588,21 +890,37 @@ async function aiSendMessage(prompt = null) {
                 default:
                     break;
             }
-        });
+        };
+        const result = await api.stream(`/api/ai/conversations/${encodeURIComponent(conversationId)}/messages`,
+            { text, stream: true }, onEvent, {}, {signal: owner.controller.signal});
+        if (aiTurnOwner !== owner || owner.canceled || generation !== aiConversationGeneration) return;
+        if (result) {
+            if (!result.message || typeof result.message.content !== 'string') throw new Error('Invalid assistant response.');
+            if (result.draft_batch) onEvent({event:'draft', data:result.draft_batch});
+            if (result.instruction_proposal) onEvent({event:'instruction_proposal', data:result.instruction_proposal});
+            consumeSubmittedComposer();
+            onEvent({event:'message_end', data:result.message});
+        }
+        if (!terminal && !owner.canceled) throw new Error('Response interrupted. Refresh the conversation to review saved messages/proposals before retrying.');
     } catch (err) {
         sendFailed = true;
-        console.error('AI chat stream failed:', err);
+        if (owner.canceled) return;
         if (statusNode) { statusNode.remove(); statusNode = null; }
         aiAppendMessageBubble('error', 'Failed to reach the assistant: ' + (err.message || err));
     } finally {
-        if (sendFailed && prompt === null && !input.value) {
+        if (statusNode) statusNode.remove();
+        if (sendFailed && !owner.canceled) aiNotice('The response failed. Messages or proposals may have persisted; refresh this conversation before retrying.');
+        if (sendFailed && !owner.canceled && prompt === null && aiComposerRevision === composerRevision && !input.value) {
             input.value = composerText;
             aiAutoGrowComposer(input);
         }
-        aiStreamInFlight = false;
-        aiSetQuickActionsDisabled(false);
-        if (sendBtn) sendBtn.disabled = false;
-        refreshAiStatusBadge();
+        if (aiTurnOwner === owner) {
+            aiTurnOwner = null;
+            aiStreamInFlight = false;
+            if (cancelBtn) cancelBtn.classList.add('hidden');
+            aiSyncComposerAvailability();
+            refreshAiStatusBadge();
+        }
     }
 }
 
@@ -653,6 +971,7 @@ function aiApplyDrawerWidth(widthPx) {
     if (!el) return;
     const clamped = Math.min(Math.max(widthPx, AI_DRAWER_MIN_WIDTH), aiDrawerMaxWidth());
     el.style.width = `${clamped}px`;
+    aiSetResizeValues(clamped, aiDrawerMaxWidth());
     return clamped;
 }
 
@@ -674,6 +993,7 @@ function aiFullscreenChatMaxWidth() {
 function aiApplyFullscreenChatWidth(widthPx) {
     const clamped = Math.min(Math.max(widthPx, AI_DRAWER_MIN_WIDTH), aiFullscreenChatMaxWidth());
     document.documentElement.style.setProperty('--ai-chat-width', `${clamped}px`);
+    aiSetResizeValues(clamped, aiFullscreenChatMaxWidth());
     return clamped;
 }
 
@@ -686,11 +1006,20 @@ function aiRestoreFullscreenChatWidth() {
     if (Number.isFinite(widthPx) && widthPx > 0) aiApplyFullscreenChatWidth(widthPx);
 }
 
+function aiSetResizeValues(value, maximum) {
+    const handle = document.getElementById('ai_drawer_resize_handle');
+    if (!handle) return;
+    handle.setAttribute('aria-valuemin', String(AI_DRAWER_MIN_WIDTH));
+    handle.setAttribute('aria-valuemax', String(maximum));
+    handle.setAttribute('aria-valuenow', String(Math.round(value)));
+}
+
 function aiSetupDrawerResize() {
     const handle = document.getElementById('ai_drawer_resize_handle');
     const drawer = document.getElementById('ai_drawer');
     if (!handle || !drawer) return;
 
+    aiSetResizeValues(drawer.getBoundingClientRect().width, aiDrawerMaxWidth());
     let dragging = false;
 
     const onMove = (e) => {
@@ -740,10 +1069,25 @@ function aiSetupDrawerResize() {
         e.preventDefault();
     };
 
+    handle.addEventListener('keydown', (e) => {
+        if (!['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
+        e.preventDefault();
+        const current = isAiFullscreenActive()
+            ? parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ai-chat-width')) || 420
+            : drawer.getBoundingClientRect().width;
+        const width = current + (e.key === 'ArrowLeft' ? 24 : -24);
+        if (isAiFullscreenActive()) aiApplyFullscreenChatWidth(width);
+        else aiApplyDrawerWidth(width);
+        dragging = true;
+        onUp();
+    });
     handle.addEventListener('mousedown', onDown);
     handle.addEventListener('touchstart', onDown, { passive: false });
 
-    window.addEventListener('resize', () => aiApplyDrawerWidth(drawer.getBoundingClientRect().width));
+    window.addEventListener('resize', () => {
+        if (isAiFullscreenActive()) return;
+        aiApplyDrawerWidth(drawer.getBoundingClientRect().width);
+    });
 }
 
 function aiAutoGrowComposer(el) {
@@ -757,8 +1101,13 @@ function aiAutoGrowComposer(el) {
 
 function aiSetupDrawer() {
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('ai_drawer', '#ai_composer_input');
-    aiRestoreDrawerWidth();
     aiSetupDrawerResize();
+    aiRestoreDrawerWidth();
+    const drawer = document.getElementById('ai_drawer');
+    if (drawer) {
+        drawer.addEventListener('input', () => ++aiHistoryInteractionGeneration, true);
+        drawer.addEventListener('click', () => ++aiHistoryInteractionGeneration, true);
+    }
 
     const closeBtn = document.getElementById('ai_drawer_close_btn');
     if (closeBtn) closeBtn.addEventListener('click', closeAiDrawer);
@@ -768,6 +1117,22 @@ function aiSetupDrawer() {
 
     const renameConvBtn = document.getElementById('ai_rename_conversation_btn');
     if (renameConvBtn) renameConvBtn.addEventListener('click', aiRenameCurrentConversation);
+    const deleteBtn = document.getElementById('ai_delete_conversation_btn');
+    if (deleteBtn) deleteBtn.addEventListener('click', aiDeleteCurrentConversation);
+    const historyRefresh = document.getElementById('ai_history_refresh_btn');
+    if (historyRefresh) historyRefresh.addEventListener('click', () => {
+        if (!aiCanChangeConversation()) return;
+        aiLoadConversations();
+        if (aiCurrentConversationId) aiSelectConversation(aiCurrentConversationId);
+    });
+    for (const [buttonId, panelId] of [['ai_history_toggle_btn','ai_history_panel'], ['ai_insights_toggle_btn','ai_insights_panel']]) {
+        const button = document.getElementById(buttonId);
+        const panel = document.getElementById(panelId);
+        if (button && panel) button.addEventListener('click', () => {
+            const showing = panel.classList.toggle('hidden');
+            button.setAttribute('aria-expanded', String(!showing));
+        });
+    }
 
     const fullscreenBtn = document.getElementById('ai_fullscreen_toggle_btn');
     if (fullscreenBtn) {
@@ -794,17 +1159,19 @@ function aiSetupDrawer() {
     if (select) select.addEventListener('change', (e) => aiSelectConversation(e.target.value));
 
     const sendBtn = document.getElementById('ai_composer_send');
-    if (sendBtn) sendBtn.addEventListener('click', aiSendMessage);
+    if (sendBtn) sendBtn.addEventListener('click', () => aiSendMessage());
+    const cancelBtn = document.getElementById('ai_composer_cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', aiCancelMessage);
 
     const input = document.getElementById('ai_composer_input');
     if (input) {
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
                 e.preventDefault();
                 aiSendMessage();
             }
         });
-        input.addEventListener('input', () => aiAutoGrowComposer(input));
+        input.addEventListener('input', () => { ++aiComposerRevision; aiAutoGrowComposer(input); });
         aiAutoGrowComposer(input);
     }
 
@@ -815,20 +1182,32 @@ function aiSetupDrawer() {
         draftsToggleBtn.addEventListener('click', () => {
             const showing = !draftsPanel.classList.contains('hidden');
             if (showing) {
+                aiRestoreHistoryCards();
                 draftsPanel.classList.add('hidden');
                 drawerBody.classList.remove('hidden');
-                draftsToggleBtn.textContent = 'Drafts';
+                draftsToggleBtn.setAttribute('aria-expanded', 'false');
             } else {
                 draftsPanel.classList.remove('hidden');
                 drawerBody.classList.add('hidden');
-                draftsToggleBtn.textContent = 'Chat';
-                aiLoadBatchesPanel();
+                draftsToggleBtn.setAttribute('aria-expanded', 'true');
+                const list = document.getElementById('ai_batches_list');
+                aiMountChatHistoryCards();
+                if (list && !aiHistoryHasLoaded) aiLoadAssistantHistory();
             }
         });
     }
 
+    const batchesRefresh = document.getElementById('ai_batches_refresh_btn');
+    if (batchesRefresh) batchesRefresh.addEventListener('click', () => {
+        if (aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
+            aiNotice('Save or cancel proposal edits before refreshing history.');
+            return;
+        }
+        aiLoadAssistantHistory();
+    });
+
     const undoAllBtn = document.getElementById('ai_undo_all_btn');
-    if (undoAllBtn) undoAllBtn.addEventListener('click', aiUndoAllBatches);
+    if (undoAllBtn) undoAllBtn.addEventListener('click', aiUndoAssistantHistory);
 
     const launcherBtn = document.getElementById('ai_launcher_btn');
     if (launcherBtn) launcherBtn.addEventListener('click', toggleAiDrawer);
