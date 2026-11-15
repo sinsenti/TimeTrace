@@ -37,6 +37,14 @@ function renderDayHistoryGrid() {
     for (const day of days) {
         const button = document.createElement('button'); button.type = 'button';button.className = 'day-history-card';
         button.textContent = `${day.date_str} · ${day.review_skipped ? 'Dismissed' : day.has_review ? `Reviewed (${day.rating}/5)` : 'Missing review'} · ${day.total_hours}h · ${day.session_count} sessions${day.highlights ? ` · ${day.highlights}` : ''}`;
+        if (day.has_review && !day.review_skipped && typeof getGradeColorClasses === 'function') {
+            const date = document.createElement('span'); date.textContent = `${day.date_str} · `;
+            const grade = document.createElement('span'); grade.className = getGradeColorClasses(day.rating,1,5).badge;
+            grade.textContent = `Reviewed (${day.rating}/5)`;
+            const details = document.createElement('span');
+            details.textContent = ` · ${day.total_hours}h · ${day.session_count} sessions${day.highlights ? ` · ${day.highlights}` : ''}`;
+            button.replaceChildren(date,grade,details);
+        }
         button.setAttribute('aria-expanded',String(expandedHistoryDate === day.date_str));
         button.addEventListener('click',()=>expandDayHistory(day.date_str)); grid.appendChild(button);
     }

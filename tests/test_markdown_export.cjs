@@ -4,10 +4,29 @@ const test = require('node:test');
 const vm = require('node:vm');
 const root = 'src/timetrace/interfaces/api/static/js/';
 
-function browser(withDispatcher = false) {
-    const elements = {}, calls = [], replies = [], listeners = [];
+function ratingElement(id = '', tag = 'input') {
+    const classes = new Set(); let value = '';
+    return {id, tagName: tag.toUpperCase(), type: 'text', get value() {return value;}, set value(next) {value = String(next);}, checked: false, disabled: false,
+        children: [], dataset: {}, textContent: '', innerText: '', isConnected: true, listeners: {},
+        classList: {add: (...xs) => xs.forEach(x => classes.add(x)), remove: (...xs) => xs.forEach(x => classes.delete(x)),
+            contains: x => classes.has(x)},
+        appendChild(el) { this.children.push(el); return el; }, append(...els) { this.children.push(...els); },
+        replaceChildren(...els) { this.children = els; this.innerHTML = ''; },
+        setAttribute(name, value) { this[name] = value; }, getAttribute(name) {return this[name];},
+        removeChild(el) {this.children = this.children.filter(child => child !== el);}, addEventListener(name, fn) {this.listeners[name] = fn;},
+        focus() {this.focused = true;}, contains(el) {return this === el || this.children.includes(el);},
+        querySelectorAll(selector) {return this.children.filter(el => selector.startsWith('#') ? el.id === selector.slice(1)
+            : ['INPUT', 'SELECT', 'TEXTAREA'].includes(el.tagName));},
+        querySelector() {return null;}
+    };
+}
+
+function browser(withDispatcher = false, withRating = false) {
+    const elements = {}, calls = [], replies = [], listeners = {window: [], document: []};
+    const register = surface => (type, handler, capture = false) =>
+        listeners[surface].push({type, handler, capture: capture === true || capture?.capture === true});
     const document = {
-        activeElement: null, addEventListener() {}, querySelectorAll: () => [],
+        activeElement: null, addEventListener: register('document'), querySelectorAll: () => [],
         getElementById: id => elements[id] || null,
         createElement: () => ({ click() {}, remove() {} }), body: {appendChild() {}}
     };
@@ -26,15 +45,37 @@ function browser(withDispatcher = false) {
     }
     const context = vm.createContext({document, localStorage: {getItem: () => null}, console: {error() {}}, URLSearchParams, Blob,
         URL: {createObjectURL: () => 'blob:export', revokeObjectURL() {}}, setTimeout,
-        navigator: {clipboard: {writeText: async () => {}}}, window: {location: {href:'/dashboard'}, addEventListener(type, handler) { listeners.push({type, handler}); }},
+        navigator: {clipboard: {writeText: async () => {}}}, window: {location: {href:'/dashboard'}, addEventListener: register('window')},
         fetch: async (url, options) => {calls.push({url,options}); return new Promise(resolve => replies.push(resolve));}
     });
+    if (withRating) {
+        for (const id of ['rating_def_modal','edit_rating_def_id','rating_modal_title','modal_rating_name',
+            'modal_rating_target_type','modal_rating_min','modal_rating_max','modal_rating_required','modal_rating_desc',
+            'modal_rating_delete_btn','modal_rating_save_btn','rating_def_status','rating_defs_new_btn',
+            'rating_defs_card_list','rating_defs_status','rating_defs_retry_btn']) {
+            elements[id] = ratingElement(id);
+            elements[id].focus = () => { document.activeElement = elements[id]; };
+        }
+        elements.rating_def_modal.children = Object.values(elements).filter(el => el.id.startsWith('modal_rating_'));
+        elements.rating_def_modal.classList.add('hidden');
+    }
     for (const file of (withDispatcher ? ['api_client.js', 'utils.js', 'dashboard.js'] : ['api_client.js', 'dashboard.js'])) vm.runInContext(fs.readFileSync(root + file,'utf8'),context);
+    if (withRating) for (const file of ['settings.js', 'ratings_config.js'])
+        vm.runInContext(fs.readFileSync(root + file, 'utf8'), context);
     const run = code => vm.runInContext(code, context);
     const respond = (content, status = 200) => replies.shift()({ok:status === 200,status,headers:{get:()=>'text/markdown'},text:async()=>content,json:async()=>({detail:content})});
     return {elements,calls,replies,context,document,run,respond, escape() {
-        const event = {key: 'Escape', preventDefault() {}, stopPropagation() {}};
-        for (const listener of listeners.filter(item => item.type === 'keydown')) listener.handler(event);
+        const event = {key: 'Escape', defaultPrevented: false, stopped: false, immediate: false,
+            preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; },
+            stopImmediatePropagation() { this.stopped = this.immediate = true; }};
+        for (const [surface, capture] of [['window', true], ['document', true], ['document', false], ['window', false]]) {
+            for (const listener of listeners[surface]) {
+                if (listener.type === 'keydown' && listener.capture === capture) listener.handler(event);
+                if (event.immediate) break;
+            }
+            if (event.stopped) break;
+        }
+        return event;
     }};
 }
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -271,4 +312,154 @@ test('visible Export stays ahead of Assistant when focus temporarily returns to 
     b.run('openExportModal()');b.elements.calendar.focus();b.escape();
     assert.equal(b.elements.export_modal.classList.contains('hidden'), true);
     assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+});
+
+function combined() {
+    const b = browser(true, true), assistant = dialog(b, 'ai_drawer', 'ai-drawer-open');
+    b.context.closeAiDrawer = () => assistant.modal.classList.remove('ai-drawer-open');
+    b.run('openExportModal(); openNewRatingDefModal()');
+    b.elements.modal_rating_name.value = 'Unsaved scale';
+    return {b, assistant};
+}
+function retained(b, assistant) {
+    assert.equal(b.elements.export_modal.classList.contains('hidden'), false);
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+    assert.equal(assistant.field.value, 'Unsaved draft');
+    assert.equal(b.elements.modal_rating_name.value, 'Unsaved scale');
+    assert.ok(b.calls.every(call => call.options.method === 'GET'));
+}
+for (const focus of ['export', 'rating', 'assistant', 'calendar']) {
+    test(`combined real capture gives ${focus} focus the visible top owner`, () => {
+        const {b, assistant} = combined();
+        ({export: b.elements.export_mode_select, rating: b.elements.modal_rating_name,
+            assistant: assistant.field, calendar: b.elements.calendar})[focus].focus();
+        const event = b.escape();
+        assert.equal(b.elements.export_modal.classList.contains('hidden'), focus === 'export');
+        assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), focus !== 'export');
+        assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+        assert.equal(b.elements.modal_rating_name.value, 'Unsaved scale');
+        assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+        assert.equal(b.calls.length, 1);
+    });
+}
+for (const owner of ['task_modal', 'session_modal']) for (const decline of [false, true])
+    for (const late of ['pending', 'pending failure', 'success', 'failure']) {
+        test(`combined ${owner} ${decline ? 'declines' : 'accepts'} Escape after Export ${late}`, async () => {
+            const {b, assistant} = combined(), editor = dialog(b, owner);
+            let closes = 0, blurs = 0, unselects = 0;
+            editor.field.blur = () => { blurs++; };
+            b.context.calendar = {unselect() { unselects++; }};
+            b.context[owner === 'task_modal' ? 'closeTaskModal' : 'closeSessionModal'] = () => {
+                closes++; if (!decline) editor.modal.classList.add('hidden');
+            };
+            editor.field.focus();
+            if (!late.startsWith('pending')) { b.respond('late preview', late === 'failure' ? 503 : 200); await settle(); }
+            assert.equal(b.document.activeElement, editor.field);
+            const event = b.escape(); retained(b, assistant);
+            assert.equal(editor.modal.classList.contains('hidden'), !decline);
+            assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), false);
+            assert.equal(editor.field.value, 'Unsaved draft'); assert.equal(closes, 1);
+            assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+            if (decline) {
+                assert.equal(blurs, 0); assert.equal(unselects, 0);
+                assert.equal(b.document.activeElement, editor.field);
+                b.escape(); assert.equal(closes, 2); retained(b, assistant);
+            }
+            if (late.startsWith('pending')) {
+                const focus = b.document.activeElement;
+                b.respond('late preview', late === 'pending failure' ? 503 : 200); await settle();
+                assert.equal(b.document.activeElement, focus); retained(b, assistant);
+            }
+        });
+    }
+for (const rating of [false, true]) for (const focus of ['export', 'rating']) for (const prompt of ['custom_confirm_modal', 'recurring_resize_modal',
+    'idle_resolution_modal', 'completion_policy_modal', 'recurring_delete_modal']) {
+    test(`combined higher ${prompt} captures Escape with Rating ${rating ? 'visible' : 'hidden'} and ${focus} focus`, () => {
+        const {b, assistant} = combined();
+        if (!rating) b.run('closeRatingDefModal()');
+        const higher = dialog(b, prompt); let closes = 0;
+        b.context.closeCompletionPolicyModal = b.context.closeRecurringDeleteModal = () => {
+            closes++; higher.modal.classList.add('hidden');
+        };
+        if (['custom_confirm_modal', 'recurring_resize_modal', 'idle_resolution_modal'].includes(prompt))
+            b.document.addEventListener('keydown', event => {
+                closes++; higher.modal.classList.add('hidden'); event.preventDefault(); event.stopImmediatePropagation();
+            }, true);
+        (focus === 'rating' && rating ? b.elements.modal_rating_name : b.elements.export_mode_select).focus();
+        const event = b.escape();
+        assert.equal(closes, 1); assert.equal(higher.modal.classList.contains('hidden'), true);
+        assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), !rating);
+        retained(b, assistant); assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+    });
+}
+test('combined recurring deletion outranks recovery without dismissing it', () => {
+    const {b, assistant} = combined(); const recovery = dialog(b, 'idle_resolution_modal'), deletion = dialog(b, 'recurring_delete_modal');
+    b.context.closeRecurringDeleteModal = () => deletion.modal.classList.add('hidden');
+    const event = b.escape();
+    assert.equal(deletion.modal.classList.contains('hidden'), true);
+    assert.equal(recovery.modal.classList.contains('hidden'), false); retained(b, assistant);
+    assert.equal(event.stopped, true);
+});
+test('combined accepted Task close preserves resumed Session focus above Rating and Export', () => {
+    const {b, assistant} = combined(), task = dialog(b, 'task_modal'), session = dialog(b, 'session_modal');
+    session.modal.classList.add('hidden'); task.field.focus();
+    b.context.closeTaskModal = () => {task.modal.classList.add('hidden'); session.modal.classList.remove('hidden'); session.field.focus();};
+    b.escape(); assert.equal(b.document.activeElement, session.field); retained(b, assistant);
+    assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), false);
+});
+test('capture fixture preserves same-target listeners but stops later targets', () => {
+    const b = browser(); const seen = [];
+    b.context.window.addEventListener('keydown', event => {seen.push('first'); event.stopPropagation();}, true);
+    b.context.window.addEventListener('keydown', () => seen.push('second'), true);
+    b.document.addEventListener('keydown', () => seen.push('document'), true);
+    b.escape(); assert.deepEqual(seen, ['first', 'second']);
+});
+test('capture fixture stopImmediatePropagation stops same-target listeners too', () => {
+    const b = browser(); const seen = [];
+    b.context.window.addEventListener('keydown', event => {seen.push('first'); event.stopImmediatePropagation();}, true);
+    b.context.window.addEventListener('keydown', () => seen.push('second'), true);
+    b.escape(); assert.deepEqual(seen, ['first']);
+});
+
+for (const focus of ['assistant', 'calendar']) test(`Rating alone beats stale ${focus} focus above Assistant`, () => {
+    const {b, assistant} = combined(); b.run('closeExportModal()');
+    (focus === 'assistant' ? assistant.field : b.elements.calendar).focus();
+    const event = b.escape();
+    assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), true);
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+});
+test('hidden Rating and Export retain ordinary Assistant Escape', () => {
+    const {b, assistant} = combined(); b.run('closeRatingDefModal(); closeExportModal()');
+    assistant.field.focus(); const event = b.escape();
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), false);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+});
+test('pending Rating Save Escape preserves Export and Assistant after late ACK', async () => {
+    const {b, assistant} = combined();
+    b.respond('preview'); await settle();
+    b.elements.modal_rating_name.focus(); const saving = b.run('saveRatingDefinition()');
+    assert.equal(b.calls.length, 2); assert.equal(b.calls[1].options.method, 'POST');
+    const event = b.escape();
+    assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), true);
+    assert.equal(b.elements.export_modal.classList.contains('hidden'), false);
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+    b.replies.shift()({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>({id:'saved-scale'})});
+    await settle();
+    if (b.replies.length) b.replies.shift()({ok:true,status:200,headers:{get:()=> 'application/json'},json:async()=>[]});
+    await saving;
+    assert.equal(b.elements.rating_def_modal.classList.contains('hidden'), true);
+    assert.equal(b.elements.export_modal.classList.contains('hidden'), false);
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+    assert.equal(b.calls.filter(call => call.options.method !== 'GET').length, 1);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
+});
+
+for (const focus of ['export', 'calendar']) test(`hidden Rating preserves Export ownership with ${focus} focus`, () => {
+    const {b, assistant} = combined(); b.run('closeRatingDefModal()');
+    (focus === 'export' ? b.elements.export_mode_select : b.elements.calendar).focus();
+    const event = b.escape();
+    assert.equal(b.elements.export_modal.classList.contains('hidden'), true);
+    assert.equal(assistant.modal.classList.contains('ai-drawer-open'), true);
+    assert.equal(event.defaultPrevented, true); assert.equal(event.stopped, true);
 });
