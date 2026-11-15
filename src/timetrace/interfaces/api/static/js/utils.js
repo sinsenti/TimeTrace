@@ -294,23 +294,38 @@ window.addEventListener('keydown', function(e) {
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 
-        // Export can be opened over the drawer, or remain beneath a newer editor while
-        // its read finishes. Escape follows that focused owner without changing ordinary
-        // modal priority or the confirmation/recovery guards above.
+        // Rating administration sits above Assistant and unfocused Export. A newer focused
+        // Task/Session or a higher policy prompt still owns Escape, even if close is declined.
+        const ratingDialog = document.getElementById('rating_def_modal');
         const exportModal = document.getElementById('export_modal');
-        if (exportModal && !exportModal.classList.contains('hidden') &&
-            !['completion_policy_modal', 'recurring_delete_modal'].some(id => {
-                const el = document.getElementById(id);
-                return el && !el.classList.contains('hidden');
-            })) {
+        const ratingVisible = ratingDialog && !ratingDialog.classList.contains('hidden');
+        const exportVisible = exportModal && !exportModal.classList.contains('hidden');
+        if (ratingVisible || exportVisible) {
+            const focusedEditor = ['task_modal', 'session_modal'].find(id => {
+                const modal = document.getElementById(id);
+                return modal && !modal.classList.contains('hidden') && modal.contains(focusBeforeClose);
+            });
+            const priority = ['completion_policy_modal', 'recurring_delete_modal', focusedEditor,
+                ratingVisible ? 'rating_def_modal' : null];
+            const rank = item => priority.includes(item.id) ? priority.indexOf(item.id) : priority.length;
+            modalOrder.sort((a, b) => rank(a) - rank(b));
+        }
+        // Export can remain beneath a newer editor while its read finishes. Its focused
+        // controls sit above Rating; stale Assistant focus cannot supersede visible Rating.
+        if (exportVisible && !['completion_policy_modal', 'recurring_delete_modal'].some(id => {
+            const el = document.getElementById(id);
+            return el && !el.classList.contains('hidden');
+        })) {
             let ownerIndex = modalOrder.findIndex(item => {
                 const el = document.getElementById(item.id);
-                return el && el.dataset?.settingsPageEditor !== 'true' &&
+                return !(ratingVisible && item.id === 'ai_drawer') &&
+                    el && el.dataset?.settingsPageEditor !== 'true' &&
                     (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden')) &&
                     el.contains(focusBeforeClose);
             });
-            // Without an editor focus owner, the visible Export still sits above Assistant.
-            if (ownerIndex < 0) ownerIndex = modalOrder.findIndex(item => item.id === 'export_modal');
+            // With no eligible focus owner, Rating sits above unfocused Export and Assistant.
+            if (ownerIndex < 0) ownerIndex = modalOrder.findIndex(item =>
+                item.id === (ratingVisible ? 'rating_def_modal' : 'export_modal'));
             if (ownerIndex > 0) modalOrder.unshift(...modalOrder.splice(ownerIndex, 1));
         }
 
