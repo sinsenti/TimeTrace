@@ -125,8 +125,7 @@ function sessionReviewControls(editor) {
 }
 // The shared confirmation owns Enter/Escape; this session-local seam owns its focus.
 let sessionReviewConfirmation = null;
-async function sessionReviewConfirm(editor, title, message) {
-    const origin = document.activeElement;
+async function sessionReviewConfirm(editor, title, message, origin = document.activeElement) {
     const owner = {editor};
     sessionReviewConfirmation = owner;
     try {
@@ -313,11 +312,12 @@ async function resetSessionReview() {
     const editor = sessionReviewEditor;
     if (!editor || editor.busy || editor.loading || !editor.ratingsReady || !editor.textReady
         || sessionReviewQuickBusy.has(editor.id)) return;
+    const confirmationOrigin = document.activeElement;
     editor.busy = true; sessionReviewControls(editor);
     const id = editor.id;
     try {
         const confirmed = await sessionReviewConfirm(editor, 'Reset session review',
-            'Remove ratings for this session and clear its session exemption? A task exemption still applies.');
+            'Remove ratings for this session and clear its session exemption? A task exemption still applies.', confirmationOrigin);
         if (!confirmed || !sessionReviewCurrent(editor) || editor.id !== id) return;
         if (!editor.resetRatingsDone) {
             await api.delete(`/rating-entries?target_type=session&target_id=${encodeURIComponent(id)}`);
@@ -379,10 +379,12 @@ async function quickDismissSessionReview(sessionId, event) {
 async function deleteSessionFromReviewModal() {
     const editor = sessionReviewEditor;
     if (!editor || editor.busy || editor.loading || !editor.textReady || sessionReviewQuickBusy.has(editor.id)) return;
+    const confirmationOrigin = document.activeElement;
     editor.busy = true; sessionReviewControls(editor);
     const id = editor.id;
     try {
-        const confirmed = await sessionReviewConfirm(editor, 'Delete session log', 'Delete only this session log? This cannot be undone.');
+        const confirmed = await sessionReviewConfirm(editor, 'Delete session log',
+            'Delete only this session log? This cannot be undone.', confirmationOrigin);
         if (!confirmed || !sessionReviewCurrent(editor) || editor.id !== id) return;
         await api.delete(`/sessions/${encodeURIComponent(id)}`);
         if (!sessionReviewCurrent(editor)) { await sessionReviewAfterWrite(); return; }

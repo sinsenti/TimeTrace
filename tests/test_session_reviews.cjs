@@ -9,7 +9,8 @@ function deferred() { let resolve; const promise = new Promise(r => resolve = r)
 let activeDocument;
 function node(tag = 'div', id = '') {
     const classes = new Set(), listeners = {};
-    const el = {id, tagName:tag.toUpperCase(), type:'text', value:'', checked:false, disabled:false, dataset:{}, style:{}, children:[], textContent:'', listeners,
+    let disabled = false;
+    const el = {id, tagName:tag.toUpperCase(), type:'text', value:'', checked:false, dataset:{}, style:{}, children:[], textContent:'', listeners,
         classList:{add:(...xs)=>xs.forEach(x=>classes.add(x)),remove:(...xs)=>xs.forEach(x=>classes.delete(x)),contains:x=>classes.has(x),toggle(x,on=!classes.has(x)){on?classes.add(x):classes.delete(x);}},
         appendChild(child){if(child.parentNode){const i=child.parentNode.children.indexOf(child);if(i>=0)child.parentNode.children.splice(i,1);}this.children.push(child);child.parentNode=this;return child;},
         append(...children){children.forEach(child=>this.appendChild(child));},replaceChildren(...children){this.children.splice(0);this.append(...children);},
@@ -21,6 +22,7 @@ function node(tag = 'div', id = '') {
             return child.tagName.toLowerCase()===s;
         }));},querySelector(selector){return this.querySelectorAll(selector)[0]||null;}
     };
+    Object.defineProperty(el,'disabled',{get(){return disabled;},set(value){disabled=!!value;if(disabled&&activeDocument?.activeElement===this)activeDocument.activeElement=activeDocument.body;}});
     Object.defineProperty(el,'innerText',{get(){return this.textContent;},set(value){this.textContent=String(value);}});
     Object.defineProperty(el,'innerHTML',{get(){return this.html||'';},set(html){
         this.html=html;this.children.splice(0);
@@ -307,6 +309,17 @@ for(const action of ['resetSessionReview()', 'deleteSessionFromReviewModal()', "
         if(action.startsWith('open'))assert.equal(b.fields.session_rev_modal_notes.value,'Draft');
     }else if(action.startsWith('open')){assert.equal(b.fields.session_rev_modal_id.value,'B');assert.equal(b.writes.length,0);}
     else assert.deepEqual(b.writes.map(r=>r.method),action.startsWith('reset')?['DELETE','PUT']:['DELETE']);
+});
+
+for (const [action, controlId] of [['resetSessionReview()', 'session_rev_reset'], ['deleteSessionFromReviewModal()', 'session_rev_delete']]) test(`${action} cancel restores focus inside the session dialog when its initiating button becomes disabled`,async()=>{
+    const b=browser(standard);b.realConfirm();b.fields.session_review_modal.append(b.fields[controlId]);
+    b.run(fs.readFileSync(path.join(js,'revision_nav.js'),'utf8'));b.run('setupRevisionKeyboardShortcuts()');
+    await b.run("openSessionReviewModal('A')");const origin=b.fields[controlId];origin.focus();
+    const pending=b.run(action);await tick();assert.equal(origin.disabled,true);assert.equal(b.context.document.activeElement,b.fields.confirm_modal_cancel_btn);
+    b.key('Escape');await pending;
+    assert.equal(b.fields.session_review_modal.classList.contains('hidden'),false);
+    assert.ok(b.fields.session_review_modal.contains(b.context.document.activeElement),'focus returns to the visible session dialog');
+    assert.equal(b.writes.length,0);
 });
 
 for(const replace of [false,true]) for(const failDefinition of ['one','two']) test(`acknowledged text Save then late ${failDefinition} rating failure refreshes after ${replace?'new owner':'Close'} without further writes`,async()=>{
