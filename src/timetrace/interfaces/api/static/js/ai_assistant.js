@@ -567,10 +567,147 @@ function aiSyncCustomInstructions(settings) {
     if (draft !== null) textarea.value = draft;
 }
 
+function aiInstructionSetStatus(card, message, retryLabel, retry) {
+    if (!aiInstructionCardIsCurrent(card)) return;
+    const status = card?.querySelector('.ai-instruction-proposal-status');
+    if (!status) return;
+    status.textContent = message;
+    if (!retryLabel || typeof retry !== 'function') return;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'ai-btn ai-btn-secondary';
+    button.textContent = retryLabel;
+    button.addEventListener('click', async () => {
+        if (button.disabled) return;
+        button.disabled = true;
+        await retry();
+    });
+    status.appendChild(button);
+}
+
+function aiInstructionSetOperation(card, busy) {
+    const guard = card?.querySelector('.ai-instruction-operation-state');
+    if (guard) guard.value = busy ? 'busy' : '';
+}
+
+function aiInstructionCardIsCurrent(card) {
+    return Boolean(card?.parentNode && Array.from(card.parentNode.children || []).includes(card));
+}
+
+function aiInstructionReplaceCard(card, proposal, options) {
+    if (!aiInstructionCardIsCurrent(card)) return null;
+    const replacement = aiBuildInstructionProposalNode(proposal, options);
+    card.replaceWith(replacement);
+    replacement.focus();
+    return replacement;
+}
+
+async function aiInstructionRefreshSettings(card, proposal, options, editedInstruction) {
+    if (!aiInstructionCardIsCurrent(card)) return;
+    aiInstructionSetOperation(card, true);
+    try {
+        const settings = await api.get('/api/ai/settings');
+        if (!aiInstructionCardIsCurrent(card)) return;
+        aiSyncCustomInstructions(settings);
+        const replacement = aiInstructionReplaceCard(card, proposal, {
+            ...options,
+            editedInstruction,
+            currentInstructions: settings.custom_instructions,
+        });
+        if (replacement && proposal.status === 'conflict') {
+            aiInstructionSetStatus(replacement, 'This proposal cannot be saved. Current Settings were loaded for review.');
+        }
+    } catch (_err) {
+        if (!aiInstructionCardIsCurrent(card)) return;
+        aiInstructionSetOperation(card, false);
+        const message = proposal.status === 'conflict'
+            ? 'This proposal cannot be saved. Current Settings could not be loaded.'
+            : 'The saved proposal is confirmed, but current Settings could not be loaded.';
+        aiInstructionSetStatus(card, message, 'Retry Settings read', () =>
+            aiInstructionRefreshSettings(card, proposal, options, editedInstruction));
+    }
+}
+
+async function aiInstructionReconcile(card, proposal, options, editedInstruction) {
+    if (!aiInstructionCardIsCurrent(card)) return;
+    const readProposal = async () => {
+        if (!aiInstructionCardIsCurrent(card)) return;
+        aiInstructionSetOperation(card, true);
+        let current;
+        try {
+            current = await api.get(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}`);
+            if (current?.id !== proposal.id || !['pending', 'accepted', 'rejected', 'conflict', 'failed', 'undone'].includes(current.status)) {
+                throw new Error('Proposal status response was not authoritative');
+            }
+        } catch (_err) {
+            if (!aiInstructionCardIsCurrent(card)) return;
+            aiInstructionSetStatus(
+                card,
+                'Could not confirm whether this proposal was saved. Check its status before trying again.',
+                'Check proposal status',
+                readProposal,
+            );
+            if (document.getElementById('ai_setting_custom_instructions')) {
+                try {
+                    const settings = await api.get('/api/ai/settings');
+                    if (aiInstructionCardIsCurrent(card)) {
+                        aiSyncCustomInstructions(settings);
+                        aiInstructionSetStatus(
+                            card,
+                            'Proposal status is still unknown. Settings were refreshed separately; this does not confirm Save. Check proposal status before trying again.',
+                            'Check proposal status',
+                            readProposal,
+                        );
+                    }
+                } catch (_settingsErr) {
+                    // The proposal remains locked until its own authoritative status can be read.
+                }
+            }
+            return;
+        }
+        if (!aiInstructionCardIsCurrent(card)) return;
+        const nextOptions = {...options, editedInstruction};
+        const replacement = aiInstructionReplaceCard(card, current, nextOptions);
+        if (!replacement) return;
+        if (current.status === 'pending') {
+            aiInstructionSetStatus(replacement, 'The server confirms this proposal is still pending. Review it before choosing Save or Dismiss.');
+        } else if (current.status === 'accepted') {
+            aiInstructionSetStatus(replacement, 'Saved to custom instructions.');
+            await aiInstructionRefreshSettings(replacement, current, options, current.proposed_instruction);
+        } else if (current.status === 'conflict') {
+            aiInstructionSetStatus(replacement, 'This proposal cannot be saved because custom instructions changed. Review or copy the suggestion, or open Settings.');
+            await aiInstructionRefreshSettings(replacement, current, options, editedInstruction);
+        } else if (current.status === 'rejected') {
+            aiInstructionSetStatus(replacement, 'Dismissed; custom instructions were not changed.');
+        } else {
+            aiInstructionSetStatus(replacement, `This proposal is ${current.status} and cannot be saved again.`);
+        }
+    };
+    aiInstructionSetStatus(card, 'Checking the saved status of this proposal…');
+    await readProposal();
+}
+
+async function aiInstructionRefreshAfterWrite(card, options, savedText) {
+    if (typeof options.onChanged !== 'function' || !aiInstructionCardIsCurrent(card)) return;
+    aiInstructionSetOperation(card, true);
+    try {
+        const result = await options.onChanged();
+        if (result === false) throw new Error('Refresh failed');
+        aiInstructionSetOperation(card, false);
+        aiInstructionSetStatus(card, 'Status refreshed.');
+    } catch (_err) {
+        if (!aiInstructionCardIsCurrent(card)) return;
+        aiInstructionSetOperation(card, false);
+        const retry = () => aiInstructionRefreshAfterWrite(card, options, savedText);
+        aiInstructionSetStatus(card, `${savedText} Related status could not refresh. Retry reads only.`, 'Retry status refresh', retry);
+    }
+}
+
 function aiBuildInstructionProposalNode(proposal, options = {}) {
     const card = document.createElement('section');
     card.className = 'ai-instruction-proposal';
     card.id = `ai_instruction_editor_${++aiInstructionEditorSequence}`;
+    card.tabIndex = -1;
     card.dataset.proposalId = proposal.id;
 
     const heading = document.createElement('div');
@@ -582,33 +719,66 @@ function aiBuildInstructionProposalNode(proposal, options = {}) {
     explanation.className = 'ai-instruction-proposal-explanation';
     explanation.textContent = proposal.status === 'pending'
         ? 'I proposed this standing instruction. Save it to use it in future conversations.'
-        : (proposal.status === 'accepted'
+            : (proposal.status === 'accepted'
             ? 'Saved to custom instructions.'
-            : proposal.status === 'rejected' ? 'Dismissed; custom instructions were not changed.' : `Status: ${proposal.status}`);
+            : proposal.status === 'rejected' ? 'Dismissed; custom instructions were not changed.'
+                : proposal.status === 'conflict'
+                    ? 'This proposal cannot be saved because custom instructions changed. Review or copy the suggestion, or open Settings.'
+                    : `Status: ${proposal.status}`);
     card.appendChild(explanation);
 
     card.appendChild(aiInstructionTextBlock('Existing custom instructions', proposal.before_instructions));
 
     const proposedSection = document.createElement('div');
     proposedSection.className = 'ai-instruction-proposal-section';
-    const proposedLabel = document.createElement('div');
+    const proposedLabel = document.createElement('label');
     proposedLabel.className = 'ai-instruction-proposal-label';
+    proposedLabel.htmlFor = `${card.id}_input`;
     proposedLabel.textContent = 'Proposed standing instruction';
     proposedSection.appendChild(proposedLabel);
     const input = document.createElement('textarea');
+    input.id = `${card.id}_input`;
     input.className = 'ai-instruction-proposal-editor';
     input.rows = 3;
     input.maxLength = 4000;
-    input.value = proposal.proposed_instruction || '';
-    input.disabled = proposal.status !== 'pending';
+    input.value = typeof options.editedInstruction === 'string' ? options.editedInstruction : proposal.proposed_instruction || '';
+    input.disabled = !['pending', 'conflict'].includes(proposal.status);
+    input.readOnly = proposal.status === 'conflict';
+    const resultingLabel = input.value === (proposal.proposed_instruction || '')
+        ? 'Resulting custom instructions' : 'Original proposed result';
+    const resultSection = aiInstructionTextBlock(resultingLabel, proposal.after_instructions);
+    input.addEventListener('input', () => {
+        const label = resultSection.querySelector('.ai-instruction-proposal-label');
+        if (label) label.textContent = input.value === (proposal.proposed_instruction || '')
+            ? 'Resulting custom instructions' : 'Original proposed result';
+    });
     proposedSection.appendChild(input);
     card.appendChild(proposedSection);
 
-    card.appendChild(aiInstructionTextBlock('Resulting custom instructions', proposal.after_instructions));
+    card.appendChild(resultSection);
+    if (typeof options.currentInstructions === 'string') {
+        card.appendChild(aiInstructionTextBlock('Current custom instructions', options.currentInstructions, 'ai-instruction-current-settings'));
+    }
 
     const status = document.createElement('div');
     status.className = 'ai-instruction-proposal-status';
+    status.setAttribute('role', 'status');
+    status.setAttribute('aria-live', 'polite');
     card.appendChild(status);
+    const operationState = document.createElement('input');
+    operationState.type = 'hidden';
+    operationState.id = `${card.id}_operation`;
+    operationState.className = 'ai-instruction-operation-state';
+    operationState.value = '';
+    card.appendChild(operationState);
+
+    if (proposal.status === 'conflict') {
+        const settingsLink = document.createElement('a');
+        settingsLink.href = '/settings/ai';
+        settingsLink.className = 'ai-instruction-proposal-settings-link';
+        settingsLink.textContent = 'Open AI settings';
+        card.appendChild(settingsLink);
+    }
 
     if (proposal.status === 'pending') {
         const actions = document.createElement('div');
@@ -631,45 +801,53 @@ function aiBuildInstructionProposalNode(proposal, options = {}) {
             saveButton.disabled = busy;
             dismissButton.disabled = busy;
             input.disabled = busy;
+            aiInstructionSetOperation(card, busy);
         };
         saveButton.addEventListener('click', async () => {
+            if (saveButton.disabled) return;
             setBusy(true);
+            let result;
             try {
-                const result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/accept`, {
+                result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/accept`, {
                     instruction: input.value
                 });
-                aiSyncCustomInstructions(result.settings);
-                card.replaceWith(aiBuildInstructionProposalNode(result.proposal, options));
-                if (typeof options.onChanged === 'function') options.onChanged();
-            } catch (err) {
-                if (/changed|conflict|review/i.test(err.message || '')) {
-                    setBusy(true);
-                    try {
-                        const settings = await api.get('/api/ai/settings');
-                        aiSyncCustomInstructions(settings);
-                        status.textContent = 'Settings changed since this proposal. Review the current custom instructions and decide again.';
-                    } catch (_reloadErr) {
-                        status.textContent = 'Settings changed. Reload the AI settings page and review again.';
-                    }
-                } else {
-                    setBusy(false);
-                    status.textContent = `Save failed: ${err.message || err}`;
-                }
+            } catch (_err) {
+                await aiInstructionReconcile(card, proposal, options, input.value);
+                return;
             }
+            const savedCard = aiInstructionReplaceCard(card, result.proposal, options);
+            if (!savedCard) return;
+            try {
+                aiSyncCustomInstructions(result.settings);
+            } catch (_err) {
+                aiInstructionSetStatus(savedCard, 'Saved to custom instructions. Settings could not refresh.', 'Retry Settings read', () =>
+                    aiInstructionRefreshSettings(savedCard, result.proposal, options, result.proposal.proposed_instruction));
+            }
+            await aiInstructionRefreshAfterWrite(savedCard, options, 'Saved to custom instructions.');
         });
         dismissButton.addEventListener('click', async () => {
+            if (dismissButton.disabled) return;
             setBusy(true);
+            let result;
             try {
-                const result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/reject`, {});
-                card.replaceWith(aiBuildInstructionProposalNode(result.proposal, options));
-                if (typeof options.onChanged === 'function') options.onChanged();
-            } catch (err) {
-                setBusy(false);
-                status.textContent = `Dismiss failed: ${err.message || err}`;
+                result = await api.post(`/api/ai/instruction-proposals/${encodeURIComponent(proposal.id)}/reject`, {});
+            } catch (_err) {
+                await aiInstructionReconcile(card, proposal, options, input.value);
+                return;
             }
+            const dismissedCard = aiInstructionReplaceCard(card, result.proposal, options);
+            if (!dismissedCard) return;
+            await aiInstructionRefreshAfterWrite(dismissedCard, options, 'Dismissed; custom instructions were not changed.');
         });
     }
-    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(card);
+    if (typeof rememberSettingsDraft === 'function') {
+        const editedInstruction = input.value;
+        if (proposal.status === 'pending' && editedInstruction !== (proposal.proposed_instruction || '')) {
+            input.value = proposal.proposed_instruction || '';
+            rememberSettingsDraft(card);
+            input.value = editedInstruction;
+        } else rememberSettingsDraft(card);
+    }
     return card;
 }
 
