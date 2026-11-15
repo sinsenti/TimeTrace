@@ -127,7 +127,9 @@
         await at('task-save-settled', () => p.waitForFunction(()=>!hasSettingsDrafts(['task_inspector_body'])));
         const taskAfter = await api(`/api/tasks/${task.id}`);
         check(taskAfter.status===task.status,'Task review retained status');
-        check((await api(`/sessions/${session.id}`)).start_time===session.start_time,'Task review retained schedule');
+        const retainedStart = Date.parse((await api(`/sessions/${session.id}`)).start_time);
+        const originalStart = Date.parse(session.start_time);
+        check(Number.isFinite(retainedStart)&&Number.isFinite(originalStart)&&retainedStart===originalStart,'Task review retained schedule');
         readbacks.push({task:taskAfter.id,status:taskAfter.status,session:session.id,exempt:true});
         await p.locator('#task_rev_takeaways').fill('Independent task draft');
         await p.locator('#rev_tab_btn_day').click();await main(dates[0]);
