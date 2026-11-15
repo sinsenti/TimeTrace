@@ -118,3 +118,52 @@ def test_undo_conflict_and_reapply_preserve_a_later_manual_task_edit(client, db,
     assert reapply.json()["items"][0]["status"] == "conflict"
     assert client.get(f"/api/tasks/{task_id}").json()["title"] == "Later manual edit"
     assert [(row.id, row.transition) for row in audit.list_for_batch(batch_id)] == applied_transitions
+
+
+def test_sequential_same_target_accept_reports_later_stale_item_as_failed(client, db, monkeypatch):
+    task = client.post("/api/tasks", json={"title": "Original task"})
+    assert task.status_code == 201
+    task_id = task.json()["id"]
+
+    class FakeAgent:
+        def _message(self, context):
+            context.gateway.propose_update_task(task_id, title="First accepted title")
+            context.gateway.propose_update_task(task_id, title="Stale second title")
+            return AIMessage(content="Two updates to the same task are proposed.")
+
+        async def ainvoke(self, payload, *, context):
+            return {"messages": [*payload["messages"], self._message(context)]}
+
+        async def astream(self, payload, *, context, **_kwargs):
+            message = self._message(context)
+            yield {"type": "messages", "data": (AIMessageChunk(content=message.content), {})}
+            yield {"type": "updates", "data": {"model": {"messages": [message]}}}
+
+    db.add(AIProviderConfig(name="Synthetic only", provider="ollama", model="fake", is_active=True))
+    db.commit()
+    monkeypatch.setattr(chat_module, "get_chat_model", lambda **_kwargs: object())
+    monkeypatch.setattr(chat_module, "build_agent", lambda *_args, **_kwargs: FakeAgent())
+    monkeypatch.setattr(gateway_module, "engine", db.get_bind())
+    conversation = client.post("/api/ai/conversations", json={}).json()
+    turn = client.post(
+        f"/api/ai/conversations/{conversation['id']}/messages",
+        json={"text": "Propose two updates to this task.", "stream": False},
+    )
+    assert turn.status_code == 200
+    batch_id = turn.json()["draft_batch"]["id"]
+    item_ids = [item["id"] for item in turn.json()["draft_batch"]["items"]]
+
+    accepted = client.post(f"/api/ai/drafts/batches/{batch_id}/accept", json={})
+    assert accepted.status_code == 200
+    assert [(item["item_id"], item["status"]) for item in accepted.json()["items"]] == [
+        (item_ids[0], "applied"),
+        (item_ids[1], "failed"),
+    ]
+    assert "stale" in accepted.json()["items"][1]["error"]
+    assert client.get(f"/api/tasks/{task_id}").json()["title"] == "First accepted title"
+    detail = client.get(f"/api/ai/drafts/batches/{batch_id}")
+    assert detail.status_code == 200
+    assert [item["status"] for item in detail.json()["items"]] == ["applied", "failed"]
+    audit_transitions = [row.transition for row in AIAuditService(db).list_for_batch(batch_id)]
+    assert len(audit_transitions) == 4
+    assert set(audit_transitions) == {"proposed", "applied", "failed"}
