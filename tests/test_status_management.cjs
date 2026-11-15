@@ -13,7 +13,12 @@ function page(respond) {
     function element(tag = 'div') {
         const classes = new Set();
         const el = {tagName: tag.toUpperCase(), children: [], listeners: {}, dataset: {}, value: '', checked: false, hidden: false, disabled: false, isConnected: true, textContent: '',
-            classList: {add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x)},
+            classList: {add: x => classes.add(x), remove: x => classes.delete(x), contains: x => classes.has(x),
+                toggle(x, force) {
+                    const on = force === undefined ? !classes.has(x) : Boolean(force);
+                    on ? classes.add(x) : classes.delete(x);
+                    return on;
+                }},
             setAttribute(key, value) { if (key === 'class') value.split(' ').forEach(x => classes.add(x)); else if (key === 'data-status-id') this.dataset.statusId = value; else if (key === 'hidden') this.hidden = true; else this[key] = value; if (key === 'id') elements.set(value, this); },
             appendChild(child) { child.remove(); this.children.push(child); child.parent = this; child.isConnected = true; return child; },
             replaceChildren(...children) { this.children.forEach(child => { child.parent = null; child.isConnected = false; }); this.children = []; children.forEach(child => this.appendChild(child)); },
@@ -36,8 +41,8 @@ function page(respond) {
     for (const id of ['status_manager_modal', 'add_status_modal', 'custom_confirm_modal']) elements.get(id).classList.add('hidden');
     elements.get('status_manager_modal').appendChild(elements.get('status_manager_list'));
     for (const id of ['modal_new_status_name', 'modal_new_status_color', 'status_add_feedback', 'status_add_retry', 'status_add_save']) elements.get('add_status_modal').appendChild(elements.get(id));
-    const requests = [];
-    const context = vm.createContext({document, console: {error() {}}, window: {}, setTimeout, clearTimeout, URL, fetch: async (url, options) => {
+    const requests = [], errors = [];
+    const context = vm.createContext({document, console: {error(...args) { errors.push(args); }}, window: {}, setTimeout, clearTimeout, URL, fetch: async (url, options) => {
         const request = {url, method: options.method, body: options.body && JSON.parse(options.body)}; requests.push(request);
         const result = await respond(request);
         if (result.error) throw Error(result.error);
@@ -46,7 +51,7 @@ function page(respond) {
     context.window = context;
     const run = source => vm.runInContext(source, context);
     for (const file of ['api_client.js', 'task_knowledge.js', 'settings.js', 'kanban.js']) run(fs.readFileSync(path.join(js, file), 'utf8'));
-    return {run, elements, requests, element,
+    return {run, elements, requests, element, errors,
         key(key, shiftKey = false) {
             const event = {key, shiftKey, target: document.activeElement, preventDefault() {}, stopPropagation() {}, stopImmediatePropagation() {this.stopped = true;}};
             for (const handler of [...(events.get('keydown') || [])]) {handler(event); if (event.stopped) break;}
@@ -330,6 +335,7 @@ test('status ACK refresh uses the real Grouped dispatcher and metadata refresh w
     p.run("selectedTaskView = 'grouped'; openStatusManagerModal()"); await tick();
     fields(p.row(id))[0].value = 'Renamed';
     await p.run(`saveStatusRow('${id}')`);
+    assert.deepEqual(p.errors, []);
     const html = p.elements.get('kanban_columns_container').innerHTML;
     assert.equal(p.elements.get('kanban_columns_container').className, 'grouped-task-list');
     assert.match(html, /Renamed/); assert.match(html, /Unknown status/); assert.match(html, /Needle retained/); assert.doesNotMatch(html, />Other</);
