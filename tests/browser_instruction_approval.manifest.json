@@ -3,7 +3,7 @@
   "origin": "127.0.0.1-loopback-only",
   "bootstrap_api_routes": [
     {"method": "GET", "path": "/health"},
-    {"method": "GET", "path": "/api/timer/status"},
+    {"method": "GET", "path": "/timer/status"},
     {"method": "POST", "path": "/api/ai/conversations"},
     {"method": "GET", "path": "/api/ai/conversations/{conversation_id}"}
   ],
@@ -27,7 +27,8 @@
   ],
   "browser_api_routes": [
     {"method": "GET", "path": "/api/ai/settings"},
-    {"method": "GET", "path": "/api/timer/status"},
+    {"method": "GET", "path": "/timer/status"},
+    {"method": "GET", "path": "/sessions"},
     {"method": "GET", "path": "/api/ai/status"},
     {"method": "GET", "path": "/api/ai/providers"},
     {"method": "GET", "path": "/api/ai/providers/catalog"},

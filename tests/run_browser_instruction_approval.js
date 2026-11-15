@@ -23,11 +23,38 @@ const sourcePaths = [
     'tests/browser_instruction_approval.manifest.json',
     'tests/run_browser_instruction_approval.js',
     'specs/ui-redesign.md',
+    'src/timetrace/main.py',
+    'src/timetrace/interfaces/api/routers/__init__.py',
+    'src/timetrace/interfaces/api/routers/timer.py',
+    'src/timetrace/services/timer_service.py',
+    'src/timetrace/interfaces/api/static/js/timer_control.js',
+    'src/timetrace/interfaces/api/templates/ai_settings.html',
+    'src/timetrace/interfaces/api/templates/components/navbar.html',
+    'src/timetrace/interfaces/api/static/js/api_client.js',
+    'src/timetrace/interfaces/api/static/js/ai_settings_page.js',
+    'src/timetrace/interfaces/api/static/js/ai_drafts.js',
+    'src/timetrace/interfaces/api/static/js/task_knowledge.js',
+    'src/timetrace/interfaces/api/routers/ai.py',
+    'src/timetrace/interfaces/api/routers/tasks.py',
+    'src/timetrace/interfaces/api/routers/sessions.py',
 ];
 const contextPaths = [
     '.scratch/ui-redesign/issues/23-instruction-approval.md',
     '.scratch/codex-continuation/ticket23-plan.md',
     '.scratch/codex-continuation/evidence/ticket-23/preflight-current/notes.md',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-approval01-preflight.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-approval01.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix05-approval01-preflight.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix05-approval01.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix05-approval01.final.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix06-approval01-preflight.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix06-approval01.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix06-approval01.final.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix08-approval01-preflight.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix08-approval01.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix08-approval01.final.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/timer-route-control01.json',
+    '.scratch/codex-continuation/evidence/ticket-23/native/bootstrap-route-trace01.json',
 ];
 const fixtureScript = String.raw`
 import json
@@ -71,6 +98,14 @@ Path(os.environ['TICKET23_FIXTURE_FILE']).write_text(json.dumps({
 
 function sha256(bytes) { return crypto.createHash('sha256').update(bytes).digest('hex'); }
 function requireExact(ok, message) { if (!ok) throw new Error(message); }
+function currentTrackedDiff() {
+    const changed = spawnSync('git', ['diff', '--name-only', '--no-ext-diff', '--no-textconv', 'HEAD'], {cwd: worktree, encoding: 'utf8'});
+    requireExact(changed.status === 0, `Could not inspect tracked worktree paths: ${changed.stderr || changed.error || 'git diff failed'}`);
+    const paths = changed.stdout.split('\n').filter(Boolean).sort();
+    const diff = spawnSync('git', ['diff', '--binary', '--no-ext-diff', '--no-textconv', 'HEAD'], {cwd: worktree, maxBuffer: 4 * 1024 * 1024});
+    requireExact(diff.status === 0, `Could not hash tracked worktree diff: ${diff.stderr || diff.error || 'git diff failed'}`);
+    return {paths, sha256: sha256(diff.stdout)};
+}
 function loadSourceBinding() {
     const mapPath = process.env.TICKET23_SOURCE_MAP_PATH;
     const expectedMapHash = process.env.TICKET23_SOURCE_MAP_SHA256;
@@ -87,6 +122,9 @@ function loadSourceBinding() {
     const commonRoot = path.dirname(commonGitDir);
     const sourceHead = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: worktree, encoding: 'utf8'}).stdout.trim();
     requireExact(map.sourceHead === sourceHead, 'Candidate HEAD does not match the source map');
+    const trackedDiff = currentTrackedDiff();
+    requireExact(Array.isArray(map.trackedDiffPaths) && map.trackedDiffPaths.sort().join('\n') === trackedDiff.paths.join('\n'), 'Tracked worktree path set does not match the source map');
+    requireExact(map.trackedDiffSha256 === trackedDiff.sha256, 'Tracked worktree diff does not match the source-map pin');
     requireExact(Object.keys(map.files || {}).sort().join('\n') === [...sourcePaths].sort().join('\n'), 'Source map does not cover the exact Ticket23 source/spec set');
     requireExact(Object.keys(map.contextFiles || {}).sort().join('\n') === [...contextPaths].sort().join('\n'), 'Source map does not cover the exact approved ticket/preflight context');
     const files = {};
@@ -103,11 +141,13 @@ function loadSourceBinding() {
             destination[relativePath] = hash;
         }
     }
-    return {path: absoluteMapPath, sha256: mapHash, sourceHead, repositoryRoot, commonRoot, files, contextFiles, runtime: map.runtime};
+    return {path: absoluteMapPath, sha256: mapHash, sourceHead, repositoryRoot, commonRoot, files, contextFiles, runtime: map.runtime, trackedDiff};
 }
 function verifySourceBinding(binding) {
     const currentHead = spawnSync('git', ['rev-parse', 'HEAD'], {cwd: worktree, encoding: 'utf8'}).stdout.trim();
     requireExact(currentHead === binding.sourceHead, 'Candidate HEAD changed during the run');
+    const currentDiff = currentTrackedDiff();
+    requireExact(currentDiff.sha256 === binding.trackedDiff.sha256 && currentDiff.paths.join('\n') === binding.trackedDiff.paths.join('\n'), 'Tracked worktree diff changed during the run');
     for (const [relativePath, expectedHash] of Object.entries(binding.files)) {
         const bytes = fs.readFileSync(path.resolve(binding.repositoryRoot, relativePath));
         requireExact(sha256(bytes) === expectedHash, `Candidate source changed during the run: ${relativePath}`);
@@ -180,12 +220,42 @@ function runUv(args, env, input) {
     if (result.error || result.status !== 0) throw new Error(`uv ${args.join(' ')} failed: ${result.error || result.stderr || result.stdout}`);
     return result.stdout.trim();
 }
+function routePathMatches(pattern, pathAndQuery) {
+    const expression = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{[^}]+\\\}/g, '[^/?]+');
+    return new RegExp(`^${expression}$`).test(pathAndQuery);
+}
 function pathAllowed(routes, method, pathAndQuery) {
-    return routes.some(route => {
-        if (route.method !== method) return false;
-        const pattern = route.path.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\\\{[^}]+\\\}/g, '[^/]+');
-        return new RegExp(`^${pattern}$`).test(pathAndQuery);
-    });
+    return routes.some(route => route.method === method && routePathMatches(route.path, pathAndQuery));
+}
+function classifyBrowserRequest(method, pathAndQuery) {
+    const declaredApiPath = manifest.browser_api_routes.some(route => routePathMatches(route.path, pathAndQuery));
+    if (pathAllowed(manifest.browser_api_routes, method, pathAndQuery)) return {kind: 'api', allowed: true};
+    if (declaredApiPath || pathAndQuery.startsWith('/api/')) return {kind: 'api', allowed: false};
+    return {kind: 'other', allowed: false};
+}
+function shouldCaptureBrowserResponse(classification, pathname) {
+    return classification.kind === 'api' || pathname.startsWith('/static/');
+}
+function verifyManifestBrowserApiBoundary() {
+    let allowedCount = 0, wrongMethodDenied = 0, wrongPathDenied = 0, apiResponseCaptureCount = 0;
+    for (const route of manifest.browser_api_routes) {
+        const examplePath = route.path.replace(/\{[^}]+\}/g, '00000000-0000-7000-8000-000000000023');
+        const allowed = classifyBrowserRequest(route.method, examplePath);
+        requireExact(allowed.kind === 'api' && allowed.allowed, `Manifest browser API example was not classified as allowed API: ${route.method} ${examplePath}`);
+        allowedCount += 1;
+        requireExact(shouldCaptureBrowserResponse(allowed, new URL(`http://127.0.0.1${examplePath}`).pathname), `Manifest browser API response was not classified for capture: ${route.method} ${examplePath}`);
+        apiResponseCaptureCount += 1;
+        const wrongMethod = route.method === 'GET' ? 'POST' : 'GET';
+        const deniedMethod = classifyBrowserRequest(wrongMethod, examplePath);
+        requireExact(deniedMethod.kind === 'api' && !deniedMethod.allowed, `Wrong method did not remain a denied API request: ${wrongMethod} ${examplePath}`);
+        wrongMethodDenied += 1;
+        const wrongPath = `${examplePath}${examplePath.includes('?') ? '&' : '?'}ticket23_unlisted=1`;
+        const deniedPath = classifyBrowserRequest(route.method, wrongPath);
+        requireExact(!deniedPath.allowed, `Unlisted query/path variant was allowed: ${route.method} ${wrongPath}`);
+        wrongPathDenied += 1;
+    }
+    requireExact(allowedCount === manifest.browser_api_routes.length && allowedCount > 0, 'Manifest browser API boundary control did not exercise every entry');
+    return {routesExercised: allowedCount, wrongMethodsDenied: wrongMethodDenied, unlistedPathVariantsDenied: wrongPathDenied, apiResponsesClassifiedForCapture: apiResponseCaptureCount};
 }
 function appendCapped(array, item, limit, overflow, key) {
     if (array.length < limit) array.push(item);
@@ -348,22 +418,28 @@ async function confirmDaemonStopped(origin, ledger, captureState) {
     }
     return {portClosed: probes.length === 2 && probes.every(probe => probe.closed), probes};
 }
-function allowlisted(method, pathAndQuery) {
-    return pathAllowed(manifest.browser_api_routes, method, pathAndQuery);
-}
-
 async function main() {
     requireExact(typeof modulePath === 'string' && typeof executablePath === 'string', 'Set the exact external Playwright module and Chromium executable paths');
     const evidenceDir = path.resolve(worktree, '../../evidence/ticket-23/native');
     fs.mkdirSync(evidenceDir, {recursive: true});
     const attemptId = process.env.TICKET23_ATTEMPT_ID || `attempt-${Date.now()}`;
     requireExact(/^[a-z0-9][a-z0-9-]{0,63}$/.test(attemptId), 'Attempt id must be a short lowercase filename token');
+    const evidencePath = path.join(evidenceDir, `${attemptId}.json`);
+    const finalEvidencePath = path.join(evidenceDir, `${attemptId}.final.json`);
+    for (const candidate of [evidencePath, finalEvidencePath]) {
+        try {
+            fs.lstatSync(candidate);
+            throw new Error(`Evidence receipt already exists: ${candidate}`);
+        } catch (error) {
+            if (error.code !== 'ENOENT') throw error;
+        }
+    }
     let root = null, tmp, home, runtime, browserEnv, launchOptions, daemonExecutable, dbFile, fixtureFile, origin, port, sourceBinding = null, appStorage = null;
     let realModule = null, realExecutable = null, chromium = null;
-    let browser, context, daemon, daemonLog, constructorProbe = null, primaryError = null, result = null, health = null, timerStatus = null, browserVersion = null;
+    let browser, context, daemon, daemonLog, constructorProbe = null, daemonIdentity = null, primaryError = null, result = null, health = null, timerStatus = null, browserVersion = null;
     let preflightBrowserClosed = true;
-    let browserClosed = false, contextClosed = false, daemonExit = null, daemonExitProof = null, shutdownError = null, scratchAudit = null, daemonLogCapture = null;
-    let evidenceDurable = false, rootRemoved = false, cleanupError = null;
+    let browserClosed = false, contextClosed = false, daemonExit = null, daemonExitProof = null, daemonChildReaped = false, daemonKillEscalationUsed = false, daemonIdentityConfirmed = false, sigtermRequested = false, sigtermRequestAccepted = false, shutdownError = null, scratchAudit = null, daemonLogCapture = null;
+    let evidenceDurable = false, finalEvidenceDurable = false, rootRemoved = false, cleanupError = null, rootIdentity = null, browserApiBoundaryControl = null, settingsTimerReadinessControl = null, probe = null;
     const routeDenials = [], expectedNetworkBlocks = [], requestLedger = [], bootstrapLedger = [];
     const responses = [], pendingCaptures = [], mutations = [], mutationRequests = new Map(), requestRecords = new Map();
     const faults = {failNextStatus: false, failNextSettingsRead: false, statusFailures: 0, settingsFailures: 0};
@@ -372,7 +448,10 @@ async function main() {
     const overflow = {bootstrapLedger: 0, requestLedger: 0, routeDenials: 0, expectedNetworkBlocks: 0, responses: 0, requestBodyTruncated: 0, responseCaptureFailures: 0, requestFailures: 0};
     const captureState = {perBodyLimit: responseCaptureLimit, totalLimit: responseCaptureTotalLimit, bytes: 0, requestBytes: 0, ledgerLimit: 120, overflow, mutations};
     try {
+        browserApiBoundaryControl = verifyManifestBrowserApiBoundary();
         sourceBinding = loadSourceBinding();
+        probe = require(path.join(__dirname, 'browser_instruction_approval.js'));
+        settingsTimerReadinessControl = probe.verifySettingsTimerReadinessControl();
         const runtimePin = sourceBinding.runtime;
         requireExact(runtimePin && typeof runtimePin === 'object', 'Source map must pin the browser runtime');
         requireExact(typeof runtimePin.playwrightModule === 'string' && typeof runtimePin.playwrightVersion === 'string', 'Source map must pin Playwright path and version');
@@ -395,6 +474,7 @@ async function main() {
         ({chromium} = require(realModule));
         root = fs.mkdtempSync('/tmp/t23-');
         const rootStat = fs.statSync(root);
+        rootIdentity = {dev: rootStat.dev, ino: rootStat.ino, mode: rootStat.mode & 0o777};
         requireExact((rootStat.mode & 0o777) === 0o700, 'Scratch root must be private mode 0700');
         tmp = path.join(root, 'tmp');
         home = path.join(root, 'home');
@@ -472,9 +552,10 @@ async function main() {
         runUv(['run', 'timetrace', 'db', 'migrate'], appEnv);
         daemonLog = fs.openSync(path.join(root, 'daemon.log'), 'w', 0o600);
         daemon = spawn(daemonExecutable, ['daemon'], {cwd: worktree, env: appEnv, stdio: ['ignore', daemonLog, daemonLog]});
+        daemonIdentity = {pid: daemon.pid, executable: daemonExecutable, args: ['daemon']};
         health = await waitForHealth(origin, daemon, dbFile, port, bootstrapLedger, captureState);
         requireExact(path.resolve(health.db_file) === path.resolve(dbFile), 'Health DB identity does not match the exact allocated scratch DB');
-        const timerRequest = await bootstrapFetch(origin, 'GET', '/api/timer/status', {signal: AbortSignal.timeout(5000)}, bootstrapLedger, captureState, mutations);
+        const timerRequest = await bootstrapFetch(origin, 'GET', '/timer/status', {signal: AbortSignal.timeout(5000)}, bootstrapLedger, captureState, mutations);
         timerStatus = JSON.parse(timerRequest.bodyText);
         const timerResponse = timerRequest.response;
         assert.equal(timerResponse.status, 200);
@@ -516,8 +597,9 @@ async function main() {
                 if (requestRecord) requestRecord.status = response.status();
                 const mutation = mutationRequests.get(request);
                 if (mutation) mutation.ack = {status: response.status()};
-                if (!url.pathname.startsWith('/api/') && !url.pathname.startsWith('/static/')) return;
-                const captureOriginalBody = url.pathname.startsWith('/api/') || url.pathname === '/settings/ai' || url.pathname === '/static/js/ai_assistant.js';
+                const classification = classifyBrowserRequest(request.method(), pathAndQuery);
+                if (!shouldCaptureBrowserResponse(classification, url.pathname) && url.pathname !== '/settings/ai' && url.pathname !== '/static/js/ai_assistant.js') return;
+                const captureOriginalBody = classification.kind === 'api' || url.pathname === '/settings/ai' || url.pathname === '/static/js/ai_assistant.js';
                 if (!captureOriginalBody) {
                     appendCapped(responses, {method: request.method(), path: pathAndQuery, status: response.status(), contentType: headers['content-type'] || '', contentLength: headers['content-length'] || null, bodyCaptured: false}, 300, overflow, 'responses');
                     return;
@@ -577,9 +659,10 @@ async function main() {
                 return;
             }
             const pathAndQuery = url.pathname + url.search;
-            if (url.pathname.startsWith('/api/')) {
-                if (!allowlisted(request.method(), pathAndQuery)) {
-                    appendCapped(routeDenials, {method: request.method(), path: pathAndQuery, reason: 'unlisted API request blocked'}, 100, overflow, 'routeDenials');
+            const classification = classifyBrowserRequest(request.method(), pathAndQuery);
+            if (classification.kind === 'api') {
+                if (!classification.allowed) {
+                    appendCapped(routeDenials, {method: request.method(), path: pathAndQuery, reason: 'unlisted API method or path blocked'}, 100, overflow, 'routeDenials');
                     requestLedger.push({method: request.method(), path: pathAndQuery, action: 'blocked'});
                     await route.abort('blockedbyclient');
                     return;
@@ -623,7 +706,6 @@ async function main() {
             await route.continue();
         });
 
-        const probe = require(path.join(__dirname, 'browser_instruction_approval.js'));
         const ledger = {mutations};
         result = await probe({page, baseURL: origin, fixture, ledger, faults});
         await Promise.allSettled(pendingCaptures);
@@ -658,12 +740,18 @@ async function main() {
         } else browserClosed = true;
         if (daemon) {
             try {
-                if (daemon.exitCode === null && daemon.signalCode === null) daemon.kill('SIGTERM');
+                if (daemon.exitCode === null && daemon.signalCode === null) {
+                    sigtermRequested = true;
+                    sigtermRequestAccepted = daemon.kill('SIGTERM');
+                }
                 daemonExit = await waitForExit(daemon, 10000);
+                daemonChildReaped = true;
             } catch (termError) {
                 try {
+                    daemonKillEscalationUsed = true;
                     daemon.kill('SIGKILL');
                     daemonExit = await waitForExit(daemon, 5000);
+                    daemonChildReaped = true;
                 } catch (killError) {
                     shutdownError = `${shutdownError ? `${shutdownError}; ` : ''}daemon shutdown unconfirmed: ${String(termError)}; ${String(killError)}`;
                 }
@@ -679,6 +767,7 @@ async function main() {
         const daemonLogPath = root && path.join(root, 'daemon.log');
         try { daemonLogCapture = await captureBoundedLog(daemonLogPath); }
         catch (error) { overflow.responseCaptureFailures += 1; daemonLogCapture = {error: String(error)}; }
+        daemonIdentityConfirmed = Boolean(daemonIdentity?.pid && daemonLogCapture && `${daemonLogCapture.head || ''}${daemonLogCapture.tail || ''}`.includes(`Started server process [${daemonIdentity.pid}]`));
         let storageFiles = null;
         if (root) {
             storageFiles = {};
@@ -713,7 +802,7 @@ async function main() {
             sourceBinding,
             browser: {module: realModule, executable: realExecutable, version: browserVersion, profileSocketBytes: tmp ? Buffer.byteLength(path.join(tmp, 'playwright_chromiumdev_profile-xxxxxxxx')) : null},
             daemonExecutable: daemonExecutable ? {path: daemonExecutable, sha256: sha256(fs.readFileSync(daemonExecutable))} : null,
-            scratchIdentity: root ? {root, database: dbFile, timerState: path.join(root, 'active_timer.json'), port, origin, rootDev: fs.statSync(root).dev, rootIno: fs.statSync(root).ino, rootMode: fs.statSync(root).mode & 0o777, appStorage, storageFiles} : null,
+            scratchIdentity: root ? {root, database: dbFile, timerState: path.join(root, 'active_timer.json'), port, origin, rootDev: rootIdentity?.dev, rootIno: rootIdentity?.ino, rootMode: rootIdentity?.mode, appStorage, storageFiles} : null,
             health,
             timerStatus,
             bootstrapLedger,
@@ -722,44 +811,70 @@ async function main() {
             requestLedger,
             responseCaptures: responses,
             evidenceOverflows: overflow,
+            browserApiBoundaryControl,
+            settingsTimerReadinessControl,
             mutations,
             faults,
             scratchAudit,
             daemonLog: daemonLogCapture,
-            shutdown: {pid: daemon?.pid || null, executable: daemonExecutable || null, preflightBrowserClosed, contextClosed, browserClosed, daemonExit, daemonExitProof, error: shutdownError},
-            cleanup: {rootRemoval: 'pending-after-pre-cleanup-receipt', rootRemoved: null, evidenceDurable: false, error: null},
+            shutdown: {pid: daemon?.pid || null, executable: daemonExecutable || null, daemonIdentity, daemonIdentityConfirmed, sigtermRequested, sigtermRequestAccepted, directChildReaped: daemonChildReaped, killEscalationUsed: daemonKillEscalationUsed, preflightBrowserClosed, contextClosed, browserClosed, daemonExit, daemonExitProof, error: shutdownError},
+            cleanup: {rootRemoval: 'pending-after-pre-cleanup-receipt', rootRemoved: null, evidenceDurable: false, finalReceipt: finalEvidencePath, finalReceiptDurable: false, error: null},
         };
-        const evidencePath = path.join(evidenceDir, `${attemptId}.json`);
-        const writeEvidence = () => {
-            const temporary = `${evidencePath}.${process.pid}.tmp`;
-            const fd = fs.openSync(temporary, 'w', 0o600);
+        const writeExclusiveEvidence = (destination) => {
+            const fd = fs.openSync(destination, 'wx', 0o600);
             try { fs.writeFileSync(fd, `${JSON.stringify(receipt, null, 2)}\n`); fs.fsyncSync(fd); }
             finally { fs.closeSync(fd); }
-            fs.renameSync(temporary, evidencePath);
             const directory = fs.openSync(evidenceDir, 'r');
             try { fs.fsyncSync(directory); } finally { fs.closeSync(directory); }
         };
-        try { writeEvidence(); evidenceDurable = true; }
+        try { writeExclusiveEvidence(evidencePath); evidenceDurable = true; }
         catch (error) { cleanupError = `Could not durably write pre-cleanup receipt: ${String(error)}`; }
         const sourceAndRouteChecksPassed = !primaryError && Boolean(result) && routeDenials.length === 0 && Object.values(overflow).every(count => count === 0);
-        const daemonStoppedCleanly = daemonExit?.code === 0 && daemonExitProof?.portClosed === true && /Application shutdown complete/.test(`${daemonLogCapture?.head || ''}${daemonLogCapture?.tail || ''}`);
+        const daemonStoppedCleanly = daemonChildReaped && !daemonKillEscalationUsed && daemonIdentityConfirmed
+            && (daemonExit?.code === 0 || (daemonExit?.signal === 'SIGTERM' && sigtermRequested && sigtermRequestAccepted))
+            && daemonExitProof?.portClosed === true
+            && /Application shutdown complete/.test(`${daemonLogCapture?.head || ''}${daemonLogCapture?.tail || ''}`);
         const safeToRemove = Boolean(root && daemonStoppedCleanly && preflightBrowserClosed && contextClosed && browserClosed && scratchAudit?.matchesExpected && evidenceDurable && sourceAndRouteChecksPassed && !shutdownError);
         if (safeToRemove) {
-            try { fs.rmSync(root, {recursive: true, force: false}); rootRemoved = true; }
+            try {
+                const currentRoot = fs.lstatSync(root);
+                requireExact(currentRoot.isDirectory() && !currentRoot.isSymbolicLink()
+                    && currentRoot.dev === rootIdentity?.dev && currentRoot.ino === rootIdentity?.ino,
+                'Scratch root path no longer names this attempt’s allocated directory');
+                fs.rmSync(root, {recursive: true, force: false});
+                rootRemoved = true;
+            }
             catch (error) { cleanupError = String(error); }
         } else if (root) cleanupError = cleanupError || 'Scratch root retained because daemon exit, browser close, DB audit, or durable evidence is unconfirmed';
-        receipt.cleanup = {rootRemoval: rootRemoved ? 'removed-after-durable-audit' : 'retained', rootRemoved, evidenceDurable, error: cleanupError};
+        receipt.cleanup = {rootRemoval: rootRemoved ? 'removed-after-durable-audit' : 'retained', rootRemoved, evidenceDurable, finalReceipt: finalEvidencePath, finalReceiptDurable: false, error: cleanupError};
         receipt.shutdown.contextClosed = contextClosed;
         receipt.passed = sourceAndRouteChecksPassed && daemonStoppedCleanly && Boolean(scratchAudit?.matchesExpected) && contextClosed && browserClosed && rootRemoved && !shutdownError;
         if (evidenceDurable) {
-            try { writeEvidence(); }
-            catch (error) { process.stderr.write(`Could not update cleanup receipt: ${String(error)}\n`); receipt.passed = false; }
+            try {
+                receipt.cleanup.finalReceiptDurable = true;
+                writeExclusiveEvidence(finalEvidencePath);
+                finalEvidenceDurable = true;
+            } catch (error) {
+                receipt.cleanup.finalReceiptDurable = false;
+                receipt.passed = false;
+                cleanupError = `${cleanupError ? `${cleanupError}; ` : ''}Could not durably publish final receipt: ${String(error)}`;
+                process.stderr.write(`${cleanupError}\n`);
+            }
         }
+        if (!finalEvidenceDurable) receipt.passed = false;
         if (!receipt.passed) process.exitCode = 1;
     }
 }
 
-main().catch(error => {
-    process.stderr.write(`${error?.stack || error}\n`);
-    process.exitCode = 1;
-});
+if (require.main === module && process.argv[2] === '--check-browser-api-boundary') {
+    try { process.stdout.write(`${JSON.stringify(verifyManifestBrowserApiBoundary())}\n`); }
+    catch (error) {
+        process.stderr.write(`${error?.stack || error}\n`);
+        process.exitCode = 1;
+    }
+} else if (require.main === module) {
+    main().catch(error => {
+        process.stderr.write(`${error?.stack || error}\n`);
+        process.exitCode = 1;
+    });
+}
