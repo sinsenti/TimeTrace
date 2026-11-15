@@ -65,7 +65,13 @@ async function refreshSessionDisplay() {
 }
 
 function restoreSessionModalFocus(owner, refreshing = false) {
-    const target = !refreshing && owner?.launcher?.isConnected ? owner.launcher : document.getElementById('tasks_heading');
+    const modal = document.getElementById('session_modal');
+    const active = document.activeElement;
+    if (active && active !== document.body && !modal?.contains?.(active)) return;
+    const history = document.getElementById('detail_session_focus');
+    const retainedHistory = owner?.launcher === history && !document.getElementById('outline_inspector')?.hidden;
+    const target = owner?.launcher?.isConnected && (!refreshing || retainedHistory)
+        ? owner.launcher : document.getElementById('tasks_heading');
     target?.focus({preventScroll: true});
 }
 
