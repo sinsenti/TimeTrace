@@ -562,7 +562,7 @@ Current owner audit for the **new Settings link** (not a retrofit of every histo
 | Revision | Date-owned Day editors retain text/grade, ratings, grouping and filters when hidden, switched or promoted. One retained owner exists per date; the main day is excluded from history. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
 | Habits | New/edit definition form and retained per-local-date entry drafts; explicit own Save/Cancel, confirmed selected-date Clear |
 | Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
-| Tasks Add Status | Open; explicit Save/Cancel (existing status rows still write on change) |
+| Tasks Statuses | Each initialized manager row owns independent explicit Save/Cancel; Add Status owns explicit Save/Cancel. Acknowledged writes checkpoint submitted fields only; failed display refresh retries read without replaying writes. |
 | AI Settings | Initial behavior baseline before GET, preserve edits through load/retry; provider form remains a separate owner |
 | Shared Assistant | Unsent composer, standing-instruction proposal text and inline proposal editor; successful send/approval/PATCH consumes only its own submitted data; failed actions retain drafts |
 
@@ -571,8 +571,9 @@ Cancel removes/closes the corresponding form without writing. Dashboard/conversa
 blocking immediate actions, not background drafts. Date/view/search/filter/export controls, task-tab
 visibility, inspector/chart selections and batch-selection checkboxes are navigation/read/selection
 state, not unsaved domain forms. Habit entries now stage amounts/results until explicit Save; hidden
-per-date owners stay guarded and successful ACK checkpoints only submitted fields. Existing
-status-manager rows still write on change; no new autosave or domain policy is implied.
+per-date owners stay guarded and successful ACK checkpoints only submitted fields. Status-manager
+rows retain independent explicit Save/Cancel drafts. Current status refresh preserves Task/property/child
+selections and initialized drafts; no new autosave or domain policy is implied.
 
 Caller coverage: `tests/test_draft_ownership.cjs` uses real feature handlers and `api_client.js` with
 held/failed HTTP fixtures; five `tests/browser_*draft*ownership.js` / initialization/retry probes are
