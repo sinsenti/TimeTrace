@@ -308,3 +308,64 @@ test('Deferred refresh and late rating ACK or rejection cannot touch an A to B t
         assert.equal(b.run("hasSettingsDrafts(['revision_task_postmortem','revision_task_postmortem_ratings'])"),true);
     }
 });
+
+
+test('Dedicated document shortcuts exclude review controls and keep the property Save caller',async()=>{
+    const b=fixture(undefined,'details');await b.load();b.context.setupInspectorKeyboardShortcuts();
+    let propertySaves=0;b.context.saveInspectorTaskProperties=()=>{propertySaves++;};
+    const dispatch=target=>{const event={target,key:'Enter',ctrlKey:true,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};for(const handler of b.events.keydown)handler(event);return event;};
+    assert.equal(dispatch(b.field('blockers')).defaultPrevented,false);assert.equal(propertySaves,0);
+    assert.equal(dispatch(b.fields.task_properties_editor).defaultPrevented,true);assert.equal(propertySaves,1);
+    assert.equal(b.writes.length,0);
+});
+
+test('Outline root-absent caller paints evidence without a review and guards hidden inert and outside Ctrl Enter',async()=>{
+    const b=fixture(undefined,'details');b.review.remove();
+    const host=element('aside',{id:'outline_inspector'});b.context.document.body.appendChild(host);host.appendChild(b.fields.task_properties_editor);
+    const unrelated=element('button');host.appendChild(unrelated);
+    const tracked=element('span',{id:'detail_task_tracked'});b.context.document.body.appendChild(tracked);
+    b.context.createTaskPostmortemEditor=()=>{throw new Error('Outline must not initialize review');};
+    await b.context.loadTaskDetailTree();assert.equal(tracked.innerText,'0h');assert.equal(b.writes.length,0);
+    b.context.setupInspectorKeyboardShortcuts();let propertySaves=0;b.context.saveInspectorTaskProperties=()=>propertySaves++;
+    const dispatch=target=>{const event={target,key:'Enter',ctrlKey:true,defaultPrevented:false,preventDefault(){this.defaultPrevented=true;}};for(const handler of b.events.keydown)handler(event);return event;};
+    host.hidden=true;assert.equal(dispatch(b.fields.task_properties_editor).defaultPrevented,false);
+    host.hidden=false;host.inert=true;assert.equal(dispatch(b.fields.task_properties_editor).defaultPrevented,false);
+    host.inert=false;assert.equal(dispatch(b.fields.inspector_task_id).defaultPrevented,false);
+    assert.equal(dispatch(unrelated).defaultPrevented,false);assert.equal(propertySaves,0);
+    assert.equal(dispatch(b.fields.task_properties_editor).defaultPrevented,true);assert.equal(propertySaves,1);
+});
+
+test('Dedicated same-task metadata refresh preserves pending captured writes and newer dirty review edits',async()=>{
+    const held=deferred();let hold=true;
+    const b=fixture(r=>r.url==='/rating-entries'&&r.body.rating_definition_id==='definition-one'&&hold?held.promise:undefined,'details');
+    await b.load();b.field('blockers').value='Captured text';b.input(1).value='4';
+    const saving=b.review.taskPostmortem.save();await tick();const first=b.input(0);
+    await b.context.loadTaskDetailTree(true);assert.equal(b.input(0),first);
+    b.field('blockers').value='New text';b.input(1).value='5';
+    hold=false;held.resolve({id:'captured-rating'});await saving;
+    assert.deepEqual(b.writes.filter(r=>r.url==='/rating-entries').map(r=>r.body.score),[3,4]);
+    assert.equal(b.field('blockers').value,'New text');assert.equal(b.input(1).value,'5');
+    assert.equal(b.run("hasSettingsDrafts(['details_task_postmortem','details_task_postmortem_ratings'])"),true);
+});
+
+test('Dedicated selection A to B to A rejects stale same-ID statistics and retains the latest review and evidence',async()=>{
+    const held=deferred();let hold=true;
+    const b=fixture(r=>r.url===`/api/tasks/${taskA}/stats`&&hold?held.promise:undefined,'details');
+    const tracked=element('span',{id:'detail_task_tracked'});b.context.document.body.appendChild(tracked);
+    const old=b.context.loadTaskDetailTree();await tick();
+    b.context.resetInlineTaskDetail(taskB);await b.context.loadTaskDetailTree();await tick();
+    b.context.resetInlineTaskDetail(taskA);hold=false;await b.context.loadTaskDetailTree();await tick();
+    b.field('blockers').value='Latest A draft';
+    held.resolve({...statistics(),logged_hours:99,task_review:{id:'stale',blockers:'Stale A review',difficulty:9}});await old;await tick();
+    assert.equal(tracked.innerText,'0h');assert.equal(b.field('blockers').value,'Latest A draft');assert.equal(b.field('difficulty').value,3);
+    assert.equal(b.review.taskPostmortem.taskId,taskA);assert.equal(b.review.taskPostmortem.ready,true);assert.equal(b.writes.length,0);
+});
+
+test('Dedicated begin disables Save before a failed same-task tree refresh without losing dirty input',async()=>{
+    let fail=false;const b=fixture(r=>fail&&r.url.endsWith('/tree')?{status:503,json:{detail:'Tree unavailable'}}:undefined,'details');
+    await b.load();b.field('blockers').value='Keep during failed read';assert.equal(b.field('save').disabled,false);
+    fail=true;const loading=b.context.loadTaskDetailTree(true);assert.equal(b.field('save').disabled,true);
+    await loading;assert.equal(b.field('blockers').value,'Keep during failed read');assert.equal(b.field('save').disabled,true);
+    await b.review.taskPostmortem.save();assert.equal(b.writes.length,0);
+    fail=false;await b.load();assert.equal(b.field('blockers').value,'Keep during failed read');assert.equal(b.field('save').disabled,false);
+});

@@ -6,6 +6,8 @@ let currentTreeData = null;
 let initializedTaskDetailId = null;
 let taskDetailRequest = 0;
 let taskDetailOwner = 0;
+let taskDetailSelection = 0;
+let taskDetailMutationPending = false;
 let taskPropertiesPending = false;
 let taskDetailReadAvailable = false;
 let subtaskEditorOwner = 0;
@@ -27,6 +29,12 @@ document.addEventListener('click', event => {
     const link = event.target?.closest?.('a[href]');
     if (!link || event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
         link.target === '_blank' || link.hasAttribute?.('download') || link.getAttribute('href')?.startsWith('#')) return;
+    if (isInlineTaskDetail() && link.getAttribute('href')?.startsWith('/task-inspector/') &&
+        document.getElementById('outline_inspector')?.contains(link) && link.id !== 'outline_details_link') {
+        event.preventDefault();
+        selectOutlineTask(decodeURIComponent(link.getAttribute('href').split('/').at(-1)));
+        return;
+    }
     // The Settings navbar already owns this confirmation through its inline shared handler.
     if (link.getAttribute('onclick')?.includes('followSettingsLink')) return;
     if (!confirmTaskDetailDeparture()) {
@@ -40,7 +48,8 @@ function confirmTaskDetailDeparture() {
         window.confirm('Leave this page and discard unsaved changes?');
 }
 
-function navigateToTaskDetail(taskId) {
+function navigateToTaskDetail(taskId, dedicatedPage = false) {
+    if (isInlineTaskDetail() && !dedicatedPage) return selectOutlineTask(taskId);
     if (confirmTaskDetailDeparture()) window.location.href = `/task-inspector/${taskId}`;
 }
 
@@ -99,11 +108,67 @@ function subtaskFeedback(message) {
 
 document.addEventListener('DOMContentLoaded', () => {
     taskKnowledge.load();
-    loadTaskDetailTree();
-    setupModalKeyboardListeners();
+    if (!isInlineTaskDetail()) {
+        loadTaskDetailTree();
+        setupModalKeyboardListeners();
+    }
     setupSubtaskModalKeyboard();
     setupInspectorKeyboardShortcuts();
 });
+
+function isInlineTaskDetail() {
+    return Boolean(document.getElementById('outline_inspector'));
+}
+
+function inspectorCompletionPromptOpen() {
+    const modal = document.getElementById('completion_policy_modal');
+    return Boolean(modal && !modal.classList.contains('hidden'));
+}
+
+function canChangeInlineTaskDetail() {
+    if (taskPropertiesPending || subtaskSavePending || taskDetailMutationPending || inspectorCompletionPromptOpen()) {
+        taskPropertiesFeedback('Wait for the current task write and completion prompt before changing or closing the inspector.');
+        return false;
+    }
+    return typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts(['task_properties_editor', 'subtask_modal']) ||
+        window.confirm('Discard unsaved task edits and change the inspector selection?');
+}
+
+function resetInlineTaskDetail(taskId = '') {
+    // Advance ownership before issuing reads, including A → B → A with overlapping requests.
+    taskDetailSelection++;
+    taskDetailOwner++;
+    taskDetailRequest++;
+    initializedTaskDetailId = null;
+    currentTreeData = null;
+    detailRecordedSessions = [];
+    taskDetailReadAvailable = false;
+    document.getElementById('inspector_task_id').value = taskId;
+    const editor = document.getElementById('task_properties_editor');
+    if (editor) {
+        editor.disabled = true;
+        for (const field of editor.querySelectorAll('input, select, textarea')) {
+            if (field.type === 'checkbox') field.checked = false; else field.value = '';
+        }
+        if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_properties_editor');
+    }
+    const modal = document.getElementById('subtask_modal');
+    if (modal && !modal.classList.contains('hidden')) closeSubtaskModal();
+    for (const id of ['task_breadcrumbs', 'parent_task_banner', 'subtasks_tree_container', 'detail_task_sessions_list']) {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '';
+    }
+    for (const id of ['detail_task_est', 'detail_task_tracked', 'detail_task_progress', 'detail_task_scheduled',
+        'detail_task_remaining', 'detail_task_unscheduled', 'detail_stat_logged', 'detail_stat_scheduled',
+        'detail_stat_remaining', 'detail_stat_progress', 'detail_stats_total_badge', 'detail_task_status_badge', 'detail_task_priority_badge']) {
+        const el = document.getElementById(id);
+        if (el) el.innerText = 'Loading…';
+    }
+    for (const id of ['detail_subtask_completion_container', 'subtasks_completion_bar_wrapper']) document.getElementById(id)?.classList.add('hidden');
+    const title = document.getElementById('detail_task_title_header');
+    if (title) title.innerText = taskId ? 'Loading task…' : 'Select a task';
+    taskPropertiesFeedback(taskId ? 'Loading task properties before editing...' : 'Select a task from the outline.');
+}
 
 function toggleInspectorRecurrenceRule(isRecurring) {
     const container = document.getElementById('inspector_recurrence_rule_container');
@@ -116,6 +181,7 @@ function toggleInspectorRecurrenceRule(isRecurring) {
 }
 
 function navigateBack() {
+    if (isInlineTaskDetail()) return closeOutlineInspector();
     if (!confirmTaskDetailDeparture()) return;
     if (document.referrer) {
         try {
@@ -146,6 +212,11 @@ function setupInspectorKeyboardShortcuts() {
         if (isAnyModalOpen || e.defaultPrevented) return;
         const reviewRoot = document.getElementById('details_task_postmortem');
         if (reviewRoot?.contains(e.target)) return;
+        if (isInlineTaskDetail()) {
+            const host = document.getElementById('outline_inspector');
+            if (host.hidden || host.inert || !host.contains(e.target)) return;
+            if (e.ctrlKey && e.key === 'Enter' && !document.getElementById('task_properties_editor')?.contains(e.target)) return;
+        }
 
         if (e.ctrlKey && e.key === 'Enter') {
             e.preventDefault();
@@ -159,6 +230,7 @@ function setupInspectorKeyboardShortcuts() {
 
 async function loadTaskDetailTree(preserveEdits = false) {
     const generation = taskKnowledge.state().generation;
+    const selection = taskDetailSelection;
     const request = ++taskDetailRequest;
     const taskIdEl = document.getElementById('inspector_task_id');
     if (!taskIdEl || !taskIdEl.value) return;
@@ -168,7 +240,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
     if (postmortemRoot && typeof createTaskPostmortemEditor === 'function') {
         createTaskPostmortemEditor(postmortemRoot).begin(taskId);
     }
-    const isCurrent = () => request === taskDetailRequest && generation === taskKnowledge.state().generation &&
+    const isCurrent = () => selection === taskDetailSelection && request === taskDetailRequest && generation === taskKnowledge.state().generation &&
         taskIdEl.value === taskId;
     if (initializedTaskDetailId !== taskId) {
         const editor = document.getElementById('task_properties_editor');
@@ -249,7 +321,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
         if (remainingContainer) remainingContainer.classList.remove('hidden');
         if (estBadge) estBadge.innerText = formatMinutesToDuration(tree.estimated_minutes);
 
-        if (!preserveEdits || initializedTaskDetailId !== taskId) initializeTaskProperties(tree, taskId);
+        if (initializedTaskDetailId !== taskId || (!preserveEdits && !isInlineTaskDetail())) initializeTaskProperties(tree, taskId);
 
         renderSubtasksTreeNodes(tree.subtasks, document.getElementById('subtasks_tree_container'));
         const estimateLabel = document.getElementById('detail_task_est_label');
@@ -372,7 +444,7 @@ async function loadTaskDetailTree(preserveEdits = false) {
         taskDetailReadAvailable = false;
         taskKnowledge.viewResult("task-detail", false);
         taskPropertiesFeedback(initializedTaskDetailId === taskId
-            ? 'Refresh unavailable. Last-known data and unsaved edits retained. Retry refresh reads only.'
+            ? 'Refresh unavailable or task deleted. Last-known data and unsaved edits retained for copying or deliberate discard. Retry refresh reads only.'
             : 'Task unavailable or deleted. Use Retry refresh to enable editing.');
         console.error("Failed to load task tree:", e);
         return false;
@@ -438,7 +510,7 @@ function initializeTaskProperties(tree, taskId) {
 }
 
 function cancelInspectorTaskProperties() {
-    if (taskPropertiesPending || !currentTreeData || currentTreeData.id !== initializedTaskDetailId) return;
+    if (taskPropertiesPending || subtaskSavePending || taskDetailMutationPending || inspectorCompletionPromptOpen() || !currentTreeData || currentTreeData.id !== initializedTaskDetailId) return;
     initializeTaskProperties(currentTreeData, initializedTaskDetailId);
     taskPropertiesFeedback('Unsaved property edits discarded.');
 }
@@ -480,7 +552,7 @@ async function saveInspectorTaskProperties(event) {
         event.stopPropagation();
     }
 
-    if (taskPropertiesPending) return;
+    if (taskPropertiesPending || taskDetailMutationPending || (isInlineTaskDetail() && inspectorCompletionPromptOpen())) return;
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
     if (initializedTaskDetailId !== taskId) {
@@ -561,14 +633,30 @@ async function saveInspectorTaskProperties(event) {
     }
 }
 
+function setTaskDetailMutationPending(pending) {
+    taskDetailMutationPending = pending;
+    const cancel = document.getElementById('inspector_cancel_btn');
+    if (cancel) cancel.disabled = pending;
+}
+
 async function deleteMainInspectorTask() {
     const taskId = document.getElementById('inspector_task_id').value;
-    if (!taskId) return;
-
+    if (!taskId || taskPropertiesPending || subtaskSavePending || taskDetailMutationPending) return;
+    const owner = taskDetailOwner;
+    const isCurrent = () => owner === taskDetailOwner && document.getElementById('inspector_task_id').value === taskId;
     const confirmed = await showCustomConfirm("Delete Task", "Are you sure you want to delete this task slot and all its subtasks?");
-    if (confirmed) {
+    if (!confirmed || !isCurrent() || taskPropertiesPending || subtaskSavePending || taskDetailMutationPending) return;
+    setTaskDetailMutationPending(true);
+    try {
         await api.delete(`/api/tasks/${taskId}`);
-        navigateBack();
+        if (isInlineTaskDetail()) {
+            if (isCurrent()) closeOutlineInspector(true);
+            await taskKnowledge.changed();
+        } else if (isCurrent()) navigateBack();
+    } catch (error) {
+        if (isCurrent()) taskPropertiesFeedback('Delete not confirmed. Task and edits retained. Retry refresh before trying again.');
+    } finally {
+        setTaskDetailMutationPending(false);
     }
 }
 
@@ -642,7 +730,7 @@ function findNodeInTree(node, id) {
 }
 
 function openSubtaskCreationModal(parentId = null) {
-    if (subtaskSavePending) return;
+    if (subtaskSavePending || (isInlineTaskDetail() && (!currentTreeData || inspectorCompletionPromptOpen()))) return;
     subtaskReturnFocus = document.activeElement;
     subtaskEditorOwner++;
     subtaskPersistedReceipt = null;
@@ -792,19 +880,31 @@ async function saveSubtaskFromModal() {
 }
 
 async function toggleSubtaskCompletion(subtaskId, currentStatus) {
-    const stLower = (currentStatus || '').toLowerCase();
-    const newStatus = (stLower === 'done' || stLower === 'completed') ? 'To Do' : 'Done';
-    const updatedTask = await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
-    if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
-    await taskKnowledge.changed();
+    if (taskPropertiesPending || subtaskSavePending || taskDetailMutationPending) return;
+    setTaskDetailMutationPending(true);
+    try {
+        const stLower = (currentStatus || '').toLowerCase();
+        const newStatus = (stLower === 'done' || stLower === 'completed') ? 'To Do' : 'Done';
+        const updatedTask = await api.put(`/api/tasks/${subtaskId}`, { status: newStatus });
+        if (typeof handleCompletionPolicy === 'function') await handleCompletionPolicy(updatedTask);
+        await taskKnowledge.changed();
+    } catch (error) {
+        taskPropertiesFeedback('Subtask update or follow-up unavailable. Retry refresh before retrying a write.');
+    } finally { setTaskDetailMutationPending(false); }
 }
 
 async function deleteSubtaskNode(id) {
+    if (taskPropertiesPending || subtaskSavePending || taskDetailMutationPending) return;
+    const owner = taskDetailOwner;
     const confirmed = await showCustomConfirm("Delete Subtask", "Are you sure you want to delete this subtask and all its nested children?");
-    if (confirmed) {
+    if (!confirmed || owner !== taskDetailOwner || taskPropertiesPending || subtaskSavePending || taskDetailMutationPending) return;
+    setTaskDetailMutationPending(true);
+    try {
         await api.delete(`/api/tasks/${id}`);
         await taskKnowledge.changed();
-    }
+    } catch (error) {
+        taskPropertiesFeedback('Subtask delete or follow-up unavailable. Retry refresh before retrying a write.');
+    } finally { setTaskDetailMutationPending(false); }
 }
 
 function setupSubtaskModalKeyboard() {

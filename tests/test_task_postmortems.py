@@ -4,6 +4,7 @@ These shipped domain contracts are GREEN characterizations, not invented server 
 """
 
 from datetime import datetime, timedelta
+from html.parser import HTMLParser
 
 import pytest
 
@@ -195,3 +196,71 @@ def test_task_postmortem_revision_renders_independent_shared_editor(client):
     assert html.count('id="revision_task_postmortem"') == 1
     assert 'id="details_task_postmortem"' not in html
     assert html.index("/static/js/task_postmortem.js") < html.index("/static/js/task_inspector.js")
+
+
+def test_outline_has_no_review_while_dedicated_panel_and_review_are_siblings(client):
+    class Composition(HTMLParser):
+        def __init__(self, html):
+            super().__init__()
+            self.stack = []
+            self.parents = {}
+            self.feed(html)
+
+        def handle_starttag(self, tag, attrs):
+            marker = dict(attrs).get("id")
+            if marker:
+                self.parents[marker] = tuple(self.stack)
+            if tag not in {
+                "area",
+                "base",
+                "br",
+                "col",
+                "embed",
+                "hr",
+                "img",
+                "input",
+                "link",
+                "meta",
+                "param",
+                "source",
+                "track",
+                "wbr",
+            }:
+                self.stack.append((tag, marker))
+
+        def handle_endtag(self, tag):
+            for index in range(len(self.stack) - 1, -1, -1):
+                if self.stack[index][0] == tag:
+                    del self.stack[index:]
+                    break
+
+    task_response = client.post("/api/tasks", json={"title": "Review composition"})
+    assert task_response.status_code == 201
+    task_id = task_response.json()["id"]
+    outline = client.get("/tasks")
+    assert outline.status_code == 200
+    assert 'id="details_task_postmortem"' not in outline.text
+    assert "/static/js/task_postmortem.js" not in outline.text
+    for route in ("task-inspector", "tasks-detail"):
+        response = client.get(f"/{route}/{task_id}")
+        assert response.status_code == 200
+        html = response.text
+        composition = Composition(html)
+        assert composition.parents["details_task_postmortem"][-1] == ("main", None)
+        assert ("main", None) in composition.parents["task_properties_editor"]
+        assert ("main", None) not in composition.parents["subtask_modal"]
+        for marker in ("details_task_postmortem", "task_properties_editor", "subtask_modal"):
+            assert html.count(f'id="{marker}"') == 1
+        assert (
+            html.index('id="task_properties_editor"')
+            < html.index('id="details_task_postmortem"')
+            < html.index("</main>")
+        )
+        assert html.index("</main>") < html.index('id="subtask_modal"')
+        for script in ("ratings_config.js", "task_postmortem.js", "subtasks.js"):
+            assert html.count(f"/static/js/{script}") == 1
+        assert (
+            html.index("/static/js/ratings_config.js")
+            < html.index("/static/js/task_postmortem.js")
+            < html.index("/static/js/subtasks.js")
+        )

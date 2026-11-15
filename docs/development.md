@@ -671,3 +671,23 @@ acceptance remain open. Candidate software count13/12 is conditional on parent i
 integration4e75ef02 remains12/13. Fresh closure metadata reviews and parent disposition are pending.
 This does not complete whole25, waive acceptance or authorize dev merge/push/PR. No new tests,
 runtime, provider, personal database operations or cleanup accompany this metadata preparation.
+
+
+## Outline and retained inspector: bounded delivery checkpoint (2026-11-13)
+
+Tasks now supports optional Outline with per-browser cross-reload selection, filtered ancestor
+context and a retained inline inspector using the dedicated details editor and existing task/session
+contracts. Dedicated task details remain reachable. Controller guards preserve dirty drafts and
+selection across metadata refresh, stale reads and pending writes; explicit Save/Cancel, shared
+history/accounting, completion prompts and Grouped/Kanban navigation reuse existing handlers.
+See [ticket07 current evidence](../.scratch/ui-redesign/ticket-07-evidence.md#bounded-software-completion-candidate-2026-11-13).
+
+Combined freeze07 checks:564Python/214warnings,485actual canonical Node cases,127syntax;
+scoped lint/format/whitespace pass, full Ruff18 and stderr warning byte-match incoming564e25a.
+Native01/native02 remain FAILED, including native02's69 returned functional assertions/13actual
+ACKs. Held03 separately passes7focused A→B→A transport checks/3TaskACKs/0UIwrites with exact
+callback-completion-before-unroute ordering and full storage/FTS/actual−15 shutdown. This narrow
+proof does not rerun69, certify new Save/Delete latches, establish native dirty metadata refresh or
+OS idle, or replace physical accessibility/contrast/other-engine/shared-workflow/human/whole25
+acceptance. Bounded completion metadata remains subject to fresh Standards+Spec review and
+parent disposition; integration564e25a remains13completed/12open until the candidate is integrated.
