@@ -6,6 +6,7 @@ let selectedInspectedTaskId = null;
 let initializedTaskReviewId = null;
 let taskInspectorRequest = 0;
 let activeTaskInspectorSearchIdx = -1;
+let taskInspectorSearchIntent = false;
 
 function taskInspectorReviewEditor() {
     return typeof createTaskPostmortemEditor === 'function'
@@ -24,10 +25,15 @@ async function refreshTaskInspectorKnowledge() {
 
 function refreshTaskInspectorLabels() {
     renderTaskQuickChipsBar();
+    const search = document.getElementById('task_inspector_search');
+    const tab = document.getElementById('rev_tab_task_inspector');
     const dropdown = document.getElementById('task_inspector_dropdown');
-    if (dropdown && !dropdown.classList.contains('hidden')) {
-        const search = document.getElementById('task_inspector_search');
-        renderTaskInspectorSuggestions(search ? search.value : '');
+    const visible = dropdown && !dropdown.classList.contains('hidden');
+    if (search && (!tab || !tab.classList.contains('hidden')) &&
+        (visible || (taskInspectorSearchIntent && document.activeElement === search))) {
+        renderTaskInspectorSuggestions(search.value, false);
+    } else {
+        taskInspectorSearchIntent = false;
     }
 }
 
@@ -56,6 +62,15 @@ function setupTaskInspectorSearchListeners() {
     const searchInput = document.getElementById('task_inspector_search');
     if (!searchInput) return;
 
+    // Blur cancels pending refreshes without hiding a suggestion before its click runs.
+    searchInput.addEventListener('blur', () => { taskInspectorSearchIntent = false; });
+    const tab = document.getElementById('rev_tab_task_inspector');
+    if (tab && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(() => {
+            if (tab.classList.contains('hidden')) dismissTaskInspectorSuggestions();
+        }).observe(tab, {attributes: true, attributeFilter: ['class']});
+    }
+
     searchInput.addEventListener('keydown', (e) => {
         const dropdown = document.getElementById('task_inspector_dropdown');
         const items = dropdown ? dropdown.querySelectorAll('.task-inspect-item') : [];
@@ -80,7 +95,7 @@ function setupTaskInspectorSearchListeners() {
                 items[0].click();
             }
         } else if (e.key === 'Escape') {
-            if (dropdown) dropdown.classList.add('hidden');
+            dismissTaskInspectorSuggestions();
         }
     });
 
@@ -88,12 +103,20 @@ function setupTaskInspectorSearchListeners() {
         const combobox = document.getElementById('task_inspector_combobox');
         const dropdown = document.getElementById('task_inspector_dropdown');
         if (combobox && dropdown && !combobox.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.classList.add('hidden');
+            dismissTaskInspectorSuggestions();
         }
     });
 }
 
-function renderTaskInspectorSuggestions(query) {
+function dismissTaskInspectorSuggestions() {
+    taskInspectorSearchIntent = false;
+    activeTaskInspectorSearchIdx = -1;
+    const dropdown = document.getElementById('task_inspector_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+}
+
+function renderTaskInspectorSuggestions(query, requestIntent = true) {
+    if (requestIntent) taskInspectorSearchIntent = true;
     const dropdown = document.getElementById('task_inspector_dropdown');
     if (!dropdown) return;
 
@@ -141,14 +164,13 @@ function selectTaskInspectorById(taskId) {
     taskInspectorReviewEditor()?.bind(taskId);
     const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');
-    const dropdown = document.getElementById('task_inspector_dropdown');
 
     selectedInspectedTaskId = taskId;
 
     if (searchInput && task) {
         searchInput.value = task.title;
     }
-    if (dropdown) dropdown.classList.add('hidden');
+    dismissTaskInspectorSuggestions();
 
     loadTaskInspectorStats(taskId, initializedTaskReviewId === taskId);
 }
