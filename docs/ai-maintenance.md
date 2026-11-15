@@ -28,6 +28,15 @@ the settings hash captured at proposal time, so manual edits produce a conflict 
 overwritten. Structured scheduling fields remain authoritative for enforced breaks, hours, allowed
 days, daily caps, and scheduling windows.
 
+Instruction-card writes have their own recovery boundary. Once Save or Dismiss receives an
+acknowledgment, later badge/Settings refresh failures remain read failures; the card keeps the
+accepted or dismissed result and retries only reads. When a write response is uncertain or
+conflicted, the card reads the proposal by ID before offering another action. Save and Dismiss
+return only after the server confirms the proposal is still pending; a conflict is terminal and
+offers Settings access plus read-only reconciliation. While a mutation or proposal-status read is
+pending, the card remains a conversation-change guard. Settings synchronization still checkpoints
+only the custom-instructions field and restores its unsaved local draft.
+
 ## Privacy and providers
 
 - Never log prompts, task/session content, tool arguments/results, provider responses, API keys, or
