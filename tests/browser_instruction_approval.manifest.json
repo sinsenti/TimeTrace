@@ -1,0 +1,47 @@
+{
+  "format": 1,
+  "origin": "127.0.0.1-loopback-only",
+  "bootstrap_api_routes": [
+    {"method": "GET", "path": "/health"},
+    {"method": "GET", "path": "/api/timer/status"},
+    {"method": "POST", "path": "/api/ai/conversations"},
+    {"method": "GET", "path": "/api/ai/conversations/{conversation_id}"}
+  ],
+  "page_paths": ["/settings/ai"],
+  "static_paths": [
+    "/static/css/ai.css",
+    "/static/css/appearance.css",
+    "/static/css/ai_settings_page.css",
+    "/static/css/browser_preferences.css",
+    "/static/css/timer.css",
+    "/static/js/api_client.js",
+    "/static/js/task_knowledge.js",
+    "/static/js/ai_drafts.js",
+    "/static/js/ai_insights.js",
+    "/static/js/settings.js",
+    "/static/js/ai_assistant.js",
+    "/static/js/utils.js",
+    "/static/js/ai_settings_page.js",
+    "/static/js/browser_preferences.js",
+    "/static/js/timer_control.js"
+  ],
+  "browser_api_routes": [
+    {"method": "GET", "path": "/api/ai/settings"},
+    {"method": "GET", "path": "/api/timer/status"},
+    {"method": "GET", "path": "/api/ai/status"},
+    {"method": "GET", "path": "/api/ai/providers"},
+    {"method": "GET", "path": "/api/ai/providers/catalog"},
+    {"method": "GET", "path": "/api/ai/conversations"},
+    {"method": "GET", "path": "/api/ai/conversations/{conversation_id}"},
+    {"method": "GET", "path": "/api/ai/instruction-proposals/{proposal_id}"},
+    {"method": "POST", "path": "/api/ai/instruction-proposals/{proposal_id}/accept"},
+    {"method": "POST", "path": "/api/ai/instruction-proposals/{proposal_id}/reject"},
+    {"method": "GET", "path": "/api/ai/drafts/batches?limit=50"},
+    {"method": "GET", "path": "/api/ai/drafts/batches/{batch_id}"},
+    {"method": "POST", "path": "/api/ai/drafts/batches/{batch_id}/accept"},
+    {"method": "POST", "path": "/api/ai/drafts/batches/{batch_id}/undo"},
+    {"method": "POST", "path": "/api/ai/drafts/batches/{batch_id}/reapply"},
+    {"method": "GET", "path": "/api/tasks?status=all"}
+  ],
+  "blocked": ["all non-loopback origins", "all provider inference routes", "all unlisted browser/bootstrap API methods and paths", "all unlisted pages and static paths"]
+}
