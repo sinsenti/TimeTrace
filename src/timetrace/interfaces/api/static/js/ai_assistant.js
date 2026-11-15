@@ -358,6 +358,8 @@ async function aiRenderDraftBatchById(batchId, generation = aiConversationGenera
 let aiHistoryReadGeneration = 0;
 let aiHistoryInteractionGeneration = 0;
 let aiHistoryUndoPending = false;
+let aiHistoryUndoNeedsReview = false;
+let aiHistoryUndoReviewReadBarrier = 0;
 let aiHistoryHasLoaded = false;
 const aiHistoryCardHomes = new Map();
 
@@ -398,7 +400,7 @@ function aiRestoreHistoryCards() {
 
 async function aiLoadAssistantHistory() {
     const list = document.getElementById('ai_batches_list');
-    if (!list) return;
+    if (!list) return false;
     const request = ++aiHistoryReadGeneration;
     const conversation = aiConversationGeneration;
     const interaction = aiHistoryInteractionGeneration;
@@ -415,17 +417,29 @@ async function aiLoadAssistantHistory() {
                 aiHistoryCardHomes.set(batch.id, {marker, generation: conversation});
                 list.appendChild(existing);
             } else if (!existing) {
-                list.appendChild(aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged}));
+                const card = aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged});
+                if (typeof aiDraftActionResults !== 'undefined' && aiDraftActionResults.has(batch.id)) {
+                    aiRenderDraftActionResults(card, aiDraftActionResults.get(batch.id));
+                }
+                list.appendChild(card);
             } else if (interaction === aiHistoryInteractionGeneration && !aiRootHasDrafts(existing) && !existing.contains(document.activeElement)) {
-                const selection = new Map(Array.from(existing.querySelectorAll('.ai-item-checkbox')).map(input => [input.dataset.itemId, input.checked]));
-                const replacement = aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged});
-                replacement.querySelectorAll('.ai-item-checkbox').forEach(input => {
-                    if (selection.has(input.dataset.itemId)) input.checked = selection.get(input.dataset.itemId);
-                });
+                const replacement = typeof aiReconcileDraftBatchNode === 'function'
+                    ? aiReconcileDraftBatchNode(existing, batch)
+                    : aiBuildDraftBatchNode(batch, {onChanged: aiAssistantCardChanged});
+                if (typeof aiDraftActionResults !== 'undefined' && aiDraftActionResults.has(batch.id)) {
+                    aiRenderDraftActionResults(replacement, aiDraftActionResults.get(batch.id));
+                }
                 existing.replaceWith(replacement);
             }
         }
         aiHistoryHasLoaded = true;
+        if (aiHistoryUndoNeedsReview && request > aiHistoryUndoReviewReadBarrier) {
+            aiHistoryUndoNeedsReview = false;
+            aiHistoryUndoReviewReadBarrier = 0;
+            aiHistoryUndoPending = false;
+            const undoButton = document.getElementById('ai_undo_all_btn');
+            if (undoButton) undoButton.disabled = false;
+        }
         aiNotice(details.length ? '' : 'No proposals or action history yet.');
         return true;
     } catch (_err) {
@@ -436,35 +450,94 @@ async function aiLoadAssistantHistory() {
 
 async function aiUndoAssistantHistory() {
     if (aiHistoryUndoPending) return;
+    if (typeof aiPendingDraftActions !== 'undefined' && aiPendingDraftActions.size > 0) {
+        aiNotice('Finish the active proposal action before Undo all.');
+        return;
+    }
     if (aiThreadHasDrafts() || aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
         aiNotice('Save or cancel proposal edits before Undo all.');
         return;
     }
+    // A read already in flight may only describe the pre-Undo state. Keep it stale even if the
+    // mutation transport later becomes uncertain and that read resolves after its failure.
+    ++aiHistoryReadGeneration;
     aiHistoryUndoPending = true;
     const button = document.getElementById('ai_undo_all_btn');
     if (button) button.disabled = true;
+    let results;
     try {
-        await api.post('/api/ai/drafts/undo', {});
+        results = await api.post('/api/ai/drafts/undo', {});
     } catch (_err) {
         aiNotice('Could not confirm Undo all. Refresh history to review before trying again.');
-        aiHistoryUndoPending = false;
-        if (button) button.disabled = false;
+        // Invalidate reads that started while the mutation was in flight. They may still carry
+        // the pre-Undo state even though they began after the first generation barrier.
+        ++aiHistoryReadGeneration;
+        aiHistoryUndoNeedsReview = true;
+        aiHistoryUndoReviewReadBarrier = aiHistoryReadGeneration;
         return;
     }
-    // The write is acknowledged. Every remaining operation is an independent read, never a replay.
-    aiNotice('Undo all saved. Refreshing views…');
-    try {
-        await taskKnowledge.changed();
-        if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
-        refreshAiStatusBadge();
-        const refreshed = await aiLoadAssistantHistory();
-        if (refreshed === false) aiNotice('Undo all saved; history could not refresh. Refresh retries reads only.');
-    } catch (_err) {
-        aiNotice('Undo all saved; views could not refresh. Refresh history to retry reads only.');
-    } finally {
+    // Ignore any history read started while the mutation request was unresolved. The display
+    // refresh below is the first read that can review an acknowledged Undo-all.
+    ++aiHistoryReadGeneration;
+    aiRenderUndoAllResults(results);
+    aiNotice('Undo all saved. Refreshing views; Retry reads only.');
+    const reads = [];
+    const startRead = read => reads.push(Promise.resolve().then(read));
+    if (typeof taskKnowledge !== 'undefined' && typeof taskKnowledge.changed === 'function') startRead(() => taskKnowledge.changed());
+    if (typeof loadAiDraftOverlay === 'function') startRead(() => loadAiDraftOverlay());
+    if (typeof refreshAiStatusBadge === 'function') startRead(() => refreshAiStatusBadge());
+    const historyReadIndex = reads.length;
+    startRead(() => aiLoadAssistantHistory());
+    const settled = await Promise.allSettled(reads);
+    const historyRead = settled[historyReadIndex];
+    if (historyRead.status !== 'fulfilled' || historyRead.value !== true) {
+        aiHistoryUndoNeedsReview = true;
+        aiHistoryUndoReviewReadBarrier = aiHistoryReadGeneration;
+        aiHistoryHasLoaded = false;
+    }
+    if (settled.some(entry => entry.status === 'fulfilled' && entry.value === false)) {
+        aiNotice('Undo all saved; history could not refresh. Refresh retries reads only.');
+    } else if (settled.some(entry => entry.status === 'rejected')) {
+        aiNotice('Undo all saved; some views could not refresh. Retry reads only.');
+    }
+    if (!aiHistoryUndoNeedsReview) {
         aiHistoryUndoPending = false;
         if (button) button.disabled = false;
     }
+}
+
+function aiRenderUndoAllResults(results) {
+    const list = document.getElementById('ai_batches_list');
+    if (!list || !Array.isArray(results)) return;
+    let summary = list.querySelector('.ai-undo-all-results');
+    if (!summary) {
+        summary = document.createElement('div');
+        summary.className = 'ai-undo-all-results ai-draft-action-results';
+        summary.setAttribute('role', 'status');
+        list.insertBefore(summary, list.firstChild);
+    } else {
+        summary.textContent = '';
+    }
+    results.forEach(batch => {
+        (batch.items || []).forEach(item => {
+            const row = document.createElement('div');
+            row.className = `ai-draft-action-result ai-draft-action-result-${item.status || 'unknown'}`;
+            const label = document.createElement('strong');
+            label.textContent = `${item.status || 'unknown'} · ${item.item_id}`;
+            row.appendChild(label);
+            if (item.error) {
+                const error = document.createElement('span');
+                error.textContent = item.error;
+                row.appendChild(error);
+            }
+            if (item.applied_entity_id) {
+                const identity = document.createElement('span');
+                identity.textContent = `Saved item ID: ${item.applied_entity_id}`;
+                row.appendChild(identity);
+            }
+            summary.appendChild(row);
+        });
+    });
 }
 
 function aiInstructionTextBlock(label, value, className = 'ai-instruction-proposal-text') {
@@ -1377,6 +1450,10 @@ function aiSetupDrawer() {
 
     const batchesRefresh = document.getElementById('ai_batches_refresh_btn');
     if (batchesRefresh) batchesRefresh.addEventListener('click', () => {
+        if (aiHistoryUndoPending && !aiHistoryUndoNeedsReview) {
+            aiNotice('Undo all is still finishing; wait for its history review before refreshing again.');
+            return;
+        }
         if (aiRootHasDrafts(document.getElementById('ai_batches_list'))) {
             aiNotice('Save or cancel proposal edits before refreshing history.');
             return;

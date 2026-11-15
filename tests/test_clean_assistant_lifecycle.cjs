@@ -132,18 +132,189 @@ test('History Refresh retains the live focused card during a successful read', a
 test('Undo-all acknowledgment survives history read failure and Refresh retries only reads', async () => {
     let failHistory = true;
     const b = browser(url => {
-        if (url === '/api/ai/drafts/undo') return response({});
+        if (url === '/api/ai/drafts/undo') return response([{batch_id: 'batch', items: [
+            {item_id: 'undone-item', status: 'undone'},
+            {item_id: 'conflict-item', status: 'conflict', error: 'The task changed after approval.'}
+        ]}]);
         if (url === '/api/tasks?status=all') return response([]);
         if (url === '/api/ai/drafts/batches?limit=50') return failHistory ? Response.json({detail: 'Synthetic read failure'}, {status: 503}) : response([]);
         return normal(url);
     });
     await b.click('ai_undo_all_btn');
     assert.match(b.fields.ai_assistant_notice.textContent, /Undo all saved; history could not refresh/);
+    const results = b.fields.ai_batches_list.children.find(node => node.classList.contains('ai-undo-all-results'));
+    assert.ok(results);
+    assert.match(results.children.map(row => row.children.map(child => child.textContent).join(' ')).join(' '), /conflict-item/);
+    assert.match(results.children.map(row => row.children.map(child => child.textContent).join(' ')).join(' '), /task changed after approval/);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+    await b.click('ai_undo_all_btn');
     assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
     failHistory = false;
     b.click('ai_batches_refresh_btn'); await tick();
     assert.equal(b.fields.ai_assistant_notice.textContent, 'No proposals or action history yet.');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
     assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('Undo all stays single-flight until its acknowledged display reads settle', async () => {
+    const history = held();
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return response([]);
+        if (url === '/api/ai/drafts/batches?limit=50') return history.promise;
+        return normal(url);
+    });
+    const first = b.click('ai_undo_all_btn');
+    await tick();
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+    await b.click('ai_undo_all_btn');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+    history.resolve(response([]));
+    await first;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('uncertain Undo all remains locked until successful history review', async () => {
+    let failReview = true;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return Response.json({detail: 'Synthetic lost response'}, {status: 503});
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            return failReview ? Response.json({detail: 'Synthetic history failure'}, {status: 503}) : response([]);
+        }
+        return normal(url);
+    });
+    await b.click('ai_undo_all_btn');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+    await b.click('ai_undo_all_btn');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+    failReview = false;
+    b.click('ai_batches_refresh_btn'); await tick();
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('a history GET started before uncertain Undo all cannot unlock the required later review', async () => {
+    const staleHistory = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return Response.json({detail: 'Synthetic uncertain Undo'}, {status: 503});
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? staleHistory.promise : response([]);
+        }
+        return normal(url);
+    });
+    const staleRead = b.run('aiLoadAssistantHistory()');
+    await tick();
+    const undoing = b.click('ai_undo_all_btn');
+    await undoing;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+
+    staleHistory.resolve(response([]));
+    await staleRead;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true, 'pre-Undo history cannot clear post-uncertainty review lock');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+
+    await b.run('aiLoadAssistantHistory()');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false, 'a new successful history read clears the review lock');
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('a history GET started during uncertain Undo all cannot repaint the old history afterward', async () => {
+    const undo = held(), inFlightHistory = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return undo.promise;
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? inFlightHistory.promise : response([]);
+        }
+        return normal(url);
+    });
+    const undoing = b.click('ai_undo_all_btn');
+    await tick();
+    const lateRead = b.run('aiLoadAssistantHistory()');
+    await tick();
+    undo.resolve(Response.json({detail: 'Synthetic uncertain Undo'}, {status: 503}));
+    await undoing;
+    assert.match(b.fields.ai_assistant_notice.textContent, /Could not confirm Undo all/);
+    inFlightHistory.resolve(response([]));
+    await lateRead;
+    assert.match(b.fields.ai_assistant_notice.textContent, /Could not confirm Undo all/,
+        'the late history response does not replace the uncertain-write state');
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true);
+
+    assert.equal(await b.run('aiLoadAssistantHistory()'), true);
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('hiding the history panel during acknowledged Undo-all keeps the lock until reopen review', async () => {
+    const acknowledgedRead = held();
+    let historyReads = 0;
+    const b = browser(url => {
+        if (url === '/api/ai/drafts/undo') return response([]);
+        if (url === '/api/ai/drafts/batches?limit=50') {
+            historyReads += 1;
+            return historyReads === 1 ? acknowledgedRead.promise : response([]);
+        }
+        return normal(url);
+    });
+    const undoing = b.click('ai_undo_all_btn');
+    await tick();
+    b.fields.ai_drafts_panel.classList.add('hidden');
+    acknowledgedRead.resolve(response([]));
+    await undoing;
+    assert.equal(b.fields.ai_undo_all_btn.disabled, true, 'a hidden-panel no-op is not a successful history review');
+    assert.equal(b.run('aiHistoryHasLoaded'), false, 'incomplete ACK history read requires reopening to load again');
+
+    b.fields.ai_drafts_panel.classList.remove('hidden');
+    assert.equal(await b.run('aiLoadAssistantHistory()'), true);
+    assert.equal(b.fields.ai_undo_all_btn.disabled, false);
+    assert.equal(b.requests.filter(request => request.options.method === 'POST').length, 1);
+});
+
+test('a pending card action cannot overlap batch-wide Undo all', async () => {
+    const accept = held();
+    const batch = {id: 'batch', status: 'pending', items: [{id: 'item', status: 'pending', entity_type: 'task', op: 'create', proposed: {title: 'Synthetic'}}]};
+    const b = browser((url, options) => {
+        if (url.endsWith('/accept')) return accept.promise;
+        if (url.endsWith('/batches/batch')) return response(batch);
+        if (url.startsWith('/api/')) return response([]);
+        return normal(url);
+    });
+    const card = b.run(`aiBuildDraftBatchNode(${JSON.stringify(batch)})`);
+    b.fields.ai_thread.appendChild(card);
+    const acceptButton = card.querySelectorAll('button').find(button => button.textContent === 'Accept');
+    const accepting = acceptButton.listeners.click[0]();
+    await tick();
+    await b.click('ai_undo_all_btn');
+    assert.equal(b.requests.filter(request => request.url === '/api/ai/drafts/undo').length, 0);
+    accept.resolve(response({items: [{item_id: 'item', status: 'applied'}], completion_policies: []}));
+    await accepting;
+    assert.equal(b.requests.filter(request => request.url.endsWith('/accept')).length, 1);
+});
+
+test('a pending batch-wide Undo all blocks a new card action', async () => {
+    const undo = held();
+    const batch = {id: 'batch', status: 'pending', items: [{id: 'item', status: 'pending', entity_type: 'task', op: 'create', proposed: {title: 'Synthetic'}}]};
+    const b = browser((url, options) => {
+        if (url === '/api/ai/drafts/undo') return undo.promise;
+        if (url.endsWith('/batches/batch')) return response(batch);
+        if (url.startsWith('/api/')) return response([]);
+        return normal(url);
+    });
+    const undoing = b.click('ai_undo_all_btn');
+    await tick();
+    const card = b.run(`aiBuildDraftBatchNode(${JSON.stringify(batch)})`);
+    b.fields.ai_thread.appendChild(card);
+    const acceptButton = card.querySelectorAll('button').find(button => button.textContent === 'Accept');
+    await acceptButton.listeners.click[0]();
+    assert.equal(b.requests.filter(request => request.url.endsWith('/accept')).length, 0);
+    undo.resolve(response([]));
+    await undoing;
+    assert.equal(b.requests.filter(request => request.url === '/api/ai/drafts/undo').length, 1);
 });
 
 test('Acknowledged Delete retains instruction edits typed while the actual DELETE callback is pending', async () => {

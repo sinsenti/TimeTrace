@@ -681,6 +681,41 @@
 .ai-draft-item-flag-stale { color: #fbbf24; }
 .ai-draft-item-flag-error { color: #f87171; }
 
+.ai-draft-action-results,
+.ai-draft-read-status,
+.ai-draft-completion-policies,
+.ai-draft-edit-action-warning {
+    display: grid;
+    gap: 5px;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid #262938;
+    border-radius: 8px;
+    color: #cbd5e1;
+    font-size: 11px;
+}
+.ai-draft-edit-action-warning { color: #fbbf24; }
+
+.ai-draft-action-result,
+.ai-draft-completion-policy,
+.ai-draft-task-options-status {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    overflow-wrap: anywhere;
+}
+.ai-draft-task-options-status { color: #fbbf24; }
+
+.ai-draft-action-result-applied,
+.ai-draft-action-result-undone,
+.ai-draft-action-result-reapplied,
+.ai-draft-action-result-rejected { color: #34d399; }
+.ai-draft-action-result-failed,
+.ai-draft-action-result-conflict,
+.ai-draft-action-result-skipped { color: #f87171; }
+.ai-draft-read-retry { justify-self: start; }
+
 .ai-badge {
     font-size: 9px;
     font-weight: 800;
