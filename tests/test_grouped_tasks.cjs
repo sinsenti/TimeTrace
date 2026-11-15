@@ -9,8 +9,8 @@ function page(respond = async () => []) {
     const elements = new Map();
     for (const id of ['task_view_selector', 'task_view_notice', 'tasks_search', 'kanban_columns_container', 'tasks_heading', 'tasks_workspace']) {
         elements.set(id, {id, value: '', textContent: '', innerHTML: '', className: '', isConnected: true,
-            classList: {add() {}, remove() {}}, setAttribute(name, value) { this[name] = value; },
-            contains() { return false; }, focus() { document.activeElement = this; }});
+            classList: {add() {}, remove() {}, toggle() {}}, setAttribute(name, value) { this[name] = value; },
+            querySelectorAll() { return []; }, contains() { return false; }, focus() { document.activeElement = this; }});
     }
     const document = {getElementById: id => elements.get(id), addEventListener() {}, querySelectorAll: () => [], activeElement: null};
     let settings = {taskView: 'grouped', theme: 'nord', colorSeed: 42};
@@ -23,7 +23,7 @@ function page(respond = async () => []) {
         formatMinutesToDuration: value => `${value || 0}m`, getTaskDateBadge: () => null,
         matchesCustomFilter: task => task.tags !== '#exclude'});
     context.window = context;
-    for (const file of ['kanban.js', 'grouped_tasks.js']) {
+    for (const file of ['kanban.js', 'grouped_tasks.js', 'outline_tasks.js']) {
         if (fs.existsSync(path.join(js, file))) vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), context);
     }
     vm.runInContext('setupTaskViewSelector()', context);
@@ -113,5 +113,6 @@ test('switching to Grouped destroys drag controllers and restores focus before r
     p.run('setupTaskViewSelector()');
     assert.equal(p.elements.get('task_view_selector').value, 'grouped');
     p.run('selectTaskView("outline")');
-    assert.match(p.elements.get('task_view_notice').textContent, /not available.*Kanban/);
+    assert.equal(p.elements.get('task_view_notice').textContent, '');
+    assert.equal(p.elements.get('tasks_workspace')['aria-label'], 'Task outline and inspector');
 });

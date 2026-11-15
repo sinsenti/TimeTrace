@@ -15,7 +15,8 @@ def test_grouped_tasks_page_composes_shared_editors_and_dispatches_search(client
         assert html.count(f"/static/js/{script}") == 1
     assert "/static/css/grouped_tasks.css" in html
     assert "/static/js/calendar.js" not in html
-    assert "/static/js/subtasks.js" not in html
+    assert html.count("/static/js/subtasks.js") == 1
+    assert html.count('id="task_properties_editor"') == 1
 
 
 def test_grouped_tasks_shared_create_child_schedule_completion_and_delete_contracts(client):
