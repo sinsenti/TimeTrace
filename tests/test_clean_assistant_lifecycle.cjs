@@ -27,13 +27,13 @@ function browser(respond, resize = null) {
         ['tt_ai_drawer_width_px', String(resize.normal)],
         ['tt_ai_fullscreen_chat_width_px', String(resize.fullscreen)]
     ] : []);
-    const properties = new Map();
+    const properties = new Map(), storageWrites = [];
     if (resize) {
         for (const id of ['ai_drawer_resize_handle', 'ai_drawer_calendar_pane', 'ai_fullscreen_toggle_btn', 'ai_drawer_close_btn', 'calendar']) fields[id] = element(id);
         const template = fs.readFileSync('src/timetrace/interfaces/api/templates/components/ai_drawer.html', 'utf8');
         const separator = template.match(/<div id="ai_drawer_resize_handle"[^>]*>/)[0];
         for (const [, name, value] of separator.matchAll(/([\w-]+)="([^"]*)"/g)) fields.ai_drawer_resize_handle.setAttribute(name, value);
-        fields.ai_drawer.getBoundingClientRect = () => ({width: fields.ai_drawer.classList.contains('ai-drawer-fullscreen') ? resize.viewport : parseFloat(fields.ai_drawer.style.width) || 420});
+        fields.ai_drawer.getBoundingClientRect = () => ({width: fields.ai_drawer.classList.contains('ai-drawer-fullscreen') ? resize.viewport : resize.renderedWidth ?? (parseFloat(fields.ai_drawer.style.width) || 420)});
         // DOM adapter: moving the actual Calendar node removes it from its previous parent.
         const home = element('calendar-home');
         home.appendChild(fields.calendar);
@@ -49,7 +49,7 @@ function browser(respond, resize = null) {
         requestAnimationFrame: fn => fn(),
         getComputedStyle: () => ({getPropertyValue: key => properties.get(key) || ''}),
         calendar: resize ? {updateSize() {}} : undefined,
-        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => storage.set(key, value)}, addEventListener() {}, confirm() {return false;}},
+        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener() {}, confirm() {return false;}},
         document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty: (key, value) => properties.set(key, value)}},
             getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, removeEventListener() {}, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
         fetch: async (url, options) => {requests.push({url, options}); return respond(url, options);}
@@ -58,7 +58,7 @@ function browser(respond, resize = null) {
     events.DOMContentLoaded = [];
     for (const name of ['api_client', 'task_knowledge', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
     for (const fn of events.DOMContentLoaded) fn();
-    return {fields, requests, context, storage, properties, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
+    return {fields, requests, context, storage, storageWrites, properties, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
 }
 const response = value => Response.json(value);
 function normal(url) {
@@ -492,4 +492,26 @@ for (const size of [
     assert.deepEqual(values(), ['320', size.fullscreenMax, String(size.fullscreen)]);
     b.click('ai_fullscreen_toggle_btn');
     assert.deepEqual(values(), ['320', size.normalMax, size.afterKey]);
+});
+
+
+for (const example of [
+    {viewport: 1440, normal: 624, fullscreen: 624, maximum: '1160', target: 624},
+    {viewport: 1024, normal: 900, fullscreen: 400, maximum: '744', target: 744}
+]) test(`Fresh drawer initialization retains restored separator width while the rendered box transitions at ${example.viewport}px`, async () => {
+    const size = {...example, renderedWidth: 380};
+    const b = browser(normal, size);
+    await tick();
+    const drawer = b.fields.ai_drawer, handle = b.fields.ai_drawer_resize_handle;
+    assert.equal(drawer.style.width, `${example.target}px`);
+    assert.equal(drawer.getBoundingClientRect().width, 380, 'layout remains at the independent initial box during setup');
+    assert.equal(drawer.classList.contains('ai-drawer-fullscreen'), false);
+    assert.deepEqual(['aria-valuemin', 'aria-valuemax', 'aria-valuenow'].map(name => handle.getAttribute(name)), ['320', example.maximum, String(example.target)]);
+    size.renderedWidth = example.target; // Browser layout settles without a resize/input event.
+    b.context.window.openAiDrawer();
+    assert.equal(drawer.getBoundingClientRect().width, example.target);
+    assert.equal(handle.getAttribute('aria-valuenow'), String(example.target));
+    assert.equal(b.storage.get('tt_ai_drawer_width_px'), String(example.normal));
+    assert.equal(b.storage.get('tt_ai_fullscreen_chat_width_px'), String(example.fullscreen));
+    assert.deepEqual(b.storageWrites, []);
 });

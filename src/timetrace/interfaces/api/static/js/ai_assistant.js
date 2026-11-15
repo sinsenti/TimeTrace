@@ -1098,8 +1098,8 @@ function aiAutoGrowComposer(el) {
 
 function aiSetupDrawer() {
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('ai_drawer', '#ai_composer_input');
-    aiRestoreDrawerWidth();
     aiSetupDrawerResize();
+    aiRestoreDrawerWidth();
     const drawer = document.getElementById('ai_drawer');
     if (drawer) {
         drawer.addEventListener('input', () => ++aiHistoryInteractionGeneration, true);
