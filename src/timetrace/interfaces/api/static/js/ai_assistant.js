@@ -1084,7 +1084,10 @@ function aiSetupDrawerResize() {
     handle.addEventListener('mousedown', onDown);
     handle.addEventListener('touchstart', onDown, { passive: false });
 
-    window.addEventListener('resize', () => aiApplyDrawerWidth(drawer.getBoundingClientRect().width));
+    window.addEventListener('resize', () => {
+        if (isAiFullscreenActive()) return;
+        aiApplyDrawerWidth(drawer.getBoundingClientRect().width);
+    });
 }
 
 function aiAutoGrowComposer(el) {

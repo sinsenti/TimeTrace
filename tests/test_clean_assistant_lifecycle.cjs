@@ -22,7 +22,7 @@ function element(id = '', tag = 'div') {
 }
 function browser(respond, resize = null) {
     const fields = Object.fromEntries(['ai_drawer', 'ai_composer_input', 'ai_composer_send', 'ai_composer_cancel', 'ai_thread', 'ai_assistant_notice', 'ai_launcher_badge', 'ai_conversation_select', 'ai_drawer_body', 'ai_batches_list', 'ai_drafts_panel', 'ai_batches_refresh_btn', 'ai_undo_all_btn', 'ai_delete_conversation_btn', 'ai_new_conversation_btn', 'ai_quick_actions', 'ai_weekly_review_ask_btn'].map(id => [id, element(id)]));
-    const requests = [], events = {};
+    const requests = [], events = {}, windowEvents = {};
     const storage = new Map(resize ? [
         ['tt_ai_drawer_width_px', String(resize.normal)],
         ['tt_ai_fullscreen_chat_width_px', String(resize.fullscreen)]
@@ -49,7 +49,7 @@ function browser(respond, resize = null) {
         requestAnimationFrame: fn => fn(),
         getComputedStyle: () => ({getPropertyValue: key => properties.get(key) || ''}),
         calendar: resize ? {updateSize() {}} : undefined,
-        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener() {}, confirm() {return false;}},
+        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener(name, fn) {(windowEvents[name] ||= []).push(fn);}, confirm() {return false;}},
         document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty: (key, value) => properties.set(key, value)}},
             getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, removeEventListener() {}, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
         fetch: async (url, options) => {requests.push({url, options}); return respond(url, options);}
@@ -58,7 +58,7 @@ function browser(respond, resize = null) {
     events.DOMContentLoaded = [];
     for (const name of ['api_client', 'task_knowledge', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
     for (const fn of events.DOMContentLoaded) fn();
-    return {fields, requests, context, storage, storageWrites, properties, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
+    return {fields, requests, context, storage, storageWrites, properties, windowEvents, resizeWindow(width) {context.window.innerWidth = width; resize.viewport = width; for (const listener of windowEvents.resize || []) listener();}, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
 }
 const response = value => Response.json(value);
 function normal(url) {
@@ -514,4 +514,18 @@ for (const example of [
     assert.equal(b.storage.get('tt_ai_drawer_width_px'), String(example.normal));
     assert.equal(b.storage.get('tt_ai_fullscreen_chat_width_px'), String(example.fullscreen));
     assert.deepEqual(b.storageWrites, []);
+});
+
+test('Dispatched viewport resize retains fullscreen separator bounds and value', async () => {
+    const size = {viewport: 1440, normal: 624, fullscreen: 624, normalMax: '1160', fullscreenMax: '1120'};
+    const b = browser(normal, size);
+    await tick();
+    b.context.window.openAiDrawer();
+    b.click('ai_fullscreen_toggle_btn');
+    const handle = b.fields.ai_drawer_resize_handle;
+    b.resizeWindow(800);
+    assert.deepEqual(['aria-valuemin', 'aria-valuemax', 'aria-valuenow'].map(name => handle.getAttribute(name)), ['320', '480', '480']);
+    assert.equal(b.properties.get('--ai-chat-width'), '480px');
+    assert.equal(b.storage.get('tt_ai_drawer_width_px'), '624');
+    assert.equal(b.storage.get('tt_ai_fullscreen_chat_width_px'), '624');
 });
