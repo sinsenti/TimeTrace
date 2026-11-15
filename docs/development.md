@@ -675,3 +675,26 @@ proof does not rerun69, certify new Save/Delete latches, establish native dirty 
 OS idle, or replace physical accessibility/contrast/other-engine/shared-workflow/human/whole25
 acceptance. Bounded completion metadata remains subject to fresh Standards+Spec review and
 parent disposition; integration564e25a remains13completed/12open until the candidate is integrated.
+
+
+## Ticket18 bounded software-completion candidate (2026-11-15)
+
+Ticket18's five unchanged criteria map to [current bounded evidence](../.scratch/ui-redesign/ticket-18-evidence.md#bounded-software-completion-candidate-2026-11-15).
+Combined product checks passed572Python/217warnings,583actual canonical Node/default isolation,
+132syntax and scoped lint/format/whitespace. Full Ruff retains18 inherited findings with BOTH
+streams matched to incominge0c6989. Current freeze10 only repairs the finite timestamp probe
+oracle (13 controls, other510 files unchanged); full suites were not repeated after that probe edit.
+Feature/search/merged Rating-Export source review axes each report zero findings in their scopes.
+Native-v2 remains FAILED despite returned16 Admin layouts/288text/80controls and8 Recovery groups;
+consumer-v3 remains FAILED despite real Session zero/dismiss/undismiss/exemption observations.
+V4 UNRUN and v5 FAILED14ACKs remain retained. Separate currentv6 PASSES its bounded held-search/
+Task-prefix/Day flow:26realACKs, one declared400, one original registry hold,10light/dark Day grades,
+99original captures,77requests/responses/callbacks, zero guard/capture/handler/unresolved errors,
+full real ACK/storage/FK/FTS-copy/private-after-stop reconciliation and sole actual−15 shutdown.
+Seven DayReviews remain. No failed matrix is relabeled or Admin/Recovery/Session rerun claimed;
+Task prefix supplies Day's independent retained draft, not new broad Task coverage.
+390/1024/1440, full presentation/motion/zoom, physical touch/screen readers/other engines, wider
+shared native workflows, explicit owner acceptance and whole25 gates remain open and unwaived.
+Candidate15completed/10open adds18 only; authoritative integratione0c6989 remains14/11 pending
+TWO fresh closure metadata axes, parent disposition and integration. Historical checkpoints remain;
+spec stays Approved, not Built. No new tests/runtime/Git writes/provider/personalDB/cleanup operations.

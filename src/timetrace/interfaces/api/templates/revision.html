@@ -30,6 +30,7 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/rating_admin.css">
     <link rel="stylesheet" href="/static/css/task_details.css">
     <link rel="stylesheet" href="/static/css/day_workspace.css">
     <link rel="stylesheet" href="/static/css/session_reviews.css">
@@ -210,16 +211,19 @@
             </div>
         </section>
 
-        <section id="rev_tab_ratings_config" class="hidden space-y-6 max-w-4xl mx-auto">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
+        <section id="rev_tab_ratings_config" class="rating-admin hidden space-y-6 max-w-4xl mx-auto" aria-labelledby="rating_admin_heading">
+            <div class="rating-admin-heading">
                 <div>
-                    <h2 class="text-lg font-bold text-white">Custom Rating Definitions Manager</h2>
-                    <p class="text-xs text-slate-400">Configure custom evaluation scales to attach to sessions, tasks, or day reviews.</p>
+                    <h2 id="rating_admin_heading">Rating scales</h2>
+                    <p>Define evaluation scales for sessions, tasks, or day reviews.</p>
                 </div>
-                <button onclick="openNewRatingDefModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">+ New Rating Scale</button>
+                <button id="rating_defs_new_btn" type="button" class="rating-admin-primary" onclick="openNewRatingDefModal()">+ New Rating Scale</button>
             </div>
-
-            <div id="rating_defs_card_list" class="space-y-3"></div>
+            <div class="rating-admin-feedback">
+                <p id="rating_defs_status" role="status" aria-live="polite"></p>
+                <button id="rating_defs_retry_btn" type="button" onclick="loadRatingDefinitionsList()" hidden>Retry refresh</button>
+            </div>
+            <div id="rating_defs_card_list" class="rating-admin-list" aria-label="Rating definitions"></div>
         </section>
 
     </main>
@@ -254,56 +258,47 @@
         </div>
     </div>
 
-    <div id="rating_def_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="rating_modal_title" class="font-bold text-base text-white">Configure Rating Scale</h3>
-                <button onclick="closeRatingDefModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+    <div id="rating_def_modal" class="rating-admin fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50" role="dialog" aria-modal="true" aria-labelledby="rating_modal_title" aria-describedby="rating_def_status">
+        <div class="rating-admin-dialog">
+            <div class="rating-admin-heading">
+                <h3 id="rating_modal_title">Configure Rating Scale</h3>
+                <button type="button" onclick="closeRatingDefModal()" aria-label="Close rating scale">&times;</button>
             </div>
             <input type="hidden" id="edit_rating_def_id">
-
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Rating Title / Name</label>
-                <input id="modal_rating_name" type="text" placeholder="e.g. Focus Level, Code Quality" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
+            <label for="modal_rating_name">Rating Title / Name</label>
+            <input id="modal_rating_name" type="text" placeholder="e.g. Focus Level, Code Quality">
+            <div class="rating-admin-bounds">
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Target Context</label>
-                    <select id="modal_rating_target_type" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                    <label for="modal_rating_target_type">Target Context</label>
+                    <select id="modal_rating_target_type">
                         <option value="session">Session</option>
                         <option value="task">Task</option>
                         <option value="day">Day</option>
                     </select>
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Scale Range</label>
-                    <div class="flex items-center space-x-1">
-                        <input id="modal_rating_min" type="number" value="1" class="w-12 bg-[#0f1016] border border-[var(--border-muted)] px-1.5 py-1.5 rounded text-xs text-center">
-                        <span class="text-slate-500">to</span>
-                        <input id="modal_rating_max" type="number" value="10" class="w-12 bg-[#0f1016] border border-[var(--border-muted)] px-1.5 py-1.5 rounded text-xs text-center">
-                    </div>
+                    <label for="modal_rating_min">Minimum score</label>
+                    <input id="modal_rating_min" type="number" step="1" value="1">
                 </div>
-            </div>
-
-            <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer">
                 <div>
-                    <span class="font-bold text-slate-200 block text-xs">Essential / Required</span>
-                    <span class="text-[10px] text-slate-400">Must be answered (cannot skip)</span>
+                    <label for="modal_rating_max">Maximum score</label>
+                    <input id="modal_rating_max" type="number" step="1" value="10">
                 </div>
-                <input id="modal_rating_required" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-            </label>
-
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Description / Help Text</label>
-                <input id="modal_rating_desc" type="text" placeholder="Optional context for this rating..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
-
-            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
-                <button id="modal_rating_delete_btn" onclick="deleteRatingDefinition()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeRatingDefModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveRatingDefinition()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+            <label class="rating-admin-required" for="modal_rating_required">
+                <span><strong>Essential / Required</strong><small>Marked essential in reviews. Explicit dismissal remains available.</small></span>
+                <input id="modal_rating_required" type="checkbox">
+            </label>
+            <label for="modal_rating_desc">Description / Help Text</label>
+            <input id="modal_rating_desc" type="text" placeholder="Optional context for this rating...">
+            <p class="rating-admin-hint">Range and context edits do not rewrite historical scores. Deleting a scale also removes its rating entries.</p>
+            <p id="rating_def_status" role="status" aria-live="polite"></p>
+            <button id="rating_def_refresh_btn" type="button" onclick="loadRatingDefinitionsList()" hidden>Retry list refresh (read only)</button>
+            <div class="rating-admin-actions">
+                <button id="modal_rating_delete_btn" type="button" onclick="deleteRatingDefinition()" class="rating-admin-danger hidden">Delete</button>
+                <div>
+                    <button type="button" onclick="closeRatingDefModal()">Cancel <kbd>Esc</kbd></button>
+                    <button id="modal_rating_save_btn" type="button" onclick="saveRatingDefinition()" class="rating-admin-primary">Save <kbd>Ctrl+Enter</kbd></button>
                 </div>
             </div>
         </div>

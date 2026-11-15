@@ -1,0 +1,27 @@
+[
+  {
+    "id": "01a1d68f-43fa-7017-87fb-ae248a43da7f",
+    "title": "Rating18 synthetic task",
+    "description": null,
+    "priority": "-",
+    "estimated_minutes": 15,
+    "status": "To Do",
+    "status_id": null,
+    "parent_id": null,
+    "category": "work",
+    "color": "auto",
+    "tags": "",
+    "due_date": null,
+    "assigned_date": null,
+    "attachments": "",
+    "is_recurring": false,
+    "recurrence_rule": null,
+    "recurrence_rrule": null,
+    "recurrence_dtstart": null,
+    "recurrence_duration_minutes": null,
+    "recurrence_timezone": null,
+    "requires_session_review": true,
+    "created_at": "2026-11-13T20:17:55.706366Z",
+    "next_occurrence_date": null
+  }
+]
