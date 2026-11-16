@@ -47,7 +47,7 @@ test('Cards expose independent day strips and explicit result choices without lo
     assert.equal(b.run(`habitCardViews.get('b').offset`),0);
     assert.equal(b.writes.length,0);
 });
-test('Compact card keeps day choice, explicit draft actions, and Clear separate in its editor footer',()=>{
+test('Compact card keeps day choice separate from its grouped Save, Cancel, and Clear actions',()=>{
     const b=browser(); b.elements.habit_cards=node('habit_cards');
     b.run(`allHabits[1].logs['2026-11-15']={id:'row',status:'completed'}; selectHabitDay('b','2026-11-15')`);
     const html=b.elements.habit_cards.innerHTML;
@@ -59,29 +59,31 @@ test('Compact card keeps day choice, explicit draft actions, and Clear separate 
     const choices=html.indexOf("stageHabitStatus('b','2026-11-15','completed')",footerStart);
     const save=html.indexOf("saveHabitEntry('b','2026-11-15')",footerStart);
     const cancel=html.indexOf("cancelHabitEntry('b','2026-11-15')",footerStart);
-    const clearRow=html.indexOf('class="habit-clear-row"',footerStart);
     const clear=html.indexOf("clearHabitEntry('b','2026-11-15')",footerStart);
-    assert.ok(footerStart >= 0 && footerStart < choices && choices < save && save < cancel && cancel < clearRow && clearRow < clear,
-        'status choices and Save/Cancel share a band; confirmed Clear stays in a separate secondary row');
+    const actions=html.indexOf('class="habit-entry-actions"',footerStart);
+    assert.ok(footerStart >= 0 && footerStart < choices && choices < actions && actions < save && save < cancel && cancel < clear,
+        'status choices remain their own segment and the full action group contains Save, Cancel, and Clear');
+    assert.doesNotMatch(html,/habit-clear-row/,'Clear never gets its own row');
     assert.match(html, /class="habit-result-segment" role="group" aria-label="Result">\s*<span class="habit-segment-label">Result<\/span>/,
         'result choices have a visible label and their own semantic segment');
-    assert.match(html, /class="habit-entry-actions"><button[^>]*class="habit-save-button"[^>]*>Save<\/button>\s*<button[^>]*class="habit-cancel-button"[^>]*>Cancel<\/button>/,
-        'Save and Cancel remain explicit together in a distinct action group');
-    assert.match(html, /class="habit-clear-row" role="group" aria-label="Clear selected day record"/,
-        'confirmed Clear remains in a separately labeled group');
+    assert.match(html, /class="habit-entry-actions" role="group" aria-label="Save, cancel, or clear selected day record"><button[^>]*class="habit-save-button"[^>]*>Save<\/button>\s*<button[^>]*class="habit-cancel-button"[^>]*>Cancel<\/button>\s*<button[^>]*class="habit-clear-button"/,
+        'Save, Cancel, and Clear remain one semantic action group');
     assert.match(html,/class="habit-clear-button" onclick="clearHabitEntry\('b','2026-11-15'\)"[^>]*>Clear day/);
+    const numericCard=html.split('data-habit-id="a"')[1].split('</article>')[0];
+    assert.match(numericCard,/class="habit-entry-actions"[^>]*>[\s\S]*?class="habit-save-button"[\s\S]*?class="habit-cancel-button"[\s\S]*?class="habit-clear-button"/,
+        'numeric and checkmark habits share the same grouped actions');
     assert.equal(b.writes.length,0,'rendering a choice or card never commits its draft');
 });
-test('Habit entry controls wrap the result segment and keep Clear behind a quiet divider',()=>{
+test('Habit entry controls wrap as a group and keep Clear quiet inside the action group',()=>{
     const css=fs.readFileSync(path.join(__dirname,'../src/timetrace/interfaces/api/static/css/habit_cards.css'),'utf8');
-    const template=fs.readFileSync(path.join(__dirname,'../src/timetrace/interfaces/api/templates/habits.html'),'utf8');
     assert.match(css,/\.habit-compact-grid\s*\{[^}]*minmax\(min\(100%,\s*400px\),\s*1fr\)/s);
-    assert.match(template,/habit_cards\.css\?v=ui-review2-2/);
     assert.match(css,/\.habit-result-segment\s*\{[^}]*background:[^}]*border:[^}]*border-radius:/s);
     assert.match(css,/\.habit-entry-actions\s*\{[^}]*border-left:/s);
-    assert.match(css,/\.habit-clear-row\s*\{[^}]*border-top:\s*1px solid/s);
+    assert.match(css,/\.habit-entry-actions \.habit-clear-button\s*\{[^}]*border-left:\s*1px solid/s);
+    assert.doesNotMatch(css,/habit-clear-row/);
     assert.match(css,/\.habit-entry-footer\s*\{[^}]*flex-wrap:\s*wrap/s);
     assert.match(css,/\.habit-result-segment\s*\{[^}]*flex:\s*1 1 225px/s);
+    assert.match(css,/\.habit-entry-actions\s*\{[^}]*flex:\s*0 0 auto; flex-wrap:\s*nowrap/s);
 });
 function deferred(){let resolve; const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 test('Held Save rejects double submission, preserves concurrent edits, and failed refresh retries reads only',async()=>{

@@ -127,8 +127,7 @@
 .habit-entry-footer .habit-save-button { color: #fff; background: var(--accent-primary, #456b55); border-color: var(--accent-primary, #456b55); }
 .habit-entry-footer .habit-save-button:hover:not(:disabled) { filter: brightness(1.08); }
 .habit-entry-footer .habit-cancel-button { color: var(--habit-muted); background: transparent; border-color: transparent; }
-.habit-clear-row { display: flex; justify-content: flex-end; margin-top: .05rem; padding-top: .2rem; border-top: 1px solid var(--habit-border); }
-.habit-clear-row .habit-clear-button { min-height: 27px; padding-inline: .4rem; color: var(--habit-muted); background: transparent; border-color: transparent; font-size: .7rem; font-weight: 550; }
+.habit-entry-actions .habit-clear-button { min-height: 27px; margin-left: .15rem; padding-inline: .55rem .4rem; border-left: 1px solid var(--habit-border); border-radius: 0; color: var(--habit-muted); background: transparent; border-top-color: transparent; border-right-color: transparent; border-bottom-color: transparent; font-size: .7rem; font-weight: 550; }
 .habit-entry-editor > p[role="status"] { min-height: 1em; margin: 0; color: var(--habit-muted); font-size: .7rem; overflow-wrap: anywhere; }
 
 @media (max-width: 600px) {

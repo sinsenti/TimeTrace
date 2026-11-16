@@ -377,10 +377,10 @@ function renderHabitCards() {
             <p class="habit-selected-result"><span>Selected day</span><time datetime="${date}">${date}</time><span class="habit-result-value" id="habit_result_${h.id}">${habitText(habitResult(log,date))}${dirty ? ' · Unsaved' : ''}</span></p>
             ${outside ? '<p class="habit-history-warning">Outside loaded history; a record may exist. Save explicitly to update this date.</p>' : ''}
             <div class="habit-entry-editor" onkeydown="habitEntryKeydown(event,'${h.id}','${date}')">${editor}
-                <div class="habit-entry-footer ${statusChoices ? 'habit-checkmark-footer' : ''}">${statusChoices}<div class="habit-entry-actions"><button type="button" class="habit-save-button" onclick="saveHabitEntry('${h.id}','${date}')" aria-disabled="${draft.pending}">${draft.pending ? 'Saving…' : 'Save'}</button>
-                    <button type="button" class="habit-cancel-button" onclick="cancelHabitEntry('${h.id}','${date}')" ${draft.pending ? 'disabled' : ''}>Cancel</button></div>
+                <div class="habit-entry-footer ${statusChoices ? 'habit-checkmark-footer' : ''}">${statusChoices}<div class="habit-entry-actions" role="group" aria-label="Save, cancel, or clear selected day record"><button type="button" class="habit-save-button" onclick="saveHabitEntry('${h.id}','${date}')" aria-disabled="${draft.pending}">${draft.pending ? 'Saving…' : 'Save'}</button>
+                    <button type="button" class="habit-cancel-button" onclick="cancelHabitEntry('${h.id}','${date}')" ${draft.pending ? 'disabled' : ''}>Cancel</button>
+                    <button type="button" class="habit-clear-button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear day</button></div>
                 </div>
-                <div class="habit-clear-row" role="group" aria-label="Clear selected day record"><button type="button" class="habit-clear-button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear day</button></div>
                 <p id="habit_message_${h.id}" role="status">${habitText(draft.message)}</p>
             </div></article>`;
     }).join('') : '<p>No habits yet. Choose + New Habit to start.</p>';

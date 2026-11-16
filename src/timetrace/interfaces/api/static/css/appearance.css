@@ -168,20 +168,6 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 .calendar-page .calendar-timer-wrap { display: flex; align-items: center; flex: 0 1 auto; width: max-content; }
 .calendar-page #active_timer_pill > #timer_status_label { flex: 1 1 auto; min-width: 0; }
 .calendar-page #active_timer_pill > :is(select, button) { flex: 0 1 auto; white-space: nowrap; }
-.calendar-page .tt-calendar-day-header { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px 0; }
-.calendar-page .tt-calendar-day-name { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; line-height: 1.2; }
-.calendar-page .tt-calendar-day-number { display: inline-flex; min-width: 24px; min-height: 24px; align-items: center; justify-content: center; border-radius: 999px; color: var(--text-main); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
-.calendar-page .fc .fc-timegrid-slot-label { color: var(--text-muted) !important; font-size: 11px !important; font-weight: 600; text-transform: none; font-variant-numeric: tabular-nums; }
-.calendar-page .fc .fc-timegrid-slot-label-cushion { padding: 0 8px 0 0; }
-.calendar-page .fc .fc-timegrid-axis-frame { display: flex; align-items: center; justify-content: center; min-width: 66px; }
-.calendar-page .tz-header-label { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 4px; color: var(--text-muted); font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; }
-.calendar-page .tz-header-label::before { content: "LOCAL"; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
-.calendar-page .fc .fc-col-header-cell.fc-day-today { background: var(--accent-soft, var(--bg-card)); }
-.calendar-page .fc .fc-col-header-cell.fc-day-today .tt-calendar-day-number,
-.calendar-page .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
-    border: 2px solid var(--accent-primary); background: var(--accent-soft, var(--bg-card)); color: var(--text-main);
-}
-.calendar-page .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number { min-width: 24px; min-height: 24px; margin: 2px; border-radius: 999px; box-sizing: border-box; text-align: center; }
 .calendar-page .fc-daygrid-dot-event .fc-event-custom { color: var(--text-main) !important; }
 #vim_mode_indicator {
     align-items: center; min-height: 0 !important; height: auto !important;

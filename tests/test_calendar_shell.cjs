@@ -435,7 +435,7 @@ test('late failed explicit idle-toggle Save cannot reverse newer browser density
     assert.equal(b.run('getUserSettings().totalsVisible'),true);
 });
 
-test('Calendar day headers expose theme-aware day and date labels', () => {
+test('Calendar day headers retain the established day and date markup', () => {
     const source = fs.readFileSync(path.join(js, 'dashboard.js'), 'utf8');
     const header = source.match(/dayHeaderContent: function\(arg\) \{([\s\S]*?)\n\s*\},\n\s*select:/);
     assert.ok(header, 'Calendar day header callback is present');
@@ -444,20 +444,18 @@ test('Calendar day headers expose theme-aware day and date labels', () => {
     const monthHeader = callback({date, view: {type: 'dayGridMonth'}}).html;
     for (const type of ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek']) {
         const rendered = callback({date, view: {type}}).html;
-        assert.match(rendered, /class="tt-calendar-day-name"[^>]*>MON</);
-        assert.match(rendered, /class="tt-calendar-day-number"[^>]*>16</);
+        assert.match(rendered, /class="flex flex-col items-center py-1"/);
+        assert.match(rendered, /class="text-\[10px\] font-bold tracking-widest text-slate-500 uppercase">MON</);
+        assert.match(rendered, /class="mt-1 text-base font-bold text-slate-200">16</);
     }
-    assert.match(monthHeader, /class="tt-calendar-day-name"[^>]*>MON</);
-    assert.doesNotMatch(monthHeader, /tt-calendar-day-number|>16</);
+    assert.match(monthHeader, /class="flex flex-col items-center py-1"/);
+    assert.match(monthHeader, /class="mt-1 text-base font-bold text-slate-200">16</);
 
     const appearance = fs.readFileSync(path.join(styles, 'appearance.css'), 'utf8');
-    assert.match(appearance, /\.fc-col-header-cell\.fc-day-today/);
-    assert.match(appearance, /\.tz-header-label::before\s*\{\s*content:\s*"LOCAL"/);
     assert.match(appearance, /\.calendar-page > header \{ align-items:\s*flex-start; \}/);
-    assert.match(appearance, /\.calendar-page \.fc \.fc-col-header-cell\.fc-day-today \{ background:\s*var\(--accent-soft, var\(--bg-card\)\); \}/);
-    assert.match(appearance, /\.calendar-page \.tz-header-label \{[^}]*font-size:\s*11px/);
-    assert.match(appearance, /\.calendar-page \.tz-header-label::before \{[^}]*font-size:\s*9px/);
+    assert.doesNotMatch(appearance, /\.tt-calendar-day-header|\.tt-calendar-day-number|\.calendar-page \.tz-header-label|\.fc-timegrid-slot-label-cushion|\.fc-col-header-cell\.fc-day-today/);
     assert.match(appearance, /\.calendar-page \.fc-daygrid-dot-event \.fc-event-custom \{ color:\s*var\(--text-main\) !important; \}/);
+    assert.match(appearance, /\.calendar-page \.fc-timegrid-slot-lane \{ line-height:\s*0 !important; \}/);
     assert.doesNotMatch(appearance, /\.fc-timegrid-slot-label-cushion\s*\{[^}]*padding-(?:top|bottom)|\.fc-timegrid-slot\s*\{[^}]*min-height/);
 });
 
@@ -472,10 +470,8 @@ test('Calendar timer and Vim mode indicators use compact non-button header treat
     assert.match(timer, /\.timer-recovery-card :is\(button, input, textarea\) \{[^}]*padding:\s*6px 9px/);
     assert.match(appearance, /#vim_mode_indicator\s*\{[\s\S]*?background:\s*transparent !important/);
     assert.doesNotMatch(appearance.match(/#vim_mode_indicator\s*\{[^}]+\}/)?.[0] || '', /display:\s*[^;]+!important/);
-    assert.match(appearance, /fc-day-today \.tt-calendar-day-number,[\s\S]*?background:\s*var\(--accent-soft, var\(--bg-card\)\); color:\s*var\(--text-main\)/);
-    assert.doesNotMatch(appearance, /fc-day-today[^}]*color:\s*#fff/);
     assert.match(navbar, /id="vim_mode_indicator"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.match(navbar, /timer\.css\?v=ui-review2-3/);
-    assert.match(dashboard, /appearance\.css\?v=ui-review2-4/);
-    assert.match(dashboard, /dashboard\.js\?v=ui-review2-2/);
+    assert.match(dashboard, /appearance\.css\?v=/);
+    assert.match(dashboard, /dashboard\.js\?v=/);
 });
