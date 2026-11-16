@@ -78,7 +78,7 @@ function customFilterOwnsKeyboard() {
 }
 
 window.addEventListener('keydown', function(event) {
-    if (!customFilterOwnsKeyboard()) return;
+    if (event.defaultPrevented || !customFilterOwnsKeyboard()) return;
     if (event.key === 'Tab') {
         const modal = document.getElementById('custom_filter_modal');
         const controls = Array.from(modal.querySelectorAll?.('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]') || [])

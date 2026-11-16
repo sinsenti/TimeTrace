@@ -61,7 +61,8 @@ function browser(respond, resize = null) {
     });
     vm.runInContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/settings.js', 'utf8'), context);
     events.DOMContentLoaded = [];
-    for (const name of ['api_client', 'task_knowledge', 'custom_filter', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
+    for (const name of ['api_client', 'task_knowledge', 'utils', 'custom_filter', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
+    context.closeAiDrawer = context.window.closeAiDrawer;
     for (const fn of events.DOMContentLoaded) fn();
     return {fields, requests, context, storage, storageWrites, properties, windowEvents, resizeWindow(width) {context.window.innerWidth = width; resize.viewport = width; for (const listener of windowEvents.resize || []) listener();}, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
 }
@@ -103,6 +104,30 @@ test('Assistant composer keeps Enter ownership when the advanced filter remains 
     assert.equal(sends, 1, 'the existing Assistant Enter handler still sends');
     assert.equal(event.defaultPrevented, true);
     assert.equal(b.fields.custom_filter_modal.classList.contains('hidden'), false);
+});
+test('Escape closes the top Assistant owner before the still-open filter and its draft', async () => {
+    const b = browser(normal);
+    b.fields.custom_filter_modal.appendChild(b.fields.filter_input_query);
+    b.fields.ai_drawer.appendChild(b.fields.ai_composer_input);
+    b.run('openCustomFilterModal()');
+    b.fields.filter_input_query.value = 'unsaved filter draft';
+    b.run('openAiDrawer()');
+    await tick();
+    b.context.document.activeElement = b.fields.ai_composer_input;
+    const escape = () => ({key: 'Escape', defaultPrevented: false, stopped: false,
+        preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }});
+    const first = escape();
+    for (const handler of b.windowEvents.keydown || []) handler(first);
+    assert.equal(first.defaultPrevented, true);
+    assert.equal(b.fields.ai_drawer.classList.contains('ai-drawer-open'), false);
+    assert.equal(b.fields.custom_filter_modal.classList.contains('hidden'), false);
+    assert.equal(b.fields.filter_input_query.value, 'unsaved filter draft');
+    b.context.document.activeElement = b.fields.filter_input_query;
+    const second = escape();
+    for (const handler of b.windowEvents.keydown || []) handler(second);
+    assert.equal(second.defaultPrevented, true);
+    assert.equal(b.fields.custom_filter_modal.classList.contains('hidden'), true);
+    assert.equal(b.storage.has('timetrace_dashboard_custom_filter'), false);
 });
 test('IME and Shift Enter do not send; Enter sends through the actual key handler', async () => {
     const b = browser(url => url.endsWith('/messages') ? response({message: {content: 'ok'}}) : normal(url));

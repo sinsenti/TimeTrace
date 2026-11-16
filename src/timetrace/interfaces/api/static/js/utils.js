@@ -329,6 +329,15 @@ window.addEventListener('keydown', function(e) {
             if (ownerIndex > 0) modalOrder.unshift(...modalOrder.splice(ownerIndex, 1));
         }
 
+        const assistant = document.getElementById('ai_drawer');
+        if (assistant?.classList.contains('ai-drawer-open') && assistant.contains(focusBeforeClose)) {
+            const assistantIndex = modalOrder.findIndex(item => item.id === 'ai_drawer');
+            const filterIndex = modalOrder.findIndex(item => item.id === 'custom_filter_modal');
+            if (assistantIndex > filterIndex && filterIndex >= 0) {
+                modalOrder.splice(filterIndex, 0, modalOrder.splice(assistantIndex, 1)[0]);
+            }
+        }
+
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
             const isOpen = el && el.dataset?.settingsPageEditor !== 'true' &&
