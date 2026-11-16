@@ -86,7 +86,7 @@
             background-color: #a855f7;
         }
     </style>
-    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/appearance.css?v=ui-polish-6">
     <link rel="stylesheet" href="/static/css/session_modal.css">
     <link rel="stylesheet" href="/static/css/export_workflow.css">
 </head>
@@ -113,44 +113,44 @@
             <div class="flex items-center justify-between"><strong>Tasks</strong><button type="button" onclick="openNewTaskModal()">+ Task</button></div>
             <input id="planning_task_search" type="search" aria-label="Find a planning task" placeholder="Find a task…" oninput="filterPlanningTasks(this.value)">
         </div>
-        <div class="calendar-tools">
-            <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">Filter</button>
+        <div class="calendar-toolbar calendar-tools" role="group" aria-label="Calendar controls">
+            <div class="calendar-toolbar-primary">
+                <div class="calendar-view-controls" role="group" aria-label="Calendar view">
+                    <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
+                    <button id="btn_view_three_day" onclick="switchView('timeGridThreeDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">3 Day</button>
+                    <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-6 px-2 rounded text-white font-bold bg-purple-600 text-[11px]">Week</button>
+                    <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Month</button>
+                </div>
 
-            <!-- Export Button to trigger Export Modal -->
-            <button onclick="openExportModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-200 border border-[var(--border-muted)] px-3 rounded-lg font-bold text-[11px] transition">Export</button>
-
-            <div class="flex items-center bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
-                <button id="btn_view_day" onclick="switchView('timeGridDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Day</button>
-                <button id="btn_view_three_day" onclick="switchView('timeGridThreeDay')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">3 Day</button>
-                <button id="btn_view_week" onclick="switchView('timeGridWeek')" class="h-6 px-2 rounded text-white font-bold bg-purple-600 text-[11px]">Week</button>
-                <button id="btn_view_month" onclick="switchView('dayGridMonth')" class="h-6 px-2 rounded text-slate-300 hover:text-white text-[11px]">Month</button>
+                <div class="calendar-date-controls" aria-label="Calendar date">
+                    <button type="button" onclick="navigateCalendarPrev()" title="Previous" aria-label="Previous date range">&lt;</button>
+                    <button type="button" onclick="navigateCalendarNext()" title="Next" aria-label="Next date range">&gt;</button>
+                    <button type="button" onclick="openCalendarHeaderDatePicker()" title="Select date to jump to">
+                        <span id="calendar_range_title">August 2026</span>
+                        <svg class="w-3 h-3 opacity-60 ml-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                    </button>
+                    <input id="calendar_header_datepicker" type="date" onchange="if(this.value && calendar) calendar.gotoDate(this.value);" class="sr-only">
+                </div>
+                <button type="button" onclick="scrollToCurrentTime()" class="calendar-today-control">Today</button>
+                <div class="calendar-range-total" aria-label="Total time in this range">
+                    <span id="range_total_header">Total</span>
+                    <span id="weekly_total_badge">0.0h</span>
+                </div>
             </div>
 
-            <!-- Header Date Navigation Controls (< > August 2026 with Date Picker) -->
-            <div class="h-8 flex items-center bg-[#181a28] rounded-lg border border-[var(--border-muted)] px-1 whitespace-nowrap text-[11px] relative">
-                <button onclick="navigateCalendarPrev()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs" title="Previous">&lt;</button>
-                <button onclick="navigateCalendarNext()" class="px-2 py-0.5 text-slate-300 hover:text-white font-bold text-xs" title="Next">&gt;</button>
-                <button type="button" onclick="openCalendarHeaderDatePicker()" class="px-2 font-bold text-slate-200 hover:text-purple-300 flex items-center space-x-1" title="Select date to jump to">
-                    <span id="calendar_range_title">August 2026</span>
-                    <svg class="w-3 h-3 opacity-60 ml-0.5 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 0v4m-9 4h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                </button>
-                <input id="calendar_header_datepicker" type="date" onchange="if(this.value && calendar) calendar.gotoDate(this.value);" class="sr-only">
-            </div>
-            
-            <button onclick="scrollToCurrentTime()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 px-2.5 rounded-lg border border-[var(--border-muted)] text-[11px] font-semibold">Today</button>
-            
-            <div class="flex items-center space-x-1.5 border-l border-[var(--border-color)] pl-2">
-                <span id="range_total_header" class="text-slate-400 font-semibold text-[11px]">Total</span>
-                <span id="weekly_total_badge" class="text-sm font-black text-purple-400">0.0h</span>
-            </div>
-        </div>
-        <div class="calendar-panel-controls">
-            <button type="button" id="btn_toggle_left_sidebar" aria-controls="left_sidebar" aria-expanded="true" onclick="toggleCalendarPanel('left')">Hide Tasks</button>
-            <button type="button" id="btn_toggle_right_sidebar" aria-controls="right_sidebar" aria-expanded="false" onclick="toggleCalendarPanel('right')">Show Totals</button>
-            <button type="button" onclick="createPlanningSession()">+ Session</button>
-            <label>Hour height <select id="calendar_density" onchange="setCalendarDensity(this.value)">
-                <option value="56">Compact</option><option value="72">Comfortable</option><option value="88" selected>Spacious</option>
-            </select></label>
+            <details class="calendar-toolbar-more">
+                <summary>More</summary>
+                <div class="calendar-toolbar-options">
+                    <button type="button" onclick="openCustomFilterModal()" class="custom-filter-trigger-btn">Filter</button>
+                    <button type="button" onclick="openExportModal()">Export</button>
+                    <button type="button" id="btn_toggle_left_sidebar" aria-controls="left_sidebar" aria-expanded="true" onclick="toggleCalendarPanel('left')">Hide Tasks</button>
+                    <button type="button" id="btn_toggle_right_sidebar" aria-controls="right_sidebar" aria-expanded="false" onclick="toggleCalendarPanel('right')">Show Totals</button>
+                    <button type="button" onclick="createPlanningSession()">+ Session</button>
+                    <label for="calendar_density">Hour height <select id="calendar_density" onchange="setCalendarDensity(this.value)">
+                        <option value="56">Compact</option><option value="72">Comfortable</option><option value="88" selected>Spacious</option>
+                    </select></label>
+                </div>
+            </details>
         </div>
         <div id="breakdown_filter_chip" class="hidden" role="status"></div>
     </div>
@@ -281,7 +281,7 @@
     <script src="/static/js/vim_engine.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/calendar.js"></script>
-    <script src="/static/js/sidebar_totals.js"></script>
+    <script src="/static/js/sidebar_totals.js?v=ui-polish-3"></script>
     <script src="/static/js/dashboard.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>

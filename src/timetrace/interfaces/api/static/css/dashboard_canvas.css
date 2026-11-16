@@ -7,8 +7,9 @@
 .stats-canvas .canvas-actions, .stats-canvas .canvas-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
 .stats-canvas .canvas-tabs button { height: auto; min-height: 36px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
 .stats-canvas .canvas-tabs [aria-current="page"] { box-shadow: inset 0 -3px currentColor; }
-.stats-canvas .canvas-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: start; }
-.stats-canvas .widget-card { min-width: 0; overflow-wrap: anywhere; }
+.stats-canvas .canvas-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.stats-canvas .widget-card { display: flex; flex-direction: column; align-self: stretch; min-width: 0; overflow-wrap: anywhere; }
+.stats-canvas .widget-tile-content { display: flex; align-items: center; gap: 1rem; }
 .stats-canvas #widget_grid > .widget-card { padding-top: 54px; }
 .stats-canvas .canvas-widget-controls { position: absolute; right: 12px; top: 8px; display: flex; gap: 4px; }
 .stats-canvas .canvas-widget-controls button { min-width: 32px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-main); }

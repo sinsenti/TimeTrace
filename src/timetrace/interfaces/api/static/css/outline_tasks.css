@@ -1,36 +1,135 @@
-/* Outline is an optional Tasks workspace, with a persistent shared details panel. */
+/* Outline is a focused task workspace with a hierarchy pane and a persistent editor pane. */
 #tasks_workspace.outline-workspace {
     display: grid;
-    grid-template-columns: minmax(240px, .8fr) minmax(0, 1.4fr);
-    align-items: start;
-    overflow: auto;
+    grid-template-columns: minmax(300px, .9fr) minmax(0, 1.45fr);
+    gap: 14px;
+    padding: 16px;
+    overflow: hidden;
+    align-items: stretch;
 }
-.outline-task-list, #outline_inspector, .task-detail-panel { min-width: 0; overflow-wrap: anywhere; }
-.outline-task-list ul { list-style: none; padding: 0; margin: 0; }
-.outline-row {
+#outline_list_panel, #outline_inspector {
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgb(0 0 0 / 10%);
+}
+#outline_list_panel { display: contents; }
+.outline-list-heading, .outline-inspector-header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 8px;
-    padding: 10px 8px 10px calc(8px + var(--outline-depth, 0) * 8px);
-    border-bottom: 1px solid var(--border-muted);
+    justify-content: space-between;
+    gap: 12px;
+    padding: 16px 18px;
+    border-bottom: 1px solid var(--border-color);
+    background: color-mix(in srgb, var(--bg-card) 88%, var(--accent-soft, #303347));
 }
-.outline-row button, .outline-inspector-tools :is(button, a) {
-    min-height: 36px;
+.outline-list-heading { display: none; }
+.outline-list-heading h2, .outline-inspector-header h2 { margin: 2px 0 0; font-size: 15px; font-weight: 750; color: var(--text-main); }
+.outline-list-heading p { margin: 4px 0 0; color: var(--text-muted); font-size: 11px; }
+#outline_list_count { flex: 0 0 auto; padding: 4px 8px; border: 1px solid var(--border-muted); border-radius: 999px; color: var(--text-muted); font-size: 11px; }
+#tasks_workspace.outline-workspace #outline_list_panel { display: flex; flex-direction: column; }
+#tasks_workspace.outline-workspace .outline-list-heading { display: flex; }
+#tasks_workspace.outline-workspace #kanban_columns_container {
+    display: block;
+    min-height: 0;
+    overflow: auto;
+    padding: 8px 12px 16px;
+}
+.outline-task-list { min-width: 0; overflow-wrap: anywhere; }
+.outline-task-list ul { list-style: none; padding: 0; margin: 0; }
+.outline-task-list li > ul { margin-left: 15px; border-left: 1px solid var(--border-color); }
+.outline-row {
+    display: grid;
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 5px;
+    min-height: 38px;
+    padding: 3px 8px 3px calc(8px + var(--outline-depth, 0) * 2px);
+    border-radius: 7px;
+    transition: background-color .14s ease;
+}
+.outline-row:hover { background: var(--accent-soft, rgb(124 58 237 / 10%)); }
+.outline-row > button[data-outline-expand] {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 16px;
+    line-height: 1;
+}
+.outline-row > button[data-outline-expand]:hover { border-color: var(--border-muted); color: var(--text-main); }
+.outline-leaf { width: 24px; height: 1px; }
+.outline-select {
+    min-width: 0;
+    max-width: 100%;
+    padding: 5px 7px !important;
+    border: 1px solid transparent !important;
+    border-radius: 6px !important;
+    background: transparent !important;
+    color: var(--text-main) !important;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 550;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+.outline-select:hover { border-color: var(--border-muted) !important; }
+.outline-select[aria-current="true"] {
+    background: var(--accent-soft, rgb(124 58 237 / 12%)) !important;
+    border-color: var(--border-muted) !important;
+    font-weight: 750;
+}
+.outline-row > span:not(.outline-leaf) {
+    max-width: 150px;
+    padding: 3px 7px;
+    border: 1px solid var(--border-muted);
+    border-radius: 999px;
+    color: var(--text-muted);
+    font-size: 10px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.outline-context { background: var(--bg-main); border-style: dashed !important; }
+.outline-list-empty, .outline-empty-state {
+    display: grid;
+    justify-items: center;
+    align-content: center;
+    min-height: 180px;
+    padding: 24px;
+    color: var(--text-muted);
+    text-align: center;
+}
+.outline-list-empty strong, .outline-empty-state h3 { margin: 0; color: var(--text-main); font-size: 14px; }
+.outline-list-empty span, .outline-empty-state p { max-width: 300px; margin: 6px 0 0; font-size: 12px; line-height: 1.55; }
+.outline-empty-mark { width: 30px; height: 30px; margin-bottom: 12px; border: 1px solid var(--border-muted); border-radius: 9px; background: var(--accent-soft, transparent); box-shadow: inset 0 0 0 6px var(--bg-card); }
+#outline_inspector { display: flex; flex-direction: column; overflow: auto; }
+.outline-inspector-header { position: sticky; top: 0; z-index: 1; }
+.outline-eyebrow { color: var(--text-muted); font-size: 9px; font-weight: 800; letter-spacing: .14em; }
+.outline-inspector-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 7px; }
+.outline-inspector-tools :is(button, a) {
+    min-height: 32px;
     padding: 6px 10px;
+    border: 1px solid var(--border-muted);
+    border-radius: 7px;
     background: var(--bg-card);
     color: var(--text-main);
-    border: 1px solid var(--border-muted);
-    border-radius: 6px;
+    font-size: 11px;
+    text-decoration: none;
 }
-.outline-select { text-align: left; overflow-wrap: anywhere; min-width: 0; max-width: 100%; }
-.outline-select[aria-current="true"] { outline: 2px solid var(--text-main); outline-offset: 2px; font-weight: 700; }
-.outline-context, .outline-row > span { font-size: 12px; }
-.outline-leaf { width: 24px; }
-.outline-inspector-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
-#outline_selection_notice { font-size: 12px; margin-bottom: 12px; }
+.outline-inspector-tools :is(button, a):hover { background: var(--accent-soft); }
+#outline_selection_notice { margin: 12px 16px 0; color: var(--text-muted); font-size: 11px; }
+.task-detail-panel { min-width: 0; padding: 14px; overflow-wrap: anywhere; }
 .task-detail-panel > * + * { margin-top: 16px; }
-.task-detail-panel .detail-card { background: var(--bg-card); border: 1px solid var(--border-muted); border-radius: 10px; padding: 14px; }
+.task-detail-panel .detail-card { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; }
 .task-detail-panel .flex { flex-wrap: wrap; gap: 8px; }
 .task-detail-panel .grid > * { min-width: 0; }
 .task-detail-panel :is(input, select, textarea) { min-width: 0; max-width: 100%; }
@@ -39,10 +138,13 @@
 .task-detail-panel button { min-height: 34px; padding: 6px 10px; border: 1px solid var(--border-muted); border-radius: 6px; }
 .task-detail-panel .subtask-children { padding-left: 6px !important; }
 .task-detail-panel button:disabled { opacity: .65; cursor: wait; }
-.outline-workspace :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
-#outline_inspector[hidden], #outline_inspector_panel[hidden] { display: none !important; }
+.outline-workspace :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--focus-color, var(--text-main)); outline-offset: 3px; }
+.task-tag-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.task-tag-chip { max-width: 100%; padding: 3px 7px; border: 1px solid var(--border-muted); border-radius: 999px; background: var(--bg-card); color: var(--text-muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
+#outline_inspector[hidden], #outline_inspector_panel[hidden], #outline_empty[hidden] { display: none !important; }
 @media (max-width: 900px) {
-    #tasks_workspace.outline-workspace { grid-template-columns: minmax(0, 1fr); }
-    .outline-task-list { max-height: 40dvh; overflow: auto; }
+    #tasks_workspace.outline-workspace { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(180px, 38dvh) minmax(0, 1fr); overflow: auto; }
+    #tasks_workspace.outline-workspace #kanban_columns_container { max-height: 38dvh; }
+    #outline_inspector { min-height: 320px; }
     .task-detail-panel .grid { grid-template-columns: minmax(0, 1fr); }
 }

@@ -48,11 +48,13 @@ function renderTaskQuickChipsBar() {
     }
 
     bar.innerHTML = tasks.map((t, idx) => {
-        const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
+        const taskColor = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
+        const color = /^#[0-9a-f]{3,8}$/i.test(taskColor) ? taskColor : '#7c3aed';
         return `
-            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${escapeHtml(color)}; color: ${typeof getContrastingTextColor === 'function' ? getContrastingTextColor(color) : '#fff'};">
-                <span>${escapeHtml(t.title)}</span>
-                <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${escapeHtml(t.status)}</span>
+            <button type="button" onclick="selectTaskInspectorById('${escapeHtml(t.id)}')" class="task-quick-chip" aria-pressed="${selectedInspectedTaskId === t.id}" title="${escapeHtml(t.title)}">
+                <span class="task-quick-chip-color" aria-hidden="true" style="--task-chip-color:${color}"></span>
+                <span class="task-quick-chip-title">${escapeHtml(t.title)}</span>
+                <span class="task-quick-chip-status">${escapeHtml(t.status)}</span>
             </button>
         `;
     }).join('');
@@ -166,6 +168,7 @@ function selectTaskInspectorById(taskId) {
     const searchInput = document.getElementById('task_inspector_search');
 
     selectedInspectedTaskId = taskId;
+    renderTaskQuickChipsBar();
 
     if (searchInput && task) {
         searchInput.value = task.title;

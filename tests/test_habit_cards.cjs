@@ -47,6 +47,25 @@ test('Cards expose independent day strips and explicit result choices without lo
     assert.equal(b.run(`habitCardViews.get('b').offset`),0);
     assert.equal(b.writes.length,0);
 });
+test('Compact card keeps day choice, explicit draft actions, and Clear separate in its editor footer',()=>{
+    const b=browser(); b.elements.habit_cards=node('habit_cards');
+    b.run(`allHabits[1].logs['2026-11-15']={id:'row',status:'completed'}; selectHabitDay('b','2026-11-15')`);
+    const html=b.elements.habit_cards.innerHTML;
+    assert.match(html,/aria-current="date"/,'selected local day is exposed semantically');
+    for(const [label,action] of [['Done','completed'],['Failed','failed'],['Skipped','skipped']]) {
+        assert.match(html,new RegExp(`aria-pressed="(?:true|false)" onclick="stageHabitStatus\\('b','2026-11-15','${action}'\\)">${label}`));
+    }
+    const footerStart=html.indexOf('class="habit-entry-footer habit-checkmark-footer"');
+    const choices=html.indexOf("stageHabitStatus('b','2026-11-15','completed')",footerStart);
+    const save=html.indexOf("saveHabitEntry('b','2026-11-15')",footerStart);
+    const cancel=html.indexOf("cancelHabitEntry('b','2026-11-15')",footerStart);
+    const clearRow=html.indexOf('class="habit-clear-row"',footerStart);
+    const clear=html.indexOf("clearHabitEntry('b','2026-11-15')",footerStart);
+    assert.ok(footerStart >= 0 && footerStart < choices && choices < save && save < cancel && cancel < clearRow && clearRow < clear,
+        'status choices and Save/Cancel share a band; confirmed Clear stays in a separate secondary row');
+    assert.match(html,/class="habit-clear-button" onclick="clearHabitEntry\('b','2026-11-15'\)"[^>]*>Clear day/);
+    assert.equal(b.writes.length,0,'rendering a choice or card never commits its draft');
+});
 function deferred(){let resolve; const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 test('Held Save rejects double submission, preserves concurrent edits, and failed refresh retries reads only',async()=>{
     const held=deferred(); let failReads=true;

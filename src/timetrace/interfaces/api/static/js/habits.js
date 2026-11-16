@@ -65,7 +65,7 @@ async function loadHabitsData() {
         renderHabitInspectorChips();
         const chartsTab = document.getElementById('habit_tab_charts');
         if (chartsTab && !chartsTab.classList.contains('hidden')) renderSelectedHabitCharts();
-        if (status) status.textContent = 'History: recent 365 days loaded; older absent dates are unknown. Charts retain their existing loaded-history windows.';
+        if (status) status.textContent = 'Recent 365 days loaded.';
         document.getElementById('habit_retry_load')?.classList.add('hidden');
     } catch (e) {
         if (generation !== habitReadGeneration) return;
@@ -329,6 +329,14 @@ function habitResult(log, date) {
     if (!log) return habitDateCovered(date) ? 'No record' : 'Unknown';
     return {completed:'Done',failed:'Failed',skipped:'Skipped',pending:'Pending',in_progress:'In progress'}[log.status] || log.status;
 }
+function habitDayMarker(log, date) {
+    if (!log) return habitDateCovered(date) ? '—' : '?';
+    return {completed:'Done',failed:'Fail',skipped:'Skip',pending:'Pending',in_progress:'Active'}[log.status] || 'Logged';
+}
+function habitDayState(log, date) {
+    if (!log) return habitDateCovered(date) ? 'empty' : 'unknown';
+    return {completed:'done',failed:'failed',skipped:'skipped',pending:'pending',in_progress:'active'}[log.status] || 'logged';
+}
 function renderHabitCards() {
     const container = document.getElementById('habit_cards');
     if (!container) return;
@@ -339,31 +347,37 @@ function renderHabitCards() {
         const draft = habitEntryDraft(h.id, date), value = JSON.parse(draft.field.value), log = habitRecord(h, date);
         const dirty = draft.field.value !== draft.saved;
         const outside = !habitDateCovered(date) && !log;
-        const editor = h.habit_type === 'numeric'
-            ? `<label for="habit_amount_${h.id}">Amount <span>${habitText(h.unit)}</span></label>
-                <input id="habit_amount_${h.id}" type="number" step="any" value="${value.value ?? ''}"
-                    oninput="setHabitDirectValue('${h.id}','${date}',this.value)" aria-describedby="habit_message_${h.id}">`
+        const statusChoices = h.habit_type === 'numeric' ? ''
             : `<div class="habit-result-choices" role="group" aria-label="Result">
                 ${[['completed','Done'],['failed','Failed'],['skipped','Skipped']].map(([status,label]) =>
                     `<button type="button" aria-pressed="${value.status === status}" onclick="stageHabitStatus('${h.id}','${date}','${status}')">${label}</button>`).join('')}
                </div>`;
+        const editor = h.habit_type === 'numeric'
+            ? `<label for="habit_amount_${h.id}">Amount <span>${habitText(h.unit)}</span></label>
+                <input id="habit_amount_${h.id}" type="number" step="any" value="${value.value ?? ''}"
+                    oninput="setHabitDirectValue('${h.id}','${date}',this.value)" aria-describedby="habit_message_${h.id}">`
+            : '';
         return `<article class="habit-compact-card" aria-label="${habitText(h.name)}" data-habit-id="${h.id}">
-            <div class="habit-card-heading"><h3><span class="habit-color" style="background:${habitColor(h.color)}"></span>${habitText(h.name)}</h3>
-                <button type="button" onclick="openEditHabitModal('${h.id}')">Edit definition</button></div>
-            <p class="habit-card-meta">${h.habit_type === 'numeric' ? `Target: ${habitText(h.target_value)} ${habitText(h.unit)} · ` : ''}${habitText(h.frequency)}</p>
-            <div class="habit-week-nav"><button type="button" onclick="navigateHabitWeek('${h.id}',-1)" aria-label="Previous week">‹ Week</button>
-                <button type="button" onclick="habitToday('${h.id}')">Today</button>
-                <button type="button" onclick="navigateHabitWeek('${h.id}',1)" aria-label="Next week">Week ›</button></div>
-            <div class="habit-day-strip" role="group" aria-label="Viewing days">
-                ${dates.map(d => `<button type="button" aria-pressed="${d.date === date}" title="${d.date}: ${habitText(habitResult(habitRecord(h,d.date),d.date))}"
-                    onclick="selectHabitDay('${h.id}','${d.date}')"><span>${habitText(d.label)}</span><strong>${d.day}</strong><small>${habitText(habitResult(habitRecord(h,d.date),d.date))}</small></button>`).join('')}
+            <div class="habit-card-heading"><div class="habit-card-title"><span class="habit-color" style="background:${habitColor(h.color)}"></span><h3>${habitText(h.name)}</h3></div>
+                <button type="button" class="habit-definition-link" onclick="openEditHabitModal('${h.id}')">Edit</button></div>
+            <p class="habit-card-meta">${h.habit_type === 'numeric' ? `Target ${habitText(h.target_value)} ${habitText(h.unit)} · ` : ''}${habitText(h.frequency)}</p>
+            <div class="habit-week-nav"><button type="button" onclick="navigateHabitWeek('${h.id}',-1)" aria-label="Previous week">‹</button>
+                <button type="button" class="habit-today-button" onclick="habitToday('${h.id}')">Today</button>
+                <button type="button" onclick="navigateHabitWeek('${h.id}',1)" aria-label="Next week">›</button></div>
+            <div class="habit-day-strip" role="group" aria-label="Choose a day for ${habitText(h.name)}">
+                ${dates.map(d => {
+                    const dayLog = habitRecord(h, d.date), result = habitResult(dayLog, d.date);
+                    return `<button type="button" class="habit-day habit-day-${habitDayState(dayLog,d.date)}" aria-pressed="${d.date === date}" ${d.date === date ? 'aria-current="date"' : ''} aria-label="${habitText(d.label)} ${d.date}: ${habitText(result)}" title="${d.date}: ${habitText(result)}"
+                        onclick="selectHabitDay('${h.id}','${d.date}')"><span>${habitText(d.label)}</span><strong>${d.day}</strong><small aria-hidden="true">${habitText(habitDayMarker(dayLog,d.date))}</small></button>`;
+                }).join('')}
             </div>
-            <p class="habit-selected-result"><time datetime="${date}">${date}</time> · <span id="habit_result_${h.id}">${habitText(habitResult(log,date))}${dirty ? ' · Unsaved' : ''}</span></p>
+            <p class="habit-selected-result"><span>Selected day</span><time datetime="${date}">${date}</time><span class="habit-result-value" id="habit_result_${h.id}">${habitText(habitResult(log,date))}${dirty ? ' · Unsaved' : ''}</span></p>
             ${outside ? '<p class="habit-history-warning">Outside loaded history; a record may exist. Save explicitly to update this date.</p>' : ''}
             <div class="habit-entry-editor" onkeydown="habitEntryKeydown(event,'${h.id}','${date}')">${editor}
-                <div class="habit-entry-actions"><button type="button" onclick="saveHabitEntry('${h.id}','${date}')" aria-disabled="${draft.pending}">${draft.pending ? 'Saving…' : 'Save'}</button>
-                    <button type="button" onclick="cancelHabitEntry('${h.id}','${date}')" ${draft.pending ? 'disabled' : ''}>Cancel</button>
-                    <button type="button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear</button></div>
+                <div class="habit-entry-footer ${statusChoices ? 'habit-checkmark-footer' : ''}">${statusChoices}<div class="habit-entry-actions"><button type="button" class="habit-save-button" onclick="saveHabitEntry('${h.id}','${date}')" aria-disabled="${draft.pending}">${draft.pending ? 'Saving…' : 'Save'}</button>
+                    <button type="button" class="habit-cancel-button" onclick="cancelHabitEntry('${h.id}','${date}')" ${draft.pending ? 'disabled' : ''}>Cancel</button></div>
+                </div>
+                <div class="habit-clear-row"><button type="button" class="habit-clear-button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear day</button></div>
                 <p id="habit_message_${h.id}" role="status">${habitText(draft.message)}</p>
             </div></article>`;
     }).join('') : '<p>No habits yet. Choose + New Habit to start.</p>';

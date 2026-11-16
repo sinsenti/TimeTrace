@@ -41,7 +41,7 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
-    <link rel="stylesheet" href="/static/css/habit_cards.css">
+    <link rel="stylesheet" href="/static/css/habit_cards.css?v=ui-polish-2">
 </head>
 <body class="habits-page min-h-screen flex flex-col pb-12">
 
@@ -61,7 +61,13 @@
     </header>
 
     <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
-        <p id="habit_load_status" role="status">Loading habits…</p>
+        <div class="habit-load-row">
+            <p id="habit_load_status" role="status">Loading habits…</p>
+            <details class="habit-history-disclosure">
+                <summary>History coverage</summary>
+                <p>The habit list includes recent 365-day history. An absent older date is unknown, and the card will warn you before editing it. Charts keep their existing loaded-history windows.</p>
+            </details>
+        </div>
         <button id="habit_retry_load" type="button" class="hidden" onclick="loadHabitsData()">Retry refresh</button>
         <section id="habit_tab_matrix" class="space-y-4">
             <h2 class="text-lg font-bold">Habits</h2>
@@ -225,7 +231,7 @@
     <script src="/static/js/utils.js"></script>
     <script src="/static/js/timer_control.js"></script>
     <script src="/static/js/settings.js"></script>
-    <script src="/static/js/habits.js"></script>
+    <script src="/static/js/habits.js?v=ui-polish-2"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

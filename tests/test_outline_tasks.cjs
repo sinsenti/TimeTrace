@@ -4,6 +4,7 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const source = path.resolve(__dirname, '../src/timetrace/interfaces/api/static/js');
+const outlineCss = fs.readFileSync(path.resolve(__dirname, '../src/timetrace/interfaces/api/static/css/outline_tasks.css'), 'utf8');
 function element(id, value = '') {
     const classes = new Set();
     return {id, value, isConnected: true, type: 'text', checked: false, disabled: false, dataset: {}, style: {}, textContent: '', innerHTML: '',
@@ -64,6 +65,22 @@ test('outline preference renders Outline and retains unrelated preferences acros
     p.run('selectTaskView("grouped"); selectTaskView("outline")');
     assert.equal(p.settings().theme, 'nord'); assert.equal(p.settings().colorSeed, 42);
     assert.equal(p.settings().taskView, 'outline');
+});
+
+test('outline empty state honors hidden when its layout rule sets display:grid', () => {
+    assert.match(outlineCss, /\.outline-empty-state\s*\{[^}]*display:\s*grid/s);
+    assert.match(outlineCss, /#outline_empty\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
+});
+
+test('Kanban cards separate tags into escaped chips and keep UUIDs quoted in handlers', () => {
+    const p = fixture();
+    p.context.task = {id:'0195e535-0000-7000-8000-00000000000a',title:'Chip task',status:'To Do',tags:'#one, #two <img>'};
+    p.run('kanbanTasks = [task]; renderedCard = renderKanbanCard(task)');
+    const html = p.context.renderedCard;
+    assert.equal((html.match(/class="task-tag-chip"/g) || []).length, 3);
+    assert.match(html, /&lt;img/); assert.doesNotMatch(html, /<img/);
+    assert.match(html, /data-task-id="0195e535-0000-7000-8000-00000000000a"/);
+    assert.match(html, /navigateToTaskDetail\('0195e535-0000-7000-8000-00000000000a', true\)/);
 });
 
 test('filtered descendants retain labeled ancestor context; orphan/cycles render once with inert text', () => {

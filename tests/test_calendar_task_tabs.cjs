@@ -4,6 +4,16 @@ const vm = require('node:vm');
 const test = require('node:test');
 const source = fs.readFileSync('src/timetrace/interfaces/api/static/js/sidebar_totals.js', 'utf8');
 
+test('planning task Schedule and Edit actions share readable compact controls', () => {
+    const schedule = source.match(/<button type="button" aria-label="Schedule[^\n]+/);
+    const edit = source.match(/<button type="button" onclick="event\.stopPropagation\(\); openEditTaskModal[^\n]+/);
+    assert.ok(schedule);
+    assert.ok(edit);
+    assert.match(schedule[0], /class="planning-schedule planning-task-action/);
+    assert.match(edit[0], /class="planning-task-action/);
+    assert.doesNotMatch(edit[0], /text-\[9px\]/);
+});
+
 class Element {
     constructor(tag = 'div') { this.tagName = tag; this.children = []; this.attributes = {}; this.hidden = false; this.textContent = ''; this.innerHTML = ''; this.checked = false; this.value = ''; this.isConnected = true; this.classes = new Set(['hidden']); this.classList = { add: c => this.classes.add(c), remove: c => this.classes.delete(c), contains: c => this.classes.has(c) }; }
     append(...children) { for (const child of children) { child.parentNode = this; this.children.push(child); } }

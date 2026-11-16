@@ -88,6 +88,24 @@ test('cold focus and typed search become selectable after captured metadata arri
     assert.deepEqual(h.requests, ['/api/tasks?status=all']);
 });
 
+test('Revision task quick-select uses neutral chips, a stored-color accent, safe labels, and selected state', async () => {
+    const h = setup();
+    const taskId = '0195e535-0000-7000-8000-00000000000a';
+    await h.release([{id:taskId,title:'<img src=x onerror=boom>',status:'Doing <b>work</b>',color:'#18a26a'}]);
+    h.c.escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+    h.c.getTaskColor = task => task.color;
+    h.c.renderTaskQuickChipsBar();
+    const bar = h.nodes.get('task_quick_chips_bar');
+    assert.match(bar.innerHTML, /class="task-quick-chip"/);
+    assert.match(bar.innerHTML, /selectTaskInspectorById\('0195e535-0000-7000-8000-00000000000a'\)/);
+    assert.match(bar.innerHTML, /--task-chip-color:#18a26a/);
+    assert.doesNotMatch(bar.innerHTML, /background-color:/);
+    assert.match(bar.innerHTML, /&lt;img/); assert.doesNotMatch(bar.innerHTML, /<img/);
+    assert.match(bar.innerHTML, /aria-pressed="false"/);
+    h.c.selectTaskInspectorById(taskId);
+    assert.match(bar.innerHTML, /aria-pressed="true"/);
+});
+
 for (const cancel of ['Escape', 'outside click', 'blur', 'tab leave']) {
     test(`pending metadata respects ${cancel} dismissal`, async () => {
         const h = setup(); h.event('onfocus'); h.event('oninput', 'Rating18');

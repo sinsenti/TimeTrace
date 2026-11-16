@@ -62,7 +62,11 @@ function renderOutlineTasks(container, statuses, tasks) {
     roots.forEach(walk);
     // Components consisting only of a cycle still receive a deterministic snapshot-order root.
     orderedIds.forEach(id => { if (!visited.has(id)) walk(id); });
-    container.innerHTML = html.length ? `<ul class="outline-roots">${html.join('')}</ul>` : '<p>No matching tasks</p>';
+    container.innerHTML = html.length
+        ? `<ul class="outline-roots">${html.join('')}</ul>`
+        : '<div class="outline-list-empty"><strong>No matching tasks</strong><span>Try another search or clear the current filters.</span></div>';
+    const count = document.getElementById('outline_list_count');
+    if (count) count.textContent = `${matches.size} ${matches.size === 1 ? 'task' : 'tasks'}`;
     for (const button of container.querySelectorAll('[data-outline-select]')) {
         button.addEventListener('click', () => selectOutlineTask(button.dataset.outlineSelect));
     }

@@ -166,8 +166,11 @@ function renderKanbanCard(task) {
 
     const parent = task.parent_id ? kanbanTasks.find(t => t.id === task.parent_id) || taskKnowledge.get(task.parent_id) : null;
     const parentLabel = task.parent_id ? `<div class="text-[11px] text-slate-400">Subtask of ${escapeHtml(parent?.title || 'another task')}</div>` : '';
+    const tagChips = String(task.tags || '').split(/[\s,]+/).filter(Boolean).map(tag =>
+        `<span class="task-tag-chip">${escapeHtml(tag)}</span>`
+    ).join('');
     return `
-        <div data-task-id="${task.id}" tabindex="0" onkeydown="if(event.target === this && event.key === 'Enter') navigateToTaskDetail('${task.id}', true)" onclick="navigateToTaskDetail('${task.id}', true)" class="kanban-card p-3 space-y-2 cursor-pointer">
+        <div data-task-id="${escapeHtml(task.id)}" tabindex="0" onkeydown="if(event.target === this && event.key === 'Enter') navigateToTaskDetail('${escapeHtml(task.id)}', true)" onclick="navigateToTaskDetail('${escapeHtml(task.id)}', true)" class="kanban-card p-3 space-y-2 cursor-pointer">
             <div class="flex justify-between items-start">
                 <span class="font-semibold text-xs text-white leading-snug hover:underline hover:text-purple-300">${escapeHtml(task.title)}</span>
                 ${!isOngoing ? `<span class="text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800 px-1.5 py-0.5 rounded shrink-0 ml-1">${estBadge}</span>` : ''}
@@ -175,7 +178,7 @@ function renderKanbanCard(task) {
             ${dueBadgeHTML ? `<div class="pt-0.5">${dueBadgeHTML}</div>` : ''}
             ${parentLabel}
             ${descContentHTML}
-            ${task.tags ? `<div class="text-[11px] text-slate-400 break-words">${escapeHtml(task.tags)}</div>` : ''}
+            ${tagChips ? `<div class="task-tag-chips" aria-label="Tags">${tagChips}</div>` : ''}
             <div class="flex justify-between items-center pt-1 border-t border-[#1a1c26] text-[10px]">
                 <div class="flex items-center space-x-1.5">
                     <span class="text-purple-400 font-semibold uppercase">${escapeHtml(task.category || 'work')}</span>
@@ -183,7 +186,7 @@ function renderKanbanCard(task) {
                 </div>
                 <div class="flex items-center space-x-1.5">
                     <span class="font-bold text-slate-400 bg-black/30 px-1.5 py-0.5 rounded">${escapeHtml(prioLabel)}</span>
-                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${task.id}');" class="bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/80 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
+                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${escapeHtml(task.id)}');" class="bg-purple-950/80 hover:bg-purple-900 text-purple-300 border border-purple-800/80 px-1.5 py-0.5 rounded font-bold text-[9px]">Edit</button>
                 </div>
             </div>
         </div>

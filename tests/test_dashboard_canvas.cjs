@@ -44,6 +44,19 @@ function browser(handler, storage = new Map()) {
     return { run, elements, storage, requests, alerts, prompts, buttons, context };
 }
 
+test('tile cards use the shared content band and canvas rows stretch without fixed row heights', () => {
+    const b = browser(async () => []);
+    const card = b.run("renderTileWidget({ title: 'Tasks', spec: { mode: 'structured', query: {} } }, { columns: [{ unit: 'count' }], rows: [], total: 4 }, { widgets: [], results: {} }, null)");
+    assert.match(card.children[0].className, /widget-tile-content/);
+    const css = fs.readFileSync(path.join(__dirname, '../src/timetrace/interfaces/api/static/css/dashboard_canvas.css'), 'utf8');
+    const template = fs.readFileSync(path.join(__dirname, '../src/timetrace/interfaces/api/templates/stats.html'), 'utf8');
+    assert.match(css, /\.canvas-grid\s*\{[^}]*align-items:\s*stretch/s);
+    assert.match(css, /\.widget-card\s*\{[^}]*align-self:\s*stretch/s);
+    assert.doesNotMatch(css, /grid-auto-rows\s*:/);
+    assert.match(template, /dashboard_canvas\.css\?v=ui-polish-1/);
+    assert.match(template, /dashboards\.js\?v=ui-polish-1/);
+});
+
 test('cards load independently and Retry reads only the failed card with query context', async () => {
     const held = deferred(); let fails = true;
     const one = dashboard('one', [widget('healthy'), { ...widget('broken'), spec: { ...spec, query: { ...spec.query, measure: 'sum_duration' } } }]);

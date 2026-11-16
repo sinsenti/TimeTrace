@@ -66,13 +66,29 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 
 /* Aligned tool strip: planning tools over Tasks, date/view controls over the real calendar. */
 .calendar-page .planning-header { display: grid; grid-template-columns: var(--planning-tasks-width, 256px) minmax(0, 1fr); background: var(--bg-header); border-bottom: 1px solid var(--border-color); }
-.calendar-page .planning-task-tools { grid-row: span 2; display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 12px; border-right: 1px solid var(--border-color); font-size: 13px; }
+.calendar-page .planning-task-tools { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 12px; border-right: 1px solid var(--border-color); font-size: 13px; }
 .calendar-page .planning-task-tools input { width: 100%; min-width: 0; background: var(--bg-main); border: 1px solid var(--border-muted); border-radius: 7px; padding: 7px 9px; }
-.calendar-page .calendar-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 12px 4px; min-width: 0; }
-.calendar-page .calendar-tools > div { flex-shrink: 0; }
-.calendar-page .calendar-tools button { min-height: 30px; }
-.calendar-page .calendar-panel-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 12px 10px; }
-.calendar-page .calendar-panel-controls label { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.calendar-page .calendar-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 12px; padding: 8px 12px; min-width: 0; }
+.calendar-page .calendar-toolbar-primary { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.calendar-page .calendar-view-controls, .calendar-page .calendar-date-controls { display: flex; align-items: center; flex-shrink: 0; border: 1px solid var(--border-muted); border-radius: 8px; background: var(--bg-card); }
+.calendar-page .calendar-view-controls { padding: 3px; }
+.calendar-page .calendar-view-controls button { min-height: 30px; padding: 4px 9px; border-radius: 6px; font-size: 12px; color: var(--text-muted); }
+.calendar-page .calendar-view-controls button.bg-purple-600 { color: #fff; }
+.calendar-page .calendar-date-controls { min-height: 36px; gap: 2px; padding: 2px 4px; white-space: nowrap; }
+.calendar-page .calendar-date-controls button { min-height: 30px; padding: 4px 8px; border-radius: 6px; color: var(--text-main); font-size: 12px; font-weight: 650; }
+.calendar-page .calendar-date-controls button:hover, .calendar-page .calendar-today-control:hover { background: var(--accent-soft); }
+.calendar-page .calendar-today-control { min-height: 36px; padding: 5px 11px; border: 1px solid var(--border-muted); border-radius: 8px; background: var(--bg-card); color: var(--text-main); font-size: 12px; font-weight: 650; }
+.calendar-page .calendar-range-total { display: flex; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid var(--border-color); color: var(--text-muted); font-size: 12px; font-weight: 650; white-space: nowrap; }
+.calendar-page #weekly_total_badge { color: var(--accent-primary); font-size: 15px; font-weight: 850; }
+.calendar-page .calendar-toolbar-more { position: relative; flex-shrink: 0; }
+.calendar-page .calendar-toolbar-more > summary { display: flex; align-items: center; justify-content: center; min-height: 36px; padding: 5px 12px; border: 1px solid var(--border-muted); border-radius: 8px; background: var(--bg-card); color: var(--text-main); font-size: 12px; font-weight: 650; cursor: pointer; list-style: none; }
+.calendar-page .calendar-toolbar-more > summary::-webkit-details-marker { display: none; }
+.calendar-page .calendar-toolbar-more > summary::after { content: "▾"; margin-left: 8px; color: var(--text-muted); }
+.calendar-page .calendar-toolbar-more[open] > summary { border-color: var(--focus-color); }
+.calendar-page .calendar-toolbar-options { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; width: min(360px, calc(100vw - 24px)); padding: 10px; border: 1px solid var(--border-muted); border-radius: 10px; background: var(--bg-card); box-shadow: 0 12px 28px rgb(0 0 0 / 24%); }
+.calendar-page .calendar-toolbar-options > button, .calendar-page .calendar-toolbar-options label { display: flex; align-items: center; justify-content: center; min-height: 34px; gap: 6px; padding: 5px 8px; border: 1px solid var(--border-muted); border-radius: 7px; background: var(--bg-card); color: var(--text-main); font-size: 12px; font-weight: 600; text-align: center; }
+.calendar-page .calendar-toolbar-options label { grid-column: 1 / -1; justify-content: space-between; }
+.calendar-page .calendar-toolbar-options select { min-height: 30px; max-width: 180px; border: 1px solid var(--border-muted); border-radius: 6px; padding: 3px 7px; background: var(--bg-main); color: var(--text-main); }
 .calendar-page #breakdown_filter_chip { grid-column: 1 / -1; padding: 8px 12px; background: var(--accent-soft, #303347); font-size: 12px; }
 .calendar-page #breakdown_filter_chip button { border: 1px solid var(--border-muted); border-radius: 5px; padding: 3px 8px; }
 .calendar-page main { min-width: 0; }
@@ -97,12 +113,17 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
     .calendar-page .planning-area { flex-direction: column; }
     .calendar-page #left_sidebar { width: 100% !important; padding: 6px 10px; max-height: 160px; }
     .calendar-page #task_card_list { display: flex; gap: 8px; overflow-x: auto; min-height: 80px; }
-    .calendar-page #task_card_list .task-card { flex: 0 0 220px; height: auto; margin: 0; }
+    .calendar-page #task_card_list .task-card { flex: 0 0 220px; width: 220px; min-width: 0; max-width: 220px; box-sizing: border-box; height: auto; margin: 0; }
     .calendar-page #left_sidebar > .mt-3 { display: none; }
     .calendar-page #left_resizer, .calendar-page #right_resizer { display: none; }
     .calendar-page #right_sidebar { width: 100% !important; max-height: 170px; }
     .calendar-page #breakdown_filter_chip { width: 100%; }
-    .calendar-page .calendar-tools, .calendar-page .calendar-panel-controls { padding: 4px 10px; }
+    .calendar-page .calendar-toolbar { position: relative; width: 100%; padding: 6px 10px; }
+    .calendar-page .calendar-toolbar-primary { flex: 1 1 auto; }
+    .calendar-page .calendar-view-controls, .calendar-page .calendar-date-controls { max-width: 100%; }
+    .calendar-page .calendar-date-controls button { padding-right: 6px; padding-left: 6px; }
+    .calendar-page .calendar-toolbar-more { position: static; }
+    .calendar-page .calendar-toolbar-options { top: 100%; right: 10px; left: auto; width: min(360px, calc(100vw - 20px)); max-width: calc(100vw - 20px); }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; } }
 .calendar-page .planning-header { flex-shrink: 0; }
@@ -116,7 +137,12 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 :root[data-appearance="light"] #ai_composer_send { background: var(--accent-primary); color: #fff; }
 :root[data-appearance="light"] .ai-test-result-ok { color: #176442; }
 .calendar-page #task_card_list .task-card[hidden] { display: none; }
-.calendar-page .planning-schedule { min-height: 28px; }
+.calendar-page .planning-task-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; font-size: 10px; font-weight: 600; }
+.calendar-page .planning-task-metadata { display: flex; align-items: center; gap: 4px; flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.calendar-page .planning-task-category { max-width: 80px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.calendar-page .planning-task-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; min-width: 0; }
+.calendar-page .planning-task-action { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 24px; padding: 3px 4px; border-radius: 6px; font-size: 10px; line-height: 1.1; font-weight: 700; white-space: nowrap; }
+@media (pointer: coarse) { .calendar-page .planning-task-action { min-width: 44px; min-height: 32px; } }
 :root[data-appearance="light"] #vim_mode_indicator {
     background: var(--accent-soft) !important; color: var(--text-main) !important; border-color: var(--border-muted) !important;
 }

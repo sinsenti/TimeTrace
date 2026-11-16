@@ -46,8 +46,8 @@
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/grouped_tasks.css">
     <link rel="stylesheet" href="/static/css/status_management.css">
-    <link rel="stylesheet" href="/static/css/task_details.css">
-    <link rel="stylesheet" href="/static/css/outline_tasks.css">
+    <link rel="stylesheet" href="/static/css/task_details.css?v=ui-polish-1">
+    <link rel="stylesheet" href="/static/css/outline_tasks.css?v=ui-polish-2">
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
@@ -74,15 +74,27 @@
         <p id="task_view_notice" role="status" class="basis-full text-xs text-slate-400 empty:hidden"></p>
     </section>
     <main id="tasks_workspace" class="flex-1 min-h-0 p-4 overflow-x-auto flex gap-4" aria-label="Kanban board">
-        <div id="kanban_columns_container" class="flex gap-4 h-full w-full"></div>
+        <section id="outline_list_panel" aria-label="Task hierarchy">
+            <header class="outline-list-heading">
+                <div><h2>Task hierarchy</h2><p>Choose a task to inspect its properties and history.</p></div>
+                <span id="outline_list_count" aria-live="polite"></span>
+            </header>
+            <div id="kanban_columns_container" class="flex gap-4 h-full w-full"></div>
+        </section>
         <aside id="outline_inspector" hidden inert aria-label="Inline task inspector">
-            <div class="outline-inspector-tools">
-                <h2 id="outline_inspector_heading" tabindex="-1">Task inspector</h2>
-                <a id="outline_details_link" hidden href="/tasks">Open dedicated details</a>
-                <button type="button" onclick="closeOutlineInspector()">Close inspector</button>
+            <div class="outline-inspector-header">
+                <div><span class="outline-eyebrow">WORKSPACE</span><h2 id="outline_inspector_heading" tabindex="-1">Task inspector</h2></div>
+                <div class="outline-inspector-tools">
+                    <a id="outline_details_link" hidden href="/tasks">Open full details</a>
+                    <button type="button" onclick="closeOutlineInspector()">Close</button>
+                </div>
             </div>
             <p id="outline_selection_notice" role="status"></p>
-            <p id="outline_empty">Select a task from the outline to inspect its properties and own history.</p>
+            <div id="outline_empty" class="outline-empty-state">
+                <span class="outline-empty-mark" aria-hidden="true"></span>
+                <h3>Select a task</h3>
+                <p>Its properties, progress, subtasks, and own session history will appear here.</p>
+            </div>
             <div id="outline_inspector_panel" class="task-detail-panel" hidden inert>
                 {% include "components/task_detail_panel.html" %}
             </div>
@@ -139,11 +151,11 @@
     <script src="/static/js/task_attach.js"></script>
     <script src="/static/js/task_modal.js"></script>
     <script src="/static/js/settings.js"></script>
-    <script src="/static/js/kanban.js"></script>
+    <script src="/static/js/kanban.js?v=ui-polish-1"></script>
     <script src="/static/js/session_modal.js"></script>
     <script src="/static/js/grouped_tasks.js"></script>
     <script src="/static/js/subtasks.js"></script>
-    <script src="/static/js/outline_tasks.js"></script>
+    <script src="/static/js/outline_tasks.js?v=ui-polish-1"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

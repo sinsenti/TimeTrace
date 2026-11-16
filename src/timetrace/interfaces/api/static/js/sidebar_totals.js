@@ -323,16 +323,16 @@ async function fetchTasks() {
                                 </div>
                                 ${parentTaskLinkHTML}
                             </div>
-                            <div class="flex justify-between items-center text-[10px] font-semibold">
-                                <div class="flex items-center space-x-1">
-                                    <span class="bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${escapeHtml(t.category || 'work')}</span>
+                            <div class="planning-task-footer">
+                                <div class="planning-task-metadata">
+                                    <span class="planning-task-category bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${escapeHtml(t.category || 'work')}</span>
                                     ${isRecurring ? '<span class="text-[9px] font-bold text-white">↻</span>' : ''}
                                     ${hasAttachments ? '<span class="text-[9px] font-bold text-white">📎</span>' : ''}
                                 </div>
-                                <div class="flex items-center space-x-1">
+                                <div class="planning-task-actions">
                                     <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${escapeHtml(prioLabel)}</span>
-                                    <button type="button" aria-label="Schedule ${escapeHtml(t.title)}" onclick="event.stopPropagation(); createPlanningSession('${t.id}');" class="planning-schedule bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[11px] text-white">Schedule</button>
-                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[9px] text-white">Edit</button>
+                                    <button type="button" aria-label="Schedule ${escapeHtml(t.title)}" onclick="event.stopPropagation(); createPlanningSession('${t.id}');" class="planning-schedule planning-task-action bg-black/60 hover:bg-black/80 text-white">Schedule</button>
+                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="planning-task-action bg-black/60 hover:bg-black/80 text-white">Edit</button>
                                 </div>
                             </div>
                         </div>

@@ -653,8 +653,9 @@ function renderTileWidget(widget, result, data, seed) {
     const format = _unitFormatter(_measureUnit(result));
     const badgeText = (seed && seed.badge) || _tileBadge(result);
 
-    const card = _el('div', 'widget-card flex items-center space-x-4');
-    card.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
+    const card = _el('div', 'widget-card');
+    const content = _el('div', 'widget-tile-content');
+    content.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
 
     const body = _el('div', 'min-w-0');
     body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', _widgetDisplayTitle(widget)));
@@ -681,7 +682,8 @@ function renderTileWidget(widget, result, data, seed) {
         body.appendChild(_deltaLine(result, _measureUnit(result)));
     }
 
-    card.appendChild(body);
+    content.appendChild(body);
+    card.appendChild(content);
     return card;
 }
 
