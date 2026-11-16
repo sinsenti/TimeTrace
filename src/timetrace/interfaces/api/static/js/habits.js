@@ -348,9 +348,12 @@ function renderHabitCards() {
         const dirty = draft.field.value !== draft.saved;
         const outside = !habitDateCovered(date) && !log;
         const statusChoices = h.habit_type === 'numeric' ? ''
-            : `<div class="habit-result-choices" role="group" aria-label="Result">
-                ${[['completed','Done'],['failed','Failed'],['skipped','Skipped']].map(([status,label]) =>
-                    `<button type="button" aria-pressed="${value.status === status}" onclick="stageHabitStatus('${h.id}','${date}','${status}')">${label}</button>`).join('')}
+            : `<div class="habit-result-segment" role="group" aria-label="Result">
+                <span class="habit-segment-label">Result</span>
+                <div class="habit-result-choices">
+                    ${[['completed','Done'],['failed','Failed'],['skipped','Skipped']].map(([status,label]) =>
+                        `<button type="button" aria-pressed="${value.status === status}" onclick="stageHabitStatus('${h.id}','${date}','${status}')">${label}</button>`).join('')}
+                </div>
                </div>`;
         const editor = h.habit_type === 'numeric'
             ? `<label for="habit_amount_${h.id}">Amount <span>${habitText(h.unit)}</span></label>
@@ -377,7 +380,7 @@ function renderHabitCards() {
                 <div class="habit-entry-footer ${statusChoices ? 'habit-checkmark-footer' : ''}">${statusChoices}<div class="habit-entry-actions"><button type="button" class="habit-save-button" onclick="saveHabitEntry('${h.id}','${date}')" aria-disabled="${draft.pending}">${draft.pending ? 'Saving…' : 'Save'}</button>
                     <button type="button" class="habit-cancel-button" onclick="cancelHabitEntry('${h.id}','${date}')" ${draft.pending ? 'disabled' : ''}>Cancel</button></div>
                 </div>
-                <div class="habit-clear-row"><button type="button" class="habit-clear-button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear day</button></div>
+                <div class="habit-clear-row" role="group" aria-label="Clear selected day record"><button type="button" class="habit-clear-button" onclick="clearHabitEntry('${h.id}','${date}')" ${draft.pending || !log ? 'disabled' : ''}>Clear day</button></div>
                 <p id="habit_message_${h.id}" role="status">${habitText(draft.message)}</p>
             </div></article>`;
     }).join('') : '<p>No habits yet. Choose + New Habit to start.</p>';

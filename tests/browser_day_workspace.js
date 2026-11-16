@@ -77,7 +77,7 @@ async (page, baseURL) => {
         await main(days[0]);check(await notes(days[0]).inputValue()==='A independent draft','B Save/Dismiss/Discard retain A');
         results.push('two-day IDs/dismissals, exact B Save/Dismiss/Discard and hide/switch/promote ownership');
         await root(days[0]).getByRole('button',{name:'#one 1h',exact:true}).click();
-        check((await root(days[0]).locator('[data-day="session-count"]').textContent()).includes('1/2'),'matching/full session denominator');
+        check((await root(days[0]).locator('[data-day="session-count"]').textContent()).replace(/\s/g,'').includes('1/2'),'matching/full session denominator');
         await root(days[0]).getByRole('button',{name:'Tasks',exact:true}).click();
         check((await root(days[0]).locator('[data-day="filter-label"]').textContent()).includes('#one'),'group retains chip');
         await root(days[0]).getByRole('button',{name:'Open in Calendar',exact:true}).click();await p.waitForURL('**/dashboard?**');
@@ -181,7 +181,7 @@ async (page, baseURL) => {
                 };
                 const luminance=rgb=>rgb.slice(0,3).map(value=>{value/=255;return value<=.04045?value/12.92:((value+.055)/1.055)**2.4;}).reduce((total,value,index)=>total+value*[.2126,.7152,.0722][index],0);
                 const contrastSamples=[];
-                const categories=[['heading','.day-editor h2'],['body','.day-evidence > p'],['status','[data-day="status"]'],
+                const categories=[['heading','.day-editor h2'],['body','.day-evidence-summary [data-day="total"]'],['status','[data-day="status"]'],
                     ['chip','[data-day="filter-label"]'],['rating-label','[id^="score_label_"]'],['button','.day-editor [data-action="save"]']];
                 for(const [category,selector] of categories){
                     const element=Array.from(document.querySelectorAll(selector)).find(visible);

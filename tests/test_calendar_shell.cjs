@@ -4,6 +4,8 @@ const path = require('node:path');
 const test = require('node:test');
 const vm = require('node:vm');
 const js = path.resolve(__dirname, '../src/timetrace/interfaces/api/static/js');
+const templates = path.resolve(__dirname, '../src/timetrace/interfaces/api/templates');
+const styles = path.resolve(__dirname, '../src/timetrace/interfaces/api/static/css');
 
 function browser(seed = {}, elements = {}) {
     const storage = new Map(Object.entries(seed));
@@ -232,7 +234,7 @@ function installDayEditorFixture(fields) {
     const textNames=['rating','highlights','friction','notes'];
     const controls=Object.fromEntries(['date',...textNames,'ratings','status','breakdown','total','created-tasks','filter','filter-label','session-count','sessions'].map(name=>{
         const control=textNames.includes(name) ? fields[`day_form_${name}`] : {value:'',style:{}};
-        Object.assign(control,{dataset:{day:name},addEventListener(){},replaceChildren(){},querySelectorAll:()=>[]});
+        Object.assign(control,{dataset:{day:name},addEventListener(){},replaceChildren(){},setAttribute(){},querySelectorAll:()=>[]});
         return [name,control];
     }));
     const actions=Object.fromEntries(['save','dismiss','discard','retry','calendar','clear-filter','activity','tasks','promote'].map(action=>[action,{dataset:{action},addEventListener(){},setAttribute(){}}]));
@@ -431,4 +433,49 @@ test('late failed explicit idle-toggle Save cannot reverse newer browser density
     assert.equal(right.classList.contains('hidden'),false);
     assert.equal(b.run('getUserSettings().calendarDensity'),72);
     assert.equal(b.run('getUserSettings().totalsVisible'),true);
+});
+
+test('Calendar day headers expose theme-aware day and date labels', () => {
+    const source = fs.readFileSync(path.join(js, 'dashboard.js'), 'utf8');
+    const header = source.match(/dayHeaderContent: function\(arg\) \{([\s\S]*?)\n\s*\},\n\s*select:/);
+    assert.ok(header, 'Calendar day header callback is present');
+    const callback = vm.runInNewContext(`(function(arg) {${header[1]}\n})`);
+    const date = new Date(2026, 10, 16);
+    const monthHeader = callback({date, view: {type: 'dayGridMonth'}}).html;
+    for (const type of ['timeGridDay', 'timeGridThreeDay', 'timeGridWeek']) {
+        const rendered = callback({date, view: {type}}).html;
+        assert.match(rendered, /class="tt-calendar-day-name"[^>]*>MON</);
+        assert.match(rendered, /class="tt-calendar-day-number"[^>]*>16</);
+    }
+    assert.match(monthHeader, /class="tt-calendar-day-name"[^>]*>MON</);
+    assert.doesNotMatch(monthHeader, /tt-calendar-day-number|>16</);
+
+    const appearance = fs.readFileSync(path.join(styles, 'appearance.css'), 'utf8');
+    assert.match(appearance, /\.fc-col-header-cell\.fc-day-today/);
+    assert.match(appearance, /\.tz-header-label::before\s*\{\s*content:\s*"LOCAL"/);
+    assert.match(appearance, /\.calendar-page > header \{ align-items:\s*flex-start; \}/);
+    assert.match(appearance, /\.calendar-page \.fc \.fc-col-header-cell\.fc-day-today \{ background:\s*var\(--accent-soft, var\(--bg-card\)\); \}/);
+    assert.match(appearance, /\.calendar-page \.tz-header-label \{[^}]*font-size:\s*11px/);
+    assert.match(appearance, /\.calendar-page \.tz-header-label::before \{[^}]*font-size:\s*9px/);
+    assert.match(appearance, /\.calendar-page \.fc-daygrid-dot-event \.fc-event-custom \{ color:\s*var\(--text-main\) !important; \}/);
+    assert.doesNotMatch(appearance, /\.fc-timegrid-slot-label-cushion\s*\{[^}]*padding-(?:top|bottom)|\.fc-timegrid-slot\s*\{[^}]*min-height/);
+});
+
+test('Calendar timer and Vim mode indicators use compact non-button header treatments', () => {
+    const timer = fs.readFileSync(path.join(styles, 'timer.css'), 'utf8');
+    const appearance = fs.readFileSync(path.join(styles, 'appearance.css'), 'utf8');
+    const navbar = fs.readFileSync(path.join(templates, 'components/navbar.html'), 'utf8');
+    const dashboard = fs.readFileSync(path.join(templates, 'dashboard.html'), 'utf8');
+    assert.match(timer, /height:\s*32px; min-height:\s*32px; flex-wrap:\s*nowrap; gap:\s*6px; padding:\s*2px 6px/);
+    assert.doesNotMatch(timer, /\.calendar-page #active_timer_pill\s*\{[^}]*overflow:/);
+    assert.match(timer, /#active_timer_pill :is\(select, button\) \{ min-height:\s*24px/);
+    assert.match(timer, /\.timer-recovery-card :is\(button, input, textarea\) \{[^}]*padding:\s*6px 9px/);
+    assert.match(appearance, /#vim_mode_indicator\s*\{[\s\S]*?background:\s*transparent !important/);
+    assert.doesNotMatch(appearance.match(/#vim_mode_indicator\s*\{[^}]+\}/)?.[0] || '', /display:\s*[^;]+!important/);
+    assert.match(appearance, /fc-day-today \.tt-calendar-day-number,[\s\S]*?background:\s*var\(--accent-soft, var\(--bg-card\)\); color:\s*var\(--text-main\)/);
+    assert.doesNotMatch(appearance, /fc-day-today[^}]*color:\s*#fff/);
+    assert.match(navbar, /id="vim_mode_indicator"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(navbar, /timer\.css\?v=ui-review2-3/);
+    assert.match(dashboard, /appearance\.css\?v=ui-review2-4/);
+    assert.match(dashboard, /dashboard\.js\?v=ui-review2-2/);
 });

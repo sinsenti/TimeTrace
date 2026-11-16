@@ -6,7 +6,9 @@ const path = require('node:path');
 const base = path.resolve(__dirname, '../src/timetrace/interfaces/api');
 function harness(respond = async () => []) {
     const roots = {};
-    const context = vm.createContext({console, alert() {}, document:{getElementById:id=>roots[id], querySelectorAll:()=>[]},
+    const context = vm.createContext({console, alert() {}, document:{getElementById:id=>roots[id], querySelectorAll:()=>[],
+        createElement:tag=>({tagName:tag,attributes:{},children:[],style:{},append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
+            addEventListener(){},setAttribute(name,value){this.attributes[name]=value;}})},
         api:{get:respond, post:respond}});
     vm.runInContext(fs.readFileSync(path.join(base,'static/js/ratings_config.js'),'utf8'),context);
     return {context, roots};
@@ -43,6 +45,60 @@ test('workspace declares reusable retained editors and initially closed bottom h
     assert.match(html,/<template id="day_editor_template"/);
     assert.match(html,/id="day_history_panel"[^>]*class="[^"]*hidden/);
     assert.ok(!html.includes('day_kpi_badges'));
+});
+test('day workspace template presents distinct review and evidence sections with stable actions',()=>{
+    const html=fs.readFileSync(path.join(base,'templates/revision.html'),'utf8');
+    const css=fs.readFileSync(path.join(base,'static/css/day_workspace.css'),'utf8');
+    const review=fs.readFileSync(path.join(base,'static/js/day_review.js'),'utf8');
+    assert.match(html,/class="day-editor-header"/);
+    assert.match(html,/data-day="date"[\s\S]*?data-day="status"/);
+    assert.match(html,/data-action="retry" class="day-quiet-action">Refresh/);
+    assert.match(html,/aria-label="Retrospective"[\s\S]*?<h3>Retrospective<\/h3>/);
+    assert.match(html,/aria-label="Recorded activity"[\s\S]*?<h3>Recorded activity<\/h3>/);
+    assert.match(html,/class="day-segmented-control"[\s\S]*?data-action="activity"[\s\S]*?data-action="tasks"/);
+    assert.match(html,/data-action="save" class="day-save-primary">Save day review/);
+    assert.match(html,/data-action="discard" class="day-discard-secondary">Discard drafts/);
+    assert.match(html,/data-action="dismiss" class="day-dismiss-action">Dismiss day/);
+    assert.match(html,/data-day="session-count" class="day-session-count"/);
+    assert.match(html,/How to read this breakdown[\s\S]*?scheduled rows[\s\S]*?fan-out attribution/);
+    assert.match(html,/day_workspace\.css\?v=ui-review2-1/);
+    assert.match(html,/day_review\.js\?v=ui-review2-1/);
+    assert.match(html,/day_history\.js\?v=ui-review2-1/);
+    assert.match(css,/grid-template-columns:minmax\(300px,\.9fr\) minmax\(0,1\.1fr\)/);
+    assert.match(css,/\.day-editor \[hidden\] \{ display:none !important; \}/);
+    assert.match(css,/@media \(max-width:900px\) \{ \.day-editor-columns/);
+    assert.doesNotMatch(css,/^[\t ]*(?:header|main)\s*\{/m);
+    for (const selector of ['day-session-title','day-session-when','day-session-duration']) assert.ok(review.includes(selector));
+    assert.match(review,/count\.setAttribute\('aria-label'/);
+});
+test('day evidence renderer gives recorded sessions separate title, local date/time, duration and tags',()=>{
+    const {context:c}=harness();
+    vm.runInContext(fs.readFileSync(path.join(base,'static/js/day_review.js'),'utf8'),c);
+    const values={
+        total:{},'created-tasks':{},breakdown:{replaceChildren(...children){this.children=children;}},
+        filter:{},'filter-label':{},'session-count':{attributes:{},setAttribute(name,value){this.attributes[name]=value;}},
+        sessions:{replaceChildren(...children){this.children=children;},appendChild(child){this.children.push(child);}}
+    };
+    const actions={activity:{attributes:{},setAttribute(name,value){this.attributes[name]=value;}},tasks:{attributes:{},setAttribute(name,value){this.attributes[name]=value;}}};
+    const root={querySelector(selector){
+        const field=selector.match(/data-day="([^"]+)"/)?.[1];
+        const action=selector.match(/data-action="([^"]+)"/)?.[1];
+        return field ? values[field] : actions[action];
+    }};
+    const editor={root,date:'2026-11-01',summary:{total_hours:1.5,total_sessions:1,completed_tasks_count:0,tag_breakdown:[],task_breakdown:[],sessions:[{
+        id:'session-uuid',start_time:'2026-11-01T09:30:00',duration_seconds:2700,tags:'#work',task:{title:'Write a report'}
+    }]},group:'tag',filter:null};
+    c.renderDayEvidence(editor);
+    const [row]=values.sessions.children;
+    assert.equal(row.className,'day-session-row');
+    assert.equal(row.children.map(child=>child.className).join(','),'day-session-title,day-session-when,day-session-tags,day-session-duration');
+    assert.equal(row.children[0].textContent,'Write a report');
+    const start=new Date('2026-11-01T09:30:00');
+    assert.equal(row.children[1].textContent,`${start.toLocaleDateString([],{month:'short',day:'numeric'})} · ${start.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`);
+    assert.equal(row.children[2].textContent,'#work');
+    assert.equal(row.children[3].textContent,'45 min');
+    assert.equal(values['session-count'].textContent,'1');
+    assert.equal(values['session-count'].attributes['aria-label'],'1 recorded session');
 });
 test('out-of-order definition reads cannot replace newer controls in the same container',async()=>{
     let resolve;const held=new Promise(r=>resolve=r);let count=0;

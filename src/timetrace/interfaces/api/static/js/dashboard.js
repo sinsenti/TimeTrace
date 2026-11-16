@@ -130,12 +130,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             dayHeaderContent: function(arg) {
                 const dayName = arg.date.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-                const dayNum = arg.date.getDate();
+                const dayNum = arg.view?.type === 'dayGridMonth' ? '' : arg.date.getDate();
                 return {
                     html: `
-                        <div class="flex flex-col items-center py-1">
-                            <span class="text-[10px] font-bold tracking-widest text-slate-500 uppercase">${dayName}</span>
-                            <span class="mt-1 text-base font-bold text-slate-200">${dayNum}</span>
+                        <div class="tt-calendar-day-header">
+                            <span class="tt-calendar-day-name">${dayName}</span>
+                            ${dayNum ? `<span class="tt-calendar-day-number">${dayNum}</span>` : ''}
                         </div>
                     `
                 };

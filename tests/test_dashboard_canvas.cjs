@@ -46,15 +46,31 @@ function browser(handler, storage = new Map()) {
 
 test('tile cards use the shared content band and canvas rows stretch without fixed row heights', () => {
     const b = browser(async () => []);
-    const card = b.run("renderTileWidget({ title: 'Tasks', spec: { mode: 'structured', query: {} } }, { columns: [{ unit: 'count' }], rows: [], total: 4 }, { widgets: [], results: {} }, null)");
+    const card = b.run("renderTileWidget({ title: 'Tasks', seed_key: 'total_sessions', spec: { mode: 'structured', query: {} } }, { columns: [{ unit: 'count' }], rows: [], total: 4 }, { widgets: [], results: {} }, { accent: 'emerald', badge: 'SESSIONS' })");
     assert.match(card.children[0].className, /widget-tile-content/);
+    assert.match(card.children[0].children[0].className, /widget-tile-label/);
+    assert.equal(card.children[0].children[0].textContent, 'SESSIONS');
     const css = fs.readFileSync(path.join(__dirname, '../src/timetrace/interfaces/api/static/css/dashboard_canvas.css'), 'utf8');
     const template = fs.readFileSync(path.join(__dirname, '../src/timetrace/interfaces/api/templates/stats.html'), 'utf8');
     assert.match(css, /\.canvas-grid\s*\{[^}]*align-items:\s*stretch/s);
     assert.match(css, /\.widget-card\s*\{[^}]*align-self:\s*stretch/s);
+    assert.match(css, /\.widget-tile-label\s*\{[^}]*white-space:\s*nowrap/s);
+    assert.match(css, /\.canvas-tab\[aria-current="page"\]\s*\{[^}]*color:\s*var\(--text-main\)[^}]*background:\s*var\(--bg-card\)/s);
     assert.doesNotMatch(css, /grid-auto-rows\s*:/);
-    assert.match(template, /dashboard_canvas\.css\?v=ui-polish-1/);
-    assert.match(template, /dashboards\.js\?v=ui-polish-1/);
+    assert.match(template, /dashboard_canvas\.css\?v=ui-review2-1/);
+    assert.match(template, /dashboards\.js\?v=ui-review2-1/);
+});
+
+test('selected dashboard tab uses a neutral themed active class and preserves the saved name', () => {
+    const b = browser(async () => []);
+    b.run("dashboardList = [{id:'overview', name:'Overview'}, {id:'custom', name:'Custom Report'}]; currentDashboardId = 'overview'; renderDashboardTabs()");
+    const [selected, other] = b.elements.dashboard_tabs.children;
+    assert.match(selected.className, /canvas-tab-active/);
+    assert.equal(selected.textContent, 'Overview');
+    assert.equal(selected.attributes['aria-current'], 'page');
+    assert.doesNotMatch(selected.className, /purple/);
+    assert.equal(other.textContent, 'Custom Report');
+    assert.equal(other.attributes['aria-current'], 'false');
 });
 
 test('cards load independently and Retry reads only the failed card with query context', async () => {

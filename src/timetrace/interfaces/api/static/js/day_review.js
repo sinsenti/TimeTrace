@@ -182,12 +182,29 @@ function renderDayEvidence(editor) {
         dayField(editor,'filter-label').textContent = `${filter.type}: ${label}`;
     }
     const sessions = (data.sessions || []).filter(session=>sessionMatchesDayFilter(session,editor));
-    dayField(editor,'session-count').textContent = filter ? `${sessions.length}/${data.total_sessions ?? 0} matching recorded sessions` : `${data.total_sessions ?? 0} recorded sessions`;
+    const count = dayField(editor,'session-count');
+    count.textContent = filter ? `${sessions.length} / ${data.total_sessions ?? 0}` : String(data.total_sessions ?? 0);
+    const noun = value => value === 1 ? 'session' : 'sessions';
+    count.setAttribute('aria-label',filter
+        ? `${sessions.length} matching recorded ${noun(sessions.length)} out of ${data.total_sessions ?? 0} ${noun(data.total_sessions ?? 0)}`
+        : `${data.total_sessions ?? 0} recorded ${noun(data.total_sessions ?? 0)}`);
     const timeline = dayField(editor,'sessions'); timeline.replaceChildren();
     for (const session of sessions) {
         const button = document.createElement('button');button.type = 'button';button.className = 'day-session-row';
-        const start = session.start_time ? new Date(session.start_time).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}) : '';
-        button.textContent = `${start} · ${session.task?.title || session.notes || 'Direct Session Log'} · ${Math.round((session.duration_seconds || 0)/60)}m · ${session.tags || '#general'}`;
+        const start = session.start_time ? new Date(session.start_time) : null;
+        const validStart = start && !Number.isNaN(start.getTime());
+        const when = document.createElement('span'); when.className = 'day-session-when';
+        when.textContent = validStart
+            ? `${start.toLocaleDateString([], {month:'short',day:'numeric'})} · ${start.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}`
+            : 'Time unavailable';
+        const title = document.createElement('span'); title.className = 'day-session-title';
+        title.textContent = session.task?.title || session.notes || 'Direct Session Log';
+        const tags = document.createElement('span'); tags.className = 'day-session-tags';
+        tags.textContent = session.tags || '#general';
+        const duration = document.createElement('span'); duration.className = 'day-session-duration';
+        duration.textContent = `${Math.round((session.duration_seconds || 0)/60)} min`;
+        button.setAttribute('aria-label',`${title.textContent}, ${when.textContent}, ${duration.textContent}, ${tags.textContent}`);
+        button.append(title,when,tags,duration);
         button.addEventListener('click',()=>openSessionReviewModal(session.id));timeline.appendChild(button);
     }
     if (!sessions.length) timeline.textContent = 'No matching sessions for this day.';

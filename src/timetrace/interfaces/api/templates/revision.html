@@ -32,7 +32,7 @@
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/rating_admin.css">
     <link rel="stylesheet" href="/static/css/task_details.css?v=ui-polish-1">
-    <link rel="stylesheet" href="/static/css/day_workspace.css">
+    <link rel="stylesheet" href="/static/css/day_workspace.css?v=ui-review2-1">
     <link rel="stylesheet" href="/static/css/session_reviews.css">
 </head>
 <body class="min-h-screen flex flex-col">
@@ -81,42 +81,51 @@
         </section>
         <template id="day_editor_template">
             <article class="day-editor rev-card" data-settings-draft-retained="true">
-                <div class="day-workspace-toolbar">
-                    <h2 data-day="date"></h2>
-                    <button type="button" data-action="promote">Use as main day</button>
-                    <button type="button" data-action="calendar">Open in Calendar</button>
-                    <span data-day="filter" hidden><span data-day="filter-label"></span> <button type="button" data-action="clear-filter" aria-label="Clear evidence filter">Clear</button></span>
-                </div>
-                <p data-day="status" role="status" aria-live="polite">Loading…</p>
-                <button type="button" data-action="retry">Refresh / retry load</button>
+                <header class="day-editor-header">
+                    <div class="day-editor-heading">
+                        <div class="day-editor-title-row">
+                            <h2 data-day="date"></h2>
+                            <span data-day="status" class="day-editor-status" role="status" aria-live="polite">Loading…</span>
+                        </div>
+                        <p class="day-editor-subtitle">Daily review and recorded work</p>
+                    </div>
+                    <div class="day-editor-header-actions">
+                        <button type="button" data-action="retry" class="day-quiet-action">Refresh</button>
+                        <button type="button" data-action="promote" class="day-quiet-action">Use as main day</button>
+                        <button type="button" data-action="calendar" class="day-quiet-action">Open in Calendar</button>
+                    </div>
+                </header>
+                <span data-day="filter" class="day-evidence-filter" hidden><span data-day="filter-label"></span> <button type="button" data-action="clear-filter" aria-label="Clear evidence filter">Clear filter</button></span>
                 <div class="day-editor-columns">
                     <div class="day-form-fields">
-                        <h3>Daily retrospective</h3>
-                        <label>Day performance score (1–5)<select data-day="rating" data-day-text disabled>
+                        <section class="day-review-section" aria-label="Retrospective">
+                        <div class="day-section-heading"><div><h3>Retrospective</h3><p>Capture how the day felt and what moved forward.</p></div></div>
+                        <label>Overall day rating<select data-day="rating" data-day-text disabled>
                             <option value="5">5 / 5 — Exceptional focus</option><option value="4">4 / 5 — Productive day</option>
                             <option value="3" selected>3 / 5 — Average day</option><option value="2">2 / 5 — Distracted / friction</option><option value="1">1 / 5 — Off track</option>
                         </select></label>
-                        <label>Key highlights / progress<textarea data-day="highlights" data-day-text rows="3" disabled></textarea></label>
-                        <label>Daily friction / setbacks<textarea data-day="friction" data-day-text rows="3" disabled></textarea></label>
-                        <label>General notes / journal<textarea data-day="notes" data-day-text rows="3" disabled></textarea></label>
+                        <label>Highlights<textarea data-day="highlights" data-day-text rows="3" placeholder="What went well or moved forward?" disabled></textarea></label>
+                        <label>Challenges or friction<textarea data-day="friction" data-day-text rows="3" placeholder="What slowed you down or felt difficult?" disabled></textarea></label>
+                        <label>Notes<textarea data-day="notes" data-day-text rows="3" placeholder="Anything else you want to remember?" disabled></textarea></label>
                         <div data-day="ratings" data-settings-draft-retained="true"></div>
                         <div class="day-form-actions">
-                            <button type="button" data-action="save">Save day review</button>
-                            <button type="button" data-action="discard">Discard drafts</button>
-                            <button type="button" data-action="dismiss">Dismiss day</button>
+                            <div class="day-review-save-actions"><button type="button" data-action="save" class="day-save-primary">Save day review</button><button type="button" data-action="discard" class="day-discard-secondary">Discard drafts</button></div>
+                            <button type="button" data-action="dismiss" class="day-dismiss-action">Dismiss day</button>
                         </div>
-                        <p>Ctrl+Enter saves this editor. Enter adds a line in text fields.</p>
+                        <p class="day-keyboard-hint">Ctrl+Enter saves this review. Enter adds a line in text fields.</p>
+                        </section>
                     </div>
                     <div class="day-evidence">
-                        <div class="day-breakdown-heading"><h3>Breakdown</h3><div role="group" aria-label="Breakdown grouping">
+                        <section class="day-evidence-section" aria-label="Recorded activity">
+                        <div class="day-breakdown-heading"><div class="day-section-heading"><div><h3>Recorded activity</h3><p>Sessions and tasks recorded for this day.</p></div></div><div class="day-segmented-control" role="group" aria-label="Breakdown grouping">
                             <button type="button" data-action="activity" aria-pressed="true">Activity</button><button type="button" data-action="tasks" aria-pressed="false">Tasks</button>
                         </div></div>
-                        <p data-day="total"></p>
-                        <p data-day="created-tasks"></p>
+                        <div class="day-evidence-summary"><p data-day="total"></p><p data-day="created-tasks"></p></div>
                         <div data-day="breakdown" class="day-breakdown-list"></div>
-                        <p>Bars compare with full-day recorded session time by session start day, including supplied scheduled rows; they are not completion bars. Multi-tag time fans out: overlapping tag totals can exceed the day total.</p>
-                        <h3>Recorded sessions <span data-day="session-count"></span></h3>
+                        <details class="day-breakdown-note"><summary>How to read this breakdown</summary><p>Bars compare with the full-day recorded session time by session start day, including scheduled rows. They show time, not task completion. Tag totals use fan-out attribution, so a session with multiple tags counts toward each tag and overlapping totals can exceed the day total.</p><p>Tasks counts completed tasks created on this day.</p></details>
+                        <div class="day-sessions-heading"><h4>Recorded sessions</h4><span data-day="session-count" class="day-session-count"></span></div>
                         <div data-day="sessions" class="day-sessions-list"></div>
+                        </section>
                     </div>
                 </div>
             </article>
@@ -289,8 +298,8 @@
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/revision_nav.js"></script>
     <script src="/static/js/ratings_config.js"></script>
-    <script src="/static/js/day_review.js"></script>
-    <script src="/static/js/day_history.js"></script>
+    <script src="/static/js/day_review.js?v=ui-review2-1"></script>
+    <script src="/static/js/day_history.js?v=ui-review2-1"></script>
     <script src="/static/js/session_review.js"></script>
     <script src="/static/js/task_postmortem.js"></script>
     <script src="/static/js/task_inspector.js?v=ui-polish-1"></script>

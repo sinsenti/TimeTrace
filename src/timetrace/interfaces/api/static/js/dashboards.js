@@ -14,10 +14,10 @@
  */
 
 const ACCENT_CLASSES = {
-    purple: { badge: 'bg-purple-900/40 border-purple-700/50', text: 'text-purple-400' },
-    emerald: { badge: 'bg-emerald-900/40 border-emerald-700/50', text: 'text-emerald-400' },
-    amber: { badge: 'bg-amber-900/40 border-amber-700/50', text: 'text-amber-400' },
-    blue: { badge: 'bg-blue-900/40 border-blue-700/50', text: 'text-blue-400' }
+    purple: { text: 'text-purple-400' },
+    emerald: { text: 'text-emerald-400' },
+    amber: { text: 'text-amber-400' },
+    blue: { text: 'text-blue-400' }
 };
 
 /**
@@ -266,9 +266,9 @@ function renderDashboardTabs() {
         const isActive = d.id === currentDashboardId;
         const tab = _el(
             'button',
-            'h-8 px-3 rounded-lg border text-xs font-bold transition ' + (isActive
-                ? 'bg-purple-600 border-purple-500 text-white'
-                : 'bg-[#181a28] border-[var(--border-muted)] text-slate-300 hover:text-white'),
+            'canvas-tab h-8 px-3 rounded-lg border text-xs font-bold transition ' + (isActive
+                ? 'canvas-tab-active'
+                : 'bg-[var(--bg-card)] border-[var(--border-muted)] text-[var(--text-main)] hover:border-[var(--text-muted)]'),
             d.name
         );
         tab.setAttribute('aria-current', isActive ? 'page' : 'false');
@@ -655,7 +655,7 @@ function renderTileWidget(widget, result, data, seed) {
 
     const card = _el('div', 'widget-card');
     const content = _el('div', 'widget-tile-content');
-    content.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
+    content.appendChild(_el('span', `widget-tile-label ${accent.text}`, badgeText));
 
     const body = _el('div', 'min-w-0');
     body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', _widgetDisplayTitle(widget)));

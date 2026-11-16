@@ -1,6 +1,6 @@
 /* Timer-only surfaces; no shared page/dialog overrides. */
 .calendar-page #active_timer_pill {
-    height: auto; min-height: 32px;
+    height: 32px; min-height: 32px; flex-wrap: nowrap; gap: 6px; padding: 2px 6px;
 }
 #active_timer_pill {
     display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; max-width: 100%;
@@ -9,11 +9,12 @@
 }
 #timer_status_label { overflow-wrap: anywhere; max-width: 260px; }
 :root[data-appearance="dark"] :is(#active_timer_pill, .timer-recovery-notice, .timer-recovery-card) :is(button, a, input, textarea, select) { border-color: #94a3b8; }
-#active_timer_pill :is(select, button) { min-height: 32px; max-width: 160px; }
+#active_timer_pill :is(select, button) { min-height: 24px; max-width: 140px; }
 #active_timer_pill :is(select, button), .timer-recovery-notice :is(button, a), .timer-recovery-card :is(button, input, textarea) {
     border: 1px solid var(--border-muted, #94a3b8); border-radius: 6px; padding: 6px 9px;
     background: var(--bg-card, #181a28); color: var(--text-main, #e2e8f0); font: inherit;
 }
+#active_timer_pill :is(select, button) { padding: 3px 7px; }
 .timer-recovery-notice {
     position: fixed; bottom: 12px; right: 12px; z-index: 49; max-width: min(600px, calc(100vw - 24px));
     max-height: 38vh; overflow: auto; padding: 12px; border: 2px solid var(--border-muted, #94a3b8); border-radius: 10px;

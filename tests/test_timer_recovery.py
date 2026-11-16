@@ -1,6 +1,7 @@
 """Real daemon/API + private timer-file recovery; freeze time is synthetic, never OS idle."""
 
 import json
+import re
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -164,7 +165,7 @@ def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recover
         html = response.text
         assert html.count('src="/static/js/timer_control.js"') == 1
         assert html.count('id="idle_resolution_modal"') == 1
-        assert html.count('href="/static/css/timer.css"') == 1
+        assert len(re.findall(r'href="/static/css/timer\.css(?:\?[^"]*)?"', html)) == 1
         assert html.count('id="toggle_btn"') == (1 if path == "/dashboard" else 0)
         assert 'href="/settings" onclick="return followSettingsLink(event)"' in html
     root = client.get("/", follow_redirects=False)

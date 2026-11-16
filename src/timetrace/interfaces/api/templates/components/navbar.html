@@ -18,10 +18,10 @@
         Assistant <span id="ai_launcher_badge" class="ai-launcher-badge hidden">0</span>
     </button>
     {% if active_page == 'dashboard' %}
-    <span id="vim_mode_indicator" class="text-[10px] whitespace-nowrap">-- NORMAL --</span>
+    <span id="vim_mode_indicator" class="vim-mode-indicator" role="status" aria-live="polite" aria-label="Vim keyboard mode">-- NORMAL --</span>
     {% endif %}
 </div>
-<link rel="stylesheet" href="/static/css/timer.css">
+<link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
 {% include "components/idle_resolution_modal.html" %}
 {% if active_page == 'settings_ai' or (active_page == 'tasks' and task_id is not defined) %}
 <script defer src="/static/js/timer_control.js"></script>

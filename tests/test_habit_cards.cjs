@@ -63,8 +63,25 @@ test('Compact card keeps day choice, explicit draft actions, and Clear separate 
     const clear=html.indexOf("clearHabitEntry('b','2026-11-15')",footerStart);
     assert.ok(footerStart >= 0 && footerStart < choices && choices < save && save < cancel && cancel < clearRow && clearRow < clear,
         'status choices and Save/Cancel share a band; confirmed Clear stays in a separate secondary row');
+    assert.match(html, /class="habit-result-segment" role="group" aria-label="Result">\s*<span class="habit-segment-label">Result<\/span>/,
+        'result choices have a visible label and their own semantic segment');
+    assert.match(html, /class="habit-entry-actions"><button[^>]*class="habit-save-button"[^>]*>Save<\/button>\s*<button[^>]*class="habit-cancel-button"[^>]*>Cancel<\/button>/,
+        'Save and Cancel remain explicit together in a distinct action group');
+    assert.match(html, /class="habit-clear-row" role="group" aria-label="Clear selected day record"/,
+        'confirmed Clear remains in a separately labeled group');
     assert.match(html,/class="habit-clear-button" onclick="clearHabitEntry\('b','2026-11-15'\)"[^>]*>Clear day/);
     assert.equal(b.writes.length,0,'rendering a choice or card never commits its draft');
+});
+test('Habit entry controls wrap the result segment and keep Clear behind a quiet divider',()=>{
+    const css=fs.readFileSync(path.join(__dirname,'../src/timetrace/interfaces/api/static/css/habit_cards.css'),'utf8');
+    const template=fs.readFileSync(path.join(__dirname,'../src/timetrace/interfaces/api/templates/habits.html'),'utf8');
+    assert.match(css,/\.habit-compact-grid\s*\{[^}]*minmax\(min\(100%,\s*400px\),\s*1fr\)/s);
+    assert.match(template,/habit_cards\.css\?v=ui-review2-2/);
+    assert.match(css,/\.habit-result-segment\s*\{[^}]*background:[^}]*border:[^}]*border-radius:/s);
+    assert.match(css,/\.habit-entry-actions\s*\{[^}]*border-left:/s);
+    assert.match(css,/\.habit-clear-row\s*\{[^}]*border-top:\s*1px solid/s);
+    assert.match(css,/\.habit-entry-footer\s*\{[^}]*flex-wrap:\s*wrap/s);
+    assert.match(css,/\.habit-result-segment\s*\{[^}]*flex:\s*1 1 225px/s);
 });
 function deferred(){let resolve; const promise=new Promise(r=>resolve=r);return {promise,resolve};}
 test('Held Save rejects double submission, preserves concurrent edits, and failed refresh retries reads only',async()=>{

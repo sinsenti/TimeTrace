@@ -26,6 +26,7 @@ button, a, input, select, textarea { touch-action: manipulation; }
 :focus-visible { outline: 2px solid var(--focus-color, #c084fc) !important; outline-offset: 3px; }
 body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 .app-navigation { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; flex: 1; }
+.calendar-page > header { align-items: flex-start; }
 .app-brand { font-size: 16px; font-weight: 800; letter-spacing: -.04em; color: var(--text-main); }
 .app-navigation nav { display: flex; align-items: center; gap: 3px; flex-wrap: wrap; }
 .app-navigation nav a { padding: 8px 10px; border-radius: 7px; font-size: 12px; font-weight: 600; }
@@ -143,9 +144,6 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 .calendar-page .planning-task-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; min-width: 0; }
 .calendar-page .planning-task-action { display: inline-flex; align-items: center; justify-content: center; min-width: 0; min-height: 24px; padding: 3px 4px; border-radius: 6px; font-size: 10px; line-height: 1.1; font-weight: 700; white-space: nowrap; }
 @media (pointer: coarse) { .calendar-page .planning-task-action { min-width: 44px; min-height: 32px; } }
-:root[data-appearance="light"] #vim_mode_indicator {
-    background: var(--accent-soft) !important; color: var(--text-main) !important; border-color: var(--border-muted) !important;
-}
 @media (max-width: 800px) {
     /* Navigation and the secondary timer own separate rows; neither can squeeze the other. */
     .calendar-page > header { align-items: stretch; }
@@ -165,3 +163,35 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
 /* Empty lane cells must not impose a 16px text line on Compact's 14px quarter-hour row. */
 .calendar-page .fc-timegrid-slot-lane { line-height: 0 !important; }
 :root[data-appearance="light"] .kanban-card:not([style*="background"]) [class*="bg-black/"] { background-color: var(--accent-soft); color: var(--text-main); }
+
+/* Compact Calendar header utilities and FullCalendar time/day axes. */
+.calendar-page .calendar-timer-wrap { display: flex; align-items: center; flex: 0 1 auto; width: max-content; }
+.calendar-page #active_timer_pill > #timer_status_label { flex: 1 1 auto; min-width: 0; }
+.calendar-page #active_timer_pill > :is(select, button) { flex: 0 1 auto; white-space: nowrap; }
+.calendar-page .tt-calendar-day-header { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 2px 0; }
+.calendar-page .tt-calendar-day-name { color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .12em; line-height: 1.2; }
+.calendar-page .tt-calendar-day-number { display: inline-flex; min-width: 24px; min-height: 24px; align-items: center; justify-content: center; border-radius: 999px; color: var(--text-main); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.calendar-page .fc .fc-timegrid-slot-label { color: var(--text-muted) !important; font-size: 11px !important; font-weight: 600; text-transform: none; font-variant-numeric: tabular-nums; }
+.calendar-page .fc .fc-timegrid-slot-label-cushion { padding: 0 8px 0 0; }
+.calendar-page .fc .fc-timegrid-axis-frame { display: flex; align-items: center; justify-content: center; min-width: 66px; }
+.calendar-page .tz-header-label { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 3px 4px; color: var(--text-muted); font-size: 11px; font-weight: 650; font-variant-numeric: tabular-nums; line-height: 1.2; white-space: nowrap; }
+.calendar-page .tz-header-label::before { content: "LOCAL"; color: var(--text-muted); font-size: 9px; font-weight: 700; letter-spacing: .1em; }
+.calendar-page .fc .fc-col-header-cell.fc-day-today { background: var(--accent-soft, var(--bg-card)); }
+.calendar-page .fc .fc-col-header-cell.fc-day-today .tt-calendar-day-number,
+.calendar-page .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number {
+    border: 2px solid var(--accent-primary); background: var(--accent-soft, var(--bg-card)); color: var(--text-main);
+}
+.calendar-page .fc .fc-daygrid-day.fc-day-today .fc-daygrid-day-number { min-width: 24px; min-height: 24px; margin: 2px; border-radius: 999px; box-sizing: border-box; text-align: center; }
+.calendar-page .fc-daygrid-dot-event .fc-event-custom { color: var(--text-main) !important; }
+#vim_mode_indicator {
+    align-items: center; min-height: 0 !important; height: auto !important;
+    padding: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important;
+    box-shadow: none !important; color: var(--text-muted) !important; font-size: 10px !important;
+    font-weight: 600 !important; letter-spacing: .06em !important; line-height: 1.2 !important; text-transform: uppercase;
+}
+#vim_mode_indicator[class*="amber-"] { color: var(--text-main) !important; text-decoration: underline; text-decoration-color: var(--accent-primary); text-underline-offset: 3px; }
+@media (max-width: 520px) {
+    .calendar-page #active_timer_pill { width: 100%; }
+    .calendar-page #active_timer_pill > #timer_status_label { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .calendar-page #active_timer_pill > select { max-width: min(110px, 30vw); }
+}

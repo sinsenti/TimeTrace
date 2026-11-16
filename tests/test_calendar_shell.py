@@ -35,7 +35,10 @@ def test_calendar_has_aligned_planning_tools_and_filter_context_outside_totals(c
     assert 'id="btn_toggle_right_sidebar"' in html
     assert 'id="calendar_density"' in html
     assert 'class="calendar-toolbar calendar-tools"' in html
-    assert "/static/css/appearance.css?v=ui-polish-6" in html
+    assert "/static/css/appearance.css?v=ui-review2-4" in html
+    assert "/static/js/dashboard.js?v=ui-review2-2" in html
+    assert 'id="vim_mode_indicator" class="vim-mode-indicator" role="status" aria-live="polite"' in html
+    assert "/static/css/timer.css?v=ui-review2-3" in html
     assert "/static/js/sidebar_totals.js?v=ui-polish-3" in html
     toolbar = html.split('class="calendar-toolbar calendar-tools"', 1)[1].split(
         "</div>\n        <div id=\"breakdown_filter_chip\"", 1
