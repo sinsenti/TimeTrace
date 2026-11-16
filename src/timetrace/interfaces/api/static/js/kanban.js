@@ -499,6 +499,7 @@ async function refreshStatusManagement(manager = statusManagerOwner, writer = nu
                 : `Order saved. Retry refresh reads only. ${error.message}`);
             else if (manager === statusManagerOwner && message) message.textContent = `Could not load statuses. Existing drafts retained. ${error.message}`;
         }
+        if (manager === statusManagerOwner) loadKanbanBoard();
         return false;
     }
 }

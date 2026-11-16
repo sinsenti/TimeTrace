@@ -469,6 +469,65 @@ test('board read rejects null metadata rather than clearing the last known statu
     assert.equal(p.run('allStatuses[0].name'), 'Retained');
 });
 
+test('failed status-manager read recovers the initial board without stale repaint or draft loss', async () => {
+    const initialStatuses = deferred(), initialTasks = deferred();
+    const recoveryStatuses = deferred(), recoveryTasks = deferred();
+    let statusReads = 0, taskReads = 0;
+    const p = page(async r => {
+        if (r.url === '/api/tasks/statuses') {
+            statusReads++;
+            if (statusReads === 1) return initialStatuses.promise;
+            if (statusReads === 2) return {status: 503, body: {detail: 'Manager refresh unavailable'}};
+            if (statusReads === 3) return recoveryStatuses.promise;
+            assert.fail(`unexpected status read ${statusReads}`);
+        }
+        if (r.url.startsWith('/api/tasks?')) {
+            taskReads++;
+            if (taskReads === 1) return initialTasks.promise;
+            if (taskReads === 2) return recoveryTasks.promise;
+            assert.fail(`unexpected task read ${taskReads}`);
+        }
+        assert.fail(`unexpected request ${r.method} ${r.url}`);
+    });
+    const board = p.element();
+    p.elements.set('kanban_columns_container', board);
+    p.elements.set('tasks_workspace', p.element());
+    for (const id of ['modal_input_status', 'inspector_edit_status', 'modal_subtask_status']) {
+        const select = p.element('select');
+        select.value = 'Unsubmitted task status';
+        p.elements.set(id, select);
+    }
+    p.run('function escapeHtml(value) {return String(value);}');
+    p.run(`allStatuses = [${JSON.stringify(status('seed', 'Seed'))}]`);
+
+    const initialBoard = p.run('loadKanbanBoard()');
+    await tick();
+    p.run('openStatusManagerModal()');
+    fields(p.row('seed'))[0].value = 'Unsaved status name';
+    await tick();
+    assert.equal(statusReads, 3, 'the failed manager read immediately starts a read-only board recovery');
+
+    initialStatuses.resolve({body: [status('stale', 'Stale status')]});
+    await tick();
+    assert.equal(taskReads, 1);
+    recoveryStatuses.resolve({body: [status('fresh', 'Fresh status')]});
+    await tick();
+    assert.equal(taskReads, 2);
+    recoveryTasks.resolve({body: []});
+    await tick(); await tick();
+    assert.match(board.innerHTML || '', /Fresh status/, JSON.stringify({statusReads, taskReads, requests: p.requests, errors: p.errors.map(args => String(args.at(-1)))}));
+    assert.doesNotMatch(board.innerHTML, /Stale status/);
+
+    initialTasks.resolve({body: []});
+    assert.equal(await initialBoard, null, 'the superseded initial read is discarded');
+    assert.match(board.innerHTML, /Fresh status/, 'late initial completion cannot repaint stale columns');
+    assert.equal(fields(p.row('seed'))[0].value, 'Unsaved status name');
+    for (const id of ['modal_input_status', 'inspector_edit_status', 'modal_subtask_status']) {
+        assert.equal(p.elements.get(id).value, 'Unsubmitted task status');
+    }
+    assert.equal(p.requests.filter(r => r.method !== 'GET').length, 0, 'recovery never replays or invents a mutation');
+});
+
 test('confirmed deletion of an unacknowledged order row cannot strand the remaining order journal', async () => {
     const a = '019b1111-1111-7111-8111-111111111111', b = '019b1111-1111-7111-8111-222222222222', c = '019b1111-1111-7111-8111-333333333333';
     let rows = [status(a), {...status(b), position: 1}, {...status(c), position: 2}];
