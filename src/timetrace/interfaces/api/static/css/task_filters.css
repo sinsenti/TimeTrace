@@ -5,6 +5,10 @@
 }
 #custom_filter_modal h3, #custom_filter_modal label, #sidebar_tab_config_modal h3,
 #sidebar_tab_config_modal .sidebar-tab-row { color: var(--text-main); }
+#custom_filter_modal button[aria-label="Close advanced task filters"],
+#sidebar_tab_config_modal > div > div:first-child > p,
+#sidebar_tab_config_modal button[aria-label="Close status tab configuration"],
+#sidebar_tab_config_feedback { color: var(--text-main, #e2e8f0); }
 #custom_filter_modal input, #custom_filter_modal select, #sidebar_tab_config_modal .sidebar-tab-row {
     background: var(--bg-main); color: var(--text-main); border-color: var(--border-muted);
 }
