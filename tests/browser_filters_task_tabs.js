@@ -134,7 +134,7 @@
             await page.evaluate(() => openSidebarTabsConfigModal());
             await page.locator('#sidebar_tab_config_modal').waitFor({state: 'visible'});
             await page.locator('#sidebar_tab_config_list').waitFor();
-            await measure('#sidebar_tab_config_modal > div > div:first-child > p', 'Calendar tabs description',
+            await measure('#sidebar_tab_config_modal #sidebar_tab_config_title + p', 'Calendar tabs description',
                 'Drag or use Move up and Move down. Toggle to show or hide. Changes save immediately.');
             const feedback = page.locator('#sidebar_tab_config_feedback');
             const feedbackText = await feedback.textContent();
