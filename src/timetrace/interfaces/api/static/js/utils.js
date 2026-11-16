@@ -520,7 +520,17 @@ function getContrastingTextColor(backgroundColor) {
         + 0.0722 * linearize(hex.slice(4, 6));
     const whiteContrast = 1.05 / (luminance + 0.05);
     const darkContrast = (luminance + 0.05) / (0.0092 + 0.05); // #111827
-    return whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+    const selectedColor = whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+    const darkTextLuminance = 0.2126 * linearize('11')
+        + 0.7152 * linearize('18')
+        + 0.0722 * linearize('27');
+    const selectedContrast = selectedColor === '#ffffff'
+        ? whiteContrast
+        : (luminance + 0.05) / (darkTextLuminance + 0.05);
+    if (selectedContrast >= 4.5) return selectedColor;
+
+    const blackContrast = (luminance + 0.05) / 0.05;
+    return blackContrast >= whiteContrast ? '#000000' : '#ffffff';
 }
 
 function reshuffleColors() {

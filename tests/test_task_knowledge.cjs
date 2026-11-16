@@ -940,7 +940,7 @@ for (const linked of [true, false]) {
         const tags = '<img src=x onerror=alert`calendar-tags`>';
         const p = page({
             async get(url) {
-                if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do' }];
+                if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do', color: '#0284c7' }];
                 if (url.startsWith('/sessions?')) return [{ id: 'session-1', task_id: linked ? 'task-1' : null,
                     start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:30:00Z',
                     notes: accepted ? notes : '', tags: accepted ? tags : '' }];
@@ -959,6 +959,7 @@ for (const linked of [true, false]) {
         let ready;
         p.context.document.addEventListener = (name, callback) => { if (name === 'DOMContentLoaded') ready = callback; };
         let markup;
+        let renderedEvents;
         let calendarOptions;
         p.context.FullCalendar = { Calendar: class {
             constructor(element, options) {
@@ -968,6 +969,7 @@ for (const linked of [true, false]) {
             render() {}
             refetchEvents() {
                 return calendarOptions.events({ start: this.view.activeStart, end: this.view.activeEnd }, events => {
+                    renderedEvents = events;
                     markup = events.map(event => calendarOptions.eventContent({ event, view: this.view }).html).join('');
                 }, error => { throw error; });
             }
@@ -981,6 +983,10 @@ for (const linked of [true, false]) {
         assert.match(markup, /&lt;svg onload=alert`calendar-notes`&gt;/);
         assert.match(markup, /&lt;img src=x onerror=alert`calendar-tags`&gt;/);
         if (linked) assert.match(markup, /&lt;img src=x onerror=alert`calendar-title`&gt;/);
+        if (linked) {
+            assert.equal(renderedEvents[0].backgroundColor, '#0284c7', 'the exact task background must remain unchanged');
+            assert.match(markup, /style="color: #000000;"/, 'the event title must use the repaired opaque foreground');
+        }
         assert.equal(writes, 1);
     });
 }

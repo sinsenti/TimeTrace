@@ -18,7 +18,7 @@ function makeElement(value = "") {
 
 test("saving a task refreshes the registry used to render its calendar session", async () => {
     const oldTask = { id: "old-task", title: "Existing task" };
-    const createdTask = { id: "new-task", title: "Fresh task", estimated_minutes: 15 };
+    const createdTask = { id: "new-task", title: "Fresh task", estimated_minutes: 15, color: "#0284c7" };
     let registryRows = [oldTask];
     let registryFetches = 0;
     const elements = new Map([
@@ -62,10 +62,14 @@ test("saving a task refreshes the registry used to render its calendar session",
         fetchTasks() {},
         loadKanbanBoard() {},
         calendar: { refetchEvents() {}, unselect() {} },
-        getTaskColor: () => "#7c3aed",
-        defaultPalette: ["#7c3aed"]
+        getTaskColor: () => "#0284c7",
+        defaultPalette: ["#0284c7"],
+        localStorage: { getItem: () => null }
     });
+    context.window = context;
+    context.addEventListener = () => {};
 
+    vm.runInContext(fs.readFileSync(path.join(staticJs, "utils.js"), "utf8"), context, { filename: "utils.js" });
     for (const filename of ["task_knowledge.js", "task_attach.js", "calendar.js", "task_modal.js", "dashboard.js"]) {
         const source = fs.readFileSync(path.join(staticJs, filename), "utf8");
         vm.runInContext(source, context, { filename });
@@ -90,4 +94,6 @@ test("saving a task refreshes the registry used to render its calendar session",
     assert.equal(resolvedTask.title, createdTask.title);
     assert.equal(event.title, createdTask.title);
     assert.equal(event.extendedProps.taskTitle, createdTask.title);
+    assert.equal(event.backgroundColor, "#0284c7", "contrast correction must not change the task background");
+    assert.equal(vm.runInContext('getContrastingTextColor("#0284c7")', context), "#000000");
 });
