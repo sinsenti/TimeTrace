@@ -53,10 +53,12 @@ function aiDraftOverlayEventSourceFn(fetchInfo, successCallback, failureCallback
                 };
             }).filter(Boolean);
             successCallback(events);
+            if (typeof taskKnowledge !== 'undefined') taskKnowledge.viewResult('draft-overlay', true);
         })
         .catch((err) => {
             console.error('Failed to load AI draft overlay:', err);
             failureCallback(err);
+            if (typeof taskKnowledge !== 'undefined') taskKnowledge.viewResult('draft-overlay', false);
         });
 }
 

@@ -33,6 +33,7 @@
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
     <link rel="stylesheet" href="/static/css/task_details.css">
+    <link rel="stylesheet" href="/static/css/rating_admin.css">
 </head>
 <body class="task-details min-h-screen flex flex-col pb-12">
 
@@ -43,6 +44,7 @@
 
     <main class="flex-1 p-6 max-w-6xl mx-auto w-full space-y-6">
         {% include "components/task_detail_panel.html" %}
+        {% with task_review_prefix="details" %}{% include "components/task_postmortem.html" %}{% endwith %}
     </main>
 
     {% include "components/subtask_modal.html" %}
@@ -64,6 +66,8 @@
     <script src="/static/js/task_attach.js"></script>
     <script src="/static/js/task_modal.js"></script>
     <script src="/static/js/session_modal.js"></script>
+    <script src="/static/js/ratings_config.js"></script>
+    <script src="/static/js/task_postmortem.js"></script>
     <script src="/static/js/subtasks.js"></script>
     <script src="/static/js/ai_quickadd.js"></script>
     <script src="/static/js/ai_assistant.js"></script>

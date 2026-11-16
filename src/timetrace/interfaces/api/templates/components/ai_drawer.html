@@ -3,7 +3,7 @@
      collides with vim_engine.js's case 'k'). All model-generated text is rendered via
      textContent in ai_assistant.js/ai_insights.js/ai_drafts.js -- never innerHTML, never Markdown-parsed
      (spec S9.5). -->
-<div id="ai_drawer" class="text-white">
+<div id="ai_drawer" class="text-white" inert aria-label="Assistant">
 
     <!-- Only populated/shown in full-screen mode, and only on a page that has a calendar (the
          dashboard's #calendar/`calendar` FullCalendar instance is physically MOVED in here --
@@ -15,19 +15,33 @@
         <!-- In normal mode this sits at the drawer's own left edge (the chat column fills the
              whole drawer); in full-screen mode this same edge IS the calendar/chat boundary --
              see ai.css .ai-drawer-chat-column { position: relative } and aiSetupDrawerResize. -->
-        <div id="ai_drawer_resize_handle" class="ai-drawer-resize-handle" title="Drag to resize"></div>
+        <div id="ai_drawer_resize_handle" class="ai-drawer-resize-handle" role="separator" tabindex="0"
+             aria-label="Assistant width" aria-orientation="vertical" title="Drag or use Left/Right to resize"></div>
         <div class="ai-drawer-header">
             <span class="ai-drawer-title">Assistant</span>
-            <select id="ai_conversation_select" class="ai-conversation-select"></select>
             <div class="ai-drawer-header-actions">
-                <button type="button" id="ai_rename_conversation_btn" class="ai-icon-btn" title="Rename conversation">Rename</button>
-                <button type="button" id="ai_new_conversation_btn" class="ai-icon-btn" title="New conversation">+ New</button>
-                <button type="button" id="ai_drafts_toggle_btn" class="ai-icon-btn" title="Show pending drafts / undo history">Drafts</button>
-                <button type="button" id="ai_fullscreen_toggle_btn" class="ai-icon-btn" title="Toggle full screen">Fullscreen</button>
-                <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" title="Close (Esc)">&times;</button>
+                <button type="button" id="ai_new_conversation_btn" class="ai-icon-btn">New chat</button>
+                <button type="button" id="ai_fullscreen_toggle_btn" class="ai-icon-btn">Fullscreen</button>
+                <button type="button" id="ai_drawer_close_btn" class="ai-icon-btn" aria-label="Close Assistant">&times;</button>
             </div>
         </div>
-
+        <nav class="ai-drawer-tools" aria-label="Assistant tools">
+            <button type="button" id="ai_history_toggle_btn" class="ai-icon-btn" aria-controls="ai_history_panel" aria-expanded="false">Conversations</button>
+            <button type="button" id="ai_insights_toggle_btn" class="ai-icon-btn" aria-controls="ai_insights_panel" aria-expanded="false">Insights &amp; planning</button>
+            <button type="button" id="ai_drafts_toggle_btn" class="ai-icon-btn" aria-controls="ai_drafts_panel" aria-expanded="false">Proposals &amp; history</button>
+            <a href="/settings/ai" class="ai-icon-btn" onclick="return typeof followSettingsLink !== 'function' || followSettingsLink(event)">Settings</a>
+        </nav>
+        <section id="ai_history_panel" class="ai-history-panel hidden" aria-label="Conversations">
+            <label for="ai_conversation_select">Conversation</label>
+            <select id="ai_conversation_select" class="ai-conversation-select"></select>
+            <div class="ai-history-actions">
+                <button type="button" id="ai_rename_conversation_btn" class="ai-icon-btn">Rename</button>
+                <button type="button" id="ai_delete_conversation_btn" class="ai-icon-btn">Delete conversation</button>
+                <button type="button" id="ai_history_refresh_btn" class="ai-icon-btn">Refresh</button>
+            </div>
+        </section>
+        <div id="ai_assistant_notice" class="ai-assistant-notice" role="status" aria-live="polite"></div>
+        <section id="ai_insights_panel" class="ai-insights-panel hidden" aria-label="Insights and planning">
         <section id="ai_quick_actions" class="ai-quick-actions" aria-label="Assistant quick actions">
             <div class="ai-quick-actions-heading">Quick actions</div>
             <div class="ai-quick-actions-list">
@@ -75,20 +89,25 @@
             </div>
         </section>
 
+        </section>
+
         <div id="ai_drawer_body" class="ai-drawer-body">
             <div id="ai_thread" class="flex flex-col gap-2" style="display: contents;"></div>
         </div>
 
         <div id="ai_drafts_panel" class="ai-drawer-body hidden" style="flex-direction: column;">
             <div class="flex items-center justify-between mb-1">
-                <span class="ai-drawer-title" style="font-size: 11px;">Draft batches</span>
+                <span class="ai-drawer-title" style="font-size: 11px;">Proposals &amp; action history</span>
+                <button type="button" id="ai_batches_refresh_btn" class="ai-icon-btn">Refresh</button>
                 <button type="button" id="ai_undo_all_btn" class="ai-icon-btn" title="Undo every undoable batch">Undo all</button>
             </div>
             <div id="ai_batches_list" class="flex flex-col gap-2"></div>
         </div>
 
         <div class="ai-drawer-composer">
-            <textarea id="ai_composer_input" rows="1" placeholder="Ask the assistant... (e.g. 'brief me for today' or 'replan this week')"></textarea>
+            <label for="ai_composer_input" class="ai-composer-label">Message</label>
+            <textarea id="ai_composer_input" rows="1" placeholder="Ask about your tasks or schedule…"></textarea>
+            <button type="button" id="ai_composer_cancel" class="ai-icon-btn hidden">Stop</button>
             <button type="button" id="ai_composer_send" title="Send (Enter)">Send</button>
         </div>
     </div>

@@ -271,10 +271,6 @@ window.addEventListener('keydown', function(e) {
         const focusBeforeClose = document.activeElement;
 
         const modalOrder = [
-            // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
-            // 'hidden' class every other entry here uses, hence `openClass` instead of the
-            // default hidden-class check below.
-            { id: 'ai_drawer', closeFn: typeof closeAiDrawer === 'function' ? closeAiDrawer : null, openClass: 'ai-drawer-open' },
             { id: 'completion_policy_modal', closeFn: typeof closeCompletionPolicyModal === 'function' ? closeCompletionPolicyModal : null },
             { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
@@ -290,6 +286,10 @@ window.addEventListener('keydown', function(e) {
             { id: 'session_review_modal', closeFn: typeof closeSessionReviewModal === 'function' ? closeSessionReviewModal : null },
             { id: 'rating_def_modal', closeFn: typeof closeRatingDefModal === 'function' ? closeRatingDefModal : null },
             { id: 'widget_builder_modal', closeFn: typeof closeWidgetBuilder === 'function' ? closeWidgetBuilder : null },
+            // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
+            // 'hidden' class every other entry here uses, hence `openClass` instead of the
+            // default hidden-class check below.
+            { id: 'ai_drawer', closeFn: typeof closeAiDrawer === 'function' ? closeAiDrawer : null, openClass: 'ai-drawer-open' },
             { id: 'idle_resolution_modal', closeFn: typeof closeIdleResolution === 'function' ? closeIdleResolution : null },
             { id: 'custom_confirm_modal', closeFn: null }
         ];

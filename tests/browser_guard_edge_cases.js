@@ -105,38 +105,59 @@ async (page, baseURL) => {
                 for(const name of ['one','two']) definitions.push(await(await c.request.post(`${baseURL}/rating-definitions`,{data:{name:`Synthetic ${target} ${name}`,target_type:target,min_score:1,max_score:5}})).json());
             }
             const own=definitions.filter(d=>d.target_type===kind);
+            const ratingInput = definition => kind==='task'
+                ? taskReview.locator(`[data-rating-def-id="${definition.id}"] .custom-rating-input`)
+                : p.locator(`#rating_range_input_${definition.id}`);
             await c.route('**/rating-entries',async r=>{
                 if(r.request().method()!=='POST' || r.request().postDataJSON().rating_definition_id!==own[1].id || !fail) return r.continue();
                 entered();await held;await r.fulfill({status:503,json:{detail:'Synthetic second rating failure'}});
             });
             await p.goto(`${baseURL}/revision#tasks`);
             await p.locator('#task_quick_chips_bar button').filter({hasText:task.title}).click();
-            await p.waitForFunction(()=>initializedTaskReviewId!==null);
+            const taskReview = p.locator('#revision_task_postmortem');
+            const taskReviewField = name => taskReview.locator(`[data-task-review="${name}"]`);
+            await p.waitForFunction(()=>{
+                const root=document.getElementById('revision_task_postmortem');
+                const save=root?.querySelector('[data-task-review="save"]');
+                return root && root.getAttribute('aria-busy')!=='true' && save && !save.disabled;
+            });
             if(kind==='session') {
                 await p.locator('#inspect_task_sessions_list > div').first().click();
                 await p.locator('#session_review_modal').waitFor({state:'visible'});
             }
-            const text=p.locator(kind==='task'?'#task_rev_went_well':'#session_rev_modal_notes');
+            const text=kind==='task' ? taskReviewField('what_went_well') : p.locator('#session_rev_modal_notes');
+            const failureStatus=kind==='task'
+                ? taskReview.locator('[data-task-review="status"]')
+                : p.locator('#session_rev_modal_status');
             await text.fill('Submitted persisted review');
-            for(const d of own) await p.locator(`#rating_range_input_${d.id}`).evaluate(el=>{el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));});
-            const expectedError=p.waitForEvent('pageerror');
-            if(kind==='task') await p.getByRole('button',{name:'Save Task Review',exact:true}).click();
+            for(const d of own) await ratingInput(d).evaluate(el=>{el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));});
+            if(kind==='task') await taskReview.locator('[data-task-review="save"]').click();
             else await p.locator('#session_review_modal button[onclick="saveSessionReviewModal()"] ').click();
             await started;
             const readURL=kind==='task'?`/api/task-reviews/${task.id}`:`/sessions/${session.id}`;
             const persisted=await(await c.request.get(baseURL+readURL)).json();
             check(persisted[kind==='task'?'what_went_well':'notes']==='Submitted persisted review','First write must actually persist before ratings');
             await text.fill('Typed during pending rating');await guarded(p,dialogs);release();
-            const error=await expectedError;check(error.message.includes('Synthetic second rating failure'),'Only deliberate 503 may surface');
+            await p.waitForFunction(({kind})=>{
+                const status=kind==='task'
+                    ? document.querySelector('#revision_task_postmortem [data-task-review="status"]')?.textContent
+                    : document.getElementById('session_rev_modal_status')?.textContent;
+                return kind==='task'
+                    ? status?.startsWith('Save incomplete. Successful writes are retained;')
+                    : status?.includes('Ratings save failed or its acknowledgement was lost: Synthetic second rating failure');
+            },{kind});
+            const observedFailureStatus=await failureStatus.textContent();
             check(await text.inputValue()==='Typed during pending rating','Partial failure must retain concurrent typing');
             await text.fill('Submitted persisted review');
-            await p.locator(`#rating_range_input_${own[1].id}`).evaluate(el=>{el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}));});
+            await ratingInput(own[1]).evaluate(el=>{el.value='3';el.dispatchEvent(new Event('input',{bubbles:true}));});
             check(await p.evaluate(()=>followSettingsLink({})),'Persisted text and first successful rating clean after failed-rating reversion');
-            await p.locator(`#rating_range_input_${own[1].id}`).evaluate(el=>{el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));});
+            await ratingInput(own[1]).evaluate(el=>{el.value='5';el.dispatchEvent(new Event('input',{bubbles:true}));});
             await guarded(p,dialogs);fail=false;
-            if(kind==='task') await p.getByRole('button',{name:'Save Task Review',exact:true}).click();
+            if(kind==='task') await taskReview.locator('[data-task-review="save"]').click();
             else await p.locator('#session_review_modal button[onclick="saveSessionReviewModal()"] ').click();
-            await p.waitForFunction(kind=>kind==='task' ? !hasSettingsDrafts(['task_inspector_body']) : document.getElementById('session_review_modal').classList.contains('hidden'),kind);
+            await p.waitForFunction(kind=>kind==='task'
+                ? !hasSettingsDrafts(['revision_task_postmortem','revision_task_postmortem_ratings'])
+                : document.getElementById('session_review_modal').classList.contains('hidden'),kind);
             const ratings=await(await c.request.get(`${baseURL}/rating-entries?target_type=${kind}&target_id=${kind==='task'?task.id:session.id}`)).json();
             check(ratings.length===2 && ratings.every(r=>r.score===5),'Retry must persist both own ratings');
             const ratingWrites=writes.filter(w=>new URL(w.url).pathname==='/rating-entries');
@@ -144,8 +165,8 @@ async (page, baseURL) => {
             const taskAfter=await(await c.request.get(`${baseURL}/api/tasks/${task.id}`)).json();
             check(taskAfter.status===task.status && taskAfter.estimated_minutes===30,'Review must not complete task or change estimate');
             await p.getByRole('link',{name:'Settings',exact:true}).click();await p.waitForURL('**/settings/ai');
-            check(errors.length===1,'Exactly one expected synthetic 503, no other page errors');
-            results.push({case:`${kind} partial review + retry`,persisted,ratings,dialogs,writes,expected503:errors,fakes:'second rating POST 503 only; text/first rating/retry persisted and read via real API'});
+            check(errors.length===0,'The declared synthetic 503 is shown in the review status; no unexpected page errors');
+            results.push({case:`${kind} partial review + retry`,persisted,ratings,dialogs,writes,visibleFailureStatus:observedFailureStatus,errors,fakes:'second rating POST 503 only; text/first rating/retry persisted and read via real API'});
         } finally {
             release();for(const d of definitions) await c.request.delete(`${baseURL}/rating-definitions/${d.id}`);
             if(session) await c.request.delete(`${baseURL}/sessions/${session.id}`);
