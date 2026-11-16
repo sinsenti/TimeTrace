@@ -21,7 +21,11 @@ function element(id = '', tag = 'div') {
     };
 }
 function browser(respond, resize = null) {
-    const fields = Object.fromEntries(['ai_drawer', 'ai_composer_input', 'ai_composer_send', 'ai_composer_cancel', 'ai_thread', 'ai_assistant_notice', 'ai_launcher_badge', 'ai_conversation_select', 'ai_drawer_body', 'ai_batches_list', 'ai_drafts_panel', 'ai_batches_refresh_btn', 'ai_undo_all_btn', 'ai_delete_conversation_btn', 'ai_new_conversation_btn', 'ai_quick_actions', 'ai_weekly_review_ask_btn'].map(id => [id, element(id)]));
+    const fields = Object.fromEntries(['ai_drawer', 'ai_composer_input', 'ai_composer_send', 'ai_composer_cancel', 'ai_thread', 'ai_assistant_notice', 'ai_launcher_badge', 'ai_conversation_select', 'ai_drawer_body', 'ai_batches_list', 'ai_drafts_panel', 'ai_batches_refresh_btn', 'ai_undo_all_btn', 'ai_delete_conversation_btn', 'ai_new_conversation_btn', 'ai_quick_actions', 'ai_weekly_review_ask_btn', 'custom_filter_modal', 'filter_input_query', 'filter_input_status', 'filter_input_category', 'filter_input_est_op', 'filter_input_est_mins', 'filter_input_priority', 'filter_status_feedback', 'filter_status_retry', 'filter_persistence_feedback'].map(id => [id, element(id)]));
+    fields.custom_filter_modal.classList.add('hidden');
+    for (const id of ['filter_input_status', 'filter_input_category', 'filter_input_est_mins']) {
+        Object.defineProperty(fields[id], 'options', {get() {return this.children;}});
+    }
     const requests = [], events = {}, windowEvents = {};
     const storage = new Map(resize ? [
         ['tt_ai_drawer_width_px', String(resize.normal)],
@@ -49,14 +53,15 @@ function browser(respond, resize = null) {
         requestAnimationFrame: fn => fn(),
         getComputedStyle: () => ({getPropertyValue: key => properties.get(key) || ''}),
         calendar: resize ? {updateSize() {}} : undefined,
-        window: {innerWidth: resize?.viewport, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener(name, fn) {(windowEvents[name] ||= []).push(fn);}, confirm() {return false;}},
+        window: {innerWidth: resize?.viewport, location: {pathname: '/dashboard'}, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener(name, fn) {(windowEvents[name] ||= []).push(fn);}, confirm() {return false;}},
+        localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}},
         document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty: (key, value) => properties.set(key, value)}},
             getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, removeEventListener() {}, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
         fetch: async (url, options) => {requests.push({url, options}); return respond(url, options);}
     });
     vm.runInContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/settings.js', 'utf8'), context);
     events.DOMContentLoaded = [];
-    for (const name of ['api_client', 'task_knowledge', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
+    for (const name of ['api_client', 'task_knowledge', 'custom_filter', 'ai_assistant', 'ai_drafts']) vm.runInContext(fs.readFileSync(`src/timetrace/interfaces/api/static/js/${name}.js`, 'utf8'), context);
     for (const fn of events.DOMContentLoaded) fn();
     return {fields, requests, context, storage, storageWrites, properties, windowEvents, resizeWindow(width) {context.window.innerWidth = width; resize.viewport = width; for (const listener of windowEvents.resize || []) listener();}, run: code => vm.runInContext(code, context), click: id => fields[id].listeners.click[0]({type: 'click'}), input(value) {fields.ai_composer_input.value = value; fields.ai_composer_input.listeners.input[0]();}};
 }
@@ -79,6 +84,25 @@ test('Send button submits composer text and JSON acknowledgment retains newer id
     await sending;
     assert.equal(b.fields.ai_composer_input.value, 'same text');
     assert.ok(b.fields.ai_thread.children.some(child => child.textContent === '<literal answer>'));
+});
+test('Assistant composer keeps Enter ownership when the advanced filter remains open underneath', async () => {
+    const b = browser(normal);
+    b.fields.ai_drawer.appendChild(b.fields.ai_composer_input);
+    b.run('openCustomFilterModal()');
+    b.run('openAiDrawer()');
+    await tick();
+    b.context.document.activeElement = b.fields.ai_composer_input;
+    let sends = 0;
+    b.context.aiSendMessage = () => { sends += 1; };
+    const event = {key: 'Enter', ctrlKey: true, shiftKey: false, isComposing: false, defaultPrevented: false,
+        stopped: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() { this.stopped = true; }};
+    for (const handler of b.windowEvents.keydown || []) handler(event);
+    assert.equal(event.defaultPrevented, false, 'filter capture must leave the focused Assistant composer alone');
+    assert.equal(event.stopped, false);
+    for (const handler of b.fields.ai_composer_input.listeners.keydown || []) handler(event);
+    assert.equal(sends, 1, 'the existing Assistant Enter handler still sends');
+    assert.equal(event.defaultPrevented, true);
+    assert.equal(b.fields.custom_filter_modal.classList.contains('hidden'), false);
 });
 test('IME and Shift Enter do not send; Enter sends through the actual key handler', async () => {
     const b = browser(url => url.endsWith('/messages') ? response({message: {content: 'ok'}}) : normal(url));

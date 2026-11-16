@@ -70,6 +70,8 @@ function updateFilterPersistenceFeedback() {
 function customFilterOwnsKeyboard() {
     const modal = document.getElementById('custom_filter_modal');
     if (!modal || modal.classList.contains('hidden')) return false;
+    const assistant = document.getElementById('ai_drawer');
+    if (assistant?.classList.contains('ai-drawer-open') && assistant.contains(document.activeElement)) return false;
     const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).filter(dialog =>
         dialog !== modal && !dialog.classList.contains('hidden') && dialog.getAttribute?.('aria-hidden') !== 'true');
     return !dialogs.some(dialog => dialog.contains(document.activeElement));

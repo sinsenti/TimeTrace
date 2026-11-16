@@ -8,6 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.10/index.global.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <link rel="stylesheet" href="/static/css/ai.css">
+    <link rel="stylesheet" href="/static/css/task_filters.css">
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #161824; --bg-sidebar: #12131d;
@@ -165,7 +166,7 @@
                 </div>
             </div>
 
-            <div id="sidebar_status_tabs" aria-label="Filter planning tasks by status" class="flex space-x-1 mb-2 overflow-x-auto pb-1"></div>
+            <div id="sidebar_status_tabs" role="group" aria-label="Filter planning tasks by status" class="flex space-x-1 mb-2 overflow-x-auto pb-1"></div>
             <div id="sidebar_status_feedback" role="status" class="text-xs text-slate-400 mb-1"></div>
             <div id="sidebar_task_feedback" role="status" class="text-xs text-slate-400 mb-1"></div>
 
