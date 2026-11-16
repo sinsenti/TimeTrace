@@ -26,19 +26,19 @@ function parseDurationToMinutes(val) {
     if (clean === '-' || clean === '' || clean === 'none' || clean === 'null') {
         return null;
     }
-    const daysMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(d|day|days)$/);
+    const daysMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(d|day|days)$/);
     if (daysMatch) {
         return Math.round(parseFloat(daysMatch[1]) * 1440);
     }
-    const hoursMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/);
+    const hoursMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(h|hr|hrs|hour|hours)$/);
     if (hoursMatch) {
         return Math.round(parseFloat(hoursMatch[1]) * 60);
     }
-    const minsMatch = clean.match(/^(\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)$/);
+    const minsMatch = clean.match(/^(-?\d+(?:\.\d+)?)\s*(m|min|mins|minute|minutes)$/);
     if (minsMatch) {
         return Math.round(parseFloat(minsMatch[1]));
     }
-    const numMatch = clean.match(/^(\d+(?:\.\d+)?)$/);
+    const numMatch = clean.match(/^(-?\d+(?:\.\d+)?)$/);
     if (numMatch) {
         return Math.round(parseFloat(numMatch[1]));
     }
@@ -255,13 +255,22 @@ function getTaskDateBadge(dueDateStr, assignedDateStr) {
 
 window.addEventListener('keydown', function(e) {
     if (e.key === 'Escape' || e.key === 'Esc') {
+        // These confirmations resolve their pending action at document capture. Let them consume
+        // Escape before a Session beneath them, rather than hiding it and stranding the Promise.
+        if (['recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+            const modal = document.getElementById(id);
+            return modal && !modal.classList.contains('hidden');
+        })) return;
+        // Recovery owns Escape above Session, but not above the higher deletion prompt.
+        const idleRecovery = document.getElementById('idle_resolution_modal');
+        const recurringDelete = document.getElementById('recurring_delete_modal');
+        if (idleRecovery && !idleRecovery.classList.contains('hidden') &&
+            (!recurringDelete || recurringDelete.classList.contains('hidden'))) return;
         let closedAny = false;
+        let closedModalId = null;
+        const focusBeforeClose = document.activeElement;
 
         const modalOrder = [
-            // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
-            // 'hidden' class every other entry here uses, hence `openClass` instead of the
-            // default hidden-class check below.
-            { id: 'ai_drawer', closeFn: typeof closeAiDrawer === 'function' ? closeAiDrawer : null, openClass: 'ai-drawer-open' },
             { id: 'completion_policy_modal', closeFn: typeof closeCompletionPolicyModal === 'function' ? closeCompletionPolicyModal : null },
             { id: 'recurring_delete_modal', closeFn: typeof closeRecurringDeleteModal === 'function' ? closeRecurringDeleteModal : null },
             { id: 'add_status_modal', closeFn: typeof closeAddStatusModal === 'function' ? closeAddStatusModal : null },
@@ -277,13 +286,62 @@ window.addEventListener('keydown', function(e) {
             { id: 'session_review_modal', closeFn: typeof closeSessionReviewModal === 'function' ? closeSessionReviewModal : null },
             { id: 'rating_def_modal', closeFn: typeof closeRatingDefModal === 'function' ? closeRatingDefModal : null },
             { id: 'widget_builder_modal', closeFn: typeof closeWidgetBuilder === 'function' ? closeWidgetBuilder : null },
-            { id: 'idle_resolution_modal', closeFn: null },
+            // The drawer is toggled via an 'ai-drawer-open' class (translateX slide), not the
+            // 'hidden' class every other entry here uses, hence `openClass` instead of the
+            // default hidden-class check below.
+            { id: 'ai_drawer', closeFn: typeof closeAiDrawer === 'function' ? closeAiDrawer : null, openClass: 'ai-drawer-open' },
+            { id: 'idle_resolution_modal', closeFn: typeof closeIdleResolution === 'function' ? closeIdleResolution : null },
             { id: 'custom_confirm_modal', closeFn: null }
         ];
 
+        // Rating administration sits above Assistant and unfocused Export. A newer focused
+        // Task/Session or a higher policy prompt still owns Escape, even if close is declined.
+        const ratingDialog = document.getElementById('rating_def_modal');
+        const exportModal = document.getElementById('export_modal');
+        const ratingVisible = ratingDialog && !ratingDialog.classList.contains('hidden');
+        const exportVisible = exportModal && !exportModal.classList.contains('hidden');
+        if (ratingVisible || exportVisible) {
+            const focusedEditor = ['task_modal', 'session_modal'].find(id => {
+                const modal = document.getElementById(id);
+                return modal && !modal.classList.contains('hidden') && modal.contains(focusBeforeClose);
+            });
+            const priority = ['completion_policy_modal', 'recurring_delete_modal', focusedEditor,
+                ratingVisible ? 'rating_def_modal' : null];
+            const rank = item => priority.includes(item.id) ? priority.indexOf(item.id) : priority.length;
+            modalOrder.sort((a, b) => rank(a) - rank(b));
+        }
+        // Export can remain beneath a newer editor while its read finishes. Its focused
+        // controls sit above Rating; stale Assistant focus cannot supersede visible Rating.
+        if (exportVisible && !['completion_policy_modal', 'recurring_delete_modal'].some(id => {
+            const el = document.getElementById(id);
+            return el && !el.classList.contains('hidden');
+        })) {
+            let ownerIndex = modalOrder.findIndex(item => {
+                const el = document.getElementById(item.id);
+                return !(ratingVisible && item.id === 'ai_drawer') &&
+                    el && el.dataset?.settingsPageEditor !== 'true' &&
+                    (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden')) &&
+                    el.contains(focusBeforeClose);
+            });
+            // With no eligible focus owner, Rating sits above unfocused Export and Assistant.
+            if (ownerIndex < 0) ownerIndex = modalOrder.findIndex(item =>
+                item.id === (ratingVisible ? 'rating_def_modal' : 'export_modal'));
+            if (ownerIndex > 0) modalOrder.unshift(...modalOrder.splice(ownerIndex, 1));
+        }
+
+        const assistant = document.getElementById('ai_drawer');
+        if (assistant?.classList.contains('ai-drawer-open') && assistant.contains(focusBeforeClose)) {
+            const assistantIndex = modalOrder.findIndex(item => item.id === 'ai_drawer');
+            const filterIndex = modalOrder.findIndex(item => item.id === 'custom_filter_modal');
+            if (assistantIndex > filterIndex && filterIndex >= 0) {
+                modalOrder.splice(filterIndex, 0, modalOrder.splice(assistantIndex, 1)[0]);
+            }
+        }
+
         for (const item of modalOrder) {
             const el = document.getElementById(item.id);
-            const isOpen = el && (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden'));
+            const isOpen = el && el.dataset?.settingsPageEditor !== 'true' &&
+                (item.openClass ? el.classList.contains(item.openClass) : !el.classList.contains('hidden'));
             if (isOpen) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -292,14 +350,28 @@ window.addEventListener('keydown', function(e) {
                 } else {
                     el.classList.add('hidden');
                 }
-                closedAny = true;
+                // A callback may decline discard and keep its editor open. Only a real close
+                // permits selection/focus cleanup; the drawer uses its own visibility class.
+                closedAny = item.openClass ? !el.classList.contains(item.openClass) : el.classList.contains('hidden');
+                if (closedAny) closedModalId = item.id;
                 break;
             }
         }
 
         if (closedAny) {
+            // A delayed Task/Session opening can interrupt Export. Its ordinary launcher
+            // may be behind Export; hand focus back unless another modal resumed.
+            if (['task_modal', 'session_modal'].includes(closedModalId) && exportModal &&
+                !exportModal.classList.contains('hidden') && !modalOrder.some(item => {
+                    const el = document.getElementById(item.id);
+                    return item.id !== 'export_modal' && item.id !== 'ai_drawer' && el &&
+                        !el.classList.contains('hidden') && el.contains(document.activeElement);
+                })) document.getElementById('export_mode_select')?.focus();
             if (typeof calendar !== 'undefined' && calendar) calendar.unselect();
-            if (document.activeElement && typeof document.activeElement.blur === 'function') document.activeElement.blur();
+            // Keep a dialog's explicitly restored launcher; only blur unchanged, now-hidden fields.
+            if (document.activeElement === focusBeforeClose && typeof focusBeforeClose?.blur === 'function') {
+                focusBeforeClose.blur();
+            }
         }
     }
 }, true);
@@ -343,11 +415,26 @@ async function promptDeleteSession(sessionId) {
     }
 }
 
+function restoreIdleRecoveryFocus(closedModal, ownedFocus) {
+    const recovery = document.getElementById('idle_resolution_modal');
+    if (!ownedFocus || !recovery || recovery.classList.contains('hidden')) return;
+    if (['recurring_delete_modal', 'recurring_resize_modal', 'custom_confirm_modal'].some(id => {
+        const modal = document.getElementById(id);
+        return modal && !modal.classList.contains('hidden');
+    })) return;
+    // Hiding a focused control may move focus to body; never displace a newer editor/launcher.
+    if (document.activeElement !== document.body && document.activeElement !== document.documentElement &&
+        !closedModal.contains(document.activeElement)) return;
+    document.getElementById('idle_resolution_title')?.focus();
+}
+
 function closeRecurringDeleteModal() {
     deleteSessionRequest++;
     const modal = document.getElementById('recurring_delete_modal');
+    const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal?.contains(document.activeElement));
     if (modal) modal.classList.add('hidden');
     pendingDeleteSessionId = null;
+    restoreIdleRecoveryFocus(modal, ownedFocus);
 }
 
 async function confirmRecurringDelete(scope) {
@@ -358,7 +445,18 @@ async function confirmRecurringDelete(scope) {
     try {
         // Ids may be synthetic (`virt:<task>:<stamp>`), so encode before interpolating.
         await api.delete(`/sessions/${encodeURIComponent(sid)}?scope=${encodeURIComponent(scope || 'only_this')}`);
+    } catch (err) {
+        console.error('Failed to delete session:', err);
+        alert('Failed to delete session: ' + (err.message || err));
+        return;
+    }
 
+    // The deletion is committed. Failures below are read/display failures, never retry DELETE.
+    taskKnowledge.invalidate();
+    const editingId = document.getElementById('edit_session_id');
+    if (editingId && String(editingId.value) === String(sid) && typeof closeSessionModal === 'function') closeSessionModal();
+    if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
+    try {
         if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
             allSessions = allSessions.filter(item => String(item.id) !== String(sid));
         }
@@ -366,17 +464,14 @@ async function confirmRecurringDelete(scope) {
         if (typeof calendar !== 'undefined' && calendar) {
             const calEv = calendar.getEventById(String(sid));
             if (calEv) calEv.remove();
-            // "following"/"all" end or truncate the series, so other projected occurrences in
-            // this window disappear too -- only a refetch can show that.
-            if (scope === 'following' || scope === 'all') calendar.refetchEvents();
+            // Scoped deletion may alter other projected occurrences too. Refresh is read-only.
+            await calendar.refetchEvents();
         }
-
-        if (typeof closeSessionModal === 'function') closeSessionModal();
-        if (typeof closeSessionReviewModal === 'function') closeSessionReviewModal();
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        if (typeof loadCurrentRevisionView === 'function') loadCurrentRevisionView();
+        if (typeof loadCurrentRevisionView === 'function') await loadCurrentRevisionView();
     } catch (err) {
-        console.error("Failed to delete session:", err);
+        console.error('Session deleted, but display refresh failed:', err);
+        taskKnowledge.viewResult('calendar', false);
     }
 }
 
@@ -425,7 +520,17 @@ function getContrastingTextColor(backgroundColor) {
         + 0.0722 * linearize(hex.slice(4, 6));
     const whiteContrast = 1.05 / (luminance + 0.05);
     const darkContrast = (luminance + 0.05) / (0.0092 + 0.05); // #111827
-    return whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+    const selectedColor = whiteContrast >= darkContrast ? '#ffffff' : '#111827';
+    const darkTextLuminance = 0.2126 * linearize('11')
+        + 0.7152 * linearize('18')
+        + 0.0722 * linearize('27');
+    const selectedContrast = selectedColor === '#ffffff'
+        ? whiteContrast
+        : (luminance + 0.05) / (darkTextLuminance + 0.05);
+    if (selectedContrast >= 4.5) return selectedColor;
+
+    const blackContrast = (luminance + 0.05) / 0.05;
+    return blackContrast >= whiteContrast ? '#000000' : '#ffffff';
 }
 
 function reshuffleColors() {
@@ -538,6 +643,7 @@ function setSlotDuration(val, updateSettings = true) {
         if (typeof saveUserSettings === 'function') saveUserSettings(s);
     }
     defaultDurationMinutes = mins;
+    if (typeof setCalendarDensity === 'function') setCalendarDensity(getUserSettings().calendarDensity, false);
     localStorage.setItem('timetrace_slot_duration', defaultDurationMinutes);
     if (typeof calendar !== 'undefined' && calendar) {
         const durStr = `00:${String(defaultDurationMinutes).padStart(2,'0')}:00`;
@@ -635,12 +741,14 @@ function showRecurringResizeScopePrompt() {
         modal.classList.remove('hidden');
 
         const cleanup = () => {
+            const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal.contains(document.activeElement));
             modal.classList.add('hidden');
             onlyBtn.removeEventListener('click', onOnly);
             allBtn.removeEventListener('click', onAll);
             cancelBtn.removeEventListener('click', onCancel);
             if (closeBtn) closeBtn.removeEventListener('click', onCancel);
             document.removeEventListener('keydown', onKeyDown, true);
+            restoreIdleRecoveryFocus(modal, ownedFocus);
         };
 
         const finish = (value) => { cleanup(); resolve(value); };
@@ -682,10 +790,12 @@ function showCustomConfirm(title, message) {
         modal.classList.remove('hidden');
 
         const cleanup = () => {
+            const ownedFocus = Boolean(document.getElementById('idle_resolution_modal') && modal.contains(document.activeElement));
             modal.classList.add('hidden');
             cancelBtn.removeEventListener('click', onCancel);
             proceedBtn.removeEventListener('click', onProceed);
             document.removeEventListener('keydown', onKeyDown, true);
+            restoreIdleRecoveryFocus(modal, ownedFocus);
         };
 
         const onCancel = () => { cleanup(); resolve(false); };
@@ -695,7 +805,8 @@ function showCustomConfirm(title, message) {
             if (e.key === 'Enter') {
                 e.preventDefault();
                 e.stopPropagation();
-                onProceed();
+                if (document.activeElement === cancelBtn) onCancel();
+                else onProceed();
             } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
                 e.stopPropagation();

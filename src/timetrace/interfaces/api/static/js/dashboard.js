@@ -23,12 +23,11 @@ async function resolveCalendarDropTask(taskId, taskTitle) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
-    const userSettings = getUserSettings();
-
     if (typeof fetchAllTasksRegistry === 'function') {
         await fetchAllTasksRegistry();
     }
 
+    const userSettings = getUserSettings();
     const seedParams = new URLSearchParams(window.location.search);
     const seedTag = seedParams.get('tag');
     const seedTask = seedParams.get('task');
@@ -43,10 +42,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     const durationSelect = document.getElementById('config_slot_duration');
     if (durationSelect) durationSelect.value = userSettings.slotDuration;
 
+    let initialCalendarContext = true;
     const calendarEl = document.getElementById('calendar');
     if (calendarEl) {
         calendar = new FullCalendar.Calendar(calendarEl, {
-            initialView: userSettings.defaultView === 'auto' ? (userSettings.lastSelectedView || 'timeGridWeek') : userSettings.defaultView,
+            initialView: SUPPORTED_CALENDAR_VIEWS.includes(seedParams.get('view'))
+                ? seedParams.get('view') : userSettings.defaultView === 'auto' ? userSettings.lastSelectedView : userSettings.defaultView,
+            initialDate: seedParams.get('date') || undefined,
             firstDay: userSettings.firstDayOfWeek,
             height: '100%',
             headerToolbar: false,
@@ -153,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
             
             eventClick: function(info) {
-                openEditSessionModal(info.event.id);
+                openEditSessionModal(info.event.id, info.el);
             },
 
             eventReceive: async function(info) {
@@ -214,6 +216,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                 updateViewButtons(info.view.type);
                 fetchRangeTotals();
                 injectTimezoneLabel();
+                syncCalendarContext(initialCalendarContext);
+                initialCalendarContext = false;
 
                 const settings = typeof getUserSettings === 'function' ? getUserSettings() : null;
                 if (settings && settings.lastSelectedView !== info.view.type) {
@@ -224,11 +228,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
         calendar.render();
 
-        const urlParams = new URLSearchParams(window.location.search);
-        const targetDate = urlParams.get('date');
-        if (targetDate) {
-            calendar.gotoDate(targetDate);
-        }
+        window.addEventListener('popstate', restoreCalendarContext);
     }
 
     const taskCardList = document.getElementById('task_card_list');
@@ -259,9 +259,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     setupVimKeyboardListeners();
     setupExportModalKeyboardShortcuts();
 
-    await applyUserSettings(userSettings, true);
+    await applyUserSettings(getUserSettings(), true);
 
-    if (userSettings.autoScrollNow && !window.location.search.includes('date=')) {
+    if (getUserSettings().autoScrollNow && !seedParams.has('date')) {
         scrollToCurrentTime();
     }
 
@@ -272,60 +272,181 @@ document.addEventListener('DOMContentLoaded', async function() {
  * Export Modal Functions & Keyboard Listeners
  * ---------------------------------------------------- */
 
+const exportWorkflow = { generation: 0, pending: false, preview: null, launcher: null };
+
+function exportSelection() {
+    const mode = document.getElementById('export_mode_select').value;
+    const start = mode === 'all_date_range' ? document.getElementById('export_start_date').value.trim() : '';
+    const end = mode === 'all_date_range' ? document.getElementById('export_end_date').value.trim() : '';
+    return { mode, start, end, key: JSON.stringify([mode, start, end]) };
+}
+
+function exportIsCurrent(generation, selection) {
+    return generation === exportWorkflow.generation &&
+        !document.getElementById('export_modal').classList.contains('hidden') && selection.key === exportSelection().key;
+}
+
+function updateExportActions() {
+    const preview = exportWorkflow.preview;
+    const ready = preview && exportIsCurrent(preview.generation, preview.selection) && !exportWorkflow.pending;
+    document.getElementById('export_generate').disabled = exportWorkflow.pending;
+    document.getElementById('export_copy').disabled = !ready || !!preview.copyPending;
+    document.getElementById('export_download').disabled = !ready;
+    document.getElementById('export_preview').setAttribute('aria-busy', String(exportWorkflow.pending));
+}
+
+function exportInputsChanged() {
+    exportWorkflow.generation++;
+    exportWorkflow.pending = false;
+    exportWorkflow.preview = null;
+    document.getElementById('export_preview').value = '';
+    document.getElementById('export_provenance').textContent = '';
+    document.getElementById('export_status').textContent = 'Selection changed. Generate a current preview before Copy or Download.';
+    updateExportActions();
+}
+
 function openExportModal() {
     const modal = document.getElementById('export_modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        const sel = document.getElementById('export_mode_select');
-        if (sel) toggleExportDateInputs(sel.value);
-    }
+    if (!modal || !modal.classList.contains('hidden')) return;
+    exportWorkflow.launcher = document.activeElement;
+    modal.classList.remove('hidden');
+    modal.setAttribute('aria-hidden', 'false');
+    document.getElementById('export_mode_select').focus();
+    toggleExportDateInputs(document.getElementById('export_mode_select').value);
 }
 
 function closeExportModal() {
     const modal = document.getElementById('export_modal');
-    if (modal) modal.classList.add('hidden');
+    if (!modal || modal.classList.contains('hidden')) return;
+    const restore = modal.contains(document.activeElement);
+    modal.classList.add('hidden');
+    modal.setAttribute('aria-hidden', 'true');
+    exportWorkflow.generation++;
+    exportWorkflow.pending = false;
+    exportWorkflow.preview = null;
+    updateExportActions();
+    const launcher = exportWorkflow.launcher;
+    const otherDialog = Array.from(document.querySelectorAll('[role="dialog"]')).some(el =>
+        el !== modal && !el.classList.contains('hidden') && el.getAttribute('aria-hidden') !== 'true' && !el.contains(launcher));
+    if (!restore || otherDialog) return;
+    if (launcher?.isConnected && !launcher.disabled) launcher.focus();
+    else {
+        const fallback = document.getElementById('calendar');
+        if (fallback) { fallback.setAttribute('tabindex', '-1'); fallback.focus(); }
+    }
 }
 
 function toggleExportDateInputs(modeVal) {
     const group = document.getElementById('export_date_range_group');
     if (!group) return;
-    if (modeVal === 'all_date_range') {
-        group.classList.remove('hidden');
-    } else {
-        group.classList.add('hidden');
-    }
+    if (modeVal === 'all_date_range') group.classList.remove('hidden');
+    else group.classList.add('hidden');
+    exportInputsChanged();
+    if (!document.getElementById('export_modal').classList.contains('hidden')) generateExportPreview();
 }
 
-function triggerExportDownload() {
-    const sel = document.getElementById('export_mode_select');
-    const mode = sel ? sel.value : 'sessions';
-    let url = `/api/agenda/export?mode=${encodeURIComponent(mode)}`;
-
-    if (mode === 'all_date_range') {
-        const startVal = document.getElementById('export_start_date') ? document.getElementById('export_start_date').value.trim() : '';
-        const endVal = document.getElementById('export_end_date') ? document.getElementById('export_end_date').value.trim() : '';
-
-        if (startVal) url += `&start_date=${encodeURIComponent(startVal)}`;
-        if (endVal) url += `&end_date=${encodeURIComponent(endVal)}`;
+async function generateExportPreview() {
+    if (exportWorkflow.pending || document.getElementById('export_modal').classList.contains('hidden')) return;
+    exportInputsChanged();
+    const selection = exportSelection();
+    const status = document.getElementById('export_status');
+    if (selection.mode === 'all_date_range') {
+        const inputs = ['export_start_date', 'export_end_date'].map(id => document.getElementById(id));
+        if (inputs.some(input => !input.checkValidity()) || (selection.start && selection.end && selection.start > selection.end)) {
+            status.textContent = 'Use valid YYYY-MM-DD dates; Start must not be after End. Either boundary may be blank.';
+            return;
+        }
     }
-
-    window.location.href = url;
-    closeExportModal();
+    const generation = exportWorkflow.generation;
+    const params = new URLSearchParams({ mode: selection.mode });
+    if (selection.start) params.set('start_date', selection.start);
+    if (selection.end) params.set('end_date', selection.end);
+    exportWorkflow.pending = true;
+    status.textContent = 'Loading Markdown preview…';
+    updateExportActions();
+    try {
+        const content = await api.get(`/api/agenda/export?${params}`);
+        if (!exportIsCurrent(generation, selection)) return;
+        if (typeof content !== 'string') throw new Error('Expected Markdown text from the export endpoint.');
+        document.getElementById('export_preview').value = content;
+        if (content.length) {
+            exportWorkflow.preview = { generation, selection, content, filename: `timetrace_export_${selection.mode}.md` };
+            const label = document.getElementById('export_mode_select').selectedOptions[0].textContent;
+            document.getElementById('export_provenance').textContent = `Current preview: ${label}${selection.mode === 'all_date_range' ? ` · UTC session starts ${selection.start || 'any start'} through ${selection.end || 'any end'} (inclusive)` : ''} · timetrace_export_${selection.mode}.md`;
+            status.textContent = 'Preview ready. Copy or Download explicitly; generating does not export a file.';
+        } else status.textContent = 'The endpoint returned empty Markdown. Generate preview to retry this read.';
+    } catch (error) {
+        if (exportIsCurrent(generation, selection)) status.textContent = `Could not generate preview: ${error.message}. Generate preview retries this read only.`;
+    } finally {
+        if (exportIsCurrent(generation, selection)) {
+            exportWorkflow.pending = false;
+            updateExportActions();
+        }
+    }
 }
 
 function setupExportModalKeyboardShortcuts() {
     const modal = document.getElementById('export_modal');
     if (!modal) return;
-
     modal.addEventListener('keydown', function(e) {
+        if (modal.classList.contains('hidden')) return;
         if (e.ctrlKey && e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            triggerExportDownload();
+            e.preventDefault(); e.stopPropagation(); triggerExportDownload();
         } else if (e.key === 'Escape' || e.key === 'Esc') {
-            e.preventDefault();
-            e.stopPropagation();
-            closeExportModal();
+            e.preventDefault(); e.stopPropagation(); closeExportModal();
+        } else if (e.key === 'Tab') {
+            const controls = Array.from(modal.querySelectorAll('button, select, input, textarea, [tabindex]'))
+                .filter(el => !el.disabled && el.tabIndex >= 0 && el.getClientRects().length);
+            const first = controls[0], last = controls[controls.length - 1];
+            if (e.shiftKey && (document.activeElement === first || !controls.includes(document.activeElement))) {
+                e.preventDefault(); last?.focus();
+            } else if (!e.shiftKey && (document.activeElement === last || !controls.includes(document.activeElement))) {
+                e.preventDefault(); first?.focus();
+            }
         }
     });
+}
+
+
+async function copyExportPreview() {
+    const preview = exportWorkflow.preview;
+    const status = document.getElementById('export_status');
+    if (!preview || !exportIsCurrent(preview.generation, preview.selection) || exportWorkflow.pending || preview.copyPending) return;
+    preview.copyPending = true;
+    status.textContent = 'Copying current preview…';
+    updateExportActions();
+    try {
+        if (!navigator.clipboard?.writeText) throw new Error('Clipboard is unavailable in this browser context');
+        await navigator.clipboard.writeText(preview.content);
+        if (exportIsCurrent(preview.generation, preview.selection)) status.textContent = 'Copied current Markdown preview to clipboard.';
+    } catch (error) {
+        if (exportIsCurrent(preview.generation, preview.selection)) status.textContent = `Copy failed: ${error.message}. Preview retained; retry Copy or Download.`;
+    } finally {
+        preview.copyPending = false;
+        if (exportIsCurrent(preview.generation, preview.selection)) updateExportActions();
+    }
+}
+
+function triggerExportDownload() {
+    const preview = exportWorkflow.preview;
+    const status = document.getElementById('export_status');
+    if (!preview || !exportIsCurrent(preview.generation, preview.selection) || exportWorkflow.pending) {
+        status.textContent = exportWorkflow.pending ? 'Preview is still loading. Wait before Download.' : 'Generate a current preview before Download.';
+        return;
+    }
+    let url;
+    const link = document.createElement('a');
+    try {
+        url = URL.createObjectURL(new Blob([preview.content], {type: 'text/markdown;charset=utf-8'}));
+        link.href = url;
+        link.download = preview.filename;
+        document.body.appendChild(link);
+        link.click();
+        status.textContent = `Download requested: ${preview.filename}. Check your browser downloads; saving is controlled by your browser.`;
+    } catch (error) {
+        status.textContent = `Download could not be requested: ${error.message}. Preview retained; retry Download.`;
+    } finally {
+        link.remove();
+        if (url) setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
 }

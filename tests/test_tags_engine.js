@@ -17,7 +17,7 @@ test('resetting session tags clears a previously typed tag', () => {
     };
     const context = {
         document: {
-            createElement: () => ({ style: {} }),
+            createElement: () => ({ style: {}, appendChild() {}, addEventListener() {} }),
             getElementById(id) {
                 if (id === 'session_modal_tags_input') return input;
                 if (id === 'tag_chips_container') return container;

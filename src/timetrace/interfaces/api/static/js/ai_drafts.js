@@ -82,7 +82,7 @@ function aiBuildDraftItemNode(item, batch, options) {
     }
     row.dataset.itemId = item.id;
 
-    if (opts.selectable && batch.status === 'pending') {
+    if (opts.selectable && item.status === 'pending') {
         const checkbox = document.createElement('input');
         checkbox.type = 'checkbox';
         checkbox.className = 'ai-item-checkbox mt-0.5';
@@ -133,7 +133,7 @@ function aiBuildDraftItemNode(item, batch, options) {
         body.appendChild(flag);
     }
 
-    if (opts.showItemActions && batch.status === 'pending' && item.status === 'pending') {
+    if (opts.showItemActions && item.status === 'pending') {
         const actions = document.createElement('div');
         actions.className = 'flex gap-1 mt-1';
 
@@ -141,7 +141,10 @@ function aiBuildDraftItemNode(item, batch, options) {
         editBtn.type = 'button';
         editBtn.className = 'ai-btn-item';
         editBtn.textContent = 'Edit';
-        editBtn.addEventListener('click', () => aiToggleInlineEdit(row, item, batch));
+        editBtn.addEventListener('click', () => {
+            if (aiDraftBlockForHistoryUndo()) return;
+            aiToggleInlineEdit(row, item, batch);
+        });
         actions.appendChild(editBtn);
 
         const rejectBtn = document.createElement('button');
@@ -149,11 +152,39 @@ function aiBuildDraftItemNode(item, batch, options) {
         rejectBtn.className = 'ai-btn-item';
         rejectBtn.textContent = 'Reject';
         rejectBtn.addEventListener('click', async () => {
+            if (aiDraftBlockForHistoryUndo()) return;
+            if (aiDraftEditorHasUnsavedChanges(row)) {
+                let card = row;
+                while (card && !card.classList.contains('ai-draft-batch')) card = card.parentNode;
+                if (card) aiDraftActionWarning(card);
+                return;
+            }
+            if (aiPendingDraftActions.has(batch.id)) return;
+            aiPendingDraftActions.add(batch.id);
+            rejectBtn.disabled = true;
             try {
-                await api.post(`/api/ai/drafts/items/${encodeURIComponent(item.id)}/reject`, {});
-                if (typeof options.onChanged === 'function') options.onChanged();
+                const result = await api.post(`/api/ai/drafts/items/${encodeURIComponent(item.id)}/reject`, {});
+                const actionResult = {items: [{
+                    item_id: result.id || item.id,
+                    status: result.status || 'rejected',
+                    error: result.error || null,
+                    applied_entity_id: result.applied_entity_id || null
+                }]};
+                aiDraftActionResults.set(batch.id, actionResult);
+                aiRenderDraftActionResults(row.closest?.('.ai-draft-batch') || row.parentNode, actionResult);
+                const reads = [];
+                const startRead = read => reads.push(Promise.resolve().then(read));
+                startRead(() => aiRefreshCurrentBatchView(batch.id));
+                if (typeof loadAiDraftOverlay === 'function') startRead(() => loadAiDraftOverlay());
+                if (typeof refreshAiStatusBadge === 'function') startRead(() => refreshAiStatusBadge());
+                if (typeof options.onChanged === 'function') startRead(() => options.onChanged());
+                await Promise.allSettled(reads);
             } catch (err) {
                 console.error('Failed to reject draft item:', err);
+                aiUnconfirmedDraftActions.add(batch.id);
+                let batchCard = row;
+                while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+                if (batchCard) aiSetDraftReadFailure(batchCard, batch.id);
             }
         });
         actions.appendChild(rejectBtn);
@@ -193,6 +224,9 @@ function aiAddEditField(container, label, inputEl) {
     container.appendChild(field);
 }
 
+let aiDraftEditorSequence = 0;
+const aiPendingDraftEditors = new WeakSet();
+
 /** Structured edit form for a pending draft item -- session and task proposals get their real
  * fields (datetime pickers, a task dropdown, a priority select), never a raw JSON textarea.
  * `PATCH /drafts/items/{id}` MERGES `proposed` into the existing snapshot (never replaces it
@@ -205,6 +239,7 @@ function aiToggleInlineEdit(row, item, batch) {
     }
     editBox = document.createElement('div');
     editBox.className = 'ai-inline-edit-box mt-1.5 pt-1.5';
+    editBox.id = `ai_draft_editor_${++aiDraftEditorSequence}`;
 
     const proposed = item.proposed || {};
     const fieldsWrap = document.createElement('div');
@@ -247,33 +282,66 @@ function aiToggleInlineEdit(row, item, batch) {
         const taskSelect = document.createElement('select');
         taskSelect.disabled = true;
         const noneOpt = document.createElement('option');
-        noneOpt.value = '';
+        noneOpt.value = proposed.task_id || '';
         noneOpt.textContent = 'Loading tasks...';
         taskSelect.appendChild(noneOpt);
+        taskSelect.value = proposed.task_id || '';
         aiAddEditField(fieldsWrap, 'Task', taskSelect);
         addCollector('task_id', () => taskSelect.value || null);
-        api.get('/api/tasks').then((tasks) => {
-            taskSelect.textContent = '';
-            const emptyOpt = document.createElement('option');
-            emptyOpt.value = '';
-            emptyOpt.textContent = '(no task)';
-            taskSelect.appendChild(emptyOpt);
-            (tasks || []).forEach((t) => {
-                const opt = document.createElement('option');
-                opt.value = t.id;
-                opt.textContent = t.title;
-                if (t.id === proposed.task_id) opt.selected = true;
-                taskSelect.appendChild(opt);
-            });
-            if (hasField('task_id')) taskSelect.disabled = false;
-        }).catch((err) => {
-            console.error('Failed to load tasks for the draft-item edit form:', err);
-            taskSelect.textContent = '';
-            const errOpt = document.createElement('option');
-            errOpt.value = proposed.task_id || '';
-            errOpt.textContent = proposed.task_id ? `(task ${proposed.task_id})` : '(no task)';
-            taskSelect.appendChild(errOpt);
-        });
+        const taskStatus = document.createElement('div');
+        taskStatus.className = 'ai-draft-task-options-status';
+        fieldsWrap.appendChild(taskStatus);
+        let taskReadGeneration = 0;
+        const loadDraftTaskOptions = async () => {
+            const request = ++taskReadGeneration;
+            const selected = taskSelect.value || proposed.task_id || '';
+            taskSelect.disabled = true;
+            taskStatus.textContent = 'Loading task options…';
+            try {
+                const tasks = await api.get('/api/tasks');
+                if (request !== taskReadGeneration || (typeof editBox.isConnected === 'boolean' && !editBox.isConnected)) return;
+                taskSelect.textContent = '';
+                const emptyOpt = document.createElement('option');
+                emptyOpt.value = '';
+                emptyOpt.textContent = '(no task)';
+                taskSelect.appendChild(emptyOpt);
+                (tasks || []).forEach((task) => {
+                    const option = document.createElement('option');
+                    option.value = task.id;
+                    option.textContent = task.title;
+                    taskSelect.appendChild(option);
+                });
+                if (selected && !(tasks || []).some(task => task.id === selected)) {
+                    const fallback = document.createElement('option');
+                    fallback.value = selected;
+                    const known = typeof taskKnowledge !== 'undefined' && typeof taskKnowledge.get === 'function'
+                        ? taskKnowledge.get(selected) : null;
+                    fallback.textContent = known?.title || `(task ${selected})`;
+                    taskSelect.appendChild(fallback);
+                }
+                taskSelect.value = selected;
+                taskSelect.disabled = !hasField('task_id');
+                taskStatus.textContent = '';
+            } catch (err) {
+                if (request !== taskReadGeneration || (typeof editBox.isConnected === 'boolean' && !editBox.isConnected)) return;
+                console.error('Failed to load tasks for the draft-item edit form:', err);
+                taskSelect.textContent = '';
+                const unavailable = document.createElement('option');
+                unavailable.value = selected;
+                const known = selected && typeof taskKnowledge !== 'undefined' && typeof taskKnowledge.get === 'function'
+                    ? taskKnowledge.get(selected) : null;
+                unavailable.textContent = known?.title || (selected ? `(task ${selected})` : '(no task)');
+                taskSelect.appendChild(unavailable);
+                taskStatus.textContent = 'Task options could not load. The selected task is unchanged.';
+                const retry = document.createElement('button');
+                retry.type = 'button';
+                retry.className = 'ai-btn-item';
+                retry.textContent = 'Retry task options';
+                retry.addEventListener('click', loadDraftTaskOptions);
+                taskStatus.appendChild(retry);
+            }
+        };
+        loadDraftTaskOptions();
         markUneditable(taskSelect, 'task_id');
 
         const notesInput = document.createElement('input');
@@ -393,6 +461,8 @@ function aiToggleInlineEdit(row, item, batch) {
     saveBtn.className = 'ai-btn-item';
     saveBtn.textContent = 'Save';
     saveBtn.addEventListener('click', async () => {
+        if (aiDraftBlockForHistoryUndo()) return;
+        if (aiPendingDraftEditors.has(editBox) || aiPendingDraftActions.has(batch.id)) return;
         const updates = {};
         collectors.forEach((collect) => {
             const [key, value] = collect();
@@ -403,27 +473,52 @@ function aiToggleInlineEdit(row, item, batch) {
             hint.style.color = '#f87171';
             return;
         }
+        const markSaved = typeof settingsDraftCheckpoint === 'function' ? settingsDraftCheckpoint(editBox) : () => {};
+        aiPendingDraftEditors.add(editBox);
+        aiPendingDraftActions.add(batch.id);
+        saveBtn.disabled = true;
         try {
             await api.request(`/api/ai/drafts/items/${encodeURIComponent(item.id)}`, {
                 method: 'PATCH',
                 body: JSON.stringify({ proposed: updates })
             });
-            if (typeof aiRefreshCurrentBatchView === 'function') aiRefreshCurrentBatchView(batch.id);
+            markSaved();
+            let batchCard = editBox;
+            while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+            aiClearDraftActionWarning(batchCard);
+            if (typeof aiRefreshCurrentBatchView === 'function') await aiRefreshCurrentBatchView(batch.id);
         } catch (err) {
+            aiUnconfirmedDraftActions.add(batch.id);
+            aiPendingDraftActions.delete(batch.id);
             hint.textContent = 'Save failed: ' + (err.message || err);
             hint.style.color = '#f87171';
+            let batchCard = editBox;
+            while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+            if (batchCard) {
+                aiPendingDraftActions.add(batch.id);
+                aiSetDraftReadFailure(batchCard, batch.id);
+            }
+        } finally {
+            aiPendingDraftEditors.delete(editBox);
+            saveBtn.disabled = aiPendingDraftActions.has(batch.id);
         }
     });
     const cancelBtn = document.createElement('button');
     cancelBtn.type = 'button';
     cancelBtn.className = 'ai-btn-item';
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.addEventListener('click', () => editBox.remove());
+    cancelBtn.addEventListener('click', () => {
+        editBox.remove();
+        let batchCard = row;
+        while (batchCard && !batchCard.classList.contains('ai-draft-batch')) batchCard = batchCard.parentNode;
+        aiClearDraftActionWarning(batchCard);
+    });
     btnRow.appendChild(saveBtn);
     btnRow.appendChild(cancelBtn);
     editBox.appendChild(btnRow);
 
     row.appendChild(editBox);
+    if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft(editBox);
 }
 
 function aiBatchStatusBadge(status) {
@@ -431,6 +526,95 @@ function aiBatchStatusBadge(status) {
     span.className = `ai-batch-status ai-batch-status-${status}`;
     span.textContent = (status || '').replace(/_/g, ' ');
     return span;
+}
+
+function aiDraftEditorHasUnsavedChanges(row) {
+    const editor = row?.querySelector('.ai-inline-edit-box');
+    return Boolean(editor && editor.id && typeof hasSettingsDrafts === 'function' && hasSettingsDrafts([editor.id]));
+}
+
+function aiDraftBlockForHistoryUndo() {
+    if (typeof aiHistoryUndoPending === 'undefined' || !aiHistoryUndoPending) return false;
+    if (typeof aiNotice === 'function') aiNotice('Undo all is still finishing; wait for history review before editing or changing a proposal.');
+    return true;
+}
+
+function aiDraftBatchHasSelectedUnsavedEdit(card, itemIds) {
+    const selected = itemIds === null ? null : new Set(itemIds || []);
+    return Array.from(card.querySelectorAll('.ai-draft-item')).some(row =>
+        (selected === null || selected.has(row.dataset.itemId)) && aiDraftEditorHasUnsavedChanges(row));
+}
+
+function aiDraftActionWarning(card) {
+    let warning = card.querySelector('.ai-draft-edit-action-warning');
+    if (!warning) {
+        warning = document.createElement('div');
+        warning.className = 'ai-draft-edit-action-warning';
+        warning.setAttribute('role', 'status');
+        card.appendChild(warning);
+    }
+    warning.textContent = 'Save or cancel the selected proposal edit before accepting or rejecting it.';
+}
+
+function aiClearDraftActionWarning(card) {
+    if (!card || aiDraftBatchHasSelectedUnsavedEdit(card, null)) return;
+    card.querySelector('.ai-draft-edit-action-warning')?.remove();
+}
+
+const aiDraftActionResults = new Map();
+const aiPendingDraftActions = new Set();
+const aiUnconfirmedDraftActions = new Set();
+
+function aiRenderDraftActionResults(card, result) {
+    if (!result || !Array.isArray(result.items) || result.items.length === 0) return;
+    const results = document.createElement('div');
+    results.className = 'ai-draft-action-results';
+    results.setAttribute('role', 'status');
+    result.items.forEach((item) => {
+        const row = document.createElement('div');
+        row.className = `ai-draft-action-result ai-draft-action-result-${item.status || 'unknown'}`;
+        if (item.item_id) {
+            const proposal = document.createElement('span');
+            proposal.textContent = `Proposal item: ${item.item_id}`;
+            row.appendChild(proposal);
+        }
+        const status = document.createElement('strong');
+        status.textContent = (item.status || 'unknown').replace(/_/g, ' ');
+        row.appendChild(status);
+        if (item.error) {
+            const error = document.createElement('span');
+            error.textContent = item.error;
+            row.appendChild(error);
+        }
+        if (item.applied_entity_id) {
+            const identity = document.createElement('span');
+            identity.textContent = `Saved item ID: ${item.applied_entity_id}`;
+            row.appendChild(identity);
+        }
+        results.appendChild(row);
+    });
+    const previous = card.querySelector('.ai-draft-action-results');
+    if (previous) previous.remove();
+    card.appendChild(results);
+}
+
+function aiSetDraftReadFailure(card, batchId) {
+    let status = card.querySelector('.ai-draft-read-status');
+    if (!status) {
+        status = document.createElement('div');
+        status.className = 'ai-draft-read-status';
+        status.setAttribute('role', 'status');
+        card.appendChild(status);
+    }
+    status.textContent = aiUnconfirmedDraftActions.has(batchId)
+        ? 'The action could not be confirmed. Refresh to review its current state before trying again.'
+        : 'The action was saved, but this proposal could not refresh. Retry reads only.';
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'ai-btn-item ai-draft-read-retry';
+    retry.textContent = 'Retry refresh';
+    retry.addEventListener('click', () => aiRefreshCurrentBatchView(batchId));
+    status.appendChild(retry);
 }
 
 /**
@@ -479,59 +663,85 @@ function aiBuildDraftBatchNode(batch, options) {
         return Array.from(checked).map((cb) => cb.dataset.itemId);
     };
 
-    const runAction = async (fn, changesTasks = true) => {
-        try {
-            await fn();
-        } catch (err) {
-            console.error('AI draft action failed:', err);
-            alert('Action failed: ' + (err.message || err));
+    const runAction = async (fn, changesTasks = true, itemIds = null) => {
+        if (aiPendingDraftActions.has(batch.id)) return;
+        if (aiDraftBlockForHistoryUndo()) return;
+        if (aiDraftBatchHasSelectedUnsavedEdit(card, itemIds)) {
+            aiDraftActionWarning(card);
             return;
         }
-        // The write is already saved. Refresh task views independently of draft-card reads.
-        if (changesTasks) await taskKnowledge.changed();
+        aiPendingDraftActions.add(batch.id);
+        actions.querySelectorAll('button').forEach(button => { button.disabled = true; });
+        itemsWrap.querySelectorAll('.ai-item-checkbox').forEach(input => { input.disabled = true; });
+        let result;
         try {
-            // Always re-fetch and re-render THIS card in place -- confirmed live: without this,
-            // clicking Accept/Reject/Undo/Reapply succeeds on the backend (status genuinely
-            // changes) but the card built here is a static snapshot from render time, so it kept
-            // showing "pending" with the Accept/Reject buttons until a full page reload.
-            // `opts.onChanged` still fires too, for context-specific extra work (the drafts
-            // panel reloading its whole list, the chat thread refreshing its status badge).
-            await aiRefreshCurrentBatchView(batch.id);
-            if (typeof opts.onChanged === 'function') opts.onChanged();
+            result = await fn();
         } catch (err) {
-            console.error('Failed to refresh saved AI draft action:', err);
+            console.error('AI draft action failed:', err);
+            aiUnconfirmedDraftActions.add(batch.id);
+            aiSetDraftReadFailure(card, batch.id);
+            if (typeof aiNotice === 'function') aiNotice('Could not confirm the proposal action. Refresh to review; Retry reads only.');
+            return;
+        }
+        // The mutation is acknowledged. Keep its item outcomes visible while all display reads
+        // start independently; no failed read can turn the write into a replayable retry.
+        if (Array.isArray(result?.items) && result.items.length) {
+            aiDraftActionResults.set(batch.id, result);
+            aiRenderDraftActionResults(card, result);
+        }
+        const refreshes = [];
+        const startRead = read => refreshes.push(Promise.resolve().then(read));
+        if (changesTasks && typeof taskKnowledge !== 'undefined' && typeof taskKnowledge.changed === 'function') {
+            startRead(() => taskKnowledge.changed());
+        }
+        startRead(() => aiRefreshCurrentBatchView(batch.id));
+        if (typeof loadAiDraftOverlay === 'function') startRead(() => loadAiDraftOverlay());
+        if (typeof refreshAiStatusBadge === 'function') startRead(() => refreshAiStatusBadge());
+        if (typeof opts.onChanged === 'function') startRead(() => opts.onChanged());
+        const settled = await Promise.allSettled(refreshes);
+        if (settled.some(entry => entry.status === 'rejected')) {
+            console.error('One or more saved AI draft views could not refresh.');
         }
     };
 
-    if (batch.status === 'pending') {
+    const hasPendingItems = items.some(item => item.status === 'pending');
+    if (batch.status === 'pending' || (batch.status === 'partially_applied' && hasPendingItems)) {
         const acceptBtn = document.createElement('button');
         acceptBtn.type = 'button';
         acceptBtn.className = 'ai-btn ai-btn-accept';
         acceptBtn.textContent = 'Accept';
-        acceptBtn.addEventListener('click', () => runAction(async () => {
-            const result = await api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/accept`, {
-                item_ids: getSelectedItemIds()
-            });
-            aiHandleCompletionPolicies(result.completion_policies);
-        }));
+        acceptBtn.addEventListener('click', () => {
+            const itemIds = getSelectedItemIds();
+            return runAction(async () => {
+                const result = await api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/accept`, {
+                    item_ids: itemIds
+                });
+                aiHandleCompletionPolicies(result.completion_policies, card);
+                return result;
+            }, true, itemIds);
+        });
 
         const rejectBtn = document.createElement('button');
         rejectBtn.type = 'button';
         rejectBtn.className = 'ai-btn ai-btn-reject';
         rejectBtn.textContent = 'Reject';
-        rejectBtn.addEventListener('click', () => runAction(() =>
-            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: getSelectedItemIds() }), false
-        ));
+        rejectBtn.addEventListener('click', () => {
+            const itemIds = getSelectedItemIds();
+            return runAction(() =>
+                api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reject`, { item_ids: itemIds }), false, itemIds
+            );
+        });
 
         actions.appendChild(rejectBtn);
         actions.appendChild(acceptBtn);
-    } else if (batch.status === 'applied' || batch.status === 'partially_applied') {
+    }
+    if (batch.status === 'applied' || batch.status === 'partially_applied') {
         const undoBtn = document.createElement('button');
         undoBtn.type = 'button';
         undoBtn.className = 'ai-btn ai-btn-undo';
         undoBtn.textContent = 'Undo';
         undoBtn.addEventListener('click', () => runAction(() =>
-            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/undo`, { item_ids: getSelectedItemIds() })
+            api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/undo`, { item_ids: null })
         ));
         actions.appendChild(undoBtn);
     } else if (batch.status === 'undone') {
@@ -541,9 +751,10 @@ function aiBuildDraftBatchNode(batch, options) {
         reapplyBtn.textContent = 'Reapply';
         reapplyBtn.addEventListener('click', () => runAction(async () => {
             const result = await api.post(`/api/ai/drafts/batches/${encodeURIComponent(batch.id)}/reapply`, {
-                item_ids: getSelectedItemIds()
+                item_ids: null
             });
-            aiHandleCompletionPolicies(result.completion_policies);
+            aiHandleCompletionPolicies(result.completion_policies, card);
+            return result;
         }));
         actions.appendChild(reapplyBtn);
     }
@@ -552,69 +763,139 @@ function aiBuildDraftBatchNode(batch, options) {
     return card;
 }
 
-function aiHandleCompletionPolicies(policies) {
+function aiHandleCompletionPolicies(policies, card = null) {
     if (!policies || policies.length === 0) return;
-    // Reuses the EXISTING completion_policy.js modal (spec S7) -- never reinvented. That modal
-    // (and completionPolicyState) is single-prompt, so with multiple affected tasks in one AI
-    // batch only the first is shown; the rest are noted in the console. Good enough for a first
-    // cut -- a real multi-prompt queue is out of scope here.
     if (typeof window.handleCompletionPolicy !== 'function') return;
-    window.handleCompletionPolicy({ completion_policy: policies[0] });
-    if (policies.length > 1) {
-        console.warn(`AI batch affected ${policies.length} tasks' scheduled sessions; only showing the first completion-policy prompt.`);
+
+    const modal = document.getElementById('completion_policy_modal');
+    const modalAlreadyOpen = modal && !modal.classList.contains('hidden');
+    const remaining = modalAlreadyOpen ? policies : policies.slice(1);
+    if (!modalAlreadyOpen) window.handleCompletionPolicy({ completion_policy: policies[0] });
+    if (!remaining.length || !card) return;
+
+    let actions = card.querySelector('.ai-draft-completion-policies');
+    if (!actions) {
+        actions = document.createElement('div');
+        actions.className = 'ai-draft-completion-policies';
+        card.appendChild(actions);
+    }
+    remaining.forEach(policy => {
+        const row = document.createElement('div');
+        row.className = 'ai-draft-completion-policy';
+        const label = document.createElement('span');
+        label.textContent = `Scheduled sessions remain for ${policy.task_title || policy.task_id || 'a task'}.`;
+        row.appendChild(label);
+        const review = document.createElement('button');
+        review.type = 'button';
+        review.className = 'ai-btn-item';
+        review.textContent = 'Review scheduled sessions';
+        review.addEventListener('click', () => {
+            const openModal = document.getElementById('completion_policy_modal');
+            if (openModal && !openModal.classList.contains('hidden')) {
+                if (typeof aiNotice === 'function') aiNotice('Finish the open scheduled-session review before opening another.');
+                return;
+            }
+            window.handleCompletionPolicy({ completion_policy: policy });
+            review.disabled = true;
+        });
+        row.appendChild(review);
+        actions.appendChild(row);
+    });
+    if (modalAlreadyOpen && typeof aiNotice === 'function') {
+        aiNotice('Finish the open scheduled-session review, then review the remaining tasks below.');
     }
 }
 
 /** Re-fetches one batch's detail and re-renders it in place, wherever it's currently mounted. */
 async function aiRefreshCurrentBatchView(batchId) {
+    let batch;
     try {
-        const batch = await api.get(`/api/ai/drafts/batches/${encodeURIComponent(batchId)}`);
+        batch = await api.get(`/api/ai/drafts/batches/${encodeURIComponent(batchId)}`);
         document.querySelectorAll(`[data-batch-id="${CSS.escape(batchId)}"]`).forEach((node) => {
-            const replacement = aiBuildDraftBatchNode(batch, { onChanged: () => aiRefreshCurrentBatchView(batchId) });
+            const replacement = aiReconcileDraftBatchNode(node, batch);
+            if (aiDraftActionResults.has(batchId)) aiRenderDraftActionResults(replacement, aiDraftActionResults.get(batchId));
             node.replaceWith(replacement);
         });
-        if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
-        if (typeof refreshAiStatusBadge === 'function') refreshAiStatusBadge();
+        aiUnconfirmedDraftActions.delete(batchId);
+        aiPendingDraftActions.delete(batchId);
+        return true;
     } catch (err) {
         console.error('Failed to refresh draft batch view:', err);
+        document.querySelectorAll(`[data-batch-id="${CSS.escape(batchId)}"]`).forEach(node => aiSetDraftReadFailure(node, batchId));
+        return false;
     }
 }
 window.aiRefreshCurrentBatchView = aiRefreshCurrentBatchView;
+
+function aiReconcileDraftBatchNode(current, batch) {
+    const replacement = aiBuildDraftBatchNode(batch, {
+        onChanged: () => aiRefreshCurrentBatchView(batch.id)
+    });
+    const selected = new Map(Array.from(current.querySelectorAll('.ai-item-checkbox')).map(input => [input.dataset.itemId, input.checked]));
+    replacement.querySelectorAll('.ai-item-checkbox').forEach(input => {
+        if (selected.has(input.dataset.itemId)) input.checked = selected.get(input.dataset.itemId);
+    });
+    const replacementItems = new Map(Array.from(replacement.querySelectorAll('.ai-draft-item')).map(row => [row.dataset.itemId, row]));
+    current.querySelectorAll('.ai-inline-edit-box').forEach(editor => {
+        const itemId = editor.parentNode?.dataset.itemId;
+        const nextRow = replacementItems.get(itemId);
+        if (nextRow && batch.items?.some(item => item.id === itemId && item.status === 'pending')) nextRow.appendChild(editor);
+    });
+    const policyActions = current.querySelector('.ai-draft-completion-policies');
+    if (policyActions) replacement.appendChild(policyActions);
+    return replacement;
+}
 
 /** Loads the drafts/history panel (all recent batches, undo-since-any-point actions). */
 async function aiLoadBatchesPanel() {
     const list = document.getElementById('ai_batches_list');
     if (!list) return;
-    list.textContent = '';
     try {
         const batches = await api.get('/api/ai/drafts/batches?limit=50');
         if (!batches || batches.length === 0) {
+            if (list.children.length) return true;
             const empty = document.createElement('div');
             empty.className = 'ai-thread-empty';
             empty.textContent = 'No draft batches yet.';
             list.appendChild(empty);
-            return;
+            return true;
         }
+        const details = [];
         for (const b of batches) {
             const detail = await api.get(`/api/ai/drafts/batches/${encodeURIComponent(b.id)}`);
-            list.appendChild(aiBuildDraftBatchNode(detail, { onChanged: aiLoadBatchesPanel }));
+            details.push(detail);
         }
+        details.forEach(detail => {
+            const existing = list.querySelector(`[data-batch-id="${CSS.escape(detail.id)}"]`);
+            if (existing && ((typeof aiRootHasDrafts === 'function' && aiRootHasDrafts(existing))
+                || existing.contains(document.activeElement || null))) return;
+            const replacement = existing
+                ? aiReconcileDraftBatchNode(existing, detail)
+                : aiBuildDraftBatchNode(detail, { onChanged: aiLoadBatchesPanel });
+            if (aiDraftActionResults.has(detail.id)) aiRenderDraftActionResults(replacement, aiDraftActionResults.get(detail.id));
+            if (existing) existing.replaceWith(replacement);
+            else list.appendChild(replacement);
+        });
+        return true;
     } catch (err) {
         console.error('Failed to load draft batches:', err);
-        const errNode = document.createElement('div');
-        errNode.className = 'ai-msg ai-msg-error';
-        errNode.textContent = 'Failed to load draft batches: ' + (err.message || err);
-        list.appendChild(errNode);
+        if (typeof aiNotice === 'function') aiNotice('Could not refresh proposals. Existing cards and edits are kept; Retry reads only.');
+        return false;
     }
 }
 
 async function aiUndoAllBatches() {
+    if (typeof aiUndoAssistantHistory === 'function') return aiUndoAssistantHistory();
     try {
-        await api.post('/api/ai/drafts/undo', {});
-        await taskKnowledge.changed();
-        aiLoadBatchesPanel();
-        if (typeof loadAiDraftOverlay === 'function') loadAiDraftOverlay();
-        if (typeof refreshAiStatusBadge === 'function') refreshAiStatusBadge();
+        const result = await api.post('/api/ai/drafts/undo', {});
+        if (typeof aiRenderUndoAllResults === 'function') aiRenderUndoAllResults(result);
+        const reads = [];
+        const startRead = read => reads.push(Promise.resolve().then(read));
+        if (typeof taskKnowledge !== 'undefined' && typeof taskKnowledge.changed === 'function') startRead(() => taskKnowledge.changed());
+        startRead(() => aiLoadBatchesPanel());
+        if (typeof loadAiDraftOverlay === 'function') startRead(() => loadAiDraftOverlay());
+        if (typeof refreshAiStatusBadge === 'function') startRead(() => refreshAiStatusBadge());
+        await Promise.allSettled(reads);
     } catch (err) {
         console.error('Failed to undo all AI draft batches:', err);
         alert('Undo failed: ' + (err.message || err));

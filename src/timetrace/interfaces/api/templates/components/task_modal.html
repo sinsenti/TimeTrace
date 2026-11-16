@@ -1,9 +1,9 @@
 <!-- Zoom-Safe Task Modal Partial -->
-<div id="task_modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+<div id="task_modal" role="dialog" aria-modal="true" aria-labelledby="modal_task_title" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
     <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[440px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-3 text-white">
         <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
             <h3 id="modal_task_title" class="font-bold text-lg text-white">Task Details</h3>
-            <button onclick="closeTaskModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            <button onclick="closeTaskModal()" aria-label="Close task editor" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
         <input type="hidden" id="edit_task_id">
 
@@ -11,7 +11,7 @@
             <label class="text-xs text-purple-300 font-semibold block mb-1">AI Quick Add (optional) -- free text, e.g. "lunch with Sarah next Tue 1-2pm"</label>
             <div class="ai-quickadd-row">
                 <input id="ai_quickadd_input" type="text" placeholder="Describe the task/session in plain English..." class="w-full bg-[#181a28] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-                <button type="button" id="ai_quickadd_parse_btn" class="ai-btn ai-btn-accept whitespace-nowrap">Parse</button>
+                <button type="button" id="ai_quickadd_parse_btn" class="ai-btn bg-purple-600 hover:bg-purple-700 text-white whitespace-nowrap">Parse</button>
             </div>
             <div id="ai_quickadd_hint" class="ai-quickadd-hint"></div>
         </div>
@@ -20,6 +20,17 @@
             <label class="text-xs text-slate-400 block mb-1">Task Title / Code (Use [30min] or [1h] for estimation)</label>
             <input id="modal_input_title" type="text" placeholder="e.g. Refactor API [45min]" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-sm text-white focus:outline-none focus:border-purple-500">
         </div>
+        <section aria-label="Queued subtasks" class="space-y-2">
+            <label for="task_child_title" class="text-xs text-slate-400 block">Subtasks</label>
+            <ul id="task_child_queue" class="space-y-1 text-xs"></ul>
+            <div class="flex gap-2">
+                <input id="task_child_title" type="text" placeholder="Subtask title" class="min-w-0 flex-1 bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white">
+                <button type="button" onclick="queueTaskChild()" class="bg-[#222536] text-slate-300 px-3 rounded-lg text-xs">Add subtask</button>
+            </div>
+            <textarea id="task_children_draft" class="hidden" aria-hidden="true" tabindex="-1"></textarea>
+            <p class="text-xs text-slate-400">Queued until Save. Children use the saved parent's tags and category.</p>
+        </section>
+        <div id="task_save_feedback" role="status" aria-live="polite" class="text-xs text-slate-300"></div>
         <div>
             <label class="text-xs text-slate-400 block mb-1">Description (Markdown Supported)</label>
             <textarea id="modal_input_desc" rows="4" placeholder="Task description, bullet points, links..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] p-2.5 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500 font-sans leading-relaxed"></textarea>
@@ -75,6 +86,7 @@
             <div>
                 <label class="text-xs text-slate-400 block mb-1">Category</label>
                 <select id="modal_input_category" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                    <option value="">(Empty)</option>
                     <option value="work">work</option>
                     <option value="family">family</option>
                     <option value="personal">personal</option>
@@ -144,7 +156,7 @@
             <button id="modal_delete_btn" onclick="deleteTask()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
             <div class="flex items-center space-x-2 ml-auto">
                 <button onclick="closeTaskModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                <button onclick="saveTask()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+                <button id="task_save_btn" onclick="saveTask()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
             </div>
         </div>
     </div>

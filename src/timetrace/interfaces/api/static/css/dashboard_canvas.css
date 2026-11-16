@@ -1,0 +1,36 @@
+/* Statistics-only canvas. Shared appearance tokens remain the source of theme choices. */
+.stats-canvas main { max-width: 1360px; padding: 24px; }
+.stats-canvas .canvas-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 20px; flex-wrap: wrap; }
+.stats-canvas .canvas-eyebrow { font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-muted, #94a3b8); }
+.stats-canvas h1 { font-size: 24px; font-weight: 750; overflow-wrap: anywhere; }
+.stats-canvas .canvas-description { font-size: 12px; color: var(--text-muted, #94a3b8); }
+.stats-canvas .canvas-actions, .stats-canvas .canvas-tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.stats-canvas .canvas-tabs button { height: auto; min-height: 36px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.stats-canvas .canvas-tabs .canvas-tab { color: var(--text-muted, #94a3b8); background: var(--bg-main); border-color: var(--border-muted); }
+.stats-canvas .canvas-tabs .canvas-tab:hover { color: var(--text-main); }
+.stats-canvas .canvas-tabs .canvas-tab[aria-current="page"] { color: var(--text-main); background: var(--bg-card); border-color: var(--border-muted); box-shadow: inset 0 -3px var(--text-main); }
+.stats-canvas .canvas-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.stats-canvas .widget-card { display: flex; flex-direction: column; align-self: stretch; min-width: 0; overflow-wrap: anywhere; }
+.stats-canvas .widget-tile-content { display: flex; align-items: center; gap: 1rem; }
+.stats-canvas .widget-tile-label { flex: 0 0 auto; white-space: nowrap; padding: .18rem .05rem; font-size: .65rem; line-height: 1.2; font-weight: 750; letter-spacing: .08em; }
+.stats-canvas #widget_grid > .widget-card { padding-top: 54px; }
+.stats-canvas .canvas-widget-controls { position: absolute; right: 12px; top: 8px; display: flex; gap: 4px; }
+.stats-canvas .canvas-widget-controls button { min-width: 32px; min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-muted); border-radius: 6px; color: var(--text-main); }
+.stats-canvas .canvas-widget-controls button:disabled { opacity: .4; }
+.stats-canvas .canvas-button { padding: 6px 12px; min-height: 36px; border: 1px solid var(--border-muted); border-radius: 8px; font-size: 12px; font-weight: 600; color: var(--text-main); background: var(--bg-card); }
+.stats-canvas button:focus-visible { outline: 2px solid var(--text-main); outline-offset: 3px; }
+.stats-canvas .canvas-notice { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.stats-canvas .canvas-notice:empty { display: none; }
+.stats-canvas .canvas-error { font-size: 12px; color: #fca5a5; }
+.stats-canvas .canvas-loading, .stats-canvas .canvas-empty { font-size: 12px; color: var(--text-muted, #94a3b8); }
+.stats-canvas .canvas-empty { grid-column: 1 / -1; padding: 32px 8px; text-align: center; }
+:root[data-appearance="light"] .stats-canvas .canvas-error { color: #991b1b; }
+@media (max-width: 767px) {
+    .stats-canvas main { padding: 16px; }
+    .stats-canvas .canvas-grid { grid-template-columns: minmax(0, 1fr); }
+    .stats-canvas #widget_grid > .widget-card { grid-column: 1 / -1; }
+    .stats-canvas .canvas-actions { gap: 6px; }
+    .stats-canvas .canvas-actions button { min-height: 36px; height: auto; }
+}
+/* Chart.js resize is asynchronous; a previous desktop bitmap must not widen the page. */
+.stats-canvas #widget_grid canvas { max-width: 100%; }

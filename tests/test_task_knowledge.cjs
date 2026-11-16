@@ -533,6 +533,13 @@ function taskSelect() {
 for (const missing of ['completed', 'filtered', 'unavailable']) {
     test(`AI refresh preserves an excluded (${missing}) unsaved timer selection through Start`, async () => {
         const p = workflowPage('Original', { status: 'Done' });
+        const storage = new Map();
+        p.context.sessionStorage = {
+            getItem: key => storage.get(key) || null,
+            setItem: (key, value) => storage.set(key, value),
+            removeItem: key => storage.delete(key)
+        };
+        let timerStatus = { is_running: false, is_frozen_idle: false, pending_idle_gap: null };
         p.load('ai_drafts.js');
         p.load('timer_control.js');
         const select = taskSelect();
@@ -544,7 +551,7 @@ for (const missing of ['completed', 'filtered', 'unavailable']) {
         p.context.api.get = async url => {
             if (missing === 'unavailable' && url === '/api/tasks?status=all') return [];
             if (missing !== 'completed' && url.startsWith('/api/tasks?status=all&sort=')) return [];
-            if (url === '/timer/status') return null;
+            if (url === '/timer/status') return timerStatus;
             return get(url);
         };
         const card = p.context.aiBuildDraftBatchNode({ id: 'batch-1', status: 'pending', items: [] });
@@ -553,12 +560,18 @@ for (const missing of ['completed', 'filtered', 'unavailable']) {
         const post = p.context.api.post;
         let started;
         p.context.api.post = async (url, payload) => {
-            if (url === '/timer/start') { started = payload; return {}; }
+            if (url === '/timer/start') {
+                started = payload;
+                timerStatus = { is_running: true, is_frozen_idle: false, pending_idle_gap: null, ...payload };
+                return timerStatus;
+            }
             return post(url, payload);
         };
         await p.run('toggleTimer()');
         assert.equal(started.task_id, 'task-1');
-        // Explicit user detach must remain possible.
+        // A separate external Stop makes the next explicit Start valid; detach must remain possible.
+        timerStatus = { is_running: false, is_frozen_idle: false, pending_idle_gap: null };
+        await p.run('fetchTimerStatus()');
         select.value = '';
         await p.run('toggleTimer()');
         assert.equal(started.task_id, null);
@@ -593,6 +606,33 @@ test('task rename/create/delete updates calendar, sidebar, kanban and visible at
     assert.deepEqual(p.alerts, []);
 });
 
+// Task-review callers use the real controller and scoped renderer, with only their DOM fixture upgraded.
+function taskReviewFixture(p) {
+    p.load('task_postmortem.js');
+    const make=(tag,id)=>{const el=p.element(tag);el.id=id;p.elements.set(id,el);return el;};
+    const root=make('section','revision_task_postmortem');
+    const textIds={difficulty:'task_rev_difficulty',what_went_well:'task_rev_went_well',blockers:'task_rev_blockers',key_takeaways:'task_rev_takeaways'};
+    const fields=Object.fromEntries(Object.entries(textIds).map(([name,id])=>{const el=p.elements.get(id)||make(name==='difficulty'?'input':'textarea',id);el.id=id;el.dataset.taskReview=name;return [name,el];}));
+    for(const name of ['fields','save','discard','retry','status'])fields[name]=make(name==='fields'?'fieldset':name==='status'?'p':'button',root.id+'_'+name);
+    const ratings=make('div',root.id+'_ratings');fields.ratings=ratings;p.elements.set('task_custom_ratings_container',ratings);
+    root.querySelector=selector=>fields[selector.match(/data-task-review="([^"]+)"/)?.[1]]||null;
+    root.querySelectorAll=selector=>Object.values(fields).filter(el=>selector.split(',').some(s=>s.trim()==='#'+el.id));
+    root.contains=target=>Object.values(fields).includes(target)||ratings.children.includes(target);
+    ratings.querySelectorAll=selector=>selector==='[data-rating-def-id]'?ratings.children:ratings.children.flatMap(card=>card.querySelectorAll(selector));
+    Object.defineProperty(ratings,'innerHTML',{get(){return this.markup||'';},set(html){
+        this.markup=html;this.children=[];
+        for(const match of html.matchAll(/data-rating-def-id="([^"]+)"[^]*?<input([^]*?)>/g)){
+            const attrs=Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+            const input=make('input',attrs.id);input.value=attrs.value;input.type='range';input.min=attrs.min;input.max=attrs.max;input.disabled=/\sdisabled(?:\s|$)/.test(match[2]);input.classList.add('custom-rating-input');
+            const card=p.element();card.getAttribute=name=>name==='data-rating-def-id'?match[1]:name==='data-required'?'false':null;
+            card.querySelector=selector=>selector==='.custom-rating-input'?input:null;
+            card.querySelectorAll=selector=>selector==='.custom-rating-input'||selector==='input, select, textarea'?[input]:[];
+            this.children.push(card);
+        }
+    }});
+    return {root,ratings};
+}
+
 test('the selected revision task display refreshes without replacing unsaved review or rating inputs', async () => {
     const p = workflowPage();
     p.load('ratings_config.js');
@@ -601,15 +641,19 @@ test('the selected revision task display refreshes without replacing unsaved rev
         'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
         p.elements.set(id, p.element());
     }
+    const review = taskReviewFixture(p);
+    const get = p.context.api.get;
+    p.context.api.get = url => url === '/rating-definitions?target_type=task'
+        ? Promise.resolve([{ id:'task-quality', name:'Quality', min_score:1, max_score:5 }]) : get(url);
     await p.run('loadTaskInspectorStats("task-1")');
     p.elements.get('task_rev_went_well').value = 'Unsaved review';
-    p.elements.get('task_custom_ratings_container').innerHTML = 'Unsaved rating';
+    review.ratings.querySelectorAll('.custom-rating-input')[0].value = '5';
     p.elements.get('edit_task_id').value = 'task-1';
     p.elements.get('modal_input_title').value = 'Selected task renamed';
     await p.run('saveTask()');
     assert.equal(p.elements.get('inspect_task_title').innerText, 'Selected task renamed');
     assert.equal(p.elements.get('task_rev_went_well').value, 'Unsaved review');
-    assert.equal(p.elements.get('task_custom_ratings_container').innerHTML, 'Unsaved rating');
+    assert.equal(review.ratings.querySelectorAll('.custom-rating-input')[0].value, '5');
 });
 
 for (const replacementFails of [false, true]) {
@@ -622,6 +666,7 @@ for (const replacementFails of [false, true]) {
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
             p.elements.set(id, p.element());
         }
+        taskReviewFixture(p);
         const old = deferred();
         const get = p.context.api.get;
         let reads = 0;
@@ -679,6 +724,7 @@ for (const nextTask of ['task-2', 'task-3']) {
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways', 'task_custom_ratings_container']) {
             p.elements.set(id, p.element());
         }
+        taskReviewFixture(p);
         const definitions = deferred();
         const started = deferred();
         const defs = [{ id: 'rating-1', name: 'Quality', min_score: 1, max_score: 5 }];
@@ -724,6 +770,7 @@ test('a superseded inspector failure cannot mark the newly selected task stale',
         'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways']) {
         p.elements.set(id, p.element());
     }
+    taskReviewFixture(p);
     await p.run('loadTaskInspectorStats("task-1")');
     const old = deferred();
     const started = deferred();
@@ -826,6 +873,7 @@ test('inspector display refresh preserves unsaved properties, including after su
         p.elements.set(id, p.element());
     }
     p.elements.get('inspector_task_id').value = 'task-1';
+    await p.run('loadTaskDetailTree()');
     p.elements.get('inspector_edit_title').value = 'Unsaved inspector title';
     p.elements.get('inspector_edit_desc').value = 'Unsaved description';
     await p.run('taskKnowledge.refresh()');
@@ -855,6 +903,7 @@ for (const view of ['task_card_list', 'kanban_columns_container', 'task_suggesti
             'task_rev_difficulty', 'task_rev_went_well', 'task_rev_blockers', 'task_rev_takeaways',
             'subtasks_tree_container', 'inspector_task_id', 'parent_task_banner', 'task_breadcrumbs',
             'weekly_totals_list', 'breakdown_filter_chip']) p.elements.set(id, p.element());
+        taskReviewFixture(p);
         p.elements.set('timer_task_select', taskSelect());
         p.elements.get('inspector_task_id').value = 'task-1';
         let parses = 0;
@@ -891,7 +940,7 @@ for (const linked of [true, false]) {
         const tags = '<img src=x onerror=alert`calendar-tags`>';
         const p = page({
             async get(url) {
-                if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do' }];
+                if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do', color: '#0284c7' }];
                 if (url.startsWith('/sessions?')) return [{ id: 'session-1', task_id: linked ? 'task-1' : null,
                     start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:30:00Z',
                     notes: accepted ? notes : '', tags: accepted ? tags : '' }];
@@ -902,6 +951,7 @@ for (const linked of [true, false]) {
         p.elements.set('calendar', p.element());
         p.context.URLSearchParams = URLSearchParams;
         p.context.location = { search: '' };
+        p.load('settings.js'); // Shared supported views load before Calendar in the real page.
         p.context.getUserSettings = () => ({ defaultView: 'timeGridDay', slotDuration: 15 });
         p.context.setupModalKeyboardListeners = () => {};
         p.context.setupVimKeyboardListeners = () => {};
@@ -909,6 +959,7 @@ for (const linked of [true, false]) {
         let ready;
         p.context.document.addEventListener = (name, callback) => { if (name === 'DOMContentLoaded') ready = callback; };
         let markup;
+        let renderedEvents;
         let calendarOptions;
         p.context.FullCalendar = { Calendar: class {
             constructor(element, options) {
@@ -918,6 +969,7 @@ for (const linked of [true, false]) {
             render() {}
             refetchEvents() {
                 return calendarOptions.events({ start: this.view.activeStart, end: this.view.activeEnd }, events => {
+                    renderedEvents = events;
                     markup = events.map(event => calendarOptions.eventContent({ event, view: this.view }).html).join('');
                 }, error => { throw error; });
             }
@@ -931,6 +983,10 @@ for (const linked of [true, false]) {
         assert.match(markup, /&lt;svg onload=alert`calendar-notes`&gt;/);
         assert.match(markup, /&lt;img src=x onerror=alert`calendar-tags`&gt;/);
         if (linked) assert.match(markup, /&lt;img src=x onerror=alert`calendar-title`&gt;/);
+        if (linked) {
+            assert.equal(renderedEvents[0].backgroundColor, '#0284c7', 'the exact task background must remain unchanged');
+            assert.match(markup, /style="color: #000000;"/, 'the event title must use the repaired opaque foreground');
+        }
         assert.equal(writes, 1);
     });
 }
@@ -946,6 +1002,7 @@ test('AI Accept keeps session notes and tags inert in refreshed task histories a
         'inspect_task_sessions_list', 'detail_task_sessions_list', 'inspector_task_id', 'activity_totals_list']) {
         p.elements.set(id, p.element());
     }
+    taskReviewFixture(p);
     p.elements.get('activity_totals_list').insertAdjacentHTML = () => {};
     p.elements.get('inspector_task_id').value = 'task-1';
     const get = p.context.api.get;
@@ -1008,3 +1065,46 @@ for (const [status, action, expected] of [
         assert.equal(p.elements.has('task_metadata_notice'), false);
     });
 }
+
+test('session initial focus respects immediate editing and closed/reopened popup lifecycles', () => {
+    const p = sessionPage();
+    const timers = [];
+    p.context.setTimeout = callback => timers.push(callback);
+    const modal = p.elements.get('session_modal');
+    modal.removeEventListener = (name, callback) => {if (modal[name] === callback) delete modal[name];};
+    const notes = p.elements.get('session_modal_notes');
+    const search = p.elements.get('session_modal_task_search');
+    let selectedNotes = 0;
+    notes.select = () => selectedNotes++;
+    for (const field of [notes,search]) field.focus = () => {
+        p.context.document.activeElement = field;
+        modal.focusin?.({target:field});
+    };
+    const openCreate = () => p.run('openCreateSessionModal(new Date("2026-11-01T10:00Z"), new Date("2026-11-01T10:30Z"))');
+    const flush = () => {while (timers.length) timers.shift()();};
+    p.context.document.activeElement = {};
+    openCreate(); flush();
+    assert.equal(p.context.document.activeElement,search,'normal create focuses task search');
+    p.run('closeSessionModal(); openEditSessionModal("session-1")'); flush();
+    assert.equal(p.context.document.activeElement,notes,'normal edit focuses Notes');
+    p.run('closeSessionModal()');
+    p.context.document.activeElement = {};
+    openCreate();
+    notes.focus(); notes.value = 'Immediate Notes draft';
+    flush();
+    assert.equal(p.context.document.activeElement,notes,'delayed create autofocus must not steal user Notes focus');
+    assert.equal(notes.value,'Immediate Notes draft');
+    p.run('closeSessionModal()');
+    p.context.document.activeElement = {};
+    openCreate(); p.run('closeSessionModal()'); flush();
+    assert.notEqual(p.context.document.activeElement,search,'closed popup cannot receive delayed focus');
+    p.run('openEditSessionModal("session-1"); closeSessionModal()');
+    openCreate(); flush();
+    assert.equal(p.context.document.activeElement,search,'superseded edit focus cannot replace new create focus');
+    p.run('closeSessionModal(); openEditSessionModal("session-1")');
+    const selectedBefore = selectedNotes;
+    notes.value = 'Typed without another focus change';
+    modal.input?.({target:notes});
+    flush();
+    assert.equal(selectedNotes,selectedBefore,'typing must not be selected over by delayed initialization');
+});

@@ -1,6 +1,6 @@
 """The seeded "Overview" dashboard, as data.
 
-These are the nine charts the hardcoded `/stats` page used to draw, transcribed out of
+These include the original nine charts the hardcoded `/stats` page used to draw, transcribed out of
 `static/js/dashboards.js`'s former `OVERVIEW_SEED` array into real `AnalyticsQuery` objects.
 Transcribing them here rather than leaving them in JS is free validation: a typo in a measure
 or dimension name is now a Pydantic error at import time instead of a widget that silently
@@ -21,9 +21,13 @@ from dataclasses import dataclass
 from timetrace.core.query_spec import (
     AnalyticsQuery,
     ChartType,
+    ComparisonMode,
+    ComparisonSpec,
     DateRange,
     Dimension,
+    FilterField,
     Measure,
+    QueryFilter,
     QuerySource,
     RangePreset,
     SortKey,
@@ -42,10 +46,29 @@ class SeedWidget:
     query: AnalyticsQuery
 
 
+PERFORMED_TIME_PRESET = SeedWidget(
+    seed_key="performed_time_by_day",
+    title="Performed time by day",
+    width="half",
+    query=AnalyticsQuery(
+        source=QuerySource.SESSIONS,
+        measure=Measure.SUM_DURATION,
+        group_by=[Dimension.DAY],
+        chart=ChartType.LINE,
+        sort=SortKey.DIMENSION_ASC,
+        fill_gaps=True,
+        date_range=DateRange(preset=RangePreset.LAST_14_DAYS),
+        filters=[QueryFilter(field=FilterField.SESSION_TIME_RELATIVE, values=["past"])],
+        comparison=ComparisonSpec(mode=ComparisonMode.PREVIOUS_PERIOD),
+        tag_attribution=TagAttribution.FAN_OUT,
+    ),
+)
+
+
 OVERVIEW_SEED: tuple[SeedWidget, ...] = (
     SeedWidget(
         seed_key="total_time",
-        title="Total Time Logged",
+        title="Recorded session time",
         width="half",
         query=AnalyticsQuery(
             source=QuerySource.SESSIONS,
@@ -55,7 +78,7 @@ OVERVIEW_SEED: tuple[SeedWidget, ...] = (
     ),
     SeedWidget(
         seed_key="total_sessions",
-        title="Logged Sessions",
+        title="Recorded sessions",
         width="half",
         query=AnalyticsQuery(
             source=QuerySource.SESSIONS,
@@ -122,6 +145,7 @@ OVERVIEW_SEED: tuple[SeedWidget, ...] = (
             date_range=DateRange(preset=RangePreset.LAST_14_DAYS),
         ),
     ),
+    PERFORMED_TIME_PRESET,
     SeedWidget(
         seed_key="peak_hours",
         title="Peak Focus Hours (24h distribution)",

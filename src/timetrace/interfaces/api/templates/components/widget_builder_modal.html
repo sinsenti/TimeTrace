@@ -1,228 +1,123 @@
-<!-- Widget builder / editor.
-     Structured mode: source x measure x group-by x filter x chart, validated through
-     POST /analytics/query before it is saved as a dashboard widget.
-     SQL mode: read-only SELECT against the allowlisted analytics tables, previewed through
-     POST /analytics/sql. The whole SQL tab is hidden unless GET /analytics/capabilities
-     reports sql_enabled (TIMETRACE_SQL_WIDGETS_ENABLED).
-     Logic lives in /static/js/widget_builder.js. -->
-<div id="widget_builder_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-    <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[560px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-            <h3 id="wb_heading" class="font-bold text-base text-white">Add Widget</h3>
-            <button type="button" onclick="closeWidgetBuilder()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-        </div>
-
-        <div class="space-y-3 text-xs">
-            <div>
-                <label class="font-bold text-slate-300 block mb-1">Title</label>
-                <input id="wb_title" type="text" placeholder="e.g. Focus time by category"
-                       class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
+<!-- Structured definitions use the existing capabilities/query and widget APIs.
+     SQL remains a separate opt-in entry; no browser-side query/calendar calculations. -->
+<div id="widget_builder_modal" class="wb-overlay hidden">
+    <input type="hidden" id="wb_mode" value="structured">
+    <section class="wb-dialog" role="dialog" aria-modal="true" aria-labelledby="wb_heading" aria-describedby="wb_description" tabindex="-1">
+        <header class="wb-header">
+            <div><p class="wb-eyebrow">Statistics · Query builder</p><h2 id="wb_heading">Add Widget</h2>
+                <p id="wb_description">A saved query with its own range, display and comparison.</p></div>
+            <button type="button" onclick="closeWidgetBuilder()" aria-label="Close widget editor">&times;</button>
+        </header>
+        <div class="wb-body">
+            <label for="wb_title">Title</label>
+            <input id="wb_title" type="text" placeholder="e.g. Time by category">
+            <div class="wb-grid">
+                <div><label for="wb_width">Card width</label><select id="wb_width"><option value="half">Half</option><option value="full">Full</option></select></div>
+                <div id="wb_mode_tabs" class="hidden"><label>Definition</label><div class="wb-segmented">
+                    <button id="wb_tab_structured" type="button" onclick="wbSwitchMode('structured')">Builder</button>
+                    <button id="wb_tab_sql" type="button" onclick="wbSwitchMode('sql')">SQL</button>
+                </div></div>
             </div>
-
-            <div class="grid grid-cols-2 gap-3">
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Card width</label>
-                    <select id="wb_width"
-                            class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                        <option value="half" selected>Half</option>
-                        <option value="full">Full</option>
+            <div id="wb_pane_structured">
+                <fieldset><legend>Query</legend><div class="wb-grid">
+                    <div><label for="wb_source">Source</label><select id="wb_source" onchange="_onWidgetBuilderSourceChange()"></select></div>
+                    <div><label for="wb_measure">Measure</label><select id="wb_measure"></select></div>
+                    <div><label for="wb_group_by_1">Group by</label><select id="wb_group_by_1" onchange="wbOnGroupByChange()"></select></div>
+                    <div><label for="wb_group_by_2">Then by (optional)</label><select id="wb_group_by_2" onchange="wbOnGroupByChange()"></select></div>
+                    <div><label for="wb_chart">Chart</label><select id="wb_chart">
+                        <option value="tile">Tile (single number)</option><option value="bar" selected>Bar</option><option value="line">Line</option>
+                        <option value="doughnut">Doughnut</option><option value="stacked_bar">Stacked bar</option><option value="table">Table</option>
+                    </select></div>
+                    <div><label for="wb_sort">Sort</label><select id="wb_sort">
+                        <option value="value_desc">Value: high to low</option><option value="value_asc">Value: low to high</option>
+                        <option value="dimension_asc">Dimension: ascending</option><option value="dimension_desc">Dimension: descending</option>
+                    </select></div>
+                    <div><label for="wb_limit">Row limit</label><input id="wb_limit" type="number" min="1" max="2000" value="200"></div>
+                    <label class="wb-checkbox"><input id="wb_fill_gaps" type="checkbox"> Fill empty buckets</label>
+                </div></fieldset>
+                <fieldset><legend>Range &amp; comparison · this widget only</legend>
+                    <label for="wb_date_range">Date range</label><select id="wb_date_range" onchange="wbOnComparisonChange()">
+                        <option value="all_time">All time</option><option value="today">Today</option><option value="yesterday">Yesterday</option>
+                        <option value="last_7_days">Last 7 days</option><option value="last_14_days">Last 14 days</option><option value="last_30_days">Last 30 days</option>
+                        <option value="this_week">This week</option><option value="this_month">This month</option><option value="custom">Custom range</option>
                     </select>
-                </div>
-                <div id="wb_mode_tabs" class="hidden">
-                    <label class="font-bold text-slate-300 block mb-1">Definition</label>
-                    <div class="flex gap-1">
-                        <button id="wb_tab_structured" type="button" onclick="wbSwitchMode('structured')"
-                                class="flex-1 h-[30px] rounded border border-[var(--border-muted)] font-bold">Builder</button>
-                        <button id="wb_tab_sql" type="button" onclick="wbSwitchMode('sql')"
-                                class="flex-1 h-[30px] rounded border border-[var(--border-muted)] font-bold">SQL</button>
+                    <div id="wb_range_custom" class="wb-grid hidden">
+                        <div><label for="wb_range_start">Range start (local date)</label><input id="wb_range_start" type="date"></div>
+                        <div><label for="wb_range_end">Range end (inclusive)</label><input id="wb_range_end" type="date"></div>
                     </div>
-                </div>
+                    <label for="wb_comparison">Compare against</label><select id="wb_comparison" onchange="wbOnComparisonChange()">
+                        <option value="none">None</option><option value="previous_period">Previous period</option><option value="same_period_last_year">Same period last year</option><option value="custom">Custom range</option>
+                    </select>
+                    <div id="wb_comparison_custom" class="wb-grid hidden">
+                        <div><label for="wb_comparison_start">Baseline start (local date)</label><input id="wb_comparison_start" type="date"></div>
+                        <div><label for="wb_comparison_end">Baseline end (inclusive)</label><input id="wb_comparison_end" type="date"></div>
+                    </div>
+                    <p id="wb_comparison_note" class="wb-hint hidden"></p>
+                </fieldset>
+                <fieldset><legend>Attribution</legend>
+                    <label for="wb_tag_attribution">Tag attribution</label><select id="wb_tag_attribution">
+                        <option value="fan_out">Fan-out (full duration credited to each tag)</option><option value="split_evenly">Split evenly (reconciles pie totals)</option>
+                    </select><p class="wb-hint">Fan-out is the default: totals overlap across tags. Split evenly shares each session's duration between its tags.</p>
+                </fieldset>
+                <fieldset><legend>Filters · all must match</legend>
+                    <div id="wb_filters" oninput="wbSyncFilters()" onchange="wbSyncFilters()">
+                        <input id="wb_filters_state" type="hidden">
+                        <div id="wb_filter_first" class="wb-filter-row">
+                            <div><label for="wb_filter_field">Field</label><select id="wb_filter_field"></select></div>
+                            <div><label for="wb_filter_op">Operator</label><select id="wb_filter_op">
+                                <option value="eq">=</option><option value="neq">!=</option><option value="gt">&gt;</option><option value="gte">&gt;=</option>
+                                <option value="lt">&lt;</option><option value="lte">&lt;=</option><option value="contains">contains</option><option value="in">in</option>
+                                <option value="not_in">not in</option><option value="is_null">is empty</option><option value="is_not_null">is not empty</option>
+                            </select></div>
+                            <div class="wb-filter-values"><label for="wb_filter_value">Values</label><input id="wb_filter_value" type="text" placeholder='Text or JSON array, e.g. ["past"]'></div>
+                            <button type="button" onclick="_wbSetValue('wb_filter_field', ''); _wbSetValue('wb_filter_value', ''); wbSyncFilters(); wbInvalidatePreview()">Remove filter</button>
+                        </div>
+                        <div id="wb_filters_extra"></div>
+                    </div>
+                    <button id="wb_add_filter" type="button" onclick="wbAddFilter()">+ Add filter</button>
+                    <p class="wb-hint">Up to 20 filters. Comma-separated text, or a JSON array for exact strings, numbers and booleans. Keep IDs quoted in arrays. Empty checks need no values. Session time accepts past, future or ongoing with = or in.</p>
+                </fieldset>
+                <details class="wb-preview" open><summary>Query preview · this widget only</summary>
+                    <p id="wb_context" class="wb-hint"></p>
+                    <button type="button" onclick="wbRunStructuredPreview()">Run query preview</button>
+                    <div id="wb_preview_result" class="hidden" role="status" aria-live="polite"></div>
+                </details>
             </div>
-
-            <!-- ---------------- Structured mode ---------------- -->
-            <div id="wb_pane_structured" class="space-y-3">
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Source</label>
-                        <select id="wb_source" onchange="_onWidgetBuilderSourceChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Measure</label>
-                        <select id="wb_measure"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Group by</label>
-                        <select id="wb_group_by_1" onchange="wbOnGroupByChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Then by (optional)</label>
-                        <select id="wb_group_by_2"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Chart</label>
-                        <select id="wb_chart"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="tile">Tile (single number)</option>
-                            <option value="bar" selected>Bar</option>
-                            <option value="line">Line</option>
-                            <option value="doughnut">Doughnut</option>
-                            <option value="table">Table</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Date range</label>
-                        <select id="wb_date_range" onchange="wbOnComparisonChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="all_time" selected>All time</option>
-                            <option value="today">Today</option>
-                            <option value="yesterday">Yesterday</option>
-                            <option value="last_7_days">Last 7 days</option>
-                            <option value="last_14_days">Last 14 days</option>
-                            <option value="last_30_days">Last 30 days</option>
-                            <option value="this_week">This week</option>
-                            <option value="this_month">This month</option>
-                        </select>
-                    </div>
-                </div>
-
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Tag attribution <span class="text-slate-500 font-normal">(only matters when grouping by tag)</span></label>
-                    <select id="wb_tag_attribution"
-                            class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                        <option value="fan_out" selected>Fan-out (full duration credited to each tag)</option>
-                        <option value="split_evenly">Split evenly (reconciles pie totals)</option>
-                    </select>
-                </div>
-
-                <!-- Comparison baseline. Not offered for SQL widgets: the SQL engine cannot
-                     shift date bounds it does not understand the shape of. -->
-                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-2">
-                    <label class="font-bold text-slate-300 block">Compare against</label>
-                    <select id="wb_comparison" onchange="wbOnComparisonChange()"
-                            class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                        <option value="none" selected>None</option>
-                        <option value="previous_period">Previous period</option>
-                        <option value="same_period_last_year">Same period last year</option>
-                        <option value="custom">Custom range</option>
-                    </select>
-                    <div id="wb_comparison_custom" class="grid grid-cols-2 gap-2 hidden">
-                        <input id="wb_comparison_start" type="date"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                        <input id="wb_comparison_end" type="date"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                    </div>
-                    <div id="wb_comparison_note" class="text-[11px] text-slate-400 hidden"></div>
-                </div>
-
-                <div class="bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)] space-y-2">
-                    <label class="font-bold text-slate-300 block">Filter (optional)</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <select id="wb_filter_field"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                        <select id="wb_filter_op"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="eq" selected>=</option>
-                            <option value="neq">!=</option>
-                            <option value="gt">&gt;</option>
-                            <option value="gte">&gt;=</option>
-                            <option value="lt">&lt;</option>
-                            <option value="lte">&lt;=</option>
-                            <option value="contains">contains</option>
-                            <option value="in">in (comma-separated)</option>
-                            <option value="not_in">not in (comma-separated)</option>
-                            <option value="is_null">is empty</option>
-                            <option value="is_not_null">is not empty</option>
-                        </select>
-                        <input id="wb_filter_value" type="text" placeholder="value"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                    </div>
-                </div>
-            </div>
-
             <!-- ---------------- SQL mode ---------------- -->
-            <div id="wb_pane_sql" class="space-y-3 hidden">
-                <div>
-                    <label class="font-bold text-slate-300 block mb-1">Query <span class="text-slate-500 font-normal">(read-only, single SELECT statement, no parameters)</span></label>
-                    <textarea id="wb_sql" rows="7" spellcheck="false" placeholder="SELECT date(start_time) AS day, round(sum(duration_seconds)/3600.0, 2) AS hours&#10;FROM session&#10;GROUP BY day&#10;ORDER BY day"
-                              class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded font-mono text-[11px] focus:outline-none"></textarea>
+            <div id="wb_pane_sql" class="hidden">
+                <label for="wb_sql">SQL query</label>
+                <p id="wb_sql_help" class="wb-hint">Read-only, single SELECT statement; no parameters. SQL owns its date filters and bucketing expressions; stored timestamps are UTC. Structured range, comparison and timezone controls do not apply.</p>
+                <textarea id="wb_sql" rows="7" spellcheck="false" aria-describedby="wb_sql_help wb_sql_shortcuts" placeholder="SELECT title FROM task ORDER BY title"></textarea>
+                <p id="wb_sql_shortcuts" class="wb-hint">In the query: Enter inserts a newline; Ctrl+Enter runs preview, not Save. Escape cancels. Preview only reads; use Add Widget or Save Widget to persist edits.</p>
+                <div class="wb-sql-actions">
+                    <div><label for="wb_sql_limit">Row limit</label><input id="wb_sql_limit" type="number" min="1" value="200" aria-describedby="wb_sql_resources"></div>
+                    <div><label for="wb_sql_chart">Chart</label><select id="wb_sql_chart" onchange="wbOnSqlChartChange()">
+                        <option value="table" selected>Table</option><option value="bar">Bar</option>
+                        <option value="line">Line</option><option value="doughnut">Doughnut</option>
+                    </select></div>
+                    <button type="button" onclick="wbRunSqlPreview()">Run preview</button>
                 </div>
-
-                <div class="grid grid-cols-3 gap-2">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Row limit</label>
-                        <input id="wb_sql_limit" type="number" min="1" value="200"
-                               class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Chart</label>
-                        <select id="wb_sql_chart" onchange="wbOnSqlChartChange()"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none">
-                            <option value="table" selected>Table</option>
-                            <option value="bar">Bar</option>
-                            <option value="line">Line</option>
-                            <option value="doughnut">Doughnut</option>
-                        </select>
-                    </div>
-                    <div class="flex items-end">
-                        <button type="button" onclick="wbRunSqlPreview()"
-                                class="w-full h-[30px] bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold rounded transition">
-                            Run preview
-                        </button>
-                    </div>
+                <p id="wb_sql_resources" class="wb-hint">Server row, query-length and time limits still apply. Preview displays at most the first 20 returned rows; status reports returned row count and resource warnings. Run preview again to retry a failed read.</p>
+                <div id="wb_sql_columns" class="wb-sql-columns hidden">
+                    <div><label for="wb_sql_label_column">Label column</label><select id="wb_sql_label_column"></select></div>
+                    <div><label for="wb_sql_value_column">Value column</label><select id="wb_sql_value_column"></select></div>
                 </div>
-
-                <div id="wb_sql_columns" class="grid grid-cols-2 gap-2 hidden">
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Label column</label>
-                        <select id="wb_sql_label_column"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
-                    <div>
-                        <label class="font-bold text-slate-300 block mb-1">Value column</label>
-                        <select id="wb_sql_value_column"
-                                class="w-full bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1.5 rounded focus:outline-none"></select>
-                    </div>
+                <div id="wb_sql_meta" class="wb-hint" role="status" aria-live="polite" aria-atomic="true"></div>
+                <div id="wb_sql_preview" class="hidden" role="region" aria-label="SQL preview rows" tabindex="0">
+                    <table><thead><tr id="wb_sql_preview_head"></tr></thead><tbody id="wb_sql_preview_body"></tbody></table>
                 </div>
-
-                <div id="wb_sql_preview" class="hidden bg-[#0f1016] border border-[var(--border-muted)] rounded-lg p-2 max-h-56 overflow-auto">
-                    <table class="w-full text-[11px] text-slate-300">
-                        <thead><tr id="wb_sql_preview_head" class="text-slate-400 font-bold"></tr></thead>
-                        <tbody id="wb_sql_preview_body"></tbody>
-                    </table>
+                <div class="wb-sql-schema">
+                    <button type="button" onclick="wbToggleSchema()" aria-controls="wb_sql_schema">Schema reference</button>
+                    <div id="wb_sql_schema" class="hidden"></div>
                 </div>
-                <div id="wb_sql_meta" class="text-[11px] text-slate-500"></div>
-
-                <div class="border border-[var(--border-muted)] rounded-lg">
-                    <button type="button" onclick="wbToggleSchema()"
-                            class="w-full text-left px-2.5 py-1.5 font-bold text-slate-300 hover:text-white">
-                        Schema reference
-                    </button>
-                    <div id="wb_sql_schema" class="hidden px-2.5 pb-2 max-h-48 overflow-auto text-[11px] text-slate-400 font-mono space-y-1"></div>
-                </div>
+                <p class="wb-hint"><a id="wb_sql_settings_link" class="underline" href="/settings" onclick="return followSettingsLink(event)">Settings</a></p>
             </div>
 
-            <div id="wb_error" class="text-red-400 font-semibold hidden"></div>
+            <div id="wb_error" class="hidden" role="alert"></div>
         </div>
-
-        <div class="flex justify-end space-x-2 border-t border-[var(--border-muted)] pt-3">
-            <button type="button" onclick="closeWidgetBuilder()"
-                    class="h-8 bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold px-3.5 rounded-lg transition text-xs">
-                Cancel
-            </button>
-            <button id="wb_submit" type="button" onclick="submitWidgetBuilder()"
-                    class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition text-xs">
-                Add Widget
-            </button>
-        </div>
-    </div>
+        <footer class="wb-footer"><span class="wb-hint">Escape: Cancel · Ctrl+Enter: Save</span>
+            <button type="button" onclick="closeWidgetBuilder()">Cancel</button>
+            <button id="wb_submit" class="wb-primary" type="button" onclick="submitWidgetBuilder()">Add Widget</button>
+        </footer>
+    </section>
 </div>

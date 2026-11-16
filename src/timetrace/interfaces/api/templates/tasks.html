@@ -7,6 +7,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.2/Sortable.min.js"></script>
     <link rel="stylesheet" href="/static/css/ai.css">
+    <link rel="stylesheet" href="/static/css/task_filters.css">
     <style>
         :root[data-theme="midnight"] {
             --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #12131d; --border-color: #1a1c26; --border-muted: #262938; --text-main: #e2e8f0;
@@ -25,7 +26,7 @@
         }
 
         body { background-color: var(--bg-main); color: var(--text-main); font-family: system-ui, -apple-system, sans-serif; }
-        .kanban-col { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; flex: 1 1 0%; min-width: 250px; }
+        .kanban-col { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 0.75rem; flex: 1 1 0%; min-width: 270px; }
         .kanban-card { background-color: #0f1016; border: 1px solid var(--border-muted); border-radius: 0.5rem; transition: transform 0.15s, border-color 0.15s; cursor: grab; }
         .kanban-card:active { cursor: grabbing; }
         .kanban-card:hover { border-color: #a855f7; transform: translateY(-2px); }
@@ -42,6 +43,11 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
+    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/grouped_tasks.css">
+    <link rel="stylesheet" href="/static/css/status_management.css">
+    <link rel="stylesheet" href="/static/css/task_details.css?v=ui-polish-1">
+    <link rel="stylesheet" href="/static/css/outline_tasks.css?v=ui-polish-2">
 </head>
 <body class="h-screen flex flex-col overflow-hidden">
 
@@ -49,71 +55,88 @@
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
 
-        <div class="flex items-center space-x-2">
-            <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center space-x-1">🔍 Filter</button>
-            <button onclick="openStatusManagerModal()" class="h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs">Statuses Config</button>
-            <button onclick="clearCompletedTasks()" class="h-8 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/50 px-3 rounded-lg font-bold transition text-xs">Clear Completed</button>
-            <button onclick="openNewTaskModal()" class="h-8 bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 rounded-lg transition text-xs">+ Create Task</button>
-        </div>
     </header>
 
-    <!-- Main Kanban Board Grid -->
-    <main class="flex-1 p-4 overflow-x-auto flex space-x-4">
-        <div id="kanban_columns_container" class="flex space-x-4 h-full w-full"></div>
+    <section id="tasks_tools" class="px-4 py-3 border-b border-[var(--border-muted)] flex flex-wrap items-center gap-3 shrink-0">
+        <div class="mr-auto"><h1 id="tasks_heading" tabindex="-1" class="font-bold text-lg">Tasks</h1><p class="text-xs text-slate-400">Plan work, then open a task for details.</p></div>
+        <label class="text-xs">View
+            <select id="task_view_selector" onchange="selectTaskView(this.value)" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-2 py-2 rounded-lg">
+                <option value="kanban">Kanban</option><option value="grouped">Grouped list</option><option value="outline">Outline + inspector</option>
+            </select>
+        </label>
+        <label class="text-xs"><span class="sr-only">Search tasks</span><input id="tasks_search" type="search" placeholder="Search tasks or tags" oninput="renderCurrentTaskView()" class="bg-[var(--bg-card)] border border-[var(--border-muted)] px-3 py-2 rounded-lg"></label>
+        <button onclick="openCustomFilterModal()" class="custom-filter-trigger-btn border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Filter</button>
+        <span id="status_board_feedback" role="status"></span>
+        <button id="status_board_order_retry" type="button" hidden onclick="continueStatusOrder(statusBoardOrder)">Retry remaining column order writes</button>
+        <button id="status_manager_entry" onclick="openStatusManagerModal()" class="border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Statuses Config</button>
+        <button onclick="clearCompletedTasks()" class="text-red-400 border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs">Clear Completed</button>
+        <button onclick="openNewTaskModal()" class="bg-purple-600 hover:bg-purple-700 text-white font-bold px-3.5 py-2 rounded-lg text-xs">+ Create Task</button>
+        <p id="task_view_notice" role="status" class="basis-full text-xs text-slate-400 empty:hidden"></p>
+    </section>
+    <main id="tasks_workspace" class="flex-1 min-h-0 p-4 overflow-x-auto flex gap-4" aria-label="Kanban board">
+        <section id="outline_list_panel" aria-label="Task hierarchy">
+            <header class="outline-list-heading">
+                <div><h2>Task hierarchy</h2><p>Choose a task to inspect its properties and history.</p></div>
+                <span id="outline_list_count" aria-live="polite"></span>
+            </header>
+            <div id="kanban_columns_container" class="flex gap-4 h-full w-full"></div>
+        </section>
+        <aside id="outline_inspector" hidden inert aria-label="Inline task inspector">
+            <div class="outline-inspector-header">
+                <div><span class="outline-eyebrow">WORKSPACE</span><h2 id="outline_inspector_heading" tabindex="-1">Task inspector</h2></div>
+                <div class="outline-inspector-tools">
+                    <a id="outline_details_link" hidden href="/tasks">Open full details</a>
+                    <button type="button" onclick="closeOutlineInspector()">Close</button>
+                </div>
+            </div>
+            <p id="outline_selection_notice" role="status"></p>
+            <div id="outline_empty" class="outline-empty-state">
+                <span class="outline-empty-mark" aria-hidden="true"></span>
+                <h3>Select a task</h3>
+                <p>Its properties, progress, subtasks, and own session history will appear here.</p>
+            </div>
+            <div id="outline_inspector_panel" class="task-detail-panel" hidden inert>
+                {% include "components/task_detail_panel.html" %}
+            </div>
+        </aside>
     </main>
 
     {% include "components/settings_modal.html" %}
     {% include "components/confirm_modal.html" %}
     {% include "components/completion_policy_modal.html" %}
+    {% include "components/subtask_modal.html" %}
     {% include "components/task_modal.html" %}
+    {% include "components/session_modal.html" %}
     {% include "components/custom_filter_modal.html" %}
     {% include "components/ai_drawer.html" %}
 
-    <!-- Zoom-Safe Statuses Manager Modal -->
-    <div id="status_manager_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[580px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <div>
-                    <h3 class="font-bold text-base text-white">Configure Kanban Statuses &amp; Behaviors</h3>
-                    <p class="text-[11px] text-slate-400">Click and drag rows to reorder. Toggle "Hide" to remove status from board.</p>
-                </div>
-                <button type="button" onclick="closeStatusManagerModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-            
-            <div id="status_manager_list" class="space-y-2.5 max-h-[60vh] overflow-y-auto pr-1"></div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-between items-center">
-                <button type="button" onclick="openAddStatusModal()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 py-1.5 rounded-lg text-xs font-bold">+ Add Status</button>
-                <button type="button" onclick="closeStatusManagerModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-4 py-1.5 rounded-lg text-xs">Done</button>
-            </div>
+    <div id="status_manager_modal" class="status-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="status_manager_title">
+        <div class="status-panel">
+            <h2 id="status_manager_title">Task statuses</h2>
+            <p>Edit each row, then Save or Cancel. Hide removes a column from the board. Drag or use Move up / Move down to save order immediately.</p>
+            <button type="button" onclick="closeStatusManagerModal()">Close / discard unsaved drafts</button>
+            <div id="status_manager_feedback" role="status"></div>
+            <button type="button" onclick="refreshStatusManagement()">Retry refresh</button>
+            <button id="status_order_retry" type="button" hidden onclick="continueStatusOrder()">Retry remaining order writes</button>
+            <div id="status_manager_list"></div>
+            <button id="status_add_entry" type="button" onclick="openAddStatusModal()">+ Add Status</button>
+            <button type="button" onclick="closeStatusManagerModal()">Done / discard unsaved drafts</button>
         </div>
     </div>
 
-    <!-- Zoom-Safe Styled App Modal for Adding a New Status -->
-    <div id="add_status_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-sm max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 class="font-bold text-sm text-white">Add New Status Column</h3>
-                <button type="button" onclick="closeAddStatusModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
-            
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Status Name</label>
-                    <input id="modal_new_status_name" type="text" placeholder="e.g. In Review, Testing" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-                </div>
-                <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Column Color</label>
-                    <div class="flex items-center space-x-2">
-                        <input id="modal_new_status_color" type="color" value="#7c3aed" oninput="document.getElementById('new_status_color_hex').innerText = this.value.toUpperCase();" class="w-8 h-8 bg-transparent cursor-pointer border border-[var(--border-muted)] rounded p-0.5">
-                        <span id="new_status_color_hex" class="text-xs font-mono text-slate-300">#7C3AED</span>
-                    </div>
-                </div>
-            </div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-end space-x-2">
-                <button type="button" onclick="closeAddStatusModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                <button type="button" onclick="saveNewStatusFromModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">Add Status <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+    <div id="add_status_modal" class="status-dialog hidden" role="dialog" aria-modal="true" aria-labelledby="status_add_title">
+        <div class="status-panel status-add-panel">
+            <h2 id="status_add_title">Add status</h2>
+            <label for="modal_new_status_name">Status name</label>
+            <input id="modal_new_status_name" type="text" placeholder="e.g. In Review, Testing">
+            <label for="modal_new_status_color">Color</label>
+            <input id="modal_new_status_color" type="color" value="#7c3aed" oninput="document.getElementById('new_status_color_hex').textContent = this.value.toUpperCase()">
+            <span id="new_status_color_hex">#7C3AED</span>
+            <p id="status_add_feedback" role="status"></p>
+            <button id="status_add_retry" type="button" hidden onclick="refreshStatusManagement(statusManagerOwner, addStatusOwner)">Retry refresh</button>
+            <div class="status-actions">
+                <button type="button" onclick="closeAddStatusModal()">Cancel / Close</button>
+                <button id="status_add_save" type="button" onclick="saveNewStatusFromModal()">Save status</button>
             </div>
         </div>
     </div>
@@ -128,7 +151,11 @@
     <script src="/static/js/task_attach.js"></script>
     <script src="/static/js/task_modal.js"></script>
     <script src="/static/js/settings.js"></script>
-    <script src="/static/js/kanban.js"></script>
+    <script src="/static/js/kanban.js?v=ui-polish-1"></script>
+    <script src="/static/js/session_modal.js"></script>
+    <script src="/static/js/grouped_tasks.js"></script>
+    <script src="/static/js/subtasks.js"></script>
+    <script src="/static/js/outline_tasks.js?v=ui-polish-1"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

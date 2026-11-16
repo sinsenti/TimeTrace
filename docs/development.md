@@ -34,7 +34,8 @@ uv run timetrace status
 ```
 
 Check that `/health` reports the scratch DB path and port. Browser entry points are `/dashboard`,
-`/tasks`, `/stats`, `/habits-view`, `/revision`, and `/settings/ai` on that scratch server. Stop it
+`/tasks`, `/stats`, `/habits-view`, `/revision`, `/settings` (Browser), `/settings/ai` (AI), and
+`/settings?category=providers` (Providers) on that scratch server. Stop it
 with Ctrl+C. Keep or remove only its temporary directory when finished; do not clean up personal
 TimeTrace files. A separate browser profile keeps localStorage settings/widgets isolated too.
 
@@ -77,12 +78,62 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 
 ### Current implementation versus older notes
 
-- **Statistics:** `/stats` renders a seeded Overview plus persisted named dashboards and widgets.
-  Structured widgets execute through `QueryService`; optional SQL widgets are disabled by default and
-  use the isolated read-only `SqlQueryService` sandbox when enabled. Per-widget comparisons support
-  previous period, same period last year, and custom ranges. `AnalyticsService.get_summary` delegates
-  to `QueryService`; `core/analytics.py` retains legacy aggregation behavior/tests, not the current
-  dashboard execution path. Query capabilities come from `core/query_registry.py`.
+- **Statistics:** `/stats` renders the Widget canvas with a seeded Overview plus persisted named
+  dashboards and editable/reorderable/removable widgets. `dashboards.js` loads saved dashboard detail,
+  then independent `/analytics/query` or `/analytics/sql` card reads with per-card loading/error/retry
+  and stale-selection protection. Structured reads execute through `QueryService`; optional SQL widgets
+  remain disabled by default and use the isolated read-only `SqlQueryService` sandbox when enabled.
+  The aggregate `POST /api/dashboards/{id}/data` endpoint remains available for other callers; no API
+  or schema change. Legacy browser-widget handoff journals acknowledged/uncertain imports and retains
+  source until safely archived; uncertain writes require explicit user reconciliation, not automatic
+  replay or a transport-idempotency guarantee. Existing seed/reset rules and builder entry paths remain.
+  Per-widget comparisons support previous period, same period last year, and custom ranges.
+  `AnalyticsService.get_summary` delegates to `QueryService`; `core/analytics.py` retains legacy
+  aggregation behavior/tests, not the current dashboard execution path. Query capabilities come from
+  `core/query_registry.py`. Ticket12's reviewed structured builder is now locally integrated: full
+  capability pickers, up to20 conjunctive typed filters, two dimensions/all charts, explicit
+  sort/limit/fill, independent dates/baselines, inert query preview/context/warnings and faithful
+  saved-query edit/reopen. Pending/concurrent drafts retain submitted-field ACK checkpoints;
+  Canvas Retry refresh reads only. Two hardcoded compiler maps use the already-attributed/base
+  projections for tagged-session/estimation grouping. Narrow QueryService repairs reject row-losing
+  multidimensional hour/weekday fill and stably retain all weekday secondary rows. Distinct-key
+  stacked charts preserve sparse source cells and separate primary/ghost stacks; duplicate
+  serialized key pairs use explained separate-row bars with full labels/ordinal/exact values/
+  source-row clicks, no aggregation/rekey/spec rewrite. Pre-existing NULL/empty comparison-key
+  ambiguity (actual primary[1,2]/baseline[2,2]) remains UNFIXED/UNWAIVED; faithfully displaying
+  supplied baselines is not correctness certification. Ticket12 is bounded-completed after fresh
+  integrated checks/genuine parent252-label gate/explicit five-DOC closure release; fresh closure
+  DOC gate was subsequently disposed before parent activated19/earlier13–14 resource unlock; its earlier
+  pending receipts remain historical. Current19 has a separate pending closure gate. See
+  [bounded evidence](../.scratch/ui-redesign/ticket-12-evidence.md#local-integration-and-bounded-closure-draft-2026-11-04).
+  SQL layout/sandbox adoption13 and performed-time/default-label/seed adoption14 remain later work;
+  actual SQL stays disabled, browser opt-in/schema/preview checks use HTTP fakes. No API/schema change.
+- **Tasks / Quick Add:** ticket04 keeps Kanban as the fresh/invalid default with a persisted view
+  selector, hierarchy/search and existing task/scheduling/timer/completion entries. Valid Grouped/Outline
+  preferences retain an honest Kanban fallback until tickets06/07. The task popup queues/removes children
+  below the title and includes an unsubmitted child on Save. Existing APIs write parent/children
+  separately: authoritative parent tags/category (including `''`) and each child acknowledgement are
+  retained; partial failure locks the saved parent, including color presets, and Retry writes only
+  unsaved children. Explicit partial discard explains that saved rows remain. Metadata retry reads only;
+  a lost mutation response is still uncertain, not an atomic/idempotency/exactly-once guarantee.
+  Separate AI Quick Add on Tasks/Calendar remains classify (no inference) → explicit Parse (read-only)
+  → editable prefill → human Save; late extraction cannot replace a newer owner or concurrent edits.
+  It is not the conversational Assistant approval workflow (tickets21–23). Ticket19's tabbed Settings
+  is now locally integrated: `/settings` Browser, `/settings/ai` AI, `/settings?category=providers`
+  Providers. Generic navbar still links `/settings/ai` until coordinated03; stopped Timer is NOT integrated.
+  Caller/API/native evidence and deferred manual/contrast limits are in
+  [ticket04 evidence](../.scratch/ui-redesign/ticket-04-evidence.md#local-integration-and-bounded-closure-2026-11-04).
+- **Habits:** ticket10 uses Compact cards with independent local-day strips and explicit entry
+  Save/Cancel; Done/Failed/Skipped choices are drafts, not cycling writes. Week/Today navigation never
+  logs. Confirmed Clear erases only the selected record, distinct from numeric zero Pending; negative
+  amounts visibly clamp to zero. The approved service repair derives zero Pending before comparing
+  nonpositive goals on explicit writes only, without historical rewrites or new target validation.
+  Definitions/metadata/goal history/charts remain; compliance is completed/all recorded logs, not dates.
+  The list retains its365-day lower bound; absent dates outside conservative browser-local363 coverage
+  are Unknown. Older ACK receipts are card-only, not expanded chart history. Clear locally owns initial
+  Cancel focus/Tab/Enter and live enabled restoration after pending cleanup, yielding to newer owners
+  without skipping ACK receipt/baseline delivery. Shared helpers/API/schema are unchanged. Clock time,
+  editable notes and multiple daily entries remain deferred. See [bounded evidence and manual limits](../.scratch/ui-redesign/ticket-10-evidence.md#local-integration-and-bounded-closure-2026-11-04).
 - **Local time:** `settings.js` sends timezone/week-start query context. SQLite bucketing follows
   the daemon's local timezone; `QueryService` warns and uses that zone if a requested zone differs.
   Arbitrary per-query IANA timezone bucketing is not implemented. `Session.timezone` is modeled,
@@ -130,6 +181,22 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   have no call sites. Do not confuse these with the live `parse_inline_task` creation parser.
 - **Deferred:** external integrations, multi-user scoping, Tauri/mobile clients, and native tray/
   hotkey services are not implemented. Existing external-sync columns are not a sync feature.
+
+## Task post-mortems
+
+Dedicated task details (`/task-inspector/{id}` and `/tasks-detail/{id}`) and Revision’s Task
+Inspector share `static/js/task_postmortem.js` and `components/task_postmortem.html`. Each editor
+owns its task ratings, initialization, draft baselines and pending writes. Save captures review text
+and all rating values before requests begin; partial failures retain acknowledged writes and newer
+edits. Metadata refresh defers rating controls until the captured save settles, then reconciles
+current definitions without replaying acknowledged writes. Retry refresh reads only. Discard reloads persisted review values without deleting records;
+typing after that read begins is retained. Reviewing never completes a task or changes schedules.
+Own-session evidence and task work accounting remain independent of review availability.
+
+Regression coverage lives in `tests/test_task_postmortems.py`, `tests/test_task_postmortems.cjs`
+and the Task cases in `tests/test_draft_ownership.cjs`. The native probe
+`tests/browser_task_postmortems.js` requires an explicitly isolated synthetic daemon/browser runtime;
+its presence does not establish that browser acceptance has run.
 
 ## Task work accounting
 
@@ -183,6 +250,15 @@ Refresh failures keep last-known data and show a non-blocking **Retry refresh** 
 loads metadata/views only: it never repeats the saved write. Calendar source failures report back
 to this notice because FullCalendar's `refetchEvents()` does not return a completion promise.
 There is no cross-tab/CLI detection or background metadata polling.
+
+The Calendar Session popup supports multiline Notes (ordinary Enter), Ctrl+Enter Save, Escape Cancel,
+create-search/edit-Notes focus and contained keyboard navigation. Connected Cancel restores its launcher;
+acknowledged clean Save focuses stable Calendar before refresh replaces event/planning-list launchers.
+Per-owner pending Save blocks duplicate activation; rejected/concurrent drafts remain editable and dirty.
+Acknowledged POST/materialized occurrence IDs are adopted before fallible display reads; Retry refresh
+reads only, never replays the saved mutation. Shared confirmation Escape resolves cancellation, and the
+global handler retains focus when an existing close callback leaves its editor open. These are UI
+lifecycle safeguards, not new API/domain policy or physical-gesture/transport-idempotency guarantees.
 
 Session editing preserves the daemon's `task_id` independently of metadata availability, including
 successfully empty lists and partial fallback labels. Explicit detach or an authoritative session
@@ -242,6 +318,178 @@ was stopped. Independent read-only repair review and date-badge/calendar delta r
 introduced defects; reviewers did not execute tests. Browser execution, actual keyboard event dispatch
 and real-DOM rating submissions were not verified by the agent. No new schema/migration is involved,
 and no existing-DB migration test, personal data, provider call, push or merge is part of this repair.
+
+## Shared appearance and Calendar shell
+
+Ticket 01 of the approved UI redesign adopts shared navigation/appearance without replacing the
+other pages' workflows. Old Preferences remains a working modal on other pages; locally integrated19
+supplies the full-area tabbed `/settings` Browser page, retained `/settings/ai` AI entry and
+`/settings?category=providers`. Generic navbar still links `/settings/ai` until coordinated03 adoption;
+no link-source change is implied. Additional task views remain later slices. The shared stylesheet
+is `static/css/appearance.css`; each of the seven templates includes it.
+
+Browser preferences stay in `timetrace_user_settings`. Existing `theme` names still select the dark
+appearance and automatic task-color palette; valid old selections are adopted as dark, not replaced.
+New `appearance` (`light`/`dark`) and `lightTheme` (`refined`/`stone`/`porcelain`) are independent.
+A new browser uses Refined Archive/light. `calendarDensity` accepts 56/72/88 pixels per hour (default
+88), independently of slot intervals; `totalsVisible` defaults false and adopts valid legacy right
+sidebar choices. `taskView` adoption accepts `kanban`/`grouped`/`outline`, with Kanban fallback;
+selectors/compositions belong to their subsequent tickets. Invalid/missing individual keys default
+without deleting valid neighboring or unrelated settings. Explicit task/status/habit colors and
+color seeds are not rewritten. There is no OS-auto appearance switch.
+
+`setAppearancePreference()` only updates presentation and emits `timetrace:appearance`. Existing
+Stats/Habit charts use that event for neutral label/grid colors, not dataset/query/config changes;
+open editors and timers are not reinitialized. Calendar date/view/tag/task context is kept in its
+URL and restored on Back/Forward; the filter chip remains outside collapsible Totals. Schedule
+buttons open the existing task-attached session popup as an alternative to drag/drop.
+
+Caller regressions are in `tests/test_calendar_shell.cjs` and `tests/test_calendar_shell.py`.
+The four `tests/browser_{calendar_density,calendar_shell_layout,shared_appearance,chart_appearance}.js`
+files are dependency-free **manual probes**, not an installed browser runner. Evaluate each async
+function with an existing Playwright page and an isolated daemon base URL, after seeding a synthetic
+task through the public API. Each creates/closes its own context. Never point them at personal
+storage/the default daemon. Their bounded geometry/contrast samples are not accessibility certification.
+The ticket receipt in `.scratch/ui-redesign/ticket-01-evidence.md` separates observed browser results,
+failed probes, deferred manual coverage and pending independent review/integration gates.
+
+### Ticket 01 review repairs
+
+Preferences Save and color reshuffle no longer reload Revision's active editor just to update the
+Session Review tab. Disabling Session Review still hides its entry and redirects an active Sessions
+tab to Overview. Calendar startup reads current browser preferences after task metadata, and late
+idle-toggle responses cannot restore stale density/panel choices.
+
+The Settings link is a no-op on AI Settings. Its new cross-page departure checks initialized editor
+snapshots for Preferences, Revision/day and task reviews, task details and task/session dialogs.
+Canceling departure retains drafts; explicit leave does not autosave. AI Settings also guards other
+page departure and browser unload. Browser Preferences, AI behavior and provider saves remain separate;
+successful saves clean only their owner, failed saves remain dirty, and reverted fields are clean.
+This historical01 guard was not a replacement router or the ticket-19 tabbed implementation; the latter
+is now locally integrated separately; the draft and current bounded closure records below distinguish their gates. Delayed session popup initial focus now yields to immediate interaction, moved focus, closure or a newer popup;
+normal create-search/edit-Notes focus remains intact. Controlled-timer caller tests and immediate
+browser checks cover canceled Settings departure without masking the race with sleeps.
+
+Habit chart registries remove disposed charts, and shared appearance updates tolerate absent/disposed
+Chart.js instances. Populated AI provider names and instruction headings adopt readable light
+foregrounds; the retained dark palette is not redesigned. The existing dark provider metadata/item
+button contrast remains a separately documented baseline limitation, not a light-adoption regression.
+
+Additional manual probes under `tests/` are `browser_populated_ai_appearance.js`,
+`browser_revision_preferences.js`, `browser_dirty_ai_settings.js`, `browser_dirty_settings_callers.js`,
+`browser_delayed_calendar_startup.js` and `browser_habit_chart_lifecycle.js`.
+They use fresh browser contexts and synthetic public-API fixtures;
+provider catalogs/conversational proposals and deliberate failure responses are faked explicitly.
+They do not call providers, infer model output, or test real credentials. The populated probe returns
+measured issues, including baseline dark samples, rather than asserting whole-dark compliance.
+See the appended review-repair evidence in `.scratch/ui-redesign/ticket-01-evidence.md` for actual
+execution results and remaining gates.
+
+### Ticket19 tabbed Settings — local integration, closure DRAFT
+
+Exact reviewed625 was normally FF-integrated from clean a8e (two commits/14paths), no sourcecopy/fix.
+Fresh Standards0breaches/0heuristics and Spec0 cover BOTH amendment and combined ranges; original TWO
+unique Spec P1 repaired, not waived. Successful captured browser STORAGE now advances its comparison
+baseline even for idle; external dirty checkpoint/hidden daemon-pending ownership remains ACK-dependent.
+Only explicit Browser page editors are excluded from global modal Escape; scoped Browser Cancel and
+real dialogs retain their handlers. Browser/AI/provider saves remain separate; AI behavior Cancel is20.
+
+Fresh private0700 DB/HOME/TMPDIR/new editable Python3.14.6 before imports/tests/runtime; strict credential-
+absent environment, idle/SQL/tracing off, actualmain/private18227/0013/FK[]. Fresh full468Python226warnings,
+237canonicalNode,92syntax,focused2Python13Node/scopedweb+newcaseLint/newcaseFormat/EXACThandlerFormat
+passed; actualRuff18 BOTH stdout/stderr byte-match fixed baseline, not lint-clean. Feature includes Python;
+repair/merger adds no Python edits or unrelated web formatting. All239 source/test/spec bytes immutable.
+
+Stats89 FIRST/new29/old94/owners11 passed. Original affected Settings case5 FIRST FAILED30000ms startup
+equality timeout, preserved with zero fakePOSTlogs/no original DOM timeline. Parent-approved ONE minimized
+invocation/two fresh unseeded profiles observed unchanged-code defaulttrue→realGETfalse client preference
+drift; second immediate equality is not durable polling/causal-hold proof. Timercontrol/defaults/protected
+apply-startup source byte-equala8e proves pre-existing SOURCE identity, not an executed old baseline.
+Initialization counterexample remains UNFIXED/UNWAIVED for reserved03/whole-delivery follow-up, not19fix.
+
+Separately authorized EXTERNAL coherent-idle departurefixture ONLY simulates initialtrue; strict POST
+updates simulated state; exactownorigin GETstatus fetches actual200/idlefalse/inactive and overrides ONLY
+idle_detection_enabled, preserving all other fields. Every original body/storage/no-seed/wait/assertion/
+cleanup byte retained/reverseproof. This CASE5-only GETfake exception passedFIRST/fourcallers/fourwarnings/
+exact Session notes-ID-focus/zero departurewrites, NOT original case5 green or real bootstrap/OSidle proof.
+Then unchanged approved cases6–13 passedFIRST; coverage variant13 observed50contexts/pages/errors[],
+originalfailed2/2 and diagnostic3/3 separate. New29/supplemental21 explicitPASS/failures[]; full actual
+labels/errors/data/readbacks/traffic inspected, missing returnederrors not defaulted. Nested66/20realTask
+POSTs/public20readbacks/noSessionautosave/ACTUAL13falseidle33total; remaining editor/Session/modal/chart
+controls preserve drafts/focus/no unintended writes. No passing reruns or assertion/readiness/source fixes.
+Catalog/providerCRUD/AIsettings/SQLpreview/failure fakes explicit, actual SQLoff/idlefalse. Auto-scroll
+preference retained, timing not instrumented; public dispatch/focus not physical-pointer certification.
+
+Producer-after actual20Tasks/0Sessions/providerAI-domain0/Overview1widgets9/status5/settings1/FTS20/docsize20/
+data11/idx9/config1; readonly0013/FK[], canonicalinactiveHTTP+actualregularnonsymlinkstrict12keyFILE
+shared agreement/SHA22f50dc2..., initially absent honestly. Parent additions require new ACTUAL counts,
+not stale20/40. Healthy own109363/start817653/18227/sourcefrozen; fiveDOC DRAFT only, no stagecommitcleanup.
+Genuine NEW independent parent LIVE gate/explicit ONEexact625-parentfiveDOC release/normalONLYowncleanup/
+fresh closure DOC Standards+Spec remain required. Sixcomplete19pending; specApprovedNOTBuilt,03/20held,
+Timerunintegrated/GroupedOutline06–07/SQL13andperformed14 deferred. Source13unit/TDD is not accepted donor.
+Known contrast/comparison/caption/initialization/manualtouch-screenreader-otherengines-zoom-motion-colors/
+a11y/humanvisual/autoscroll/realSQLprovider/querycrossproduct/transportuncertainty-idempotency-exactlyonce-
+crosstab/whole-delivery82fabdc-adversarial-tuicrhuman gates remain UNWAIVED. No humanwhole25/dev merge.
+See [criterion mapping and full history](../.scratch/ui-redesign/ticket-19-evidence.md#local-integration-and-bounded-closure-draft-2026-11-06)
+and external `evidence/integrated-ticket-19/merger-report.md` / NEW `run.eU17gc/` receipts.
+
+### Ticket19 owner-approved bounded closure — current (2026-11-06)
+
+The preceding DRAFT is historical. Current bounded19 completes seven tickets01,02,04,10,11,12,19 with18
+pending; frontier removes19/adds20, DAG unchanged. **Fresh independent closure DOC Standards+Spec and parent
+disposition STILL REQUIRED before authoritative19 acceptance or03/20 continuation.** Spec Approved NOT Built.
+Parent initially overstepped the operator's no-status-fake constraint, caught it and revoked release BEFORE
+postgate document edit/stage/commit/cleanup; original merger report remains immutable controlled STOP.
+Owner subsequently explicitly answered “yes” ONLY to narrow test-only case5 idle-status simulation/use of
+labelled departure-guard evidence. Not retrospective permission, originalcase5green or bootstrap/OSidle proof.
+Original FIRST startup timeout and fresh-profile unchanged-source initialization drift remain UNFIXED/UNWAIVED
+for reserved03/whole-delivery follow-up. Pre-existing SOURCE identity is not historical runtime/cause proof;
+immediate equality is not durable polling/causal-hold proof.
+
+Only case5's exact own-origin GETstatus route.fetch actual200/inactive/unfrozen/nullgap/idlefalse changes
+ONLYidleflag; initialsimulatedTRUE/exactPOSTbool state/allotherfields and entire original body/defaultstorage/
+no-seed/wait/assertions/readbacks/cleanup preserved/reverseproof. BOTH producer/independent parent observed
+two realfalse→servedtrueGETs/zeroPOST/fourwarnings/exactSessionnote-fullID-focus/zero departurewrites.
+Genuine independent parent13 FIRST invocations/50actualcontexts-pages/actualpassiveerrors[] =12ordinary+
+labelled coherent5, not all13originalgreen. New29/supp21 explicitPASS/failures[]/errors[]; all labels/profiles/
+samples/readbacks/data/traffic inspected; missing returnederrors remain absent. Parent Nested66/newnonce
+04-nested-1793968922549/20distinctpublicP-Q IDs/ACTUAL12falseidle32total (producer13/33 not fixed oracle),
+ALLproducer20fields unchanged/public40. Catalog/providerCRUD/AIsettings/held-failure/SQLflag-schema-preview
+fakes explicit; actualSQLoff/idlefalse/no provider execution. Publicdispatch/focus not physical-pointer proof.
+Focused2Python HTML route checks are real ASGI/TestClient fixtures, NOT standalone daemon; native94 supplies
+live browser/daemon route/category/history proof. Already-run468Py226warnings/237Node/92syntax/2focusedPy/
+13focusedNode/scopedPython-exacthandler/fixedRuff18BOTH remain evidence; no passing reruns for approval.
+Parent NEW owner-approved-before read-only audit verified exact625/indexempty/exactfive frozen drafts/all239
+acceptedpinned+GitHEAD/protected/runtimeentireenv-PID/editable0700/health0013FK/actual40counts/timerHTTP+FILE.
+
+NEW finisher authority released only five literal DOC finalizations, explicit ONLY-own109363/start817653/
+privatea1v5NK/18227 cleanup and ONE exact625-parent five-DOC commit. BOTHpidfd capabilities/retainedverified
+pidfd/fullsource-env-UID-cwd-cmd-exe-editable0700-health/canonicaltimerHTTP+strict12keyactualregularFILE/
+ro0013FK/ALL40counts/public40fields passed. First helper assumed optional source-definedsecret.key existed:
+FileNotFoundError BEFORE signal, STOP. Parent approved shallow filename/source reads and ONE separately named
+external enumeration correction; basename correct, generated on first use, including decryption, key genuinely
+absent/no invented hash. Corrected invocation REOPENED retainedpidfd/reverified ALL preflight, then sole
+pidfdSIGTERM/exitpoll but immediate /proc-absence assertion FAILED, STOP. ONE parent-authorized read-only
+audit observed actual PIDabsence13:36:28.080063UTC/socket111/healthrefusal/normal shutdown appended to exact
+logprefix. Parent accepted later actual absence, not weaker zombie/not-live; both failures retained/no
+second signal/reap/restart/fallback. DB401408bytes SHAdf8e1a4868dded0cb2c254783c82deb46abc95b87272c9fae4a9cbcb6bbf775c/
+timer262bytes SHA22f50dc2... unchanged, optionalkey absent beforeafter, privateDB-timer-logs-venv retained.
+Poststopmode=ro/query_only0013_ai_data_scope/FK[]/ALLactualcounts equal parent-after: Task40/FTS40/docsize40/
+data3/idx1/config1/Overview1/widgets9/status5/AIsettings1/migration1/EVERYotheractualtable0. Poststop40DBIDs
+equal pre-signal public40 snapshot, not a post-stop HTTP readback. All239source/all11stoppedlanes/owner228
+and dirty status unchanged; fixtures retained. No other runtime/storage cleanup.
+
+Current [six-criterion mapping, history and full limits](../.scratch/ui-redesign/ticket-19-evidence.md#owner-approved-bounded-closure-and-current-gate-2026-11-06)
+and separate external `evidence/integrated-ticket-19/recovery-finisher-report.md`/`recovery.finisher-20261106-v1/`
+record actual final commit/clean/source-preservation proofs; original `merger-report.md` immutable. Routes
+/settingsBrowser,/settings/aiAI,/settings?category=providers; genericnavbarstill/settings/ai until03,
+oldPrefsretained/Timerunintegrated/AIbehaviorCancel20/GroupedOutline06–07/SQL13performed14 deferred. Both13
+TDD/unit checkpoints NOTacceptedproduction/donor/SQLruntimepermission. ALLknownTasklight4.33/darkAI3.98986/
+NULL-emptycomparisonbaseline ambiguity/captionheuristic/initialization/manualphysicaltouch-screenreader-
+otherengines-exhaustivezoom-motion-colors-a11y-humanvisual/autoscrolltiming/realSQLprovider/querycrossproduct/
+transportuncertainty-atomicity-idempotency-exactlyonce-crosstab/fixed82fabdc-whole-delivery-adversarial-tuicr-human/
+devmerge limits UNWAIVED. No appimport/tests/browser/syntax/lint/passingreruns/sourcechanges in this finisher;
+no amend/pushPR/devmerge/humanwhole25 claim. STOP fresh closure DOC two-axis review and parent disposition.
 
 ## Testing and checks
 
@@ -307,3 +555,163 @@ review the result, including data movement and SQLite table rebuilds, before app
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id
 references such as `RatingEntry.target_id` when changing identifiers or relationship structure.
+
+### Settings departure: initialized draft ownership
+
+The ticket-01 guard keeps a baseline per initialized field, not one current-DOM snapshot after
+unrelated reads. A successful writer checkpoints only its submitted fields. Day text/grade and custom
+ratings have separate roots; each successful rating POST checkpoints its own input. Dismiss checkpoints
+only day text/grade before refresh. Same-day retries and late rating reads retain existing drafts.
+Unknown day/AI settings Save performs no write: finish/retry loading first. AI load failures offer
+**Retry load**; widget capability failures keep the unknown form closed and explain reopening to retry.
+Accepted instructions (or an authoritative conflict reload) advance the persisted instruction baseline
+even when the live field is dirty. Only a clean field adopts the new value; unsaved instruction text
+and other behavior/provider owners are retained.
+
+Current owner audit for the **new Settings link** (not a retrofit of every historical navigation path):
+
+| Existing persisted/consumed editor | Baseline / completion boundary |
+| --- | --- |
+| Preferences | Open; explicit browser Save; existing idle side effect unchanged |
+| Calendar/Tasks task and session dialogs | Initialized open; explicit Save/Cancel; session focus guard retained |
+| Task details / subtask dialog | Properties editing and Save gated until first successful tree read, including Retry refresh; subsequent refresh preserves drafts. Subtask dialog owns open/Save/Cancel. |
+| Revision | Date-owned Day editors retain text/grade, ratings, grouping and filters when hidden, switched or promoted. One retained owner exists per date; the main day is excluded from history. Task/session text checkpoints on its own successful write; each successful rating checkpoints only its field in the target-type container. Failed/pending fields and concurrent edits remain dirty. Rating-definition dialogs retain their initialized owners. |
+| Habits | New/edit definition form and retained per-local-date entry drafts; explicit own Save/Cancel, confirmed selected-date Clear |
+| Statistics | Structured/optional SQL widget editor after capabilities; own Save/Cancel; late SQL column metadata cannot checkpoint title edits |
+| Tasks Statuses | Each initialized manager row owns independent explicit Save/Cancel; Add Status owns explicit Save/Cancel. Acknowledged writes checkpoint submitted fields only; failed display refresh retries read without replaying writes. |
+| AI Settings | Initial behavior baseline before GET, preserve edits through load/retry; provider form remains a separate owner |
+| Shared Assistant | Unsent composer, standing-instruction proposal text and inline proposal editor; successful send/approval/PATCH consumes only its own submitted data; failed actions retain drafts |
+
+Closing the drawer is not discard: its retained composer/proposal fields remain guarded. Explicit
+Cancel removes/closes the corresponding form without writing. Dashboard/conversation name prompts are
+blocking immediate actions, not background drafts. Date/view/search/filter/export controls, task-tab
+visibility, inspector/chart selections and batch-selection checkboxes are navigation/read/selection
+state, not unsaved domain forms. Habit entries now stage amounts/results until explicit Save; hidden
+per-date owners stay guarded and successful ACK checkpoints only submitted fields. Status-manager
+rows retain independent explicit Save/Cancel drafts. Current status refresh preserves Task/property/child
+selections and initialized drafts; no new autosave or domain policy is implied.
+
+Caller coverage: `tests/test_draft_ownership.cjs` uses real feature handlers and `api_client.js` with
+held/failed HTTP fixtures; five `tests/browser_*draft*ownership.js` / initialization/retry probes are
+manual async functions for the existing browser bridge. See ticket-01 evidence for their exact names,
+actual parent execution, fake boundaries and remaining review/manual limits. No browser framework,
+API/schema change, persisted draft store or later-ticket layout is introduced.
+
+`tests/browser_guard_edge_cases.js` adds authoritative instruction reversion, unknown task-tree gating/
+retry, retained hidden Day text/grade and real partial task/session-review persistence/retry checks.
+Only the deliberately failed rating POST is faked in those review cases; public API readbacks verify
+text and successful ratings. The existing Save handlers surface that rejection as one expected
+pageerror per case; this repair does not provide polished review-error UI (tickets 16/17).
+
+The corrected Settings-caller probe records all traffic and permits only the known dashboard-startup
+`POST /idle/toggle {enabled:true}` in its startup phase, after observing preference reconciliation.
+Canceled departures must produce no writes, including config writes. The shared-appearance probe
+keeps immediate samples as diagnostics and asserts contrast only after finite browser animations
+and rendering completion (eight batches maximum, two-second per-batch deadline). It changes no CSS,
+threshold or idle policy and certifies neither transient/all-frame contrast nor whole accessibility.
+
+### Settings departure: suspended Session and late Day writers
+
+Session → **+ Task** suspends the initialized Session DOM and its original draft baseline. The hidden
+owner stays guarded through nested Task editing and partial writes. Nested Task Cancel resumes the
+Session; successful completion attaches the acknowledged parent and consumes suspension **before**
+fallible metadata refresh, without replacing Session Notes, timestamps or tags. Optional late launcher
+focus restoration is independent and yields to newer focus/dialog owners; a superseding Session cannot
+receive the old parent, and standalone Task Cancel/Save cannot inherit its suspension. Session Save is
+still explicit. Session Cancel or an unrelated
+Session opening ends the suspension; ordinary standalone Task Cancel remains discard. Task create/edit
+focus the title when initialization finishes, without deferred focus/select callbacks that can steal
+subsequent Tags typing or act after closure/reopening.
+
+Day workspace uses one retained editor root per date. Bottom history starts closed and expands at
+most one non-main editor. Hiding, changing the main date, switching historical cards or promoting a
+historical day retains its form, ratings, grouping and evidence filter. Late reads and write ACKs
+apply only to their captured date/root. Save snapshots text and every rating before its first await;
+known day/rating ACKs checkpoint only submitted fields and retries skip those acknowledged payloads.
+Concurrent edits and hidden other-date drafts stay guarded. Dismiss writes/checkpoints only that
+date's text/grade; Discard restores only that date's drafts and keeps already saved rows. Required
+rating validation and controls are editor-scoped; rating definition policy is unchanged. Partial
+saves remain separate writes, and a lost response can leave an uncertain persisted result. No
+atomic/idempotent/exactly-once transport guarantee is implied.
+
+Current Day caller coverage is in `test_draft_ownership.cjs`, `test_day_workspace.cjs` and
+`test_day_workspace_api.py`; `browser_day_workspace.js` supplies the current manual native probe.
+Execution and remaining acceptance gates belong in ticket-15 evidence. Earlier ticket-01 native
+probes document their historical single-editor DOM and do not establish acceptance of this workspace.
+
+### Ticket20 AI Settings — in-progress checkpoint
+
+AI Settings provide owner-local behavior Cancel, provider key keep/replace/explicit Clear,
+submitted-field ACK checkpoints and read-only list/catalog retry. Known provider credential extras
+are excluded from responses; probe failures use stable safe diagnostics. Stored extras and SDK
+forwarding, Pi authentication and independent Browser drafts remain preserved.
+
+See `.scratch/ui-redesign/ticket-20-evidence.md` for actual software checks and limitations. The
+original native attempt failed with a masked, unknown primary exception; repair05 and this reconciled
+checkpoint still require fresh combined checks, native execution, independent review and parent
+disposition. Ticket20 remains in-progress; no native acceptance or software completion is claimed.
+
+
+### Ticket24 Markdown export — bounded software closure candidate (2026-11-13)
+
+Calendar Export retains all six real agenda Markdown scopes with generated inert preview,
+explicit Copy/Download, Ctrl+Enter, UTC date-range/session-start caveats and merged upcoming
+recurrence. Export focus/selection ownership prevents late reads or nested Task/Session/Assistant
+operations from replacing the current owner. Existing backend/legacy contracts are unchanged.
+
+Current evidence: `.scratch/ui-redesign/ticket-24-evidence.md` maps all six unchanged criteria.
+Combined product checks pass562Python/464Node/123syntax; full Ruff retains18 byte-matched inherited
+findings. Freeze05 only changes two native origin-guard callbacks and their evidence note;14 inert
+cases/two syntax checks pass, with no full-suite rerun after that test-only amendment. Native-v3
+binds493 pins and exits0 with614assertions, six actual downloads matched to original response bytes,
+16 width/theme combinations/288 contrast samples/12 pointer checks. Sole pidfd shutdown gives actual
+exit-15/reaping/process absence/refused111; FTS rank1 and logical/private storage equality pass.
+Original pidfd launch failure and native-v2 FAILED remain retained. Clipboard uses explicit fakes;
+OS clipboard/save, physical accessibility/other engines, inherited contrast limits and human
+acceptance remain open. Candidate software count13/12 is conditional on parent integration; actual
+integration4e75ef02 remains12/13. Fresh closure metadata reviews and parent disposition are pending.
+This does not complete whole25, waive acceptance or authorize dev merge/push/PR. No new tests,
+runtime, provider, personal database operations or cleanup accompany this metadata preparation.
+
+
+## Outline and retained inspector: bounded delivery checkpoint (2026-11-13)
+
+Tasks now supports optional Outline with per-browser cross-reload selection, filtered ancestor
+context and a retained inline inspector using the dedicated details editor and existing task/session
+contracts. Dedicated task details remain reachable. Controller guards preserve dirty drafts and
+selection across metadata refresh, stale reads and pending writes; explicit Save/Cancel, shared
+history/accounting, completion prompts and Grouped/Kanban navigation reuse existing handlers.
+See [ticket07 current evidence](../.scratch/ui-redesign/ticket-07-evidence.md#bounded-software-completion-candidate-2026-11-13).
+
+Combined freeze07 checks:564Python/214warnings,485actual canonical Node cases,127syntax;
+scoped lint/format/whitespace pass, full Ruff18 and stderr warning byte-match incoming564e25a.
+Native01/native02 remain FAILED, including native02's69 returned functional assertions/13actual
+ACKs. Held03 separately passes7focused A→B→A transport checks/3TaskACKs/0UIwrites with exact
+callback-completion-before-unroute ordering and full storage/FTS/actual−15 shutdown. This narrow
+proof does not rerun69, certify new Save/Delete latches, establish native dirty metadata refresh or
+OS idle, or replace physical accessibility/contrast/other-engine/shared-workflow/human/whole25
+acceptance. Bounded completion metadata remains subject to fresh Standards+Spec review and
+parent disposition; integration564e25a remains13completed/12open until the candidate is integrated.
+
+
+## Ticket18 bounded software-completion candidate (2026-11-15)
+
+Ticket18's five unchanged criteria map to [current bounded evidence](../.scratch/ui-redesign/ticket-18-evidence.md#bounded-software-completion-candidate-2026-11-15).
+Combined product checks passed572Python/217warnings,583actual canonical Node/default isolation,
+132syntax and scoped lint/format/whitespace. Full Ruff retains18 inherited findings with BOTH
+streams matched to incominge0c6989. Current freeze10 only repairs the finite timestamp probe
+oracle (13 controls, other510 files unchanged); full suites were not repeated after that probe edit.
+Feature/search/merged Rating-Export source review axes each report zero findings in their scopes.
+Native-v2 remains FAILED despite returned16 Admin layouts/288text/80controls and8 Recovery groups;
+consumer-v3 remains FAILED despite real Session zero/dismiss/undismiss/exemption observations.
+V4 UNRUN and v5 FAILED14ACKs remain retained. Separate currentv6 PASSES its bounded held-search/
+Task-prefix/Day flow:26realACKs, one declared400, one original registry hold,10light/dark Day grades,
+99original captures,77requests/responses/callbacks, zero guard/capture/handler/unresolved errors,
+full real ACK/storage/FK/FTS-copy/private-after-stop reconciliation and sole actual−15 shutdown.
+Seven DayReviews remain. No failed matrix is relabeled or Admin/Recovery/Session rerun claimed;
+Task prefix supplies Day's independent retained draft, not new broad Task coverage.
+390/1024/1440, full presentation/motion/zoom, physical touch/screen readers/other engines, wider
+shared native workflows, explicit owner acceptance and whole25 gates remain open and unwaived.
+Candidate15completed/10open adds18 only; authoritative integratione0c6989 remains14/11 pending
+TWO fresh closure metadata axes, parent disposition and integration. Historical checkpoints remain;
+spec stays Approved, not Built. No new tests/runtime/Git writes/provider/personalDB/cleanup operations.

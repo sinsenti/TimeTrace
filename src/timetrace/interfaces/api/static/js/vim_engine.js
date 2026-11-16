@@ -96,7 +96,9 @@ function setupVimKeyboardListeners() {
             activeEl.tagName === 'SELECT'
         );
 
-        if (isEditingText) {
+        const interactiveFocus = activeEl && (activeEl.tagName === 'BUTTON' || activeEl.tagName === 'A' || activeEl.isContentEditable);
+        const openDialog = Array.from(document.querySelectorAll('[id$="_modal"]')).some(el => !el.classList.contains('hidden'));
+        if (e.defaultPrevented || isEditingText || interactiveFocus || openDialog) {
             return;
         }
 

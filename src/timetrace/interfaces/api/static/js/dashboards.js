@@ -1,11 +1,10 @@
 /**
  * TimeTrace statistics dashboards.
  *
- * Widgets are DB rows now (slice 2). The page loads the dashboard list from
- * GET /api/dashboards, then renders one dashboard per tab with a single
- * POST /api/dashboards/{id}/data call that returns the widget list plus each widget's result
- * (or its own error, so one broken widget never blanks the page). The old localStorage-only
- * widget list is gone -- see _importLegacyWidgets() for the one-time hand-off.
+ * Saved dashboard detail supplies the canvas; each card reads through the existing
+ * structured query or optional read-only SQL endpoint independently. Selection, context
+ * and request identity prevent late results from replacing newer cards.
+ * See _importLegacyWidgets() for the journaled local-browser hand-off.
  *
  * This file renders; it does not build. The builder/editor modal lives in widget_builder.js.
  *
@@ -15,10 +14,10 @@
  */
 
 const ACCENT_CLASSES = {
-    purple: { badge: 'bg-purple-900/40 border-purple-700/50', text: 'text-purple-400' },
-    emerald: { badge: 'bg-emerald-900/40 border-emerald-700/50', text: 'text-emerald-400' },
-    amber: { badge: 'bg-amber-900/40 border-amber-700/50', text: 'text-amber-400' },
-    blue: { badge: 'bg-blue-900/40 border-blue-700/50', text: 'text-blue-400' }
+    purple: { text: 'text-purple-400' },
+    emerald: { text: 'text-emerald-400' },
+    amber: { text: 'text-amber-400' },
+    blue: { text: 'text-blue-400' }
 };
 
 /**
@@ -28,8 +27,15 @@ const ACCENT_CLASSES = {
  * opens are how *these specific* charts have always looked, not properties of a widget spec.
  * A user-built widget gets a generic presentation derived from its result's column unit.
  */
+// Alias only untouched historical default titles; never rewrite saved rows or custom names.
+function _widgetDisplayTitle(widget) {
+    if (widget.seed_key === 'total_time' && widget.title === 'Total Time Logged') return 'Recorded session time';
+    if (widget.seed_key === 'total_sessions' && widget.title === 'Logged Sessions') return 'Recorded sessions';
+    return widget.title;
+}
+
 const SEED_PRESENTATION = {
-    total_time: { accent: 'purple', badge: 'LOGGED' },
+    total_time: { accent: 'purple', badge: 'RECORDED' },
     total_sessions: { accent: 'emerald', badge: 'SESSIONS' },
     total_tasks: { accent: 'amber', badge: 'TASKS' },
     estimation_score: { accent: 'blue', badge: 'ACCURACY', subtitle: 'estimation_ratio' },
@@ -46,6 +52,8 @@ const LAST_DASHBOARD_KEY = 'tt_last_dashboard_id';
 const LEGACY_WIDGETS_KEY = 'tt_custom_widgets_v1';
 
 let dashboardCharts = {};
+
+document.addEventListener('timetrace:appearance', () => applyChartAppearance(Object.values(dashboardCharts)));
 let dashboardList = [];
 let currentDashboardId = null;
 let currentDashboardData = null;
@@ -92,88 +100,161 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ---- Dashboard list / tabs ----
 
+let dashboardListGeneration = 0;
+let dashboardWritePending = false;
+let savedDashboardNotice = '';
+let dashboardNotice = { message: '', retry: null };
+let dashboardDetailNoticeGeneration = null;
+
+function _dashboardNotice(message, retry, detailGeneration = null) {
+    if (detailGeneration === null) dashboardNotice = { message, retry };
+    dashboardDetailNoticeGeneration = detailGeneration;
+    const notice = document.getElementById('dashboard_notice');
+    if (!notice) return;
+    notice.innerHTML = '';
+    notice.appendChild(_el('span', '', message));
+    if (retry) {
+        const button = _el('button', 'canvas-button', 'Retry refresh');
+        button.onclick = retry;
+        notice.appendChild(button);
+    }
+}
+
 async function loadDashboards() {
     const grid = document.getElementById('widget_grid');
     if (!grid) return;
-
+    const generation = ++dashboardListGeneration;
+    const selection = canvasGeneration;
+    let list;
     try {
-        dashboardList = await api.get('/api/dashboards');
+        list = await api.get('/api/dashboards');
     } catch (err) {
-        console.error('Failed to load dashboards:', err);
-        grid.innerHTML = '';
-        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'Failed to load dashboards.'));
+        if (generation === dashboardListGeneration && selection === canvasGeneration) {
+            _dashboardNotice(`${savedDashboardNotice}Could not refresh dashboards.`, () => loadDashboards());
+        }
         return;
     }
-
-    if (await _importLegacyWidgets()) {
-        dashboardList = await api.get('/api/dashboards');
-    }
-
-    if (!dashboardList.length) {
-        renderDashboardTabs();
-        grid.innerHTML = '';
-        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'No dashboards yet.'));
-        return;
-    }
-
-    const remembered = localStorage.getItem(LAST_DASHBOARD_KEY);
-    const exists = dashboardList.some(d => d.id === remembered);
-    currentDashboardId = exists ? remembered : dashboardList[0].id;
-
+    if (generation !== dashboardListGeneration || selection !== canvasGeneration) return;
+    dashboardList = list;
+    await _importLegacyWidgets();
+    if (generation !== dashboardListGeneration || selection !== canvasGeneration) return;
+    const remembered = currentDashboardId || localStorage.getItem(LAST_DASHBOARD_KEY);
+    currentDashboardId = dashboardList.some(d => d.id === remembered) ? remembered : (dashboardList[0]?.id || null);
     renderDashboardTabs();
-    await loadDashboard(currentDashboardId);
+    _dashboardNotice(savedDashboardNotice || (dashboardWritePending ? 'Saving…' : ''));
+    if (currentDashboardId) {
+        localStorage.setItem(LAST_DASHBOARD_KEY, currentDashboardId);
+        await loadDashboard(currentDashboardId);
+    } else {
+        ++canvasGeneration;
+        _clearDashboardCanvas();
+        grid.appendChild(_el('p', 'canvas-empty', 'No dashboards yet. Create a dashboard to add widgets.'));
+    }
 }
 
-/**
- * One-time hand-off of the pre-slice-2 localStorage widgets into the Overview dashboard.
- *
- * Skipping this would silently delete every widget an existing user had saved. The key is
- * renamed rather than deleted, so a failed run can still be recovered by hand, and so this
- * cannot run twice.
- */
-async function _importLegacyWidgets() {
-    let raw;
-    try {
-        raw = localStorage.getItem(LEGACY_WIDGETS_KEY);
-    } catch (e) {
-        return false;
-    }
-    if (!raw) return false;
+const LEGACY_IMPORT_KEY = LEGACY_WIDGETS_KEY + '_import_progress';
+let legacyImportPending = false;
 
-    let specs;
-    try {
-        specs = JSON.parse(raw);
-    } catch (e) {
-        console.error('Could not parse saved widgets; leaving them untouched:', e);
-        return false;
-    }
+function _legacyNotice(message, actions = []) {
+    const notice = document.getElementById('legacy_notice');
+    if (!notice) return;
+    notice.innerHTML = '';
+    if (message) notice.appendChild(_el('span', '', message));
+    actions.forEach(([label, handler]) => {
+        const button = _el('button', 'canvas-button', label);
+        button.onclick = handler;
+        notice.appendChild(button);
+    });
+}
 
-    const target = dashboardList.find(d => d.slug === 'overview') || dashboardList[0];
-    if (!target || !Array.isArray(specs) || !specs.length) {
+// Persist the source and every acknowledged index. A pending index is deliberately
+// ambiguous after transport/storage loss: only explicit user reconciliation may resume it.
+async function _importLegacyWidgets(resume = false, skipUncertain = false) {
+    if (legacyImportPending) return;
+    legacyImportPending = true;
+    try {
+        const raw = localStorage.getItem(LEGACY_WIDGETS_KEY);
+        if (!raw) { _legacyNotice(''); return; }
+        let specs;
+        try { specs = JSON.parse(raw); } catch (err) {
+            _legacyNotice('Saved browser widgets could not be read. The original source is unchanged.');
+            return;
+        }
+        if (!Array.isArray(specs)) {
+            _legacyNotice('Saved browser widgets are not a widget list. The original source is unchanged.');
+            return;
+        }
+        const stored = localStorage.getItem(LEGACY_IMPORT_KEY);
+        const progress = stored ? JSON.parse(stored) : {
+            source: raw, target: (dashboardList.find(d => d.slug === 'overview') || dashboardList[0])?.id,
+            completed: {}, pending: null
+        };
+        const target = dashboardList.find(d => d.id === progress.target);
+        if (progress.source !== raw || !progress.completed || !target) {
+            _legacyNotice('Browser widget import needs manual recovery: source or target changed. Original source and import progress are retained.');
+            return;
+        }
+        const save = () => localStorage.setItem(LEGACY_IMPORT_KEY, JSON.stringify(progress));
+        const uncertainMessage = () => `Browser widget import is uncertain: "${specs[progress.pending]?.title || 'Custom Widget'}" into "${target.name}". Original source and acknowledged imports are retained; nothing is automatically repeated. Review that dashboard before continuing.`;
+        const retry = async () => {
+            if (!confirm('The last import may already be saved. Review the dashboard first. Retry can create a duplicate. Continue?')) return;
+            await _importLegacyWidgets(true);
+            await reloadCurrentDashboard();
+        };
+        const verified = async () => {
+            if (!confirm('Have you verified the uncertain widget is already saved? It will not be sent again.')) return;
+            await _importLegacyWidgets(true, true);
+            await reloadCurrentDashboard();
+        };
+        if (progress.pending !== null && !resume) {
+            _legacyNotice(uncertainMessage(),
+                [['Retry uncertain import', retry], ['I verified this item is saved', verified]]);
+            return;
+        }
+        if (skipUncertain && progress.pending !== null) {
+            progress.completed[progress.pending] = 'user-verified';
+            progress.pending = null;
+            save();
+        }
+        for (let index = 0; index < specs.length; index++) {
+            const spec = specs[index];
+            if (progress.completed[index] || !spec || !spec.query || typeof spec.query !== 'object') continue;
+            progress.pending = index;
+            save(); // Never send a write if recovery progress cannot be stored first.
+            try {
+                const widget = await api.post(`/api/dashboards/${progress.target}/widgets`, {
+                    title: spec.title || 'Custom Widget', width: 'half',
+                    spec: { mode: 'structured', query: spec.query }
+                });
+                progress.completed[index] = widget.id;
+                progress.pending = null;
+                save();
+            } catch (err) {
+                progress.pending = index;
+                _legacyNotice(uncertainMessage(),
+                    [['Retry uncertain import', retry], ['I verified this item is saved', verified]]);
+                return;
+            }
+        }
+        if (specs.some((spec, index) => !progress.completed[index])) {
+            _legacyNotice('Valid browser widgets were imported. Unreadable entries remain in the original source; acknowledged imports will not be repeated.');
+            save();
+            return;
+        }
+        const archive = localStorage.getItem(LEGACY_WIDGETS_KEY + '_migrated');
+        if (archive && archive !== raw) {
+            _legacyNotice('Browser widgets imported. An earlier backup exists, so the original source and import progress are retained.');
+            return;
+        }
         localStorage.setItem(LEGACY_WIDGETS_KEY + '_migrated', raw);
         localStorage.removeItem(LEGACY_WIDGETS_KEY);
-        return false;
+        localStorage.removeItem(LEGACY_IMPORT_KEY);
+        _legacyNotice('Browser widgets imported and original source backed up.');
+    } catch (err) {
+        _legacyNotice('Browser widget import paused: recovery storage could not be read or saved. Original source is retained.');
+    } finally {
+        legacyImportPending = false;
     }
-
-    let imported = 0;
-    for (const spec of specs) {
-        if (!spec || !spec.query) continue;
-        try {
-            await api.post(`/api/dashboards/${target.id}/widgets`, {
-                title: spec.title || 'Custom Widget',
-                width: 'half',
-                spec: { mode: 'structured', query: spec.query }
-            });
-            imported += 1;
-        } catch (err) {
-            console.error(`Could not import saved widget '${spec.title}':`, err.message);
-        }
-    }
-
-    localStorage.setItem(LEGACY_WIDGETS_KEY + '_migrated', raw);
-    localStorage.removeItem(LEGACY_WIDGETS_KEY);
-    console.info(`Imported ${imported} saved widget(s) into the '${target.name}' dashboard.`);
-    return imported > 0;
 }
 
 function renderDashboardTabs() {
@@ -185,11 +266,12 @@ function renderDashboardTabs() {
         const isActive = d.id === currentDashboardId;
         const tab = _el(
             'button',
-            'h-8 px-3 rounded-lg border text-xs font-bold transition ' + (isActive
-                ? 'bg-purple-600 border-purple-500 text-white'
-                : 'bg-[#181a28] border-[var(--border-muted)] text-slate-300 hover:text-white'),
+            'canvas-tab h-8 px-3 rounded-lg border text-xs font-bold transition ' + (isActive
+                ? 'canvas-tab-active'
+                : 'bg-[var(--bg-card)] border-[var(--border-muted)] text-[var(--text-main)] hover:border-[var(--text-muted)]'),
             d.name
         );
+        tab.setAttribute('aria-current', isActive ? 'page' : 'false');
         tab.onclick = () => switchDashboard(d.id);
         bar.appendChild(tab);
     });
@@ -208,46 +290,80 @@ async function switchDashboard(dashboardId) {
     await loadDashboard(dashboardId);
 }
 
-async function createDashboard() {
-    const name = prompt('Name for the new dashboard:');
-    if (!name || !name.trim()) return;
+async function _writeDashboard(write, apply, refresh) {
+    if (dashboardWritePending) return;
+    dashboardWritePending = true;
+    savedDashboardNotice = '';
+    _dashboardNotice('Saving…');
+    let result;
     try {
-        const created = await api.post('/api/dashboards', { name: name.trim() });
-        dashboardList = await api.get('/api/dashboards');
-        await switchDashboard(created.id);
+        result = await write();
     } catch (err) {
-        alert(err.message || 'Could not create that dashboard.');
+        // A transport loss can be ambiguous; never replay a write from refresh/retry.
+        _dashboardNotice(`Change not acknowledged. ${err.message || ''} It may already be saved; refresh before trying again.`, () => loadDashboards());
+        dashboardWritePending = false;
+        return;
+    }
+    savedDashboardNotice = 'Saved. ';
+    _dashboardNotice(savedDashboardNotice);
+    try {
+        await apply(result);
+        await refresh();
+    } catch (err) {
+        _dashboardNotice('Saved. Could not refresh the display.', () => loadDashboards());
+    } finally {
+        dashboardWritePending = false;
     }
 }
 
+async function createDashboard() {
+    if (dashboardWritePending) return;
+    const name = prompt('Name for the new dashboard:');
+    if (!name || !name.trim()) return;
+    const selection = canvasGeneration;
+    await _writeDashboard(() => api.post('/api/dashboards', { name: name.trim() }), created => {
+        dashboardList.push(created);
+        if (selection === canvasGeneration) {
+            ++canvasGeneration;
+            currentDashboardId = created.id;
+            _clearDashboardCanvas();
+            document.getElementById('dashboard_title').textContent = created.name;
+        }
+        renderDashboardTabs();
+    }, () => loadDashboards());
+}
+
 async function renameDashboard() {
+    if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
     const name = prompt('Rename dashboard:', current.name);
     if (!name || !name.trim() || name.trim() === current.name) return;
-    try {
-        await api.put(`/api/dashboards/${currentDashboardId}`, { name: name.trim() });
-        dashboardList = await api.get('/api/dashboards');
+    await _writeDashboard(() => api.put(`/api/dashboards/${current.id}`, { name: name.trim() }), updated => {
+        Object.assign(current, updated);
+        if (currentDashboardId === current.id) document.getElementById('dashboard_title').textContent = updated.name;
         renderDashboardTabs();
-    } catch (err) {
-        alert(err.message || 'Could not rename that dashboard.');
-    }
+    }, () => loadDashboards());
 }
 
 async function deleteDashboard() {
+    if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
-    if (!current) return;
-    if (!confirm(`Delete the dashboard "${current.name}" and all of its widgets?`)) return;
-    try {
-        await api.delete(`/api/dashboards/${currentDashboardId}`);
-        localStorage.removeItem(LAST_DASHBOARD_KEY);
-        await loadDashboards();
-    } catch (err) {
-        alert(err.message || 'Could not delete that dashboard.');
-    }
+    if (!current || !confirm(`Delete the dashboard "${current.name}" and all of its widgets?`)) return;
+    await _writeDashboard(() => api.delete(`/api/dashboards/${current.id}`), () => {
+        dashboardList = dashboardList.filter(d => d.id !== current.id);
+        if (currentDashboardId === current.id) {
+            ++canvasGeneration;
+            currentDashboardId = dashboardList[0]?.id || null;
+            _clearDashboardCanvas();
+            localStorage.removeItem(LAST_DASHBOARD_KEY);
+        }
+        renderDashboardTabs();
+    }, () => loadDashboards());
 }
 
 async function resetDashboard() {
+    if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
     if (!current.is_seeded) {
@@ -255,56 +371,143 @@ async function resetDashboard() {
         return;
     }
     if (!confirm('Replace this dashboard\'s widgets with the default Overview set?')) return;
-    try {
-        await api.post(`/api/dashboards/${currentDashboardId}/reset`);
-        await loadDashboard(currentDashboardId);
-    } catch (err) {
-        alert(err.message || 'Could not reset that dashboard.');
-    }
+    await _writeDashboard(() => api.post(`/api/dashboards/${current.id}/reset`), () => {
+        if (currentDashboardId !== current.id) return;
+        ++canvasGeneration;
+        _clearDashboardCanvas();
+    }, () => loadDashboards());
 }
 
 // ---- Rendering one dashboard ----
 
 function reloadCurrentDashboard() {
-    if (currentDashboardId) loadDashboard(currentDashboardId);
+    return currentDashboardId ? loadDashboard(currentDashboardId) : loadDashboards();
+}
+
+let canvasGeneration = 0;
+
+function _disposeWidgetChart(widgetId) {
+    if (dashboardCharts[widgetId]) dashboardCharts[widgetId].destroy();
+    delete dashboardCharts[widgetId];
+}
+
+function _clearDashboardCanvas() {
+    currentDashboardData = null;
+    Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
+    document.getElementById('widget_grid').innerHTML = '';
 }
 
 async function loadDashboard(dashboardId) {
     const grid = document.getElementById('widget_grid');
-    if (!grid) return;
-
-    let data;
-    try {
-        data = await api.post(`/api/dashboards/${dashboardId}/data`, getQueryContext());
-    } catch (err) {
-        console.error('Failed to load dashboard:', err);
-        grid.innerHTML = '';
-        grid.appendChild(_el('div', 'text-xs text-slate-500 py-6 text-center', 'Failed to load this dashboard.'));
-        return;
+    if (!grid || dashboardId !== currentDashboardId) return;
+    if (dashboardDetailNoticeGeneration !== null) {
+        _dashboardNotice(dashboardNotice.message, dashboardNotice.retry);
     }
-
-    currentDashboardData = data;
-    localStorage.setItem(LAST_DASHBOARD_KEY, dashboardId);
-
-    Object.values(dashboardCharts).forEach(chart => chart.destroy());
-    dashboardCharts = {};
-
-    grid.innerHTML = '';
-    grid.className = 'grid grid-cols-1 md:grid-cols-4 gap-4';
-
+    const generation = ++canvasGeneration;
+    _clearDashboardCanvas();
+    grid.appendChild(_el('p', 'canvas-empty', 'Loading dashboard…'));
     const resetBtn = document.getElementById('reset_dashboard_btn');
-    if (resetBtn) resetBtn.classList.toggle('hidden', !data.dashboard.is_seeded);
+    if (resetBtn) resetBtn.classList.toggle('hidden', true);
+    const selected = dashboardList.find(d => d.id === dashboardId);
+    const heading = document.getElementById('dashboard_title');
+    if (selected && heading) heading.textContent = selected.name;
 
-    if (!data.widgets.length) {
-        grid.appendChild(_el('div', 'md:col-span-4 text-xs text-slate-500 py-6 text-center',
-            'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
+    let detail;
+    try {
+        detail = await api.get(`/api/dashboards/${dashboardId}`);
+    } catch (err) {
+        if (generation !== canvasGeneration || dashboardId !== currentDashboardId) return;
+        grid.innerHTML = '';
+        const retryDetail = () => {
+            if (generation !== canvasGeneration || dashboardId !== currentDashboardId) return;
+            return loadDashboard(dashboardId);
+        };
+        _dashboardNotice(`${savedDashboardNotice || (dashboardWritePending ? 'Saving… ' : '')}Could not refresh this dashboard.`, retryDetail, generation);
+        grid.appendChild(_el('p', 'canvas-empty', 'Failed to load this dashboard.'));
+        const retry = _el('button', 'canvas-button', 'Retry refresh');
+        retry.onclick = retryDetail;
+        grid.appendChild(retry);
         return;
     }
-
+    if (generation !== canvasGeneration || dashboardId !== currentDashboardId) return;
+    const data = { dashboard: detail, widgets: detail.widgets, results: {}, sql_results: {}, errors: {},
+        loading: {}, cards: {}, requests: {}, context: { ...getQueryContext() } };
+    currentDashboardData = data;
+    if (resetBtn) resetBtn.classList.toggle('hidden', !detail.is_seeded);
+    const title = document.getElementById('dashboard_title');
+    if (title) title.textContent = detail.name;
+    grid.innerHTML = '';
+    if (!data.widgets.length) {
+        grid.appendChild(_el('p', 'canvas-empty', 'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
+    }
     data.widgets.forEach((widget, index) => {
+        data.loading[widget.id] = true;
         const card = renderWidget(widget, data, index);
+        data.cards[widget.id] = card;
         grid.appendChild(card);
+        _loadWidget(widget, data);
     });
+}
+
+function _replaceWidget(widget, data) {
+    const previous = data.cards[widget.id];
+    const active = document.activeElement;
+    const restoreFocus = active && previous.contains(active);
+    const label = restoreFocus ? active.getAttribute('aria-label') : null;
+    _disposeWidgetChart(widget.id);
+    const card = renderWidget(widget, data, data.widgets.indexOf(widget));
+    previous.replaceWith(card);
+    data.cards[widget.id] = card;
+    if (restoreFocus) {
+        const target = Array.from(card.querySelectorAll('button:not(:disabled)'))
+            .find(button => label && button.getAttribute('aria-label') === label) || card;
+        target.focus({ preventScroll: true });
+    }
+}
+
+async function _loadWidget(widget, data) {
+    if (currentDashboardData !== data || !data.widgets.includes(widget)) return;
+    if (JSON.stringify(data.context) !== JSON.stringify(getQueryContext())) {
+        reloadCurrentDashboard();
+        return;
+    }
+    const request = (data.requests[widget.id] || 0) + 1;
+    data.requests[widget.id] = request;
+    data.loading[widget.id] = true;
+    delete data.errors[widget.id];
+    _replaceWidget(widget, data);
+    let result, error;
+    try {
+        if (!widget.spec) throw new Error("This widget's saved definition could not be read.");
+        result = widget.spec.mode === 'sql'
+            ? await api.post('/analytics/sql', widget.spec.sql)
+            : await api.post('/analytics/query', { ...data.context, query: widget.spec.query });
+    } catch (err) {
+        error = err.message || 'This widget could not be loaded.';
+    }
+    if (currentDashboardData !== data || currentDashboardId !== widget.dashboard_id ||
+        !data.widgets.includes(widget) || data.requests[widget.id] !== request) return;
+    if (JSON.stringify(data.context) !== JSON.stringify(getQueryContext())) {
+        reloadCurrentDashboard();
+        return;
+    }
+    data.loading[widget.id] = false;
+    if (error) data.errors[widget.id] = error;
+    else if (widget.spec.mode === 'sql') data.sql_results[widget.id] = result;
+    else data.results[widget.id] = result;
+    try {
+        _replaceWidget(widget, data);
+    } catch (err) {
+        _disposeWidgetChart(widget.id);
+        data.errors[widget.id] = 'Could not display this widget. Retry to load it again.';
+        _replaceWidget(widget, data);
+    }
+    // The seeded accuracy subtitle uses two sibling totals; their completion must not
+    // depend on response order, and updating it must not rerun either healthy query.
+    if (widget.seed_key === 'total_time' || widget.seed_key === 'est_total_hours') {
+        const accuracy = data.widgets.find(w => w.seed_key === 'estimation_score');
+        if (accuracy && data.results[accuracy.id] && !data.loading[accuracy.id]) _replaceWidget(accuracy, data);
+    }
 }
 
 function renderWidget(widget, data, index) {
@@ -314,10 +517,17 @@ function renderWidget(widget, data, index) {
     const sqlResult = data.sql_results[widget.id];
 
     let card;
-    if (error || (!result && !sqlResult)) {
+    if (data.loading && data.loading[widget.id]) {
         card = _el('div', 'widget-card space-y-2');
-        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
-        card.appendChild(_el('div', 'text-xs text-red-400', error || 'This widget produced no result.'));
+        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
+        card.appendChild(_el('p', 'canvas-loading', 'Loading…'));
+    } else if (error || (!result && !sqlResult)) {
+        card = _el('div', 'widget-card space-y-2');
+        card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
+        card.appendChild(_el('div', 'canvas-error', error || 'This widget produced no result.'));
+        const retry = _el('button', 'canvas-button', 'Retry');
+        retry.onclick = () => _loadWidget(widget, data);
+        card.appendChild(retry);
     } else if (sqlResult) {
         card = renderSqlWidget(widget, sqlResult);
     } else if (result.columns && result.columns.length && _isTile(widget, result)) {
@@ -328,6 +538,9 @@ function renderWidget(widget, data, index) {
         card = renderChartWidget(widget, result, seed);
     }
 
+    card.tabIndex = -1;
+    card.dataset.widgetId = widget.id;
+    card.setAttribute('aria-busy', String(!!data.loading[widget.id]));
     card.classList.add('relative');
     card.classList.add(_widgetSpanClass(widget, result));
     _addWidgetControls(card, widget, data, index);
@@ -351,11 +564,12 @@ function _widgetSpanClass(widget, result) {
 }
 
 function _addWidgetControls(card, widget, data, index) {
-    const bar = _el('div', 'absolute top-2 right-2 flex items-center gap-1 opacity-60 hover:opacity-100');
+    const bar = _el('div', 'canvas-widget-controls');
 
     const mkBtn = (label, title, handler, disabled) => {
         const btn = _el('button', 'px-1 text-slate-400 hover:text-white text-xs font-bold', label);
         btn.title = title;
+        btn.setAttribute('aria-label', `${title}: ${_widgetDisplayTitle(widget)}`);
         if (disabled) {
             btn.disabled = true;
             btn.className += ' opacity-30 cursor-default';
@@ -365,8 +579,8 @@ function _addWidgetControls(card, widget, data, index) {
         return btn;
     };
 
-    bar.appendChild(mkBtn('‹', 'Move left', () => moveWidget(widget.id, -1), index === 0));
-    bar.appendChild(mkBtn('›', 'Move right', () => moveWidget(widget.id, 1),
+    bar.appendChild(mkBtn('‹', 'Move earlier', () => moveWidget(widget.id, -1), index === 0));
+    bar.appendChild(mkBtn('›', 'Move later', () => moveWidget(widget.id, 1),
         index === data.widgets.length - 1));
     bar.appendChild(mkBtn('Edit', 'Edit this widget', () => openWidgetEditor(widget.dashboard_id, widget.id)));
     const del = mkBtn('×', 'Remove this widget', () => deleteWidget(widget.id));
@@ -376,40 +590,60 @@ function _addWidgetControls(card, widget, data, index) {
     card.appendChild(bar);
 }
 
-async function deleteWidget(widgetId) {
-    const widget = getWidgetById(widgetId);
-    if (!widget) return;
-    if (!confirm(`Remove the widget "${widget.title}" from this dashboard?`)) return;
-    try {
-        await api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`);
-    } catch (err) {
-        alert(err.message || 'Could not remove that widget.');
-        return;
+function _renderSavedWidgets(data) {
+    const grid = document.getElementById('widget_grid');
+    const active = document.activeElement;
+    const restoreFocus = active && grid.contains(active);
+    const label = restoreFocus ? active.getAttribute('aria-label') : null;
+    grid.innerHTML = '';
+    if (!data.widgets.length) grid.appendChild(_el('p', 'canvas-empty', 'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
+    data.widgets.forEach((widget, index) => {
+        _disposeWidgetChart(widget.id);
+        const card = renderWidget(widget, data, index);
+        data.cards[widget.id] = card;
+        grid.appendChild(card);
+    });
+    if (restoreFocus) {
+        const buttons = Array.from(grid.querySelectorAll('button:not(:disabled)'));
+        const target = buttons.find(button => button.getAttribute('aria-label') === label) || buttons[0]
+            || document.querySelector('.canvas-actions button');
+        if (target) target.focus();
     }
-    reloadCurrentDashboard();
 }
 
-/**
- * Move a widget one slot left/right by POSTing the whole reordered id list.
- *
- * The endpoint takes a full ordered replacement, not a swap: it rejects an id set that
- * doesn't exactly match the dashboard's widgets, so a stale page can't write a half-order.
- */
+async function deleteWidget(widgetId) {
+    if (dashboardWritePending) return;
+    const data = currentDashboardData;
+    const widget = getWidgetById(widgetId);
+    if (!widget || !confirm(`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`)) return;
+    await _writeDashboard(() => api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`), () => {
+        if (data !== currentDashboardData) {
+            if (currentDashboardId === widget.dashboard_id) return reloadCurrentDashboard();
+            return;
+        }
+        _disposeWidgetChart(widgetId);
+        data.widgets = data.widgets.filter(w => w.id !== widgetId);
+        _renderSavedWidgets(data);
+    }, async () => {});
+}
+
+// Reorder sends the full UUID set; the existing service rejects stale/partial orders.
 async function moveWidget(widgetId, delta) {
-    if (!currentDashboardData) return;
-    const ids = currentDashboardData.widgets.map(w => w.id);
+    if (dashboardWritePending || !currentDashboardData) return;
+    const data = currentDashboardData;
+    const ids = data.widgets.map(w => w.id);
     const from = ids.indexOf(widgetId);
     const to = from + delta;
     if (from < 0 || to < 0 || to >= ids.length) return;
-
     ids.splice(to, 0, ids.splice(from, 1)[0]);
-    try {
-        await api.post(`/api/dashboards/${currentDashboardId}/widgets/reorder`, { widget_ids: ids });
-    } catch (err) {
-        alert(err.message || 'Could not reorder the widgets.');
-        return;
-    }
-    reloadCurrentDashboard();
+    await _writeDashboard(() => api.post(`/api/dashboards/${data.dashboard.id}/widgets/reorder`, { widget_ids: ids }), () => {
+        if (data !== currentDashboardData) {
+            if (currentDashboardId === data.dashboard.id) return reloadCurrentDashboard();
+            return;
+        }
+        data.widgets = ids.map(id => data.widgets.find(w => w.id === id));
+        _renderSavedWidgets(data);
+    }, async () => {});
 }
 
 // ---- Widget renderers ----
@@ -419,12 +653,21 @@ function renderTileWidget(widget, result, data, seed) {
     const format = _unitFormatter(_measureUnit(result));
     const badgeText = (seed && seed.badge) || _tileBadge(result);
 
-    const card = _el('div', 'widget-card flex items-center space-x-4');
-    card.appendChild(_el('div', `p-3 ${accent.badge} border rounded-xl ${accent.text} text-sm font-bold`, badgeText));
+    const card = _el('div', 'widget-card');
+    const content = _el('div', 'widget-tile-content');
+    content.appendChild(_el('span', `widget-tile-label ${accent.text}`, badgeText));
 
     const body = _el('div', 'min-w-0');
-    body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', widget.title));
+    body.appendChild(_el('span', 'text-xs text-slate-400 font-semibold block', _widgetDisplayTitle(widget)));
     body.appendChild(_el('span', `text-2xl font-black ${accent.text}`, format(result.total)));
+    const query = widget.spec?.mode === 'structured' ? widget.spec.query : null;
+    const recordedMeasure = widget.seed_key === 'total_time' ? 'sum_duration'
+        : widget.seed_key === 'total_sessions' ? 'session_count' : null;
+    if (recordedMeasure && query?.source === 'sessions' && query.measure === recordedMeasure &&
+        !query.filters?.length && !query.group_by?.length && (query.date_range?.preset || 'all_time') === 'all_time') {
+        body.appendChild(_el('span', 'text-[11px] text-slate-400 block mt-0.5',
+            'Includes past and future recorded rows, not only performed work.'));
+    }
 
     if (seed && seed.subtitle === 'estimation_ratio') {
         const tracked = _seedTotal(data, 'total_time');
@@ -439,7 +682,8 @@ function renderTileWidget(widget, result, data, seed) {
         body.appendChild(_deltaLine(result, _measureUnit(result)));
     }
 
-    card.appendChild(body);
+    content.appendChild(body);
+    card.appendChild(content);
     return card;
 }
 
@@ -489,7 +733,7 @@ function _deltaLine(result, unit) {
 
 function renderTableWidget(widget, result) {
     const card = _el('div', 'widget-card space-y-2');
-    card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+    card.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
 
     const table = _el('table', 'w-full text-xs text-slate-300');
     const tbody = _el('tbody');
@@ -518,7 +762,7 @@ function renderChartWidget(widget, result, seed) {
 
     const header = _el('div', 'flex justify-between items-center pr-24');
     header.appendChild(_el('h3', 'font-bold text-sm text-slate-200',
-        widget.title + (clickable ? ' (Click to inspect)' : '')));
+        _widgetDisplayTitle(widget) + (clickable ? ' (Click to inspect)' : '')));
 
     if (result.meta.totals_overlap) {
         const note = _el('span', 'text-[10px] text-amber-400 font-semibold', 'Totals overlap');
@@ -527,21 +771,38 @@ function renderChartWidget(widget, result, seed) {
     }
     card.appendChild(header);
 
+    const stackRequested = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
+    const seenCells = new Map();
+    const collision = stackRequested && result.rows.some(row => {
+        if (!seenCells.has(row.keys[0])) seenCells.set(row.keys[0], new Set());
+        const secondaryKeys = seenCells.get(row.keys[0]);
+        if (secondaryKeys.has(row.keys[1])) return true;
+        secondaryKeys.add(row.keys[1]);
+        return false;
+    });
+    if (collision) {
+        // Serialized keys need not uniquely identify authoritative SQL groups (NULL vs empty text).
+        card.appendChild(_el('p', 'text-xs text-[var(--text-main)]',
+            'Repeated group keys: showing each result row as separate bars instead of stacking. Values are unchanged.'));
+    }
+
     const chartWrap = _el('div', 'h-64 relative' + (kind === 'doughnut' ? ' flex items-center justify-center' : ''));
     const canvas = document.createElement('canvas');
     chartWrap.appendChild(canvas);
     card.appendChild(chartWrap);
 
-    const labels = result.rows.map(r => r.labels[0]);
-    const values = result.rows.map(r => r.value || 0);
+    let labels = result.rows.map((r, index) => collision ? `${r.labels.join(' / ')} — row ${index + 1}` : r.labels[0]);
+    const values = result.rows.map(r => collision ? r.value : (r.value || 0));
+    const stacked = stackRequested && !collision;
+    let stackedRows = null;
     const palette = (typeof defaultPalette !== 'undefined' && defaultPalette && defaultPalette.length)
         ? defaultPalette
         : ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
 
     const chartType = kind === 'doughnut' ? 'doughnut' : (kind === 'line' ? 'line' : 'bar');
 
-    const datasets = [{
-        label: widget.title,
+    let datasets = [{
+        label: _widgetDisplayTitle(widget),
         data: values,
         backgroundColor: chartType === 'doughnut' ? palette : (palette[0] || '#8b5cf6'),
         borderColor: chartType === 'line' ? (palette[0] || '#8b5cf6') : undefined,
@@ -554,7 +815,43 @@ function renderChartWidget(widget, result, seed) {
     // Ghost baseline series. Never on a doughnut: two overlaid rings do not read as a
     // comparison, they read as one wrong chart.
     const hasComparison = !!result.comparison && chartType !== 'doughnut';
-    if (hasComparison) {
+    if (stacked) {
+        const primary = new Map();
+        const secondary = new Map();
+        result.rows.forEach(row => {
+            if (!primary.has(row.keys[0])) primary.set(row.keys[0], row.labels[0]);
+            if (!secondary.has(row.keys[1])) secondary.set(row.keys[1], { label: row.labels[1], rows: new Map() });
+            secondary.get(row.keys[1]).rows.set(row.keys[0], row);
+        });
+        labels = Array.from(primary.values());
+        datasets = [];
+        stackedRows = [];
+        Array.from(secondary.values()).forEach((series, index) => {
+            // Pivot authoritative cells, not totals. A missing cell has no value or click target.
+            const rows = Array.from(primary.keys(), key => series.rows.get(key));
+            datasets.push({
+                label: series.label,
+                data: rows.map(row => row ? row.value : null),
+                backgroundColor: palette[index % palette.length],
+                borderRadius: 6,
+                stack: 'primary'
+            });
+            stackedRows.push(rows);
+            if (hasComparison) {
+                datasets.push({
+                    label: `${series.label} — ${result.comparison.label}`,
+                    data: rows.map(row => row?.comparison_value ?? null),
+                    backgroundColor: 'rgba(148, 163, 184, 0.25)',
+                    borderColor: '#94a3b8',
+                    borderDash: [4, 3],
+                    borderRadius: 6,
+                    borderWidth: 1.5,
+                    stack: 'comparison'
+                });
+                stackedRows.push(rows);
+            }
+        });
+    } else if (hasComparison) {
         datasets.push({
             label: result.comparison.label,
             data: result.rows.map(r => (r.comparison_value === null || r.comparison_value === undefined)
@@ -579,17 +876,18 @@ function renderChartWidget(widget, result, seed) {
             maintainAspectRatio: false,
             plugins: {
                 legend: (chartType === 'doughnut')
-                    ? { position: 'right', labels: { color: '#94a3b8', boxWidth: 12 } }
-                    : { display: hasComparison, labels: { color: '#94a3b8', boxWidth: 12 } }
+                    ? { position: 'right', labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
+                    : { display: hasComparison || stacked, labels: { color: chartAppearanceColors().legend, boxWidth: 12 } }
             },
             scales: chartType !== 'doughnut' ? {
-                x: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } },
-                y: { ticks: { color: '#64748b' }, grid: { color: '#1a1c26' } }
+                x: { ...(stacked ? { stacked: true } : {}), ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } },
+                y: { ...(stacked ? { stacked: true } : {}), ticks: { color: chartAppearanceColors().ticks }, grid: { color: chartAppearanceColors().grid } }
             } : undefined,
             onClick: clickable ? (evt, elements) => {
                 if (!elements.length) return;
-                const row = result.rows[elements[0].index];
-                handleWidgetClick(widget.seed_key, row);
+                const { datasetIndex, index } = elements[0];
+                const row = stackedRows ? stackedRows[datasetIndex]?.[index] : result.rows[index];
+                if (row) handleWidgetClick(widget.seed_key, row);
             } : undefined
         }
     });
@@ -607,6 +905,9 @@ function renderSqlWidget(widget, sqlResult) {
     const chart = spec ? (spec.chart || 'table') : 'table';
     const labelColumn = spec ? spec.label_column : null;
     const valueColumn = spec ? spec.value_column : null;
+    const notes = [];
+    if (sqlResult.truncated) notes.push(`Showing the first ${sqlResult.row_count} rows.`);
+    (sqlResult.warnings || []).forEach(w => notes.push(w));
 
     if (chart !== 'table' && labelColumn && valueColumn) {
         const labelIdx = sqlResult.columns.indexOf(labelColumn);
@@ -627,13 +928,15 @@ function renderSqlWidget(widget, sqlResult) {
                 meta: { totals_overlap: false },
                 comparison: null
             };
-            return renderChartWidget(widget, pseudoResult, null);
+            const card = renderChartWidget(widget, pseudoResult, null);
+            if (notes.length) card.appendChild(_el('div', 'text-[10px] text-amber-400', notes.join(' ')));
+            return card;
         }
     }
 
     const card = _el('div', 'widget-card space-y-2');
     const header = _el('div', 'flex justify-between items-center pr-24');
-    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200', widget.title));
+    header.appendChild(_el('h3', 'font-bold text-sm text-slate-200', _widgetDisplayTitle(widget)));
     header.appendChild(_el('span', 'text-[10px] text-slate-500 font-semibold', 'SQL'));
     card.appendChild(header);
 
@@ -668,9 +971,6 @@ function renderSqlWidget(widget, sqlResult) {
     wrap.appendChild(table);
     card.appendChild(wrap);
 
-    const notes = [];
-    if (sqlResult.truncated) notes.push(`Showing the first ${sqlResult.row_count} rows.`);
-    (sqlResult.warnings || []).forEach(w => notes.push(w));
     if (notes.length) card.appendChild(_el('div', 'text-[10px] text-amber-400', notes.join(' ')));
 
     return card;

@@ -1,16 +1,24 @@
 <!-- Zoom-Safe Complete User Preferences Settings Modal -->
-<div id="settings_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+<div id="settings_modal" role="dialog" aria-modal="true" aria-labelledby="settings_modal_heading" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
     <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[480px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
         <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-3">
-            <h3 class="font-bold text-base text-white">TimeTrace User Preferences</h3>
+            <h3 id="settings_modal_heading" class="font-bold text-base text-white">TimeTrace User Preferences</h3>
             <button type="button" onclick="closeSettingsModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
 
         <div class="space-y-3 text-xs">
+            <div class="flex justify-between items-center gap-3">
+                <label for="setting_appearance">Appearance</label>
+                <select id="setting_appearance"><option value="light">Light</option><option value="dark">Dark</option></select>
+            </div>
+            <div class="flex justify-between items-center gap-3">
+                <label for="setting_light_theme">Light treatment</label>
+                <select id="setting_light_theme"><option value="refined">Refined Archive</option><option value="stone">Soft Stone</option><option value="porcelain">Porcelain</option></select>
+            </div>
             <div class="flex justify-between items-center bg-[#0f1016] p-2.5 rounded-lg border border-[var(--border-muted)]">
                 <div>
-                    <label class="font-bold text-slate-200 block">Color Theme</label>
-                    <span class="text-[10px] text-slate-400">Changes UI & dynamic task card palette</span>
+                    <label for="setting_theme" class="font-bold text-slate-200 block">Dark / auto-color palette</label>
+                    <span class="text-[10px] text-slate-400">Existing dark appearance and automatic task colors</span>
                 </div>
                 <select id="setting_theme" class="bg-[#181a28] border border-[var(--border-muted)] text-white px-2 py-1 rounded text-xs focus:outline-none">
                     <option value="midnight">Midnight (Dark Purple)</option>
@@ -137,7 +145,7 @@
                 <label class="font-bold text-purple-300 block">AI Assistant</label>
                 <span class="text-[10px] text-slate-400">Providers, behavior toggles, quick-add fallback</span>
             </div>
-            <a href="/settings/ai" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 py-1 rounded text-xs font-bold transition">
+            <a href="/settings/ai" onclick="return followSettingsLink(event)" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 py-1 rounded text-xs font-bold transition">
                 Open AI Settings
             </a>
         </div>

@@ -10,13 +10,11 @@ need a live connection: a wall-clock deadline (via a progress handler) and a har
 (via an outer LIMIT the user's SQL cannot escape).
 """
 
-import sqlite3
 import time as time_module
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy.exc import DatabaseError, SQLAlchemyError
 from sqlmodel import Session, SQLModel
 
 from timetrace.config import settings
@@ -69,10 +67,11 @@ class SqlQueryService:
         started = time_module.monotonic()
         deadline = started + (settings.sql_query_timeout_ms / 1000.0)
 
-        engine = get_readonly_engine()
-        connection = engine.connect()
+        connection = None
         raw_connection = None
+        failure: Exception | None = None
         try:
+            connection = get_readonly_engine().connect()
             raw_connection = connection.connection.dbapi_connection
 
             def _watchdog() -> int:
@@ -82,12 +81,9 @@ class SqlQueryService:
             if raw_connection is not None:
                 raw_connection.set_progress_handler(_watchdog, _PROGRESS_INSTRUCTIONS)
 
-            try:
-                result = connection.exec_driver_sql(wrapped)
-                columns = list(result.keys())
-                fetched = result.fetchmany(limit + 1)
-            except (DatabaseError, SQLAlchemyError, sqlite3.Error) as exc:
-                raise self._sanitize_error(exc, time_module.monotonic() > deadline) from None
+            result = connection.exec_driver_sql(wrapped)
+            columns = list(result.keys())
+            fetched = result.fetchmany(limit + 1)
 
             truncated = len(fetched) > limit
             if truncated:
@@ -96,7 +92,7 @@ class SqlQueryService:
 
             rows = [[_coerce_cell(cell) for cell in row] for row in fetched]
 
-            return SqlQueryResponse(
+            response = SqlQueryResponse(
                 columns=columns,
                 rows=rows,
                 row_count=len(rows),
@@ -104,16 +100,27 @@ class SqlQueryService:
                 elapsed_ms=int((time_module.monotonic() - started) * 1000),
                 warnings=warnings,
             )
+        except Exception as exc:  # noqa: BLE001 - contain SQL infrastructure failures, not just execution errors
+            failure = exc
         finally:
-            # Clear the handler before the connection goes anywhere else. NullPool means it
-            # is closed rather than reused, but an expired deadline captured in a live
-            # callback is exactly the kind of thing that must not outlive this call.
+            # Always attempt both cleanup steps, including after partial setup. Preserve the
+            # original query failure if teardown also fails; never expose driver text.
             if raw_connection is not None:
                 try:
                     raw_connection.set_progress_handler(None, 0)
-                except Exception:  # noqa: BLE001 - best effort teardown, never masks the result
-                    pass
-            connection.close()
+                except Exception as exc:  # noqa: BLE001 - teardown must not skip closing the connection
+                    if failure is None:
+                        failure = exc
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception as exc:  # noqa: BLE001 - teardown errors need the same safe domain translation
+                    if failure is None:
+                        failure = exc
+
+        if failure is not None:
+            raise self._sanitize_error(failure, time_module.monotonic() > deadline) from None
+        return response
 
     def _sanitize_error(self, exc: Exception, timed_out: bool) -> ValidationError:
         """Turn a driver error into a message safe to show a user.

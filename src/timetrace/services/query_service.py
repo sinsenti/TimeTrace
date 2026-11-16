@@ -137,8 +137,11 @@ def _resolve_date_range(query: AnalyticsQuery, tz: ZoneInfo, first_day_of_week: 
     elif preset == RangePreset.CUSTOM:
         if not dr.start_date or not dr.end_date:
             raise ValidationError("date_range.preset=custom requires both start_date and end_date")
-        start_date = date.fromisoformat(dr.start_date)
-        end_date = date.fromisoformat(dr.end_date)
+        try:
+            start_date = date.fromisoformat(dr.start_date)
+            end_date = date.fromisoformat(dr.end_date)
+        except ValueError as e:
+            raise ValidationError("date_range.start_date and end_date must be valid ISO dates") from e
         if end_date < start_date:
             raise ValidationError("date_range.end_date must not be before start_date")
     else:
@@ -343,6 +346,12 @@ class QueryService:
             # _fill_gaps keys rows by group_by[0] alone, so a second dimension would collapse
             # every (bucket, dim2) row down to one arbitrary survivor per bucket.
             raise ValidationError("fill_gaps on day/week/month doesn't support a second group_by dimension")
+        if (
+            query.fill_gaps
+            and query.group_by[0] in (Dimension.HOUR_OF_DAY, Dimension.WEEKDAY)
+            and len(query.group_by) > 1
+        ):
+            raise ValidationError("fill_gaps on hour_of_day/weekday doesn't support a second group_by dimension")
 
         resolved_range = _resolve_date_range(query, tz, first_day_of_week)
 
@@ -607,8 +616,9 @@ class QueryService:
         return filled
 
     def _reorder_weekday(self, rows: list[QueryRow], first_day_of_week: int, descending: bool) -> list[QueryRow]:
-        by_key = {r.keys[0]: r for r in rows}
         order = [(first_day_of_week + i) % 7 for i in range(7)]
         if descending:
             order = list(reversed(order))
-        return [by_key[str(k)] for k in order if str(k) in by_key]
+        rank = {str(key): index for index, key in enumerate(order)}
+        # Stable sorting retains every secondary group in its existing SQL order.
+        return sorted((row for row in rows if row.keys[0] in rank), key=lambda row: rank[row.keys[0]])

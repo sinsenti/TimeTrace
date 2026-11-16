@@ -1,0 +1,37 @@
+<section id="settings_browser_category" aria-label="Browser preferences">
+    <div id="settings_modal" class="browser-preferences" data-settings-page-editor="true" data-settings-draft-retained="true">
+        <input type="hidden" id="browser_idle_pending" value="">
+        <h1 id="settings_modal_heading">Browser preferences</h1>
+        <p>Saved only in this browser. AI behavior and provider editors save separately.</p>
+        <p>Appearance is manual, never automatic. Explicit task, status and habit colors are preserved.</p>
+        <div class="browser-preference-grid">
+            <label for="setting_appearance">Appearance<select id="setting_appearance"><option value="light">Light</option><option value="dark">Dark</option></select></label>
+            <label for="setting_light_theme">Light treatment<select id="setting_light_theme"><option value="refined">Refined Archive</option><option value="stone">Soft Stone</option><option value="porcelain">Porcelain</option></select></label>
+            <label for="setting_theme">Dark / automatic task-color palette<select id="setting_theme"><option value="midnight">Midnight</option><option value="nord">Nord</option><option value="dracula">Dracula</option><option value="cyberpunk">Cyberpunk</option><option value="monokai">Monokai</option></select></label>
+            <label for="setting_task_view">Preferred Tasks view<select id="setting_task_view"><option value="kanban">Kanban</option><option value="grouped">Grouped list</option><option value="outline">Outline + inspector</option></select></label>
+            <label for="setting_default_view">Starting Calendar view<select id="setting_default_view"><option value="auto">Remember last view</option><option value="timeGridDay">Day</option><option value="timeGridThreeDay">3 day</option><option value="timeGridWeek">Week</option><option value="dayGridMonth">Month</option></select></label>
+            <label for="setting_first_day">First day of week<select id="setting_first_day"><option value="1">Monday</option><option value="0">Sunday</option></select></label>
+            <label for="setting_slot_duration">Calendar slot / default session duration<select id="setting_slot_duration"><option value="auto">Remember last slot</option><option value="15">15 minutes</option><option value="30">30 minutes</option><option value="45">45 minutes</option><option value="60">60 minutes</option></select></label>
+            <label for="setting_calendar_density">Calendar density<select id="setting_calendar_density"><option value="56">Compact — 56 px/hour</option><option value="72">Comfortable — 72 px/hour</option><option value="88">Spacious — 88 px/hour</option></select></label>
+            <label for="setting_hide_left_sidebar">Tasks sidebar<select id="setting_hide_left_sidebar"><option value="auto">Remember last visibility</option><option value="false">Always show</option><option value="true">Always hide</option></select></label>
+            <label for="setting_hide_right_sidebar">Range Totals sidebar<select id="setting_hide_right_sidebar"><option value="auto">Use remembered Totals visibility</option><option value="false">Always show</option><option value="true">Always hide</option></select></label>
+            <label class="browser-check"><input type="checkbox" id="setting_enable_vim"><span>Enable Vim keyboard shortcuts</span></label>
+            <label class="browser-check"><input type="checkbox" id="setting_enable_session_review"><span>Show Session Review in Revision</span></label>
+            <label class="browser-check"><input type="checkbox" id="setting_idle_detector"><span>Enable inactivity detection (also updates this daemon)</span></label>
+            <label class="browser-check"><input type="checkbox" id="setting_auto_scroll"><span>Scroll Calendar to the current hour on load</span></label>
+            <label class="browser-check"><input type="checkbox" id="setting_totals_visible"><span>Remember Totals as visible</span></label>
+        </div>
+        <p>Grouped list and Outline are retained choices; their page adoption is a separate rollout.</p>
+        <p>Slot interval also sets the default session duration. Remembered view, slot and sidebar sizes stay intact.</p>
+        <div class="browser-actions">
+            <button type="button" id="browser_reshuffle">Reshuffle automatic task colors now</button>
+            <span id="reshuffle_status_msg" role="status"></span>
+        </div>
+        <p>Reshuffle changes only the color seed immediately; it does not save this form.</p>
+        <div class="browser-actions">
+            <button type="button" id="browser_cancel">Cancel changes</button>
+            <button type="button" id="browser_save">Save browser preferences</button>
+        </div>
+        <p id="browser_save_status" role="status" aria-live="polite"></p>
+    </div>
+</section>

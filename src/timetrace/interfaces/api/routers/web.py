@@ -4,6 +4,8 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import FileResponse
 from fastapi.templating import Jinja2Templates
 
+from timetrace.core.dashboard_seeds import PERFORMED_TIME_PRESET
+
 router = APIRouter(tags=["Web Pages"])
 BASE_DIR = os.path.dirname(os.path.dirname(__file__))
 TEMPLATES_DIR = os.path.join(BASE_DIR, "templates")
@@ -47,7 +49,14 @@ def get_stats_dashboard(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="stats.html",
-        context={"active_page": "stats"}
+        context={
+            "active_page": "stats",
+            "performed_time_preset": {
+                "title": PERFORMED_TIME_PRESET.title,
+                "width": PERFORMED_TIME_PRESET.width,
+                "query": PERFORMED_TIME_PRESET.query.model_dump(mode="json"),
+            },
+        },
     )
 
 
@@ -69,12 +78,16 @@ def get_revision_dashboard(request: Request):
     )
 
 
+@router.get("/settings")
 @router.get("/settings/ai")
 def get_ai_settings_page(request: Request):
     return templates.TemplateResponse(
         request=request,
         name="ai_settings.html",
-        context={"active_page": "settings_ai"}
+        context={
+            "active_page": "settings_ai",
+            "settings_category": "ai" if request.url.path == "/settings/ai" else "browser",
+        },
     )
 
 

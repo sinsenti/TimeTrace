@@ -59,11 +59,14 @@ class ActiveTimerState:
             self.is_frozen_idle = raw.get("is_frozen_idle", False)
             self.pending_idle_gap = raw.get("pending_idle_gap")
 
-            if raw.get("is_running") and raw.get("start_time"):
-                self.is_running = True
+            running = bool(raw.get("is_running") and raw.get("start_time"))
+            if running or self.is_frozen_idle:
+                # Frozen context is persisted too; restoring it must not resume the clock.
+                self.is_running = running
                 self.task_id = raw.get("task_id")
                 self.task_title = raw.get("task_title")
-                self.start_time = ensure_utc(datetime.fromisoformat(raw["start_time"]))
+                if raw.get("start_time"):
+                    self.start_time = ensure_utc(datetime.fromisoformat(raw["start_time"]))
                 self.tags = raw.get("tags", "")
                 self.notes = raw.get("notes", "")
                 self.mode = raw.get("mode", "flowtime")
@@ -145,9 +148,7 @@ class ActiveTimerState:
         target_minutes: int | None = None,
     ) -> dict[str, Any]:
         if self.is_running:
-            raise ValueError(
-                "Timer is already running. Stop or split current timer first."
-            )
+            raise ValueError("Timer is already running. Stop or split current timer first.")
         self.is_running = True
         self.is_frozen_idle = False
         self.pending_idle_gap = None
@@ -229,6 +230,7 @@ class ActiveTimerState:
             "tags": self.tags,
             "notes": self.notes,
             "mode": self.mode,
+            "target_minutes": self.target_minutes,
         }
 
         if not self.is_running or not self.start_time:
@@ -241,12 +243,14 @@ class ActiveTimerState:
             target_secs = self.target_minutes * 60
             remaining = max(0, target_secs - elapsed)
 
-        status_data.update({
-            "elapsed_seconds": elapsed,
-            "remaining_seconds": remaining,
-            "start_time": start_utc.isoformat(),
-            "target_minutes": self.target_minutes,
-        })
+        status_data.update(
+            {
+                "elapsed_seconds": elapsed,
+                "remaining_seconds": remaining,
+                "start_time": start_utc.isoformat(),
+                "target_minutes": self.target_minutes,
+            }
+        )
         return status_data
 
 

@@ -1,0 +1,9 @@
+# Ticket 25 dark filter contrast repair
+
+This narrow repair uses `--text-main` only for the Advanced Task Filter close glyph and the Calendar status-tab description, feedback, and close glyph. Nord modal surfaces, controls, task colors, theme settings, and saved data remain unchanged. The close glyphs receive a consistent readable foreground; the 4.5:1 check in the probe is an internal conservative regression target for every sampled item, not a claim that WCAG requires that ratio for non-text icons.
+
+The browser probe in `tests/browser_filters_task_tabs.js` keeps its existing full acceptance callable and adds `runDarkFilterContrastAcceptance(page, baseURL, {surface, width, treatment})`. It captures one cell per call: `calendar-filter`, `tasks-filter`, or `calendar-tabs`; width 390 or 1440; treatment `refined`, `stone`, `porcelain`, or Dark Nord (`nord`). The wrapper owns the 24-cell matrix and persists raw JSON plus screenshots before checking results. Each returned sample includes computed foreground, ancestor-composited background, ratio, viewport/clipped geometry, visibility, and ancestor colors/opacities. Feedback is observed through the existing status-loading path; no synthetic text is injected. This scoped matrix does not certify the whole app or all accessibility states.
+
+## Verification status
+
+The implementation author did not run a browser probe. The prepared wrapper will run the isolated 24-cell capture after source review. Verification completed: `UV_CACHE_DIR=/tmp/uv-cache-ticket25 uv run python -P -m pytest -q` passed (613 passed); `node --test tests/*.cjs` passed (788 passed); `node --check tests/browser_filters_task_tabs.js`, the probe-export check, and `git diff --check` passed. `uv run ruff check .` reports 18 existing violations in unchanged migration, CLI, and analytics-service files; its diagnostics match the e636 integration baseline byte-for-byte. No Python file changed in this repair.

@@ -1,34 +1,32 @@
-<div id="custom_filter_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
+<div id="custom_filter_modal" role="dialog" aria-modal="true" aria-labelledby="custom_filter_title" tabindex="-1" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50 p-4">
     <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-full max-w-[450px] max-h-[95vh] overflow-y-auto rounded-xl p-5 shadow-2xl space-y-4 text-white">
         <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
             <div class="flex items-center space-x-2">
-                <h3 class="font-bold text-base text-white">Advanced Task Filter & Search</h3>
+                <h3 id="custom_filter_title" class="font-bold text-base text-white">Advanced Task Filter & Search</h3>
             </div>
-            <button onclick="closeCustomFilterModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+            <button type="button" aria-label="Close advanced task filters" onclick="closeCustomFilterModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
 
+        <p id="filter_persistence_feedback" role="status"></p>
+        <p id="filter_status_feedback" role="status"></p>
+        <button id="filter_status_retry" type="button" class="hidden" onclick="refreshCustomFilterStatuses()">Retry loading statuses</button>
         <div class="space-y-3 text-xs">
             <div>
-                <label class="text-slate-400 block mb-1 font-semibold">Title or Description Search</label>
+                <label for="filter_input_query" class="text-slate-400 block mb-1 font-semibold">Title, description or tags</label>
                 <input id="filter_input_query" type="text" placeholder="Search keywords..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
 
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Status Column</label>
+                    <label for="filter_input_status" class="text-slate-400 block mb-1 font-semibold">Status Column</label>
                     <select id="filter_input_status" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="all">All Statuses</option>
                         <option value="hide_completed">Active (Hide Completed)</option>
-                        <option value="To Do">To Do</option>
-                        <option value="Ongoing">Ongoing</option>
-                        <option value="Scheduled">Scheduled</option>
-                        <option value="Done">Done</option>
-                        <option value="Backlog">Backlog</option>
                     </select>
                 </div>
 
                 <div>
-                    <label class="text-slate-400 block mb-1 font-semibold">Category</label>
+                    <label for="filter_input_category" class="text-slate-400 block mb-1 font-semibold">Category</label>
                     <select id="filter_input_category" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="all">All Categories</option>
                         <option value="work">work</option>
@@ -40,7 +38,7 @@
             </div>
 
             <div>
-                <label class="text-slate-400 block mb-1 font-semibold">Time Estimation Condition</label>
+                <label for="filter_input_est_op" class="text-slate-400 block mb-1 font-semibold">Time Estimation Condition</label>
                 <div class="grid grid-cols-2 gap-2">
                     <select id="filter_input_est_op" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="">Any Duration</option>
@@ -49,7 +47,7 @@
                         <option value="eq">Equal (=)</option>
                         <option value="gte">Greater or equal (&ge;)</option>
                     </select>
-                    <select id="filter_input_est_mins" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                    <select aria-label="Estimated minutes" id="filter_input_est_mins" class="bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                         <option value="15">15 mins</option>
                         <option value="30" selected>30 mins</option>
                         <option value="45">45 mins</option>
@@ -61,7 +59,7 @@
             </div>
 
             <div>
-                <label class="text-slate-400 block mb-1 font-semibold">Priority</label>
+                <label for="filter_input_priority" class="text-slate-400 block mb-1 font-semibold">Priority</label>
                 <select id="filter_input_priority" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
                     <option value="all">Any Priority</option>
                     <option value="high">High</option>

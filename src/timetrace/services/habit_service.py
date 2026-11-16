@@ -422,7 +422,9 @@ class HabitService:
             log.value = max(0.0, log.value + req.delta_value)
 
         if db_habit.habit_type == "numeric":
-            if log.value >= db_habit.target_value:
+            if log.value == 0:
+                log.status = "pending"
+            elif log.value >= db_habit.target_value:
                 log.status = "completed"
             elif log.value > 0:
                 log.status = "in_progress"

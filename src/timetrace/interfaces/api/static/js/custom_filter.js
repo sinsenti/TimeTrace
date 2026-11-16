@@ -18,186 +18,193 @@ function getStatusFilterStorageKey() {
     return `${getStoragePrefix()}_status_filter`;
 }
 
+let filterPersistenceWarning = '';
+let filterModalVersion = 0;
+let filterLauncher = null;
 let activeCustomFilter = loadSavedCustomFilter();
 
-function loadSavedCustomFilter() {
-    try {
-        const savedCustom = localStorage.getItem(getCustomFilterStorageKey());
-        const savedStatus = localStorage.getItem(getStatusFilterStorageKey());
-        
-        let filterState = {
-            status: savedStatus || 'all',
-            category: 'all',
-            estOp: '',
-            estMins: 30,
-            query: '',
-            priority: 'all',
-            isActive: Boolean(savedStatus && savedStatus !== 'all')
-        };
-
-        if (savedCustom) {
-            const parsed = JSON.parse(savedCustom);
-            filterState.status = parsed.status || savedStatus || 'all';
-            filterState.category = parsed.category || 'all';
-            filterState.estOp = parsed.estOp || '';
-            filterState.estMins = parsed.estMins || 30;
-            filterState.query = parsed.query || '';
-            filterState.priority = parsed.priority || 'all';
-            filterState.isActive = Boolean(
-                filterState.query || 
-                filterState.status !== 'all' || 
-                filterState.category !== 'all' || 
-                filterState.estOp || 
-                filterState.priority !== 'all'
-            );
-        } else if (savedStatus) {
-            filterState.status = savedStatus;
-            filterState.isActive = savedStatus !== 'all';
-        }
-
-        return filterState;
-    } catch (e) {
-        console.error("Error loading saved custom filter:", e);
-    }
-    return {
-        status: 'all',
-        category: 'all',
-        estOp: '',
-        estMins: 30,
-        query: '',
-        priority: 'all',
-        isActive: false
+function normalizeCustomFilter(value, legacyStatus = 'all') {
+    const saved = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const string = (key, fallback) => typeof saved[key] === 'string' ? saved[key] : fallback;
+    const state = {
+        status: string('status', legacyStatus) || 'all',
+        category: string('category', 'all') || 'all',
+        query: string('query', '').trim().toLowerCase(),
+        estOp: ['', 'lt', 'lte', 'eq', 'gte'].includes(saved.estOp) ? saved.estOp : '',
+        estMins: typeof saved.estMins === 'number' && Number.isFinite(saved.estMins) && saved.estMins > 0 ? saved.estMins : 30,
+        priority: ['all', 'high', 'medium', 'low', '-'].includes(saved.priority) ? saved.priority : 'all'
     };
+    state.isActive = Boolean(state.query || state.status !== 'all' || state.category !== 'all' || state.estOp || state.priority !== 'all');
+    return state;
+}
+
+function loadSavedCustomFilter() {
+    let status = 'all';
+    let saved = null;
+    try { status = localStorage.getItem(getStatusFilterStorageKey()) || 'all'; }
+    catch { filterPersistenceWarning = 'Browser storage is unavailable. Filters work for this visit.'; }
+    try { saved = JSON.parse(localStorage.getItem(getCustomFilterStorageKey())); }
+    catch { /* A damaged custom payload must not discard the independently saved status. */ }
+    return normalizeCustomFilter(saved, status);
 }
 
 function saveCustomFilterState() {
     try {
         localStorage.setItem(getCustomFilterStorageKey(), JSON.stringify(activeCustomFilter));
-        localStorage.setItem(getStatusFilterStorageKey(), activeCustomFilter.status || 'all');
-    } catch (e) {
-        console.error("Error saving custom filter state:", e);
+        localStorage.setItem(getStatusFilterStorageKey(), activeCustomFilter.status);
+        filterPersistenceWarning = '';
+    } catch {
+        filterPersistenceWarning = 'Could not save in this browser. Filters apply for this visit only.';
     }
+    updateFilterPersistenceFeedback();
 }
 
-window.addEventListener('keydown', function(e) {
+function updateFilterPersistenceFeedback() {
+    const feedback = document.getElementById('filter_persistence_feedback');
+    if (feedback) feedback.textContent = filterPersistenceWarning;
+    document.querySelectorAll('.custom-filter-trigger-btn').forEach(button => {
+        button.title = filterPersistenceWarning || 'Advanced task filters';
+    });
+}
+
+function customFilterOwnsKeyboard() {
     const modal = document.getElementById('custom_filter_modal');
-    if (modal && !modal.classList.contains('hidden')) {
-        if (e.ctrlKey && e.key === 'Enter') {
-            e.preventDefault();
-            e.stopPropagation();
-            applyCustomFilterFromModal();
-        } else if (e.key === 'Escape' || e.key === 'Esc') {
-            e.preventDefault();
-            e.stopPropagation();
-            closeCustomFilterModal();
+    if (!modal || modal.classList.contains('hidden')) return false;
+    const assistant = document.getElementById('ai_drawer');
+    if (assistant?.classList.contains('ai-drawer-open') && assistant.contains(document.activeElement)) return false;
+    const dialogs = Array.from(document.querySelectorAll('[role="dialog"]')).filter(dialog =>
+        dialog !== modal && !dialog.classList.contains('hidden') && dialog.getAttribute?.('aria-hidden') !== 'true');
+    return !dialogs.some(dialog => dialog.contains(document.activeElement));
+}
+
+window.addEventListener('keydown', function(event) {
+    if (event.defaultPrevented || !customFilterOwnsKeyboard()) return;
+    if (event.key === 'Tab') {
+        const modal = document.getElementById('custom_filter_modal');
+        const controls = Array.from(modal.querySelectorAll?.('button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]') || [])
+            .filter(control => !control.classList.contains('hidden'));
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (first && event.shiftKey && document.activeElement === first) {
+            event.preventDefault(); last.focus();
+        } else if (last && !event.shiftKey && document.activeElement === last) {
+            event.preventDefault(); first.focus();
         }
+    }
+    if ((event.ctrlKey && event.key === 'Enter') || event.key === 'Escape' || event.key === 'Esc') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (event.ctrlKey && event.key === 'Enter') applyCustomFilterFromModal();
+        else closeCustomFilterModal();
     }
 }, true);
 
-document.addEventListener('DOMContentLoaded', () => {
-    updateFilterButtonIndicators();
-});
+document.addEventListener('DOMContentLoaded', updateFilterButtonIndicators);
+
+function ensureFilterOption(select, value, label = value) {
+    if (!select) return;
+    if (!Array.from(select.options).some(option => option.value === String(value))) {
+        const option = document.createElement('option');
+        option.value = String(value);
+        option.textContent = label;
+        select.appendChild(option);
+    }
+    select.value = String(value);
+}
+
+function filterStatusFeedback(message, retry = false) {
+    const feedback = document.getElementById('filter_status_feedback');
+    if (feedback) feedback.textContent = message;
+    document.getElementById('filter_status_retry')?.classList.toggle('hidden', !retry);
+}
+
+async function refreshCustomFilterStatuses(version = filterModalVersion) {
+    const modal = document.getElementById('custom_filter_modal');
+    const select = document.getElementById('filter_input_status');
+    if (!modal || !select || modal.classList.contains('hidden')) return;
+    const request = ++refreshCustomFilterStatuses.request;
+    filterStatusFeedback('Loading statuses…');
+    try {
+        const statuses = await api.get('/api/tasks/statuses');
+        if (version !== filterModalVersion || request !== refreshCustomFilterStatuses.request || modal.classList.contains('hidden')) return;
+        if (!Array.isArray(statuses)) throw new Error('Status list unavailable');
+        const chosen = select.value;
+        select.replaceChildren();
+        ensureFilterOption(select, 'all', 'All Statuses');
+        ensureFilterOption(select, 'hide_completed', 'Active (Hide Completed)');
+        for (const status of statuses) {
+            if (status && typeof status.name === 'string') ensureFilterOption(select, status.name);
+        }
+        ensureFilterOption(select, chosen, `${chosen} (unavailable)`);
+        filterStatusFeedback('');
+    } catch {
+        if (version !== filterModalVersion || request !== refreshCustomFilterStatuses.request || modal.classList.contains('hidden')) return;
+        filterStatusFeedback('Could not load current statuses. Saved choices remain available.', true);
+    }
+}
+refreshCustomFilterStatuses.request = 0;
 
 function openCustomFilterModal() {
-    const queryInput = document.getElementById('filter_input_query');
-    if (queryInput) queryInput.value = activeCustomFilter.query || '';
-
-    const statusSelect = document.getElementById('filter_input_status');
-    if (statusSelect) {
-        statusSelect.value = activeCustomFilter.status || 'all';
-    }
-
-    const catSelect = document.getElementById('filter_input_category');
-    if (catSelect) {
-        catSelect.value = activeCustomFilter.category || 'all';
-    }
-
-    const opSelect = document.getElementById('filter_input_est_op');
-    if (opSelect) opSelect.value = activeCustomFilter.estOp || '';
-
-    const minsSelect = document.getElementById('filter_input_est_mins');
-    if (minsSelect) minsSelect.value = String(activeCustomFilter.estMins || 30);
-
-    const prioSelect = document.getElementById('filter_input_priority');
-    if (prioSelect) prioSelect.value = activeCustomFilter.priority || 'all';
-
     const modal = document.getElementById('custom_filter_modal');
-    if (modal) {
-        modal.classList.remove('hidden');
-        setTimeout(() => {
-            if (queryInput) {
-                queryInput.focus();
-                queryInput.select();
-            }
-        }, 50);
+    if (!modal) return;
+    const version = ++filterModalVersion;
+    filterLauncher = document.activeElement;
+    const fields = {query: 'query', status: 'status', category: 'category', est_op: 'estOp', est_mins: 'estMins', priority: 'priority'};
+    for (const [id, key] of Object.entries(fields)) {
+        const input = document.getElementById(`filter_input_${id}`);
+        if (!input) continue;
+        if (['status', 'category', 'est_mins'].includes(id)) {
+            ensureFilterOption(input, activeCustomFilter[key], id === 'status' ? `${activeCustomFilter[key]} (unavailable)` : String(activeCustomFilter[key]));
+        } else input.value = activeCustomFilter[key];
     }
+    modal.classList.remove('hidden');
+    updateFilterPersistenceFeedback();
+    document.getElementById('filter_input_query')?.focus();
+    refreshCustomFilterStatuses(version);
 }
 
 function closeCustomFilterModal() {
     const modal = document.getElementById('custom_filter_modal');
-    if (modal) modal.classList.add('hidden');
+    const ownedFocus = modal?.contains(document.activeElement);
+    ++filterModalVersion;
+    modal?.classList.add('hidden');
+    if (ownedFocus) {
+        const target = filterLauncher?.isConnected ? filterLauncher : Array.from(document.querySelectorAll('.custom-filter-trigger-btn')).find(button => button.isConnected);
+        target?.focus();
+    }
+}
+
+function refreshCustomFilterViews() {
+    updateFilterButtonIndicators();
+    closeCustomFilterModal();
+    if (typeof renderDynamicStatusTabs === 'function') renderDynamicStatusTabs();
+    if (typeof fetchTasks === 'function') fetchTasks();
+    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
 }
 
 function applyCustomFilterFromModal() {
-    const query = document.getElementById('filter_input_query') ? document.getElementById('filter_input_query').value.trim().toLowerCase() : '';
-    const status = document.getElementById('filter_input_status') ? document.getElementById('filter_input_status').value : 'all';
-    const category = document.getElementById('filter_input_category') ? document.getElementById('filter_input_category').value : 'all';
-    const estOp = document.getElementById('filter_input_est_op') ? document.getElementById('filter_input_est_op').value : '';
-    const estMins = document.getElementById('filter_input_est_mins') ? parseInt(document.getElementById('filter_input_est_mins').value) || 30 : 30;
-    const priority = document.getElementById('filter_input_priority') ? document.getElementById('filter_input_priority').value : 'all';
-
-    activeCustomFilter = {
-        query,
-        status,
-        category,
-        estOp,
-        estMins,
-        priority,
-        isActive: Boolean(query || status !== 'all' || category !== 'all' || estOp || priority !== 'all')
-    };
-
+    const value = id => document.getElementById(`filter_input_${id}`)?.value;
+    activeCustomFilter = normalizeCustomFilter({
+        query: value('query'), status: value('status'), category: value('category'),
+        estOp: value('est_op'), estMins: Number(value('est_mins')), priority: value('priority')
+    });
     saveCustomFilterState();
-
-    updateFilterButtonIndicators();
-    closeCustomFilterModal();
-
-    if (typeof renderDynamicStatusTabs === 'function') renderDynamicStatusTabs();
-    if (typeof fetchTasks === 'function') fetchTasks();
-    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+    refreshCustomFilterViews();
 }
 
 function clearCustomFilter() {
-    activeCustomFilter = {
-        status: 'all',
-        category: 'all',
-        estOp: '',
-        estMins: 30,
-        query: '',
-        priority: 'all',
-        isActive: false
-    };
-
+    activeCustomFilter = normalizeCustomFilter(null);
     saveCustomFilterState();
-
-    updateFilterButtonIndicators();
-    closeCustomFilterModal();
-
-    if (typeof renderDynamicStatusTabs === 'function') renderDynamicStatusTabs();
-    if (typeof fetchTasks === 'function') fetchTasks();
-    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
+    refreshCustomFilterViews();
 }
 
 function updateFilterButtonIndicators() {
-    const btns = document.querySelectorAll('.custom-filter-trigger-btn');
-    btns.forEach(btn => {
-        if (activeCustomFilter.isActive) {
-            btn.innerHTML = `Filter <span class="bg-purple-400 text-black px-1 rounded font-black text-[9px] ml-1">ON</span>`;
-            btn.className = "custom-filter-trigger-btn h-8 bg-purple-900/80 hover:bg-purple-800 text-purple-200 border border-purple-600 px-3 rounded-lg font-bold transition text-xs flex items-center shrink-0 whitespace-nowrap";
-        } else {
-            btn.innerHTML = `Filter`;
-            btn.className = "custom-filter-trigger-btn h-8 bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] px-3 rounded-lg font-bold transition text-xs flex items-center shrink-0 whitespace-nowrap";
-        }
+    document.querySelectorAll('.custom-filter-trigger-btn').forEach(button => {
+        button.textContent = activeCustomFilter.isActive ? 'Filter · ON' : 'Filter';
+        button.classList.toggle('task-filter-active', activeCustomFilter.isActive);
+        button.setAttribute('aria-label', activeCustomFilter.isActive ? 'Advanced task filters, active' : 'Advanced task filters');
     });
+    updateFilterPersistenceFeedback();
 }
 
 function matchesCustomFilter(task) {

@@ -2,6 +2,65 @@
  * FullCalendar Engine & View Event Handlers
  */
 
+let restoringCalendarContext = false;
+
+function syncCalendarContext(replace = false) {
+    if (restoringCalendarContext || typeof calendar === 'undefined' || !calendar || !window.location?.href) return;
+    const url = new URL(window.location.href);
+    const date = calendar.getDate();
+    const localDay = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+    url.searchParams.set('date', localDay);
+    url.searchParams.set('view', calendar.view.type);
+    url.searchParams.delete('tag');
+    url.searchParams.delete('task');
+    if (typeof breakdownFilter !== 'undefined' && breakdownFilter) {
+        url.searchParams.set(breakdownFilter.type, breakdownFilter.value);
+    }
+    if (url.href !== window.location.href) {
+        if (replace) history.replaceState(null, '', url);
+        else history.pushState(null, '', url);
+    }
+}
+
+function restoreCalendarContext() {
+    if (typeof calendar === 'undefined' || !calendar) return;
+    const params = new URLSearchParams(window.location.search);
+    const tag = params.get('tag');
+    const task = params.get('task');
+    breakdownFilter = tag ? { type: 'tag', value: tag } : task ? { type: 'task', value: task } : null;
+    const settings = getUserSettings();
+    const view = params.get('view');
+    const validView = SUPPORTED_CALENDAR_VIEWS.includes(view);
+    restoringCalendarContext = true;
+    try {
+        calendar.changeView(validView ? view : settings.lastSelectedView, params.get('date') || undefined);
+        renderBreakdownLists();
+        renderBreakdownFilterChip();
+        calendar.refetchEvents();
+    } finally {
+        restoringCalendarContext = false;
+    }
+}
+
+function createPlanningSession(taskId = null) {
+    if (!calendar) return;
+    const date = new Date(calendar.getDate());
+    const now = new Date();
+    date.setHours(now.getHours(), Math.floor(now.getMinutes() / 15) * 15, 0, 0);
+    openCreateSessionModal(date, null, taskId);
+}
+
+function filterPlanningTasks(query) {
+    const text = query.trim().toLocaleLowerCase();
+    let visible = 0;
+    document.querySelectorAll('#task_card_list .task-card').forEach(card => {
+        card.hidden = !card.dataset.taskTitle.toLocaleLowerCase().includes(text);
+        if (!card.hidden) visible++;
+    });
+    const count = document.getElementById('selected_tasks_count');
+    if (count) count.textContent = text && !visible ? 'No matching tasks' : `${visible} task${visible === 1 ? '' : 's'}`;
+}
+
 function switchView(viewName) {
     if (!calendar) return;
     calendar.changeView(viewName);
@@ -28,6 +87,9 @@ function updateViewButtons(activeViewType) {
     if (btnThreeDay) btnThreeDay.className = (activeViewType === 'timeGridThreeDay') ? activeClass : inactiveClass;
     if (btnWeek) btnWeek.className = (activeViewType === 'timeGridWeek') ? activeClass : inactiveClass;
     if (btnMonth) btnMonth.className = (activeViewType === 'dayGridMonth') ? activeClass : inactiveClass;
+    for (const [button, view] of [[btnDay, 'timeGridDay'], [btnThreeDay, 'timeGridThreeDay'], [btnWeek, 'timeGridWeek'], [btnMonth, 'dayGridMonth']]) {
+        if (button) button.setAttribute('aria-pressed', String(view === activeViewType));
+    }
 }
 
 function navigateCalendarPrev() {
@@ -161,21 +223,17 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
         return;
     }
 
-    // A materialized occurrence, or a whole-series duration change, alters what the server would
-    // project for this window -- reload the range instead of patching one event locally.
+    // Commit the returned identity before fallible range reads or a second user gesture.
+    rememberSavedSession(updatedSession, event.id, event);
     if (wasVirtual || scope === 'all_future') {
-        if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
-        if (typeof fetchTasks === 'function') fetchTasks();
-        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-        return;
+        await refreshSessionDisplay();
+    } else {
+        try {
+            if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        } catch (err) {
+            taskKnowledge.viewResult('calendar', false);
+        }
     }
-
-    if (updatedSession && typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-        const idx = allSessions.findIndex(s => String(s.id) === String(event.id));
-        if (idx !== -1) allSessions[idx] = updatedSession;
-    }
-
-    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
 }
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
@@ -200,5 +258,35 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     } catch (err) {
         if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('calendar', false);
         failureCallback(err);
+    }
+}
+
+function rememberSavedSession(savedSession, previousId, event = null) {
+    if (!savedSession) return;
+    if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
+        const idx = allSessions.findIndex(s => String(s.id) === String(previousId));
+        if (idx !== -1) allSessions[idx] = savedSession;
+        else allSessions.push(savedSession);
+    }
+    taskKnowledge.invalidate();
+    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) {
+        event = calendar.getEventById(String(previousId));
+    }
+    if (event && String(event.id) !== String(savedSession.id)) {
+        event.setProp?.('id', String(savedSession.id));
+        event.setExtendedProp?.('isVirtual', false);
+        event.setProp?.('classNames', []);
+    }
+}
+
+// Refresh-only recovery uses the shared notice; it must never replay a session mutation.
+async function refreshSessionDisplay() {
+    try {
+        await taskKnowledge.refresh();
+        if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
+        if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
+    } catch (err) {
+        console.error('Session saved, but display refresh failed:', err);
+        taskKnowledge.viewResult('calendar', false);
     }
 }

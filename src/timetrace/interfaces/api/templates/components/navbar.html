@@ -1,22 +1,28 @@
-<div class="flex items-center space-x-3 shrink-0">
-    <span class="text-base font-black text-purple-400 tracking-wider">TimeTrace</span>
-    <nav class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
-        <a href="/dashboard" class="h-6 px-2.5 rounded {% if active_page == 'dashboard' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-slate-300 font-semibold{% endif %} flex items-center text-[11px]">Calendar</a>
-        <a href="/tasks" class="h-6 px-2.5 rounded {% if active_page == 'tasks' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-purple-300 font-semibold{% endif %} flex items-center text-[11px]">Tasks</a>
-        <a href="/habits-view" class="h-6 px-2.5 rounded {% if active_page == 'habits' %}bg-emerald-600 text-white font-bold{% else %}hover:bg-[#222536] text-emerald-400 font-semibold{% endif %} flex items-center text-[11px]">Habits</a>
-        <a href="/stats" class="h-6 px-2.5 rounded {% if active_page == 'stats' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-purple-300 font-semibold{% endif %} flex items-center text-[11px]">Stats</a>
-        <a href="/revision#overview" class="h-6 px-2.5 rounded {% if active_page == 'revision' %}bg-purple-600 text-white font-bold{% else %}hover:bg-[#222536] text-purple-300 font-semibold{% endif %} flex items-center text-[11px]">Revision</a>
+<div class="app-navigation">
+    <a href="/dashboard" class="app-brand">TimeTrace</a>
+    <nav aria-label="Main navigation">
+        {% for page, path, label in [('dashboard', '/dashboard', 'Calendar'), ('tasks', '/tasks', 'Tasks'), ('stats', '/stats', 'Statistics'), ('habits', '/habits-view', 'Habits'), ('revision', '/revision', 'Revision'), ('settings_ai', '/settings', 'Settings')] %}
+        <a href="{{ path }}" {% if page == 'settings_ai' %}onclick="return followSettingsLink(event)"{% endif %} {% if active_page == page %}aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
     </nav>
-    <button onclick="openSettingsModal()" class="h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-slate-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
-        Settings
-    </button>
-    <button type="button" id="ai_launcher_btn" title="AI Assistant (Ctrl+Shift+A)" class="ai-launcher-btn h-8 px-2.5 rounded-lg bg-[#181a28] hover:bg-[#222536] text-purple-300 border border-[var(--border-muted)] font-bold flex items-center text-[11px]">
-        Assistant
-        <span id="ai_launcher_badge" class="ai-launcher-badge hidden">0</span>
+    <div class="appearance-controls" role="group" aria-label="Appearance">
+        <select id="appearance_light_theme" aria-label="Light theme" onchange="setAppearancePreference('lightTheme', this.value)">
+            <option value="refined">Refined Archive</option>
+            <option value="stone">Soft Stone</option>
+            <option value="porcelain">Porcelain</option>
+        </select>
+        <button type="button" id="appearance_toggle" onclick="setAppearancePreference('appearance', getUserSettings().appearance === 'light' ? 'dark' : 'light')">Dark</button>
+    </div>
+    <button type="button" onclick="openSettingsModal()">Preferences</button>
+    <button type="button" id="ai_launcher_btn" title="AI Assistant (Ctrl+Shift+A)" class="ai-launcher-btn">
+        Assistant <span id="ai_launcher_badge" class="ai-launcher-badge hidden">0</span>
     </button>
     {% if active_page == 'dashboard' %}
-    <span id="vim_mode_indicator" class="h-8 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-800 text-slate-400 border border-slate-700 flex items-center justify-center whitespace-nowrap">
-        -- NORMAL --
-    </span>
+    <span id="vim_mode_indicator" class="vim-mode-indicator" role="status" aria-live="polite" aria-label="Vim keyboard mode">-- NORMAL --</span>
     {% endif %}
 </div>
+<link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
+{% include "components/idle_resolution_modal.html" %}
+{% if active_page == 'settings_ai' or (active_page == 'tasks' and task_id is not defined) %}
+<script defer src="/static/js/timer_control.js"></script>
+{% endif %}

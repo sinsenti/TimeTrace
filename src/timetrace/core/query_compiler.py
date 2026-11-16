@@ -201,7 +201,8 @@ def _build_filter_clause(
                 if predicate is None:
                     raise ValidationError("session_time_relative must be one of 'past', 'future', or 'ongoing'")
                 predicates.append(f"({predicate})")
-            params["__now_utc"] = ctx.now_utc
+            # Match SQLModel's fixed-width SQLite timestamps, including whole-second instants.
+            params["__now_utc"] = ctx.now_utc.isoformat(sep=" ", timespec="microseconds")
             conditions.append(" OR ".join(predicates) if len(predicates) == 1 else f"({' OR '.join(predicates)})")
             continue
 
@@ -436,10 +437,18 @@ attributed AS (
     if tag_conditions:
         tag_where = f"WHERE {' AND '.join(tag_conditions)}"
 
+    # The final SELECT reads the attributed projection, not the original s/t aliases.
+    attributed_dimensions = {
+        Dimension.TAG: "tag",
+        Dimension.CATEGORY: "category",
+        Dimension.TASK: "task_id",
+        Dimension.STATUS: "status",
+        Dimension.PRIORITY: "priority",
+    }
     group_cols = []
     for dim in query.group_by:
-        if dim == Dimension.TAG:
-            group_cols.append("tag")
+        if dim in attributed_dimensions:
+            group_cols.append(attributed_dimensions[dim])
         else:
             group_cols.append(_dimension_sql(QuerySource.SESSIONS, dim, "ts", anchor_kind))
 
@@ -639,10 +648,17 @@ base AS (
             totals_overlap=False,
         )
 
+    # These dimensions have already been projected into base; t is no longer in scope.
+    base_dimensions = {
+        Dimension.ESTIMATION_BUCKET: "estimation_bucket",
+        Dimension.CATEGORY: "category",
+        Dimension.STATUS: "status",
+        Dimension.PRIORITY: "priority",
+    }
     group_cols = []
     for dim in query.group_by:
-        if dim == Dimension.ESTIMATION_BUCKET:
-            group_cols.append("estimation_bucket")
+        if dim in base_dimensions:
+            group_cols.append(base_dimensions[dim])
         else:
             group_cols.append(_dimension_sql(QuerySource.TASKS, dim, "created_at", anchor_kind))
 

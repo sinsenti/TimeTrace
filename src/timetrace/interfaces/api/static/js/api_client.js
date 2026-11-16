@@ -38,7 +38,9 @@ class ApiClient {
 
             return await response.json();
         } catch (error) {
-            console.error(`[API Error] ${options.method || 'GET'} ${url}:`, error.message);
+            const privateSettings = /^\/api\/ai\/(?:settings$|status$|providers(?:\/|$))/.test(url);
+            if (privateSettings) console.error('[API Error] AI settings request failed.');
+            else console.error(`[API Error] ${options.method || 'GET'} ${url}:`, error.message);
             throw error;
         }
     }
@@ -78,16 +80,18 @@ class ApiClient {
      * @param {object} body
      * @param {(evt: {event: string, data: any}) => void} onEvent
      * @param {object} [headers]
-     * @returns {Promise<void>} resolves when the stream ends (or throws on a network/HTTP error)
+     * @param {{signal?: AbortSignal}} [options]
+     * @returns {Promise<any>} JSON payload, or undefined when SSE ends; throws on HTTP/transport errors
      */
-    async stream(url, body, onEvent, headers = {}) {
+    async stream(url, body, onEvent, headers = {}, options = {}) {
         const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 ...headers
             },
-            body: body ? JSON.stringify(body) : null
+            body: body ? JSON.stringify(body) : null,
+            signal: options.signal
         });
 
         if (!response.ok || !response.body) {
@@ -100,6 +104,10 @@ class ApiClient {
             throw new Error(errorData.detail || `HTTP Error ${response.status}`);
         }
 
+        if ((response.headers.get('content-type') || '').includes('application/json')) {
+            return response.json();
+        }
+
         const reader = response.body.getReader();
         const decoder = new TextDecoder('utf-8');
         let buffer = '';
@@ -108,11 +116,11 @@ class ApiClient {
             if (!rawFrame.trim()) return;
             let eventName = 'message';
             const dataLines = [];
-            for (const line of rawFrame.split('\n')) {
+            for (const line of rawFrame.split(/\r?\n/)) {
                 if (line.startsWith('event:')) {
                     eventName = line.slice(6).trim();
                 } else if (line.startsWith('data:')) {
-                    dataLines.push(line.slice(5).trim());
+                    dataLines.push(line.slice(5).replace(/^ /, ''));
                 }
             }
             if (dataLines.length === 0) return;
@@ -126,20 +134,28 @@ class ApiClient {
             onEvent({ event: eventName, data: parsed });
         };
 
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-
-            let boundary;
-            while ((boundary = buffer.indexOf('\n\n')) !== -1) {
-                const frame = buffer.slice(0, boundary);
-                buffer = buffer.slice(boundary + 2);
-                dispatchFrame(frame);
+        let completed = false;
+        try {
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                buffer += decoder.decode(value, { stream: true });
+                let boundary;
+                while ((boundary = /\r?\n\r?\n/.exec(buffer))) {
+                    const frame = buffer.slice(0, boundary.index);
+                    buffer = buffer.slice(boundary.index + boundary[0].length);
+                    dispatchFrame(frame);
+                }
             }
-        }
-        if (buffer.trim()) {
-            dispatchFrame(buffer);
+            buffer += decoder.decode();
+            if (buffer.trim()) dispatchFrame(buffer);
+            completed = true;
+        } finally {
+            try {
+                if (!completed) await reader.cancel();
+            } finally {
+                reader.releaseLock();
+            }
         }
     }
 }

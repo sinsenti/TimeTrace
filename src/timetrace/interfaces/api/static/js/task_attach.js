@@ -56,7 +56,7 @@ function highlightTaskSuggestionItem(items) {
     });
 }
 
-function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
+function attachTaskById(taskId, preventFocus = false, taskTitle = '', preserveSessionFields = false) {
     if (!taskId) return;
     const known = taskKnowledge.get(taskId);
     // The relationship is independent of metadata availability; only detachTask clears it.
@@ -68,13 +68,14 @@ function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
 
     renderTaskChip();
 
-    if (t.tags && typeof setTagChips === 'function') {
+    // Nested Task creation changes the attachment, not the retained Session draft.
+    if (!preserveSessionFields && t.tags && typeof setTagChips === 'function') {
         setTagChips(t.tags);
     }
 
     const startInput = document.getElementById('session_modal_start');
     const endInput = document.getElementById('session_modal_end');
-    if (startInput && endInput && startInput.value) {
+    if (!preserveSessionFields && startInput && endInput && startInput.value) {
         const startDt = new Date(startInput.value);
         const endDt = endInput.value ? new Date(endInput.value) : null;
         if (!endDt || isNaN(endDt.getTime()) || endDt <= startDt) {
@@ -96,7 +97,7 @@ function attachTaskById(taskId, preventFocus = false, taskTitle = '') {
 
     if (!preventFocus) {
         const tagInput = document.getElementById('session_modal_tags_input');
-        if (tagInput) setTimeout(() => tagInput.focus(), 20);
+        if (tagInput) tagInput.focus();
     }
 }
 
@@ -119,7 +120,7 @@ function renderTaskChip() {
         chip.className = 'task-chip-item px-2.5 py-1 rounded text-xs font-bold text-white flex items-center space-x-1.5 shadow-sm shrink-0';
         chip.style.backgroundColor = attachedTask.color || '#7c3aed';
         chip.innerHTML = `
-            <button type="button" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
+            <button type="button" aria-label="Detach task" onclick="detachTask()" class="hover:text-red-200 text-xs font-black ml-1">&times;</button>
         `;
         const label = document.createElement('span');
         label.textContent = `✓ ${attachedTask.title}`;

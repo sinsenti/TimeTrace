@@ -52,13 +52,13 @@ function handleCompletionPolicy(putResponse) {
     const subtaskRow = document.getElementById('completion_policy_subtask_row');
     const subtaskCheckbox = document.getElementById('completion_policy_include_subtasks');
     const subtaskLabel = document.getElementById('completion_policy_subtask_label');
+    if (subtaskCheckbox) subtaskCheckbox.checked = false;
     if (subtaskRow) {
         if (policy.subtask_scheduled_count > 0) {
             subtaskRow.classList.remove('hidden');
             if (subtaskLabel) {
                 subtaskLabel.innerText = `Also clear ${policy.subtask_scheduled_count} scheduled sessions on subtasks`;
             }
-            if (subtaskCheckbox) subtaskCheckbox.checked = false;
         } else {
             subtaskRow.classList.add('hidden');
         }

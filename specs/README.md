@@ -7,5 +7,11 @@ before coding. Keep it code-grounded and concise: problem, observable behavior, 
 time and identifier semantics, edge cases, exclusions, and verification. Small bug fixes, copy changes,
 and behavior-preserving refactors do not need a spec.
 
+## Active specifications
+
+- [Whole-UI redesign](ui-redesign.md) — Approved; implementation is in progress. The
+  [25-ticket backlog](../.scratch/ui-redesign/README.md) and
+  [integration execution record](../.scratch/ui-redesign/implementation.md) track delivery.
+
 Use Matt Pocock's `to-spec` skill to synthesize a spec when requested. Follow `AGENTS.md` and
 `docs/agents/workflow.md` for approval, implementation, testing, and whole-delivery review.

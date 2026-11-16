@@ -29,6 +29,11 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
+    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/rating_admin.css">
+    <link rel="stylesheet" href="/static/css/task_details.css?v=ui-polish-1">
+    <link rel="stylesheet" href="/static/css/day_workspace.css?v=ui-review2-1">
+    <link rel="stylesheet" href="/static/css/session_reviews.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
@@ -36,7 +41,7 @@
         {% include "components/navbar.html" %}
 
         <div class="flex items-center space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)]">
-            <button onclick="switchRevisionTab('overview')" id="rev_tab_btn_overview" class="h-6 px-3 rounded font-bold bg-purple-600 text-white text-[11px]">Days History & Overview</button>
+            <button onclick="switchRevisionTab('day')" id="rev_tab_btn_day" class="h-6 px-3 rounded font-bold bg-purple-600 text-white text-[11px]">Day workspace</button>
             <button onclick="switchRevisionTab('sessions')" id="rev_tab_btn_sessions" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Sessions Review</button>
             <button onclick="switchRevisionTab('task_inspector')" id="rev_tab_btn_task_inspector" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Task Inspector</button>
             <button onclick="switchRevisionTab('ratings_config')" id="rev_tab_btn_ratings_config" class="h-6 px-3 rounded font-bold text-slate-400 hover:text-white text-[11px]">Custom Ratings</button>
@@ -49,123 +54,100 @@
 
     <main class="flex-1 p-6 max-w-7xl mx-auto w-full space-y-6">
 
-        <section id="rev_tab_day" class="hidden space-y-6">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div class="flex items-center space-x-3">
-                    <button onclick="switchRevisionTab('overview')" class="text-xs font-bold text-purple-400 hover:text-purple-300 underline">&lt; Back to Days Overview</button>
-                    <span class="text-slate-600">|</span>
-                    <label class="text-xs text-slate-400 font-semibold">Review Date:</label>
-                    <input id="day_review_date_input" type="date" onchange="loadDayReviewData()" class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-sm font-bold focus:outline-none focus:border-purple-500">
-                    <button onclick="setDayReviewToday()" class="bg-[#181a28] hover:bg-[#222536] text-purple-300 font-bold px-3 py-1.5 rounded-lg text-xs border border-[var(--border-muted)]">Today</button>
-                    <button onclick="jumpToCalendarForDay()" class="bg-purple-900/60 hover:bg-purple-800 text-purple-200 font-bold px-3 py-1.5 rounded-lg text-xs border border-purple-700/60 flex items-center space-x-1">Open in Calendar</button>
-                    <span id="day_review_status_badge" class="px-2.5 py-1 rounded text-xs font-bold bg-slate-800 text-slate-400 border border-slate-700">Checking...</span>
-                </div>
-
-                <div id="day_kpi_badges" class="flex space-x-6 text-right"></div>
+        <section id="rev_tab_day" class="space-y-6">
+            <div class="day-workspace-toolbar">
+                <h1>Day workspace</h1>
+                <label for="day_review_date_input">Review date</label>
+                <input id="day_review_date_input" type="date" onchange="loadDayReviewData()">
+                <button type="button" onclick="setDayReviewToday()">Today</button>
             </div>
-
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div class="rev-card space-y-4">
-                    <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                        <h3 class="font-bold text-base text-white">Daily Retrospective Form</h3>
-                        <button onclick="dismissDayReview()" class="text-[10px] bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800/80 px-2 py-0.5 rounded font-bold transition">Dismiss Day</button>
+            <div id="day_main_editor"></div>
+            <div class="day-history-bottom">
+                <button type="button" id="day_history_toggle" aria-expanded="false" aria-controls="day_history_panel" onclick="toggleDayHistory()">Show history</button>
+                <section id="day_history_panel" class="hidden space-y-4">
+                    <h2>Other days</h2>
+                    <div class="day-history-filters" role="group" aria-label="Filter day history">
+                        <button type="button" onclick="setHistoryFilter('all')" id="hist_filter_all">All days</button>
+                        <button type="button" onclick="setHistoryFilter('reviewed')" id="hist_filter_reviewed">Reviewed</button>
+                        <button type="button" onclick="setHistoryFilter('missed')" id="hist_filter_missed">Missed reviews</button>
+                        <button type="button" onclick="setHistoryFilter('dismissed')" id="hist_filter_dismissed">Dismissed</button>
                     </div>
-                    
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Day Performance Score (1 - 5)</label>
-                        <select id="day_form_rating" onchange="markDayFormDirty(); applyDayRatingColor()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold">
-                            <option value="5">5 / 5 - Exceptional Focus</option>
-                            <option value="4">4 / 5 - Productive Day</option>
-                            <option value="3" selected>3 / 5 - Average Day</option>
-                            <option value="2">2 / 5 - Distracted / Friction</option>
-                            <option value="1">1 / 5 - Off Track</option>
-                        </select>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Key Highlights / Progress</label>
-                        <textarea id="day_form_highlights" rows="3" oninput="markDayFormDirty()" placeholder="Key highlights from today..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Daily Friction / Setbacks</label>
-                        <textarea id="day_form_friction" rows="3" oninput="markDayFormDirty()" placeholder="What slowed progress or caused friction..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">General Notes / Journal</label>
-                        <textarea id="day_form_notes" rows="3" oninput="markDayFormDirty()" placeholder="Additional thoughts..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div id="day_custom_ratings_container" class="space-y-3 pt-2 border-t border-[var(--border-muted)]"></div>
-
-                    <button id="day_form_save_btn" onclick="saveDayReviewForm()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition">Save Day Review</button>
-                </div>
-
-                <div class="md:col-span-2 space-y-4">
-                    <div class="rev-card space-y-3">
-                        <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                            <h3 class="font-bold text-base text-white">Day Breakdown</h3>
-                            <div class="flex items-center space-x-3">
-                                <span id="day_breakdown_filter_chip" class="hidden items-center space-x-2 bg-purple-900/50 border border-purple-700/60 px-2 py-1 rounded-lg text-[10px] font-bold text-purple-200"></span>
-                                <span id="day_breakdown_total" class="text-sm font-black text-purple-400">0.0h</span>
-                            </div>
-                        </div>
-
-                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div>
-                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-emerald-400 mb-2 block">By Activity (#tags)</span>
-                                <div id="day_breakdown_tags_list" class="space-y-1.5"></div>
-                                <p class="text-[10px] text-slate-500 mt-2">Sessions with multiple tags are counted in full under each tag, so percentages can add up to more than 100%.</p>
-                            </div>
-                            <div>
-                                <span class="text-[11px] font-extrabold uppercase tracking-wider text-purple-400 mb-2 block">By Task</span>
-                                <div id="day_breakdown_tasks_list" class="space-y-1.5"></div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="rev-card space-y-4">
-                        <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Logged Sessions Timeline (Click session to inspect)</h3>
-                        <div id="day_sessions_timeline" class="space-y-3 max-h-[520px] overflow-y-auto pr-1"></div>
-                    </div>
-                </div>
+                    <p id="day_history_status" role="status"></p>
+                    <div id="day_history_grid" class="day-history-grid"></div>
+                    <div id="day_history_editor"></div>
+                </section>
             </div>
+            <div id="day_editor_store" class="hidden"></div>
         </section>
-
-        <section id="rev_tab_overview" class="space-y-6">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div>
-                    <h2 class="text-lg font-bold text-white">Day Revisions Overview</h2>
-                    <p class="text-xs text-slate-400">View all days with activity. Jump to any day to review or update.</p>
-                </div>
-
-                <div class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)] text-xs">
-                    <button onclick="setHistoryFilter('all')" id="hist_filter_all" class="px-3 py-1 rounded font-bold bg-purple-600 text-white">All Days</button>
-                    <button onclick="setHistoryFilter('reviewed')" id="hist_filter_reviewed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Reviewed</button>
-                    <button onclick="setHistoryFilter('missed')" id="hist_filter_missed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Missed Reviews</button>
-                    <button onclick="setHistoryFilter('dismissed')" id="hist_filter_dismissed" class="px-3 py-1 rounded font-bold text-slate-400 hover:text-white">Dismissed</button>
-                </div>
-            </div>
-
-            <div id="day_history_grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-        </section>
-
-        <section id="rev_tab_sessions" class="hidden space-y-4">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
-                <div class="flex items-center space-x-3">
-                    <input id="session_rev_search" type="text" oninput="filterSessionsReviewList()" placeholder="Filter by #tag, notes, or task..." class="bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-1.5 rounded-lg text-xs w-80 focus:outline-none focus:border-purple-500">
-                    <div class="flex space-x-1 bg-[#181a28] p-1 rounded-lg border border-[var(--border-muted)] text-xs">
-                        <button onclick="setSessionReviewFilter('all')" id="sess_filter_all" class="px-2.5 py-0.5 rounded font-bold bg-purple-600 text-white">All Sessions</button>
-                        <button onclick="setSessionReviewFilter('reviewed')" id="sess_filter_reviewed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Reviewed</button>
-                        <button onclick="setSessionReviewFilter('missed')" id="sess_filter_missed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Missed Review</button>
-                        <button onclick="setSessionReviewFilter('dismissed')" id="sess_filter_dismissed" class="px-2.5 py-0.5 rounded font-bold text-slate-400 hover:text-white">Dismissed</button>
+        <template id="day_editor_template">
+            <article class="day-editor rev-card" data-settings-draft-retained="true">
+                <header class="day-editor-header">
+                    <div class="day-editor-heading">
+                        <div class="day-editor-title-row">
+                            <h2 data-day="date"></h2>
+                            <span data-day="status" class="day-editor-status" role="status" aria-live="polite">Loading…</span>
+                        </div>
+                        <p class="day-editor-subtitle">Daily review and recorded work</p>
+                    </div>
+                    <div class="day-editor-header-actions">
+                        <button type="button" data-action="retry" class="day-quiet-action">Refresh</button>
+                        <button type="button" data-action="promote" class="day-quiet-action">Use as main day</button>
+                        <button type="button" data-action="calendar" class="day-quiet-action">Open in Calendar</button>
+                    </div>
+                </header>
+                <span data-day="filter" class="day-evidence-filter" hidden><span data-day="filter-label"></span> <button type="button" data-action="clear-filter" aria-label="Clear evidence filter">Clear filter</button></span>
+                <div class="day-editor-columns">
+                    <div class="day-form-fields">
+                        <section class="day-review-section" aria-label="Retrospective">
+                        <div class="day-section-heading"><div><h3>Retrospective</h3><p>Capture how the day felt and what moved forward.</p></div></div>
+                        <label>Overall day rating<select data-day="rating" data-day-text disabled>
+                            <option value="5">5 / 5 — Exceptional focus</option><option value="4">4 / 5 — Productive day</option>
+                            <option value="3" selected>3 / 5 — Average day</option><option value="2">2 / 5 — Distracted / friction</option><option value="1">1 / 5 — Off track</option>
+                        </select></label>
+                        <label>Highlights<textarea data-day="highlights" data-day-text rows="3" placeholder="What went well or moved forward?" disabled></textarea></label>
+                        <label>Challenges or friction<textarea data-day="friction" data-day-text rows="3" placeholder="What slowed you down or felt difficult?" disabled></textarea></label>
+                        <label>Notes<textarea data-day="notes" data-day-text rows="3" placeholder="Anything else you want to remember?" disabled></textarea></label>
+                        <div data-day="ratings" data-settings-draft-retained="true"></div>
+                        <div class="day-form-actions">
+                            <div class="day-review-save-actions"><button type="button" data-action="save" class="day-save-primary">Save day review</button><button type="button" data-action="discard" class="day-discard-secondary">Discard drafts</button></div>
+                            <button type="button" data-action="dismiss" class="day-dismiss-action">Dismiss day</button>
+                        </div>
+                        <p class="day-keyboard-hint">Ctrl+Enter saves this review. Enter adds a line in text fields.</p>
+                        </section>
+                    </div>
+                    <div class="day-evidence">
+                        <section class="day-evidence-section" aria-label="Recorded activity">
+                        <div class="day-breakdown-heading"><div class="day-section-heading"><div><h3>Recorded activity</h3><p>Sessions and tasks recorded for this day.</p></div></div><div class="day-segmented-control" role="group" aria-label="Breakdown grouping">
+                            <button type="button" data-action="activity" aria-pressed="true">Activity</button><button type="button" data-action="tasks" aria-pressed="false">Tasks</button>
+                        </div></div>
+                        <div class="day-evidence-summary"><p data-day="total"></p><p data-day="created-tasks"></p></div>
+                        <div data-day="breakdown" class="day-breakdown-list"></div>
+                        <details class="day-breakdown-note"><summary>How to read this breakdown</summary><p>Bars compare with the full-day recorded session time by session start day, including scheduled rows. They show time, not task completion. Tag totals use fan-out attribution, so a session with multiple tags counts toward each tag and overlapping totals can exceed the day total.</p><p>Tasks counts completed tasks created on this day.</p></details>
+                        <div class="day-sessions-heading"><h4>Recorded sessions</h4><span data-day="session-count" class="day-session-count"></span></div>
+                        <div data-day="sessions" class="day-sessions-list"></div>
+                        </section>
                     </div>
                 </div>
+            </article>
+        </template>
 
-                <span id="session_rev_count_badge" class="text-xs text-slate-400 font-semibold">0 sessions</span>
+        <section id="rev_tab_sessions" class="session-reviews hidden space-y-4" aria-label="Session reviews">
+            <div class="session-reviews-toolbar rev-card">
+                <label for="session_rev_search">Search sessions
+                    <input id="session_rev_search" type="search" oninput="filterSessionsReviewList()" placeholder="Tag, notes or task">
+                </label>
+                <div class="session-reviews-filters" role="group" aria-label="Review state">
+                    <button type="button" onclick="setSessionReviewFilter('all')" id="sess_filter_all" aria-pressed="true">All sessions</button>
+                    <button type="button" onclick="setSessionReviewFilter('reviewed')" id="sess_filter_reviewed" aria-pressed="false">Reviewed</button>
+                    <button type="button" onclick="setSessionReviewFilter('missed')" id="sess_filter_missed" aria-pressed="false">Missed review</button>
+                    <button type="button" onclick="setSessionReviewFilter('dismissed')" id="sess_filter_dismissed" aria-pressed="false">Exempt</button>
+                </div>
+                <span id="session_rev_count_badge">0 sessions</span>
             </div>
-
+            <div class="session-reviews-notice">
+                <p id="session_rev_list_status" role="status" aria-live="polite"></p>
+                <button type="button" onclick="retrySessionReviewRefresh()">Refresh sessions</button>
+            </div>
             <div id="sessions_review_list" class="space-y-3"></div>
         </section>
 
@@ -187,6 +169,8 @@
                 <div id="task_quick_chips_bar" class="flex flex-wrap gap-2"></div>
             </div>
 
+            <p id="task_inspector_status" role="status" class="text-xs">Select a task to inspect its own recorded history.</p>
+            <button type="button" onclick="taskKnowledge.refresh()">Retry refresh</button>
             <div id="task_inspector_body" class="grid grid-cols-1 md:grid-cols-3 gap-6 hidden">
                 <div class="space-y-6 md:col-span-2">
                     <div class="rev-card space-y-3">
@@ -196,157 +180,108 @@
                         </div>
                         <p id="inspect_task_desc" class="text-xs text-slate-400"></p>
                         
-                        <div class="w-full bg-[#0f1016] h-3 rounded-full overflow-hidden border border-[var(--border-muted)] mt-2">
-                            <div id="inspect_task_progress_bar" class="bg-purple-600 h-full transition-all duration-300" style="width: 0%"></div>
-                        </div>
+                        <a id="inspect_task_details_link" class="underline">Open dedicated details, properties, tags, subtasks and session actions</a>
+                        <p class="task-accounting-explanation">Logged = closed recorded rows ended by one measurement instant; scheduled = closed rows starting after it. Open/straddling rows, timers and virtual occurrences are excluded. Remaining = estimate − logged; unscheduled also subtracts scheduled. Negative balances and ratios above 100% are retained. Recurring estimates are per occurrence, not a series budget.</p>
                     </div>
 
                     <div class="rev-card space-y-4">
-                        <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Session History & Tracked Time Logs (Click to inspect)</h3>
+                        <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Own recorded sessions (past and future; select to inspect)</h3>
                         <div id="inspect_task_sessions_list" class="space-y-3 max-h-80 overflow-y-auto pr-1"></div>
                     </div>
                 </div>
 
-                <div class="rev-card space-y-4">
-                    <h3 class="font-bold text-base text-white border-b border-[var(--border-muted)] pb-2">Task Post-Mortem & Review</h3>
-                    
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Difficulty Score (1 - 10)</label>
-                        <input id="task_rev_difficulty" type="number" min="1" max="10" value="3" class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white px-3 py-2 rounded-lg text-xs font-bold focus:outline-none focus:border-purple-500">
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">What Went Well</label>
-                        <textarea id="task_rev_went_well" rows="3" placeholder="Successful factors..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Blockers / Delays</label>
-                        <textarea id="task_rev_blockers" rows="3" placeholder="What slowed progress..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div>
-                        <label class="text-xs text-slate-400 block mb-1">Key Takeaways</label>
-                        <textarea id="task_rev_takeaways" rows="3" placeholder="Learnings for future tasks..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] text-white p-2.5 rounded-lg text-xs focus:outline-none focus:border-purple-500"></textarea>
-                    </div>
-
-                    <div id="task_custom_ratings_container" class="space-y-3 pt-2 border-t border-[var(--border-muted)]"></div>
-
-                    <button onclick="saveTaskReviewForm()" class="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded-lg text-xs transition">Save Task Review</button>
-                </div>
+                {% with task_review_prefix="revision" %}{% include "components/task_postmortem.html" %}{% endwith %}
             </div>
         </section>
 
-        <section id="rev_tab_ratings_config" class="hidden space-y-6 max-w-4xl mx-auto">
-            <div class="flex justify-between items-center bg-[var(--bg-card)] p-4 rounded-xl border border-[var(--border-color)]">
+        <section id="rev_tab_ratings_config" class="rating-admin hidden space-y-6 max-w-4xl mx-auto" aria-labelledby="rating_admin_heading">
+            <div class="rating-admin-heading">
                 <div>
-                    <h2 class="text-lg font-bold text-white">Custom Rating Definitions Manager</h2>
-                    <p class="text-xs text-slate-400">Configure custom evaluation scales to attach to sessions, tasks, or day reviews.</p>
+                    <h2 id="rating_admin_heading">Rating scales</h2>
+                    <p>Define evaluation scales for sessions, tasks, or day reviews.</p>
                 </div>
-                <button onclick="openNewRatingDefModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs">+ New Rating Scale</button>
+                <button id="rating_defs_new_btn" type="button" class="rating-admin-primary" onclick="openNewRatingDefModal()">+ New Rating Scale</button>
             </div>
-
-            <div id="rating_defs_card_list" class="space-y-3"></div>
+            <div class="rating-admin-feedback">
+                <p id="rating_defs_status" role="status" aria-live="polite"></p>
+                <button id="rating_defs_retry_btn" type="button" onclick="loadRatingDefinitionsList()" hidden>Retry refresh</button>
+            </div>
+            <div id="rating_defs_card_list" class="rating-admin-list" aria-label="Rating definitions"></div>
         </section>
 
     </main>
 
-    <div id="session_review_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[480px] rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <div>
-                    <h3 class="font-bold text-base text-white">Session Inspector & Review</h3>
-                    <span id="session_rev_modal_time" class="text-[10px] font-mono text-purple-300 font-bold">00:00 - 00:00</span>
-                </div>
-                <button onclick="closeSessionReviewModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
-            </div>
+    <div id="session_review_modal" class="session-review-overlay fixed inset-0 hidden z-50" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="session_rev_modal_title" aria-describedby="session_rev_modal_description">
+        <div class="session-review-dialog">
+            <header>
+                <div><h3 id="session_rev_modal_title">Session inspector and review</h3>
+                    <p id="session_rev_modal_time"></p></div>
+                <button type="button" onclick="closeSessionReviewModal()" aria-label="Close session review">Close</button>
+            </header>
+            <p id="session_rev_modal_description">Review this session. Reviewed and exempt are independent; saving never completes its task or clears schedules.</p>
             <input type="hidden" id="session_rev_modal_id">
-
-            <div class="space-y-3 text-xs">
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Tags</label>
-                    <input id="session_rev_modal_tags" type="text" placeholder="#general #progr" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-500">
-                </div>
-
-                <div>
-                    <label class="text-xs text-slate-400 block mb-1">Session Notes / Description</label>
-                    <input id="session_rev_modal_notes" type="text" placeholder="Session details..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-                </div>
-
-                <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer">
-                    <div>
-                        <span class="font-bold text-slate-200 block text-xs">Does Not Need Review</span>
-                        <span class="text-[10px] text-slate-400">Exempt this session from missed reviews</span>
-                    </div>
-                    <input id="session_rev_modal_skip_check" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-                </label>
-
-                <div id="session_custom_ratings_container" class="space-y-3 pt-1"></div>
-            </div>
-
-            <div class="pt-2 border-t border-[var(--border-muted)] flex justify-between items-center">
-                <div class="flex space-x-2">
-                    <button onclick="deleteSessionFromReviewModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Delete</button>
-                    <button onclick="resetSessionReview()" class="bg-amber-900/40 hover:bg-amber-800 text-amber-300 border border-amber-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold">Reset Review</button>
-                </div>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeSessionReviewModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveSessionReviewModal()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
-                </div>
-            </div>
+            <label for="session_rev_modal_tags">Tags</label>
+            <input id="session_rev_modal_tags" type="text" placeholder="#general #project" disabled>
+            <label for="session_rev_modal_notes">Session notes</label>
+            <textarea id="session_rev_modal_notes" rows="4" placeholder="Session details" disabled></textarea>
+            <label class="session-review-exemption" for="session_rev_modal_skip_check">
+                <input id="session_rev_modal_skip_check" type="checkbox" disabled>
+                Exempt this session from missed reviews
+            </label>
+            <div id="session_custom_ratings_container" class="space-y-3"></div>
+            <p id="session_rev_modal_status" role="status" aria-live="polite"></p>
+            <button id="session_rev_retry" type="button" onclick="retrySessionReviewLoad()">Retry load / refresh ratings</button>
+            <button id="session_rev_refresh" class="hidden" type="button" onclick="retrySessionReviewRefresh()">Retry refresh</button>
+            <footer>
+                <button id="session_rev_delete" type="button" onclick="deleteSessionFromReviewModal()">Delete session</button>
+                <button id="session_rev_reset" type="button" onclick="resetSessionReview()">Reset review</button>
+                <button type="button" onclick="closeSessionReviewModal()">Cancel <kbd>Esc</kbd></button>
+                <button id="session_rev_save" type="button" onclick="saveSessionReviewModal()" disabled>Save <kbd>Ctrl+Enter</kbd></button>
+            </footer>
         </div>
     </div>
 
-    <div id="rating_def_modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50">
-        <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-96 rounded-xl p-5 shadow-2xl space-y-4 text-white">
-            <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                <h3 id="rating_modal_title" class="font-bold text-base text-white">Configure Rating Scale</h3>
-                <button onclick="closeRatingDefModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
+    <div id="rating_def_modal" class="rating-admin fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center hidden z-50" role="dialog" aria-modal="true" aria-labelledby="rating_modal_title" aria-describedby="rating_def_status">
+        <div class="rating-admin-dialog">
+            <div class="rating-admin-heading">
+                <h3 id="rating_modal_title">Configure Rating Scale</h3>
+                <button type="button" onclick="closeRatingDefModal()" aria-label="Close rating scale">&times;</button>
             </div>
             <input type="hidden" id="edit_rating_def_id">
-
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Rating Title / Name</label>
-                <input id="modal_rating_name" type="text" placeholder="e.g. Focus Level, Code Quality" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
-            </div>
-
-            <div class="grid grid-cols-2 gap-3">
+            <label for="modal_rating_name">Rating Title / Name</label>
+            <input id="modal_rating_name" type="text" placeholder="e.g. Focus Level, Code Quality">
+            <div class="rating-admin-bounds">
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Target Context</label>
-                    <select id="modal_rating_target_type" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-2 rounded-lg text-xs text-white">
+                    <label for="modal_rating_target_type">Target Context</label>
+                    <select id="modal_rating_target_type">
                         <option value="session">Session</option>
                         <option value="task">Task</option>
                         <option value="day">Day</option>
                     </select>
                 </div>
                 <div>
-                    <label class="text-xs text-slate-400 block mb-1">Scale Range</label>
-                    <div class="flex items-center space-x-1">
-                        <input id="modal_rating_min" type="number" value="1" class="w-12 bg-[#0f1016] border border-[var(--border-muted)] px-1.5 py-1.5 rounded text-xs text-center">
-                        <span class="text-slate-500">to</span>
-                        <input id="modal_rating_max" type="number" value="10" class="w-12 bg-[#0f1016] border border-[var(--border-muted)] px-1.5 py-1.5 rounded text-xs text-center">
-                    </div>
+                    <label for="modal_rating_min">Minimum score</label>
+                    <input id="modal_rating_min" type="number" step="1" value="1">
                 </div>
-            </div>
-
-            <label class="flex items-center justify-between p-2.5 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-pointer">
                 <div>
-                    <span class="font-bold text-slate-200 block text-xs">Essential / Required</span>
-                    <span class="text-[10px] text-slate-400">Must be answered (cannot skip)</span>
+                    <label for="modal_rating_max">Maximum score</label>
+                    <input id="modal_rating_max" type="number" step="1" value="10">
                 </div>
-                <input id="modal_rating_required" type="checkbox" class="w-4 h-4 accent-purple-600 rounded">
-            </label>
-
-            <div>
-                <label class="text-xs text-slate-400 block mb-1">Description / Help Text</label>
-                <input id="modal_rating_desc" type="text" placeholder="Optional context for this rating..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500">
             </div>
-
-            <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
-                <button id="modal_rating_delete_btn" onclick="deleteRatingDefinition()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
-                <div class="flex items-center space-x-2 ml-auto">
-                    <button onclick="closeRatingDefModal()" class="bg-[#222536] hover:bg-[#2d3046] text-slate-300 px-3 py-1.5 rounded-lg text-xs font-medium flex items-center">Cancel <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Esc</kbd></button>
-                    <button onclick="saveRatingDefinition()" class="bg-purple-600 hover:bg-purple-500 text-white font-bold px-3.5 py-1.5 rounded-lg text-xs flex items-center">Save <kbd class="text-[9px] opacity-70 font-mono bg-black/20 px-1 rounded ml-1">Ctrl+↵</kbd></button>
+            <label class="rating-admin-required" for="modal_rating_required">
+                <span><strong>Essential / Required</strong><small>Marked essential in reviews. Explicit dismissal remains available.</small></span>
+                <input id="modal_rating_required" type="checkbox">
+            </label>
+            <label for="modal_rating_desc">Description / Help Text</label>
+            <input id="modal_rating_desc" type="text" placeholder="Optional context for this rating...">
+            <p class="rating-admin-hint">Range and context edits do not rewrite historical scores. Deleting a scale also removes its rating entries.</p>
+            <p id="rating_def_status" role="status" aria-live="polite"></p>
+            <button id="rating_def_refresh_btn" type="button" onclick="loadRatingDefinitionsList()" hidden>Retry list refresh (read only)</button>
+            <div class="rating-admin-actions">
+                <button id="modal_rating_delete_btn" type="button" onclick="deleteRatingDefinition()" class="rating-admin-danger hidden">Delete</button>
+                <div>
+                    <button type="button" onclick="closeRatingDefModal()">Cancel <kbd>Esc</kbd></button>
+                    <button id="modal_rating_save_btn" type="button" onclick="saveRatingDefinition()" class="rating-admin-primary">Save <kbd>Ctrl+Enter</kbd></button>
                 </div>
             </div>
         </div>
@@ -363,10 +298,11 @@
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/revision_nav.js"></script>
     <script src="/static/js/ratings_config.js"></script>
-    <script src="/static/js/day_review.js"></script>
-    <script src="/static/js/day_history.js"></script>
+    <script src="/static/js/day_review.js?v=ui-review2-1"></script>
+    <script src="/static/js/day_history.js?v=ui-review2-1"></script>
     <script src="/static/js/session_review.js"></script>
-    <script src="/static/js/task_inspector.js"></script>
+    <script src="/static/js/task_postmortem.js"></script>
+    <script src="/static/js/task_inspector.js?v=ui-polish-1"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

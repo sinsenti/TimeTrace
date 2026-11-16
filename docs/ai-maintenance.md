@@ -28,6 +28,15 @@ the settings hash captured at proposal time, so manual edits produce a conflict 
 overwritten. Structured scheduling fields remain authoritative for enforced breaks, hours, allowed
 days, daily caps, and scheduling windows.
 
+Instruction-card writes have their own recovery boundary. Once Save or Dismiss receives an
+acknowledgment, later badge/Settings refresh failures remain read failures; the card keeps the
+accepted or dismissed result and retries only reads. When a write response is uncertain or
+conflicted, the card reads the proposal by ID before offering another action. Save and Dismiss
+return only after the server confirms the proposal is still pending; a conflict is terminal and
+offers Settings access plus read-only reconciliation. While a mutation or proposal-status read is
+pending, the card remains a conversation-change guard. Settings synchronization still checkpoints
+only the custom-instructions field and restores its unsaved local draft.
+
 ## Privacy and providers
 
 - Never log prompts, task/session content, tool arguments/results, provider responses, API keys, or
@@ -167,3 +176,22 @@ read-only through explicit typed tools, while day-review create/update is an app
 Embeddings/RAG, cross-conversation semantic memory, external integrations, multi-user ownership, and
 a CLI AI command are also out of scope. Do not add groundwork for those features without an explicit
 owner decision.
+
+## AI Settings editors
+
+AI behavior Cancel restores the latest acknowledged field baselines, including custom instructions
+reconciled by Assistant approval/conflict handling. It performs no read or write. A pending Save
+still completes on the daemon; its acknowledgement updates only the submitted field baselines and
+cannot erase newer typing or a newer authoritative instruction baseline.
+
+Provider drafts have independent Save/Cancel ownership. A blank saved-key field keeps the key;
+typing replaces it; **Clear saved key** sends the explicit empty string on Save. Cancel disposes the
+typed password and clear intent. Acknowledged creates adopt the saved ID before a subsequent edit,
+and post-write refresh Retry reads only. Unexposed extra parameters and the native OpenRouter option
+remain preserved. Pi authentication stays with Pi.
+
+Connectivity failures return stable, safe text for SDK construction/invocation and saved credential/
+JSON extraction failures. Malformed-request domain errors remain distinct. Provider response extras
+omit the known `api_key` option while stored values and SDK forwarding remain unchanged; this is not
+arbitrary-secret detection or a storage migration. The shared API client logs static diagnostics only
+for the known AI settings/provider paths, while preserving thrown errors and other endpoint logging.

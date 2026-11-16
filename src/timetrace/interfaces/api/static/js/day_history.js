@@ -1,81 +1,63 @@
-/**
- * Historical Day Revisions Grid
- */
-
+/** Bottom history; expanded editor DOM is independent of list refreshes. */
+let dayHistoryGeneration = 0;
+let allDayHistoryList = [];
 async function loadDayHistoryOverview() {
+    const generation = ++dayHistoryGeneration;
     try {
-        allDayHistoryList = await api.get('/revision/day-history') || [];
+        const days = await api.get('/revision/day-history') || [];
+        if (generation !== dayHistoryGeneration) return;
+        allDayHistoryList = days;
+        document.getElementById('day_history_status').textContent = '';
         renderDayHistoryGrid();
-    } catch (e) {
-        console.error("Failed to load day history overview:", e);
+    } catch (error) {
+        if (generation === dayHistoryGeneration) document.getElementById('day_history_status').textContent = 'History load failed. Refresh to retry. Existing editors retained.';
     }
 }
-
+function toggleDayHistory(force = !dayHistoryVisible) {
+    dayHistoryVisible = force;
+    const button = document.getElementById('day_history_toggle');
+    button.textContent = force ? 'Hide history' : 'Show history';
+    button.setAttribute('aria-expanded',String(force));
+    document.getElementById('day_history_panel').classList.toggle('hidden',!force);
+    positionDayEditors();
+    if (force) loadDayHistoryOverview();
+}
 function setHistoryFilter(filter) {
     currentDayHistoryFilter = filter;
-    ['all', 'reviewed', 'missed', 'dismissed'].forEach(f => {
-        const btn = document.getElementById(`hist_filter_${f}`);
-        if (btn) btn.className = f === filter 
-            ? "px-3 py-1 rounded font-bold bg-purple-600 text-white" 
-            : "px-3 py-1 rounded font-bold text-slate-400 hover:text-white";
-    });
+    for (const value of ['all','reviewed','missed','dismissed']) document.getElementById(`hist_filter_${value}`)?.setAttribute('aria-pressed',String(value === filter));
     renderDayHistoryGrid();
 }
-
 function renderDayHistoryGrid() {
     const grid = document.getElementById('day_history_grid');
     if (!grid) return;
-
-    let filtered = allDayHistoryList;
-    if (currentDayHistoryFilter === 'reviewed') {
-        filtered = filtered.filter(d => d.has_review && !d.review_skipped);
-    } else if (currentDayHistoryFilter === 'missed') {
-        filtered = filtered.filter(d => !d.has_review && !d.review_skipped);
-    } else if (currentDayHistoryFilter === 'dismissed') {
-        filtered = filtered.filter(d => d.review_skipped);
-    }
-
-    if (filtered.length === 0) {
-        grid.innerHTML = '<div class="col-span-full text-xs text-slate-500 text-center py-8">No matching days found in history.</div>';
-        return;
-    }
-
-    grid.innerHTML = filtered.map(d => {
-        const dateObj = new Date(d.date_str + "T00:00:00");
-        const formattedDate = dateObj.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-        
-        let statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-amber-950/80 text-amber-400 border border-amber-800">Missing Review</span>';
-        if (d.review_skipped) {
-            statusBadge = '<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-slate-800 text-slate-400 border border-slate-700">Dismissed</span>';
-        } else if (d.has_review) {
-            const gradeClasses = typeof getGradeColorClasses === 'function'
-                ? getGradeColorClasses(d.rating, 1, 5).badge
-                : "bg-emerald-900/60 text-emerald-300 border border-emerald-700";
-            statusBadge = `<span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase ${gradeClasses}">Reviewed (${d.rating}/5)</span>`;
+    const days = allDayHistoryList.filter(day => day.date_str !== dayReviewEditor?.date &&
+        (currentDayHistoryFilter === 'all' || currentDayHistoryFilter === 'reviewed' && day.has_review && !day.review_skipped ||
+         currentDayHistoryFilter === 'missed' && !day.has_review && !day.review_skipped || currentDayHistoryFilter === 'dismissed' && day.review_skipped));
+    grid.replaceChildren();
+    for (const day of days) {
+        const button = document.createElement('button'); button.type = 'button';button.className = 'day-history-card';
+        button.textContent = `${day.date_str} · ${day.review_skipped ? 'Dismissed' : day.has_review ? `Reviewed (${day.rating}/5)` : 'Missing review'} · ${day.total_hours}h · ${day.session_count} sessions${day.highlights ? ` · ${day.highlights}` : ''}`;
+        if (day.has_review && !day.review_skipped && typeof getGradeColorClasses === 'function') {
+            const date = document.createElement('span'); date.textContent = `${day.date_str} · `;
+            const grade = document.createElement('span'); grade.className = getGradeColorClasses(day.rating,1,5).badge;
+            grade.textContent = `Reviewed (${day.rating}/5)`;
+            const details = document.createElement('span');
+            details.textContent = ` · ${day.total_hours}h · ${day.session_count} sessions${day.highlights ? ` · ${day.highlights}` : ''}`;
+            button.replaceChildren(date,grade,details);
         }
-
-        return `
-            <div onclick="jumpToDayReview('${d.date_str}')" class="rev-card hover:border-purple-500 cursor-pointer transition space-y-2">
-                <div class="flex justify-between items-center border-b border-[var(--border-muted)] pb-2">
-                    <span class="font-bold text-sm text-white">${formattedDate}</span>
-                    ${statusBadge}
-                </div>
-                <div class="flex justify-between items-center text-xs text-slate-400">
-                    <span>${d.total_hours} focus hours</span>
-                    <span>${d.session_count} sessions</span>
-                </div>
-                ${d.highlights ? `<p class="text-xs text-slate-300 line-clamp-2"><span class="font-bold text-emerald-400">Highlights:</span> ${d.highlights}</p>` : ''}
-                ${d.friction ? `<p class="text-xs text-slate-300 line-clamp-2"><span class="font-bold text-amber-400">Friction:</span> ${d.friction}</p>` : ''}
-            </div>
-        `;
-    }).join('');
-}
-
-function jumpToDayReview(dateStr) {
-    switchRevisionTab('day');
-    const dateInput = document.getElementById('day_review_date_input');
-    if (dateInput) {
-        dateInput.value = dateStr;
-        loadDayReviewData();
+        button.setAttribute('aria-expanded',String(expandedHistoryDate === day.date_str));
+        button.addEventListener('click',()=>expandDayHistory(day.date_str)); grid.appendChild(button);
     }
+    if (!days.length) grid.textContent = 'No matching other days in history.';
+}
+async function expandDayHistory(date) {
+    if (date === dayReviewEditor?.date) return;
+    expandedHistoryDate = expandedHistoryDate === date ? null : date;
+    if (expandedHistoryDate) getDayEditor(date);
+    positionDayEditors(); renderDayHistoryGrid();
+    if (expandedHistoryDate) await loadDayEditor(getDayEditor(date));
+}
+function jumpToDayReview(dateStr) {
+    document.getElementById('day_review_date_input').value = dateStr;
+    switchRevisionTab('day');
 }

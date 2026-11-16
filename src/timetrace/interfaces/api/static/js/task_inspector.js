@@ -6,6 +6,12 @@ let selectedInspectedTaskId = null;
 let initializedTaskReviewId = null;
 let taskInspectorRequest = 0;
 let activeTaskInspectorSearchIdx = -1;
+let taskInspectorSearchIntent = false;
+
+function taskInspectorReviewEditor() {
+    return typeof createTaskPostmortemEditor === 'function'
+        ? createTaskPostmortemEditor(document.getElementById('revision_task_postmortem'), true) : null;
+}
 
 async function loadTaskInspectorRegistry() {
     await taskKnowledge.load();
@@ -19,10 +25,15 @@ async function refreshTaskInspectorKnowledge() {
 
 function refreshTaskInspectorLabels() {
     renderTaskQuickChipsBar();
+    const search = document.getElementById('task_inspector_search');
+    const tab = document.getElementById('rev_tab_task_inspector');
     const dropdown = document.getElementById('task_inspector_dropdown');
-    if (dropdown && !dropdown.classList.contains('hidden')) {
-        const search = document.getElementById('task_inspector_search');
-        renderTaskInspectorSuggestions(search ? search.value : '');
+    const visible = dropdown && !dropdown.classList.contains('hidden');
+    if (search && (!tab || !tab.classList.contains('hidden')) &&
+        (visible || (taskInspectorSearchIntent && document.activeElement === search))) {
+        renderTaskInspectorSuggestions(search.value, false);
+    } else {
+        taskInspectorSearchIntent = false;
     }
 }
 
@@ -32,16 +43,18 @@ function renderTaskQuickChipsBar() {
 
     const tasks = taskKnowledge.values();
     if (tasks.length === 0) {
-        bar.innerHTML = '<span class="text-xs text-slate-500">No tasks created yet.</span>';
+        bar.innerHTML = `<span class="text-xs text-slate-500">${taskKnowledge.state().status === 'fresh' ? 'No tasks created yet.' : 'Task metadata unavailable. Retry refresh to load tasks.'}</span>`;
         return;
     }
 
     bar.innerHTML = tasks.map((t, idx) => {
-        const color = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
+        const taskColor = typeof getTaskColor === 'function' ? getTaskColor(t, idx) : '#7c3aed';
+        const color = /^#[0-9a-f]{3,8}$/i.test(taskColor) ? taskColor : '#7c3aed';
         return `
-            <button onclick="selectTaskInspectorById('${t.id}')" class="px-2.5 py-1 rounded-lg text-xs font-bold text-white shadow-sm hover:scale-105 transition flex items-center space-x-1.5" style="background-color: ${escapeHtml(color)};">
-                <span>${escapeHtml(t.title)}</span>
-                <span class="text-[9px] opacity-80 uppercase bg-black/20 px-1 rounded">${escapeHtml(t.status)}</span>
+            <button type="button" onclick="selectTaskInspectorById('${escapeHtml(t.id)}')" class="task-quick-chip" aria-pressed="${selectedInspectedTaskId === t.id}" title="${escapeHtml(t.title)}">
+                <span class="task-quick-chip-color" aria-hidden="true" style="--task-chip-color:${color}"></span>
+                <span class="task-quick-chip-title">${escapeHtml(t.title)}</span>
+                <span class="task-quick-chip-status">${escapeHtml(t.status)}</span>
             </button>
         `;
     }).join('');
@@ -50,6 +63,15 @@ function renderTaskQuickChipsBar() {
 function setupTaskInspectorSearchListeners() {
     const searchInput = document.getElementById('task_inspector_search');
     if (!searchInput) return;
+
+    // Blur cancels pending refreshes without hiding a suggestion before its click runs.
+    searchInput.addEventListener('blur', () => { taskInspectorSearchIntent = false; });
+    const tab = document.getElementById('rev_tab_task_inspector');
+    if (tab && typeof MutationObserver !== 'undefined') {
+        new MutationObserver(() => {
+            if (tab.classList.contains('hidden')) dismissTaskInspectorSuggestions();
+        }).observe(tab, {attributes: true, attributeFilter: ['class']});
+    }
 
     searchInput.addEventListener('keydown', (e) => {
         const dropdown = document.getElementById('task_inspector_dropdown');
@@ -75,7 +97,7 @@ function setupTaskInspectorSearchListeners() {
                 items[0].click();
             }
         } else if (e.key === 'Escape') {
-            if (dropdown) dropdown.classList.add('hidden');
+            dismissTaskInspectorSuggestions();
         }
     });
 
@@ -83,12 +105,20 @@ function setupTaskInspectorSearchListeners() {
         const combobox = document.getElementById('task_inspector_combobox');
         const dropdown = document.getElementById('task_inspector_dropdown');
         if (combobox && dropdown && !combobox.contains(e.target) && !dropdown.contains(e.target)) {
-            dropdown.classList.add('hidden');
+            dismissTaskInspectorSuggestions();
         }
     });
 }
 
-function renderTaskInspectorSuggestions(query) {
+function dismissTaskInspectorSuggestions() {
+    taskInspectorSearchIntent = false;
+    activeTaskInspectorSearchIdx = -1;
+    const dropdown = document.getElementById('task_inspector_dropdown');
+    if (dropdown) dropdown.classList.add('hidden');
+}
+
+function renderTaskInspectorSuggestions(query, requestIntent = true) {
+    if (requestIntent) taskInspectorSearchIntent = true;
     const dropdown = document.getElementById('task_inspector_dropdown');
     if (!dropdown) return;
 
@@ -132,25 +162,29 @@ function highlightTaskInspectItem(items) {
 }
 
 function selectTaskInspectorById(taskId) {
+    if (taskId !== selectedInspectedTaskId && taskInspectorReviewEditor()?.canLeave() === false) return;
+    taskInspectorReviewEditor()?.bind(taskId);
     const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');
-    const dropdown = document.getElementById('task_inspector_dropdown');
 
     selectedInspectedTaskId = taskId;
+    renderTaskQuickChipsBar();
 
     if (searchInput && task) {
         searchInput.value = task.title;
     }
-    if (dropdown) dropdown.classList.add('hidden');
+    dismissTaskInspectorSuggestions();
 
-    loadTaskInspectorStats(taskId);
+    loadTaskInspectorStats(taskId, initializedTaskReviewId === taskId);
 }
 
 async function loadTaskInspectorStats(taskId, preserveEdits = false) {
     const generation = taskKnowledge.state().generation;
     const request = ++taskInspectorRequest;
-    const keepEdits = preserveEdits && initializedTaskReviewId === taskId;
+    const reviewEditor = taskInspectorReviewEditor();
+    const keepEdits = preserveEdits && reviewEditor?.taskId === taskId && reviewEditor.initialized;
     const body = document.getElementById('task_inspector_body');
+    taskInspectorReviewEditor()?.begin(taskId);
     if (!keepEdits) {
         initializedTaskReviewId = null;
         if (body) body.classList.add('hidden');
@@ -175,66 +209,60 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 
         const kpiContainer = document.getElementById('task_inspector_kpis');
         if (kpiContainer) {
-            const ratioStr = data.progress_pct !== null ? `${data.progress_pct}%` : 'N/A';
-            kpiContainer.innerHTML = `
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Logged</span>
-                    <span class="text-lg font-black text-purple-400">${data.logged_hours}h</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimated</span>
-                    <span class="text-lg font-black text-slate-300">${data.estimated_hours}h</span>
-                </div>
-                <div>
-                    <span class="text-[10px] text-slate-400 uppercase font-semibold block">Estimation Ratio</span>
-                    <span class="text-lg font-black text-blue-400">${ratioStr}</span>
-                </div>
-            `;
+            const ratioStr = data.progress_pct != null ? `${data.progress_pct}%` : 'N/A';
+            const balance = value => value == null ? 'Unbounded' : `${value}h`;
+            const metrics = [
+                ['Logged', `${data.logged_hours}h`], ['Scheduled', `${data.scheduled_hours}h`],
+                [task.is_recurring ? 'Estimate per occurrence' : 'Estimated', `${data.estimated_hours}h`],
+                ['Logged / estimate', ratioStr], ['Remaining', balance(data.remaining_hours)],
+                ['Unscheduled', balance(data.unscheduled_hours)]
+            ];
+            kpiContainer.innerHTML = metrics.map(([label, value]) => `
+                <div><span class="text-xs block">${label}</span><strong>${value}</strong></div>
+            `).join('');
         }
-
-        const pBar = document.getElementById('inspect_task_progress_bar');
-        if (pBar) {
-            const pct = data.progress_pct !== null ? Math.min(data.progress_pct, 100) : 0;
-            pBar.style.width = `${pct}%`;
+        const details = document.getElementById('inspect_task_details_link');
+        if (details) {
+            details.href = `/task-inspector/${taskId}`;
+            details.onclick = event => followSettingsLink(event);
         }
+        const status = document.getElementById('task_inspector_status');
+        if (status) status.textContent = 'Showing this task only. Descendant sessions are not included.';
 
         const list = document.getElementById('inspect_task_sessions_list');
         if (list) {
             if (data.sessions.length === 0) {
-                list.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No sessions logged for this task yet.</div>';
+                list.innerHTML = '<div class="text-xs text-slate-500 text-center py-6">No recorded sessions linked directly to this task yet.</div>';
             } else {
                 list.innerHTML = data.sessions.map(s => {
                     const st = s.start_time ? new Date(s.start_time).toLocaleString() : '';
                     const durMins = roundVal((s.duration_seconds || 0) / 60, 1);
                     return `
-                        <div onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
+                        <button type="button" onclick="openSessionReviewModal('${s.id}')" class="bg-[#0f1016] hover:bg-[#161824] border border-[var(--border-muted)] hover:border-purple-500 p-3 rounded-lg text-xs space-y-1 cursor-pointer transition">
                             <div class="flex justify-between items-center font-mono">
                                 <span class="text-purple-300 font-bold">${st}</span>
                                 <span class="text-slate-400 font-bold">${durMins} mins</span>
                             </div>
                             ${s.notes ? `<div class="text-white font-semibold">${escapeHtml(s.notes)}</div>` : ''}
-                        </div>
+                        </button>
                     `;
                 }).join('');
             }
         }
 
-        if (!keepEdits) {
-            const rev = data.task_review;
-            document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
-            document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
-            document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
-            document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
-
-            await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings, isCurrent);
+        const editor = taskInspectorReviewEditor();
+        if (editor) {
+            await editor.hydrate(taskId, data, isCurrent, true);
             if (!isCurrent()) return null;
-            initializedTaskReviewId = taskId;
+            if (editor.ready) initializedTaskReviewId = taskId;
         }
         if (body) body.classList.remove('hidden');
         taskKnowledge.viewResult('inspector-registry', true);
         return true;
     } catch (e) {
         if (!isCurrent()) return null;
+        const status = document.getElementById('task_inspector_status');
+        if (status) status.textContent = 'Task unavailable or refresh failed. Last-known data and initialized drafts retained. Retry refresh reads only.';
         taskKnowledge.viewResult('inspector-registry', false);
         console.error("Failed to load task inspector stats:", e);
         return false;
@@ -242,30 +270,5 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 }
 
 async function saveTaskReviewForm() {
-    if (!selectedInspectedTaskId) return;
-    if (initializedTaskReviewId !== selectedInspectedTaskId) {
-        alert('Task review is not ready. Wait for it to load, or use Retry refresh before saving.');
-        return;
-    }
-
-    const taskId = selectedInspectedTaskId;
-
-    if (!validateRequiredCustomRatings('task', taskId)) {
-        return;
-    }
-
-    const diffEl = document.getElementById('task_rev_difficulty');
-    const parsedDiff = diffEl ? parseInt(diffEl.value) : 3;
-
-    const payload = {
-        task_id: taskId,
-        difficulty: isNaN(parsedDiff) ? 3 : parsedDiff,
-        what_went_well: document.getElementById('task_rev_went_well') ? document.getElementById('task_rev_went_well').value || "" : "",
-        blockers: document.getElementById('task_rev_blockers') ? document.getElementById('task_rev_blockers').value || "" : "",
-        key_takeaways: document.getElementById('task_rev_takeaways') ? document.getElementById('task_rev_takeaways').value || "" : ""
-    };
-
-    await api.post('/api/task-reviews', payload);
-    await submitCustomRatings('task', taskId);
-    loadTaskInspectorStats(taskId);
+    return taskInspectorReviewEditor()?.save();
 }

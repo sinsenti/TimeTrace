@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TimeTrace -- AI Assistant Settings</title>
+    <title>TimeTrace -- Settings</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/ai.css">
     <style>
@@ -27,35 +27,48 @@
         ::-webkit-scrollbar-track { background: var(--bg-main); }
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
+    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/browser_preferences.css">
+    <link rel="stylesheet" href="/static/css/ai_settings_page.css">
 </head>
 <body class="min-h-screen flex flex-col">
 
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
-        <div class="font-bold text-sm text-slate-200">AI Assistant Settings</div>
+        <div class="app-page-title font-bold text-sm text-slate-200">Settings</div>
         <div></div>
     </header>
 
-    <main class="ai-settings-page flex-1 w-full">
+    <main class="ai-settings-page settings-workspace flex-1 w-full" data-settings-category="{{ settings_category }}">
+        <nav id="settings_categories" aria-label="Settings categories">
+            <button type="button" data-category="browser">Browser preferences</button>
+            <button type="button" data-category="ai">AI behavior</button>
+            <button type="button" data-category="providers">Providers</button>
+        </nav>
+        {% include "components/browser_preferences.html" %}
+        <section id="settings_providers_category" aria-label="Providers">
         <div class="ai-settings-section">
             <h2>Providers</h2>
             <p class="ai-settings-hint">Anthropic, OpenAI, Google AI Studio, Groq, OpenRouter, or a local Ollama
-                server. Exactly one provider is active at a time; switching is instant, no daemon restart required.</p>
+                server, or Pi with its existing login. Exactly one provider is active at a time; switching is instant,
+                no daemon restart required.</p>
             <div id="ai_providers_list"></div>
+            <div id="ai_provider_status" role="status" aria-live="polite"></div>
             <button type="button" id="ai_provider_new_btn" class="ai-btn ai-btn-accept mt-2">+ Add Provider</button>
         </div>
 
         <div id="ai_provider_form_section" class="ai-settings-section hidden">
             <h2 id="ai_provider_form_title">Add Provider</h2>
             <input type="hidden" id="ai_provider_form_id">
+            <input type="hidden" id="ai_provider_form_key_intent" value="keep">
 
             <div class="ai-form-row">
                 <div>
-                    <label>Name</label>
+                    <label for="ai_provider_form_name">Name</label>
                     <input type="text" id="ai_provider_form_name" placeholder="e.g. My Ollama box">
                 </div>
                 <div>
-                    <label>Provider</label>
+                    <label for="ai_provider_form_provider">Provider</label>
                     <select id="ai_provider_form_provider">
                         <option value="anthropic">Anthropic</option>
                         <option value="openai">OpenAI</option>
@@ -68,48 +81,51 @@
                 </div>
             </div>
 
+            <div id="ai_catalog_status" role="status"></div>
             <div id="ai_provider_form_help" class="ai-provider-help"></div>
 
             <div class="ai-form-row">
                 <div>
-                    <label>Model</label>
+                    <label for="ai_provider_form_model_select">Model</label>
                     <select id="ai_provider_form_model_select"></select>
                 </div>
                 <div>
-                    <label>Model (override / custom id)</label>
+                    <label for="ai_provider_form_model">Model (override / custom id)</label>
                     <input type="text" id="ai_provider_form_model" placeholder="model id">
                 </div>
             </div>
 
             <div class="ai-form-row">
                 <div>
-                    <label>Base URL (optional -- required for Ollama)</label>
+                    <label for="ai_provider_form_base_url">Base URL (optional -- required for Ollama)</label>
                     <input type="text" id="ai_provider_form_base_url" placeholder="http://localhost:11434">
                 </div>
                 <div>
-                    <label id="ai_provider_form_api_key_label">API Key</label>
+                    <label id="ai_provider_form_api_key_label" for="ai_provider_form_api_key">API Key</label>
                     <input type="password" id="ai_provider_form_api_key" placeholder="leave blank to keep existing key" autocomplete="new-password">
+                    <button type="button" id="ai_provider_clear_key_btn" class="ai-btn-item">Clear saved key</button>
+                    <span id="ai_provider_key_status" role="status">Blank keeps the saved key.</span>
                 </div>
             </div>
 
             <div class="ai-form-row">
                 <div>
-                    <label>Temperature</label>
+                    <label for="ai_provider_form_temperature">Temperature</label>
                     <input type="number" id="ai_provider_form_temperature" value="0" step="0.1" min="0" max="2">
                 </div>
                 <div>
-                    <label>Max output tokens</label>
+                    <label for="ai_provider_form_max_tokens">Max output tokens</label>
                     <input type="number" id="ai_provider_form_max_tokens" value="4096" step="1" min="1">
                 </div>
             </div>
 
             <div class="ai-form-row">
                 <div>
-                    <label>Request timeout (seconds)</label>
+                    <label for="ai_provider_form_timeout">Request timeout (seconds)</label>
                     <input type="number" id="ai_provider_form_timeout" value="120" step="1" min="1">
                 </div>
                 <div>
-                    <label>Sanitization level</label>
+                    <label for="ai_provider_form_sanitization">Sanitization level</label>
                     <select id="ai_provider_form_sanitization">
                         <option value="standard">Standard</option>
                         <option value="strict">Strict</option>
@@ -119,39 +135,41 @@
             </div>
 
             <p class="ai-secret-note">API keys are encrypted at rest (Fernet, key file
-                <code>~/.timetrace/secret.key</code>, mode 0600). This defends against a stolen database or
-                backup file, not against anything that can already read your home directory.</p>
+                <code>~/.timetrace/secret.key</code>, mode 0600). Keep the key file separate from database backups.
+                Anyone who can read both can decrypt stored keys. Pi authentication stays with Pi.</p>
 
             <div class="flex gap-2 mt-3">
                 <button type="button" id="ai_provider_test_btn" class="ai-btn ai-btn-reapply">Test connection</button>
                 <button type="button" id="ai_provider_save_btn" class="ai-btn ai-btn-accept">Save provider</button>
                 <button type="button" id="ai_provider_cancel_btn" class="ai-btn ai-btn-reject">Cancel</button>
             </div>
-            <div id="ai_provider_test_result" class="ai-test-result"></div>
+            <div role="status" id="ai_provider_test_result" class="ai-test-result"></div>
         </div>
 
-        <div class="ai-settings-section">
+        </section>
+        <section id="settings_ai_category" aria-label="AI behavior">
+        <div id="ai_behavior_settings" class="ai-settings-section">
             <h2>Behavior</h2>
             <p class="ai-settings-hint">These toggles are stored server-side (unlike theme/vim/first-day-of-week,
                 which stay in this browser's local storage).</p>
 
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Quick-add fallback</div>
+                    <label class="ai-toggle-row-label" for="ai_setting_quickadd_fallback">Quick-add fallback</label>
                     <div class="ai-toggle-row-hint">If no provider is configured, silently fall back to the tier-1 regex parser instead of erroring</div>
                 </div>
                 <input type="checkbox" id="ai_setting_quickadd_fallback" class="w-4 h-4 accent-purple-600 rounded">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Redact before send</div>
+                    <label class="ai-toggle-row-label" for="ai_setting_redact_before_send">Redact before send</label>
                     <div class="ai-toggle-row-hint">Sanitize task/session text before it leaves the machine</div>
                 </div>
                 <input type="checkbox" id="ai_setting_redact_before_send" class="w-4 h-4 accent-purple-600 rounded">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Preview on calendar</div>
+                    <label class="ai-toggle-row-label" for="ai_setting_preview_on_calendar">Preview on calendar</label>
                     <div class="ai-toggle-row-hint">Show pending AI draft proposals as ghost events on the calendar</div>
                 </div>
                 <input type="checkbox" id="ai_setting_preview_on_calendar" class="w-4 h-4 accent-purple-600 rounded">
@@ -172,14 +190,14 @@
 
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Scheduling window, days</div>
+                    <label class="ai-toggle-row-label" for="ai_setting_scheduling_window_days">Scheduling window, days</label>
                     <div class="ai-toggle-row-hint">How far ahead schedule validation permits new placements</div>
                 </div>
                 <input type="number" id="ai_setting_scheduling_window_days" min="1" max="90" style="width: 80px;">
             </div>
             <div class="ai-toggle-row">
                 <div>
-                    <div class="ai-toggle-row-label">Batch undo retention, days</div>
+                    <label class="ai-toggle-row-label" for="ai_setting_batch_undo_retention_days">Batch undo retention, days</label>
                     <div class="ai-toggle-row-hint">How long an applied draft batch remains eligible for undo</div>
                 </div>
                 <input type="number" id="ai_setting_batch_undo_retention_days" min="1" max="3650" style="width: 80px;">
@@ -218,8 +236,10 @@
             </div>
 
             <button type="button" id="ai_settings_save_btn" class="ai-btn ai-btn-accept mt-3">Save behavior settings</button>
-            <span id="ai_settings_save_status" class="ai-test-result"></span>
+            <button type="button" id="ai_settings_cancel_btn" class="ai-btn ai-btn-reject mt-3">Cancel changes</button>
+            <span role="status" id="ai_settings_save_status" class="ai-test-result"></span>
         </div>
+        </section>
     </main>
 
     {% include "components/ai_drawer.html" %}
@@ -232,5 +252,6 @@
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>
     <script src="/static/js/ai_settings_page.js"></script>
+    <script src="/static/js/browser_preferences.js"></script>
 </body>
 </html>

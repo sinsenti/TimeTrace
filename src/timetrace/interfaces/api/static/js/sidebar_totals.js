@@ -6,135 +6,156 @@ const STORAGE_STATUS_FILTER_KEY = 'timetrace_dashboard_status_filter';
 const STORAGE_VISIBLE_TABS_KEY = 'timetrace_dashboard_visible_sidebar_tabs';
 
 function getCurrentStatusFilter() {
-    return localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || (typeof activeCustomFilter !== 'undefined' ? activeCustomFilter.status : 'all') || 'all';
+    if (typeof activeCustomFilter !== 'undefined') return activeCustomFilter.status || 'all';
+    try { return localStorage.getItem(STORAGE_STATUS_FILTER_KEY) || 'all'; } catch { return 'all'; }
 }
+const defaultSidebarTabs = ['all', 'hide_completed', 'To Do', 'Ongoing', 'Scheduled', 'Done', 'Backlog'];
+let visibleSidebarTabs;
+try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_VISIBLE_TABS_KEY) || 'null');
+    visibleSidebarTabs = Array.isArray(saved) ? [...new Set(saved.filter(value => typeof value === 'string'))] : [...defaultSidebarTabs];
+} catch { visibleSidebarTabs = [...defaultSidebarTabs]; }
+let sidebarTabsReadVersion = 0;
+let sidebarConfigReadVersion = 0;
+let sidebarConfigOpen = false;
+let sidebarConfigSortable = null;
+let sidebarConfigLauncher = null;
+let sidebarTaskReadVersion = 0;
 
-let visibleSidebarTabs = JSON.parse(localStorage.getItem(STORAGE_VISIBLE_TABS_KEY) || 'null');
-if (!visibleSidebarTabs) {
-    visibleSidebarTabs = ['all', 'hide_completed', 'To Do', 'Ongoing', 'Scheduled', 'Done', 'Backlog'];
+function sidebarFeedback(id, message, retry) {
+    const element = document.getElementById(id);
+    if (!element) return;
+    element.replaceChildren();
+    element.textContent = message;
+    if (retry) {
+        const button = document.createElement('button');
+        button.type = 'button'; button.textContent = 'Retry'; button.className = 'ml-2 underline';
+        button.addEventListener('click', retry); element.append(button);
+    }
 }
-
-document.addEventListener('DOMContentLoaded', () => {
-    initSidebarResizers();
-    renderDynamicStatusTabs();
-});
-
+function sidebarAvailableTabs(statuses) {
+    const names = Array.isArray(statuses) ? statuses.filter(s => s && typeof s.name === 'string').map(s => s.name) : [];
+    return [...new Set(['all', 'hide_completed', ...names])].map(id => ({ id, label: id === 'all' ? 'All' : id === 'hide_completed' ? 'Active' : id }));
+}
+document.addEventListener('DOMContentLoaded', () => { initSidebarResizers(); renderDynamicStatusTabs(); });
 function setTaskFilter(filterName) {
-    localStorage.setItem(STORAGE_STATUS_FILTER_KEY, filterName);
-    
     if (typeof activeCustomFilter !== 'undefined') {
         activeCustomFilter.status = filterName;
-        activeCustomFilter.isActive = Boolean(
-            activeCustomFilter.query || 
-            activeCustomFilter.status !== 'all' || 
-            activeCustomFilter.category !== 'all' || 
-            activeCustomFilter.estOp || 
-            activeCustomFilter.priority !== 'all'
-        );
+        activeCustomFilter.isActive = Boolean(activeCustomFilter.query || activeCustomFilter.status !== 'all' || activeCustomFilter.category !== 'all' || activeCustomFilter.estOp || activeCustomFilter.priority !== 'all');
         if (typeof saveCustomFilterState === 'function') saveCustomFilterState();
         if (typeof updateFilterButtonIndicators === 'function') updateFilterButtonIndicators();
+    } else {
+        try { localStorage.setItem(STORAGE_STATUS_FILTER_KEY, filterName); }
+        catch { sidebarFeedback('sidebar_status_feedback', 'Status selection could not be saved on this device.'); }
     }
-
-    renderDynamicStatusTabs();
-    fetchTasks();
+    renderDynamicStatusTabs(); fetchTasks();
 }
-
 async function renderDynamicStatusTabs() {
     const container = document.getElementById('sidebar_status_tabs');
     if (!container) return;
-
+    const version = ++sidebarTabsReadVersion;
     try {
-        const dbStatuses = await api.get('/api/tasks/statuses') || [];
-        const allAvailableTabs = [
-            { id: 'all', label: 'All' },
-            { id: 'hide_completed', label: 'Active' },
-            ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
-        ];
-
-        const activeVisibleTabs = [];
-        visibleSidebarTabs.forEach(vid => {
-            const found = allAvailableTabs.find(t => t.id === vid);
-            if (found) activeVisibleTabs.push(found);
+        const statuses = await api.get('/api/tasks/statuses');
+        if (!Array.isArray(statuses)) throw new Error('Invalid status response');
+        if (version !== sidebarTabsReadVersion) return;
+        const available = sidebarAvailableTabs(statuses);
+        container.replaceChildren();
+        visibleSidebarTabs.forEach(id => {
+            const tab = available.find(t => t.id === id);
+            if (!tab) return;
+            const button = document.createElement('button');
+            button.type = 'button'; button.textContent = tab.label;
+            const selected = getCurrentStatusFilter().toLowerCase() === id.toLowerCase();
+            button.className = selected ? 'px-2 py-0.5 text-[10px] rounded bg-purple-600 text-white font-bold whitespace-nowrap' : 'px-2 py-0.5 text-[10px] rounded bg-[var(--bg-card)] text-slate-400 whitespace-nowrap';
+            button.setAttribute('aria-pressed', String(selected));
+            button.addEventListener('click', () => setTaskFilter(id)); container.append(button);
         });
-
-        const activeFilterLower = getCurrentStatusFilter().toLowerCase();
-
-        container.innerHTML = activeVisibleTabs.map(t => {
-            const isSelected = activeFilterLower === t.id.toLowerCase();
-            const activeClass = "px-2 py-0.5 text-[10px] rounded bg-purple-600 text-white font-bold whitespace-nowrap";
-            const inactiveClass = "px-2 py-0.5 text-[10px] rounded bg-[#181a28] text-slate-400 hover:text-white whitespace-nowrap";
-            return `<button onclick="setTaskFilter('${t.id}')" class="${isSelected ? activeClass : inactiveClass}">${t.label}</button>`;
-        }).join('');
-    } catch(e) {
-        console.error("Failed to render dynamic status tabs:", e);
+        sidebarFeedback('sidebar_status_feedback', !visibleSidebarTabs.length ? 'No status tabs selected. Use Tabs to choose tabs.' :
+            !container.children.length ? 'Selected tabs are unavailable and retained. Use Tabs to configure.' : '');
+    } catch {
+        if (version === sidebarTabsReadVersion) sidebarFeedback('sidebar_status_feedback', 'Status tabs could not be refreshed.', renderDynamicStatusTabs);
     }
 }
-
-function openSidebarTabsConfigModal() {
-    api.get('/api/tasks/statuses').then(dbStatuses => {
-        const allAvailableTabs = [
-            { id: 'all', label: 'All' },
-            { id: 'hide_completed', label: 'Active (Hide Completed)' },
-            ...dbStatuses.map(s => ({ id: s.name, label: s.name }))
-        ];
-
-        const orderedTabs = [];
-        visibleSidebarTabs.forEach(vid => {
-            const found = allAvailableTabs.find(t => t.id === vid);
-            if (found) orderedTabs.push({...found, checked: true});
-        });
-        
-        allAvailableTabs.forEach(t => {
-            if (!visibleSidebarTabs.includes(t.id)) {
-                orderedTabs.push({...t, checked: false});
-            }
-        });
-
-        const listContainer = document.getElementById('sidebar_tab_config_list');
-        if (!listContainer) return;
-
-        listContainer.innerHTML = orderedTabs.map(t => `
-            <div data-tab-id="${t.id}" class="sidebar-tab-row flex items-center justify-between p-2 bg-[#0f1016] rounded-lg border border-[var(--border-muted)] cursor-grab hover:border-purple-500">
-                <span class="font-bold text-xs text-white">${t.label}</span>
-                <input type="checkbox" ${t.checked ? 'checked' : ''} onchange="updateVisibleTabsFromDOM()" class="w-4 h-4 accent-purple-600 rounded cursor-pointer">
-            </div>
-        `).join('');
-
-        if (typeof Sortable !== 'undefined') {
-            Sortable.create(listContainer, {
-                animation: 150,
-                ghostClass: 'sortable-ghost',
-                onEnd: function() {
-                    updateVisibleTabsFromDOM();
-                }
-            });
+function renderSidebarTabConfig(statuses) {
+    const list = document.getElementById('sidebar_tab_config_list');
+    if (!list) return;
+    sidebarConfigSortable?.destroy(); sidebarConfigSortable = null;
+    const available = sidebarAvailableTabs(statuses);
+    const ordered = [...visibleSidebarTabs.map(id => ({ id, label: available.find(t => t.id === id)?.label || `${id} (unavailable; retained)`, checked: true })), ...available.filter(t => !visibleSidebarTabs.includes(t.id)).map(t => ({ ...t, checked: false }))];
+    list.replaceChildren();
+    ordered.forEach(tab => {
+        const row = document.createElement('div');
+        row.className = 'sidebar-tab-row flex items-center gap-2 p-2 rounded-lg border border-[var(--border-muted)]'; row.setAttribute('data-tab-id', tab.id);
+        const label = document.createElement('label'); label.className = 'flex items-center gap-2 flex-1 min-w-0';
+        const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = tab.checked;
+        checkbox.addEventListener('change', updateVisibleTabsFromDOM);
+        const text = document.createElement('span'); text.textContent = tab.label; text.className = 'text-xs break-words';
+        label.append(checkbox, text); row.append(label);
+        for (const [direction, title] of [['up', 'Move up'], ['down', 'Move down']]) {
+            const button = document.createElement('button'); button.type = 'button'; button.textContent = title;
+            button.className = 'text-xs border rounded p-1'; button.setAttribute('aria-label', `${title}: ${tab.label}`);
+            button.addEventListener('click', () => {
+                if (direction === 'up' && row.previousElementSibling) list.insertBefore(row, row.previousElementSibling);
+                if (direction === 'down' && row.nextElementSibling) list.insertBefore(row.nextElementSibling, row);
+                updateVisibleTabsFromDOM(); button.focus();
+            }); row.append(button);
         }
-
-        document.getElementById('sidebar_tab_config_modal').classList.remove('hidden');
+        list.append(row);
     });
+    if (typeof Sortable !== 'undefined') sidebarConfigSortable = Sortable.create(list, { animation: 150, ghostClass: 'sortable-ghost', filter: 'input, button', preventOnFilter: false, onEnd: updateVisibleTabsFromDOM });
 }
-
-function updateVisibleTabsFromDOM() {
-    const listContainer = document.getElementById('sidebar_tab_config_list');
-    if (!listContainer) return;
-    const rows = listContainer.querySelectorAll('.sidebar-tab-row');
-    const newOrder = [];
-    rows.forEach(row => {
-        const checkbox = row.querySelector('input[type="checkbox"]');
-        if (checkbox && checkbox.checked) {
-            newOrder.push(row.getAttribute('data-tab-id'));
-        }
-    });
-    visibleSidebarTabs = newOrder;
-    localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
-    renderDynamicStatusTabs();
-}
-
-function closeSidebarTabsConfigModal() {
+async function openSidebarTabsConfigModal() {
     const modal = document.getElementById('sidebar_tab_config_modal');
-    if (modal) modal.classList.add('hidden');
+    if (!modal) return;
+    if (!sidebarConfigOpen) sidebarConfigLauncher = document.activeElement;
+    if (!sidebarConfigOpen) modal.addEventListener('keydown', sidebarConfigKeydown);
+    sidebarConfigOpen = true; modal.classList.remove('hidden');
+    const version = ++sidebarConfigReadVersion;
+    renderSidebarTabConfig([]);
+    sidebarFeedback('sidebar_tab_config_feedback', 'Loading statuses…');
+    modal.querySelector('button')?.focus();
+    try {
+        const statuses = await api.get('/api/tasks/statuses');
+        if (!Array.isArray(statuses)) throw new Error('Invalid status response');
+        if (!sidebarConfigOpen || version !== sidebarConfigReadVersion) return;
+        renderSidebarTabConfig(statuses);
+        sidebarFeedback('sidebar_tab_config_feedback', 'Changes save immediately. Unavailable selected tabs are retained.');
+    } catch {
+        if (sidebarConfigOpen && version === sidebarConfigReadVersion) sidebarFeedback('sidebar_tab_config_feedback', 'Statuses could not be loaded. Saved selections are retained.', openSidebarTabsConfigModal);
+    }
+}
+function sidebarConfigKeydown(event) {
+    if (!sidebarConfigOpen) return;
+    const modal = document.getElementById('sidebar_tab_config_modal');
+    if (!modal?.contains(document.activeElement)) return;
+    if (event.key === 'Escape' || event.key === 'Esc') {
+        event.preventDefault(); event.stopPropagation(); closeSidebarTabsConfigModal();
+    } else if (event.key === 'Tab') {
+        const controls = [...modal.querySelectorAll('button, input')].filter(el => !el.disabled);
+        const first = controls[0], last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    }
+}
+function updateVisibleTabsFromDOM() {
+    const list = document.getElementById('sidebar_tab_config_list');
+    if (!list) return;
+    visibleSidebarTabs = [...list.querySelectorAll('.sidebar-tab-row')].filter(row => row.querySelector('input[type="checkbox"]')?.checked).map(row => row.getAttribute('data-tab-id'));
+    try {
+        localStorage.setItem(STORAGE_VISIBLE_TABS_KEY, JSON.stringify(visibleSidebarTabs));
+        sidebarFeedback('sidebar_tab_config_feedback', 'Changes saved. Unavailable selected tabs are retained.');
+    }
+    catch { sidebarFeedback('sidebar_tab_config_feedback', 'Changes apply here but could not be saved on this device.'); }
     renderDynamicStatusTabs();
-    fetchTasks();
+}
+function closeSidebarTabsConfigModal() {
+    sidebarConfigOpen = false; ++sidebarConfigReadVersion;
+    sidebarConfigSortable?.destroy(); sidebarConfigSortable = null;
+    const modal = document.getElementById('sidebar_tab_config_modal');
+    const restoreFocus = modal?.contains(document.activeElement);
+    modal?.classList.add('hidden');
+    if (restoreFocus && sidebarConfigLauncher?.isConnected) sidebarConfigLauncher.focus();
+    renderDynamicStatusTabs(); fetchTasks();
 }
 
 function initSidebarResizers() {
@@ -151,6 +172,7 @@ function initSidebarResizers() {
     
     if (savedLeftWidth && leftSidebar) {
         leftSidebar.style.width = `${savedLeftWidth}px`;
+        document.documentElement.style.setProperty('--planning-tasks-width', `${savedLeftWidth}px`);
     }
     if (savedRightWidth && rightSidebar) {
         rightSidebar.style.width = `${savedRightWidth}px`;
@@ -186,6 +208,7 @@ function initSidebarResizers() {
             newWidth = Math.max(160, Math.min(newWidth, maxLeftWidth));
             
             leftSidebar.style.width = `${newWidth}px`;
+            document.documentElement.style.setProperty('--planning-tasks-width', `${newWidth}px`);
             localStorage.setItem('timetrace_left_sidebar_width', newWidth);
         }
 
@@ -218,11 +241,16 @@ function initSidebarResizers() {
 }
 
 async function fetchTasks() {
+    const version = ++sidebarTaskReadVersion;
+    const filterIdentity = typeof activeCustomFilter !== 'undefined' ? JSON.stringify(activeCustomFilter) : getCurrentStatusFilter();
+    const isCurrent = () => version === sidebarTaskReadVersion && generation === taskKnowledge.state().generation &&
+        filterIdentity === (typeof activeCustomFilter !== 'undefined' ? JSON.stringify(activeCustomFilter) : getCurrentStatusFilter());
+    sidebarFeedback('sidebar_task_feedback', 'Loading tasks…');
     const generation = taskKnowledge.state().generation;
     try {
         const currentFilterVal = getCurrentStatusFilter();
         let fetched = await api.get(`/api/tasks?status=${encodeURIComponent(currentFilterVal)}&sort=smart_gap_filler`) || [];
-        if (generation !== taskKnowledge.state().generation) return;
+        if (!isCurrent()) return;
 
         if (typeof matchesCustomFilter === 'function') {
             activeTasks = fetched.filter(t => matchesCustomFilter(t));
@@ -295,15 +323,16 @@ async function fetchTasks() {
                                 </div>
                                 ${parentTaskLinkHTML}
                             </div>
-                            <div class="flex justify-between items-center text-[10px] font-semibold">
-                                <div class="flex items-center space-x-1">
-                                    <span class="bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${escapeHtml(t.category || 'work')}</span>
+                            <div class="planning-task-footer">
+                                <div class="planning-task-metadata">
+                                    <span class="planning-task-category bg-black/60 px-1.5 py-0.5 rounded uppercase text-[9px] text-white">${escapeHtml(t.category || 'work')}</span>
                                     ${isRecurring ? '<span class="text-[9px] font-bold text-white">↻</span>' : ''}
                                     ${hasAttachments ? '<span class="text-[9px] font-bold text-white">📎</span>' : ''}
                                 </div>
-                                <div class="flex items-center space-x-1">
+                                <div class="planning-task-actions">
                                     <span class="bg-black/60 px-1.5 py-0.5 rounded font-bold text-white">${escapeHtml(prioLabel)}</span>
-                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="bg-black/60 hover:bg-black/80 px-1.5 py-0.5 rounded font-bold text-[9px] text-white">Edit</button>
+                                    <button type="button" aria-label="Schedule ${escapeHtml(t.title)}" onclick="event.stopPropagation(); createPlanningSession('${t.id}');" class="planning-schedule planning-task-action bg-black/60 hover:bg-black/80 text-white">Schedule</button>
+                                    <button type="button" onclick="event.stopPropagation(); openEditTaskModal('${t.id}');" class="planning-task-action bg-black/60 hover:bg-black/80 text-white">Edit</button>
                                 </div>
                             </div>
                         </div>
@@ -312,12 +341,17 @@ async function fetchTasks() {
             }
         }
 
+        if (typeof filterPlanningTasks === 'function') {
+            filterPlanningTasks(document.getElementById('planning_task_search')?.value || '');
+        }
         fetchRangeTotals();
+        sidebarFeedback('sidebar_task_feedback', '');
         taskKnowledge.viewResult("sidebar", true);
         return true;
     } catch (err) {
-        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult("sidebar", false);
-        console.error("Error fetching tasks:", err);
+        if (!isCurrent()) return;
+        taskKnowledge.viewResult("sidebar", false);
+        sidebarFeedback('sidebar_task_feedback', 'Tasks could not be refreshed. Previous results are retained.', fetchTasks);
         return false;
     }
 }
@@ -358,6 +392,7 @@ function toggleBreakdownFilter(type, value) {
     }
     renderBreakdownLists();
     renderBreakdownFilterChip();
+    if (typeof syncCalendarContext === 'function') syncCalendarContext();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
 
@@ -365,6 +400,7 @@ function clearBreakdownFilter() {
     breakdownFilter = null;
     renderBreakdownLists();
     renderBreakdownFilterChip();
+    if (typeof syncCalendarContext === 'function') syncCalendarContext();
     if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
 }
 
@@ -391,7 +427,7 @@ function renderBreakdownFilterChip() {
     chip.classList.remove('hidden');
     chip.innerHTML = `
         <span class="text-purple-200">Filtered: ${escapeHtml(label)}</span>
-        <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">&times;</button>
+        <button type="button" onclick="clearBreakdownFilter()" class="text-purple-300 hover:text-white font-black ml-2">Clear filter</button>
     `;
 }
 
@@ -407,10 +443,10 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const pct = lastGrandTotalSecs > 0 ? ((secs / lastGrandTotalSecs) * 100).toFixed(1) : '0.0';
                 return `
-                    <div data-breakdown-tag="${escapeHtml(tag)}" onclick="toggleBreakdownFilter('tag', this.dataset.breakdownTag)" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                    <button type="button" data-breakdown-tag="${escapeHtml(tag)}" onclick="toggleBreakdownFilter('tag', this.dataset.breakdownTag)" class="bg-[#161824] border border-[var(--border-muted)] p-2.5 rounded-lg flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
                         <span class="text-xs font-bold text-emerald-400">${escapeHtml(tag)}</span>
                         <span class="text-xs font-black text-white">${(secs / 3600).toFixed(1)}h <span class="text-slate-500 font-medium">(${pct}%)</span></span>
-                    </div>
+                    </button>
                 `;
             }).join('');
             activityList.insertAdjacentHTML('beforeend', '<p class="text-[10px] text-slate-500 pt-1">Multi-tag sessions are counted in full under each tag, so totals overlap.</p>');
@@ -432,10 +468,10 @@ function renderBreakdownLists() {
                 const isDimmed = breakdownFilter && !isActive;
                 const hrs = (secs / 3600).toFixed(1);
                 return `
-                    <div onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${escapeHtml(color)};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
+                    <button type="button" onclick="toggleBreakdownFilter('task', '${tid}')" style="background-color: ${escapeHtml(color)}; color: ${getContrastingTextColor(color)};" class="p-2.5 rounded-lg shadow text-white flex justify-between items-center cursor-pointer transition ${isActive ? 'ring-2 ring-purple-400' : ''} ${isDimmed ? 'opacity-40' : ''}">
                         <span class="font-bold text-xs truncate">${escapeHtml(title)}</span>
                         <span class="text-sm font-black">${hrs}h</span>
-                    </div>
+                    </button>
                 `;
             }).join('');
         }
