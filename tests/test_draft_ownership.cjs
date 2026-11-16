@@ -29,7 +29,7 @@ function node(id = '', value = '', tag = 'input') {
 }
 function browser(elements, files, respond) {
     const writes = [], confirmations = [], events = {};
-    const context = vm.createContext({URL, URLSearchParams, Intl, Event, TextDecoder, console:{error(){}}, setTimeout:fn=>fn(),
+    const context = vm.createContext({URL, URLSearchParams, Intl, Event, TextDecoder, AbortController, console:{error(){}}, setTimeout:fn=>fn(),
         localStorage:{getItem:()=>null,setItem(){}},
         document:{body:node('body'), getElementById:id=>elements[id] || null, createElement:tag=>node('', '', tag), querySelectorAll:()=>[], querySelector:()=>null,
             addEventListener:(name, fn)=>(events[name] ||= []).push(fn), documentElement:{style:{setProperty(){}},setAttribute(){}}},
@@ -241,7 +241,8 @@ for(const sql of [false,true]) test(`Widget ${sql ? 'SQL' : 'structured'} editor
 });
 
 test('Add Status explicit Save form guards Settings and Cancel discards without a write',()=>{
-    const fields=Object.fromEntries(['add_status_modal','modal_new_status_name','modal_new_status_color','new_status_color_hex'].map(id=>[id,node(id)]));
+    const fields=Object.fromEntries(['add_status_modal','modal_new_status_name','modal_new_status_color','new_status_color_hex',
+        'status_add_feedback','status_add_retry','status_add_save'].map(id=>[id,node(id, '', id === 'status_add_feedback' ? 'p' : id.startsWith('status_add_') ? 'button' : 'input')]));
     fields.add_status_modal.children.push(fields.modal_new_status_name,fields.modal_new_status_color);
     const b=browser(fields,['kanban.js'],()=>({json:[]}));
     b.run('openAddStatusModal()');fields.modal_new_status_name.value='Draft status';
@@ -424,10 +425,56 @@ for(const edit of ['notes','rating']) test(`Hidden retained Day ${edit} warns on
     assert.equal(b.run('followSettingsLink({})'),true);assert.equal(b.writes.length,0);
 });
 
+// Task-only fixture uses the shared controller and real renderer markup; Session fixtures stay independent.
+function taskReviewOwnershipBrowser() {
+    const fields={}, owner='revision_task_postmortem', ratings=[];
+    const make=(id='',value='',tag='input')=>{
+        const el=node(id,value,tag), original=el.querySelectorAll.bind(el);
+        el.querySelectorAll=selector=>{
+            const attr=selector.match(/^\[data-task-review="([^"]+)"\]$/);
+            if(attr)return el.children.flatMap(c=>[c,...c.querySelectorAll('input, textarea, button, div, fieldset, p')]).filter(c=>c.dataset.taskReview===attr[1]);
+            if(selector==='[data-rating-def-id]')return el.children.filter(c=>c.definition);
+            return original(selector);
+        };
+        fields[id]=el;return el;
+    };
+    const root=make(owner,'','section'), container=make(owner+'_ratings','','div');
+    root.dataset.settingsDraftRetained='true';container.dataset.settingsDraftRetained='true';container.dataset.taskReview='ratings';
+    const names=['difficulty','what_went_well','blockers','key_takeaways'];
+    const texts=names.map((name,i)=>{const el=make(['task_rev_difficulty','task_rev_went_well','task_rev_blockers','task_rev_takeaways'][i],i?'':3,i?'textarea':'input');el.dataset.taskReview=name;return el;});
+    root.children.push(...texts,container);
+    for(const name of ['fields','save','discard','retry','status']){const el=make(owner+'_'+name,'',name==='fields'?'fieldset':name==='status'?'p':'button');el.dataset.taskReview=name;root.children.push(el);}
+    for(const id of ['task_inspector_body','inspect_task_title','inspect_task_desc','inspect_task_status_badge'])make(id);
+    Object.defineProperty(container,'innerHTML',{set(html){
+        container.children.length=0;ratings.length=0;
+        for(const match of html.matchAll(/data-rating-def-id="([^"]+)"[^]*?<input([^]*?)>/g)){
+            const card=make('card_'+match[1],'','div');card.definition=match[1];card.getAttribute=key=>key==='data-rating-def-id'?match[1]:key==='data-required'?'false':null;
+            const attrs=Object.fromEntries([...match[2].matchAll(/([\w-]+)="([^"]*)"/g)].map(m=>[m[1],m[2]]));
+            const input=make(attrs.id,attrs.value);let inputValue=String(attrs.value);Object.defineProperty(input,'value',{get:()=>inputValue,set:value=>{inputValue=String(value);}});input.type='range';input.min=attrs.min;input.max=attrs.max;input.disabled=/\sdisabled(?:\s|$)/.test(match[2]);input.classList.add('custom-rating-input');
+            card.children.push(input);container.children.push(card);ratings.push(input);
+        }
+    }});
+    const held=deferred();let fail=true,stored=null;
+    const b=browser(fields,['ratings_config.js','task_postmortem.js','task_inspector.js'],async(url,options)=>{
+        if(options.method==='GET'){
+            if(url==='/api/tasks/task/stats')return {json:{task:{id:'task',title:'Synthetic'},sessions:[],custom_ratings:[],task_review:stored}};
+            if(url.startsWith('/rating-definitions'))return {json:['one','two'].map(id=>({id,name:id,min_score:1,max_score:5}))};
+            return {json:[]};
+        }
+        if(url==='/rating-entries')return JSON.parse(options.body).rating_definition_id==='two'&&fail?{status:503,json:{detail:'Second rating failed'}}:{json:{}};
+        stored=JSON.parse(options.body);await held.promise;return {json:stored};
+    });
+    b.context.document.querySelectorAll=selector=>root.querySelectorAll(selector);
+    b.context.taskKnowledge={state:()=>({generation:0}),get:()=>null,viewResult(){}};
+    return {b,fields,ratings,owner,held,retry:()=>{fail=false;},text:texts[1]};
+}
+
 function reviewBrowser(kind) {
+    if(kind === 'task') return taskReviewOwnershipBrowser();
     const textIds=kind==='task' ? ['task_rev_difficulty','task_rev_went_well','task_rev_blockers','task_rev_takeaways'] : ['session_rev_modal_tags','session_rev_modal_notes','session_rev_modal_skip_check'];
     const owner=kind==='task' ? 'task_inspector_body' : 'session_review_modal';
     const fields=Object.fromEntries([...textIds,owner,`${kind}_custom_ratings_container`,'inspect_task_title','inspect_task_desc','inspect_task_status_badge','session_rev_modal_id','session_rev_modal_time'].map(id=>[id,node(id)]));
+    if (kind === 'session') fields.session_rev_modal_status = node('session_rev_modal_status');
     fields[owner].children.push(...textIds.map(id=>fields[id]),fields[`${kind}_custom_ratings_container`]);
     const ratings=['one','two'].map(id=>{const el=node('rating_range_input_'+id,3);el.classList.add('custom-rating-input');return el;});
     fields[`${kind}_custom_ratings_container`].children.push(...ratings);
@@ -455,7 +502,8 @@ test('Task review partial success cleans persisted text and first rating only, r
     const {b,fields,ratings,owner,held,retry,text}=reviewBrowser('task');
     await b.run("loadTaskInspectorStats('task')");text.value='Submitted review';ratings.forEach(el=>el.value=5);
     const saving=b.run('saveTaskReviewForm()');await tick();text.value='New draft while POST pending';held.resolve();
-    await assert.rejects(saving,/Second rating failed/);
+    assert.equal(await saving,false);
+    assert.match(fields.revision_task_postmortem_status.textContent,/Save incomplete/);
     assert.equal(b.run('followSettingsLink({})'),false);
     text.value='Submitted review';ratings[1].value=3;
     assert.equal(b.run('followSettingsLink({})'),true,'persisted text and first rating are clean');
@@ -469,7 +517,8 @@ test('Session review partial success cleans submitted text and first rating, fai
     const {b,fields,ratings,held,retry,text}=reviewBrowser('session');
     await b.run("openSessionReviewModal('session')");text.value='Submitted notes';ratings.forEach(el=>el.value=5);
     const saving=b.run('saveSessionReviewModal()');await tick();text.value='Typed during PUT';held.resolve();
-    await assert.rejects(saving,/Second rating failed/);
+    await saving;
+    assert.match(fields.session_rev_modal_status.textContent,/Second rating failed/);
     assert.equal(text.value,'Typed during PUT');assert.equal(b.run('followSettingsLink({})'),false);
     text.value='Submitted notes';ratings[1].value=3;
     assert.equal(b.run('followSettingsLink({})'),true,'persisted session text and first rating clean');

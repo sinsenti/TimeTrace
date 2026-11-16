@@ -8,6 +8,11 @@ let taskInspectorRequest = 0;
 let activeTaskInspectorSearchIdx = -1;
 let taskInspectorSearchIntent = false;
 
+function taskInspectorReviewEditor() {
+    return typeof createTaskPostmortemEditor === 'function'
+        ? createTaskPostmortemEditor(document.getElementById('revision_task_postmortem'), true) : null;
+}
+
 async function loadTaskInspectorRegistry() {
     await taskKnowledge.load();
     await refreshTaskInspectorKnowledge();
@@ -155,8 +160,8 @@ function highlightTaskInspectItem(items) {
 }
 
 function selectTaskInspectorById(taskId) {
-    if (taskId !== selectedInspectedTaskId && typeof hasSettingsDrafts === 'function' &&
-        hasSettingsDrafts(['task_inspector_body']) && !window.confirm('Discard this task review draft and select another task?')) return;
+    if (taskId !== selectedInspectedTaskId && taskInspectorReviewEditor()?.canLeave() === false) return;
+    taskInspectorReviewEditor()?.bind(taskId);
     const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');
 
@@ -173,8 +178,10 @@ function selectTaskInspectorById(taskId) {
 async function loadTaskInspectorStats(taskId, preserveEdits = false) {
     const generation = taskKnowledge.state().generation;
     const request = ++taskInspectorRequest;
-    const keepEdits = preserveEdits && initializedTaskReviewId === taskId;
+    const reviewEditor = taskInspectorReviewEditor();
+    const keepEdits = preserveEdits && reviewEditor?.taskId === taskId && reviewEditor.initialized;
     const body = document.getElementById('task_inspector_body');
+    taskInspectorReviewEditor()?.begin(taskId);
     if (!keepEdits) {
         initializedTaskReviewId = null;
         if (body) body.classList.add('hidden');
@@ -240,17 +247,11 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
             }
         }
 
-        if (!keepEdits) {
-            const rev = data.task_review;
-            document.getElementById('task_rev_difficulty').value = rev ? rev.difficulty : 3;
-            document.getElementById('task_rev_went_well').value = rev ? (rev.what_went_well || "") : "";
-            document.getElementById('task_rev_blockers').value = rev ? (rev.blockers || "") : "";
-            document.getElementById('task_rev_takeaways').value = rev ? (rev.key_takeaways || "") : "";
-
-            await renderCustomRatingsInputs('task', taskId, 'task_custom_ratings_container', data.custom_ratings, isCurrent);
+        const editor = taskInspectorReviewEditor();
+        if (editor) {
+            await editor.hydrate(taskId, data, isCurrent, true);
             if (!isCurrent()) return null;
-            initializedTaskReviewId = taskId;
-            if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('task_inspector_body', '[id^="task_rev_"], .custom-rating-input');
+            if (editor.ready) initializedTaskReviewId = taskId;
         }
         if (body) body.classList.remove('hidden');
         taskKnowledge.viewResult('inspector-registry', true);
@@ -266,34 +267,5 @@ async function loadTaskInspectorStats(taskId, preserveEdits = false) {
 }
 
 async function saveTaskReviewForm() {
-    if (!selectedInspectedTaskId) return;
-    if (initializedTaskReviewId !== selectedInspectedTaskId) {
-        alert('Task review is not ready. Wait for it to load, or use Retry refresh before saving.');
-        return;
-    }
-
-    const taskId = selectedInspectedTaskId;
-
-    if (!validateRequiredCustomRatings('task', taskId)) {
-        return;
-    }
-
-    const diffEl = document.getElementById('task_rev_difficulty');
-    const parsedDiff = diffEl ? parseInt(diffEl.value) : 3;
-
-    const payload = {
-        task_id: taskId,
-        difficulty: isNaN(parsedDiff) ? 3 : parsedDiff,
-        what_went_well: document.getElementById('task_rev_went_well') ? document.getElementById('task_rev_went_well').value || "" : "",
-        blockers: document.getElementById('task_rev_blockers') ? document.getElementById('task_rev_blockers').value || "" : "",
-        key_takeaways: document.getElementById('task_rev_takeaways') ? document.getElementById('task_rev_takeaways').value || "" : ""
-    };
-
-    const markSaved = typeof settingsDraftCheckpoint === 'function'
-        ? settingsDraftCheckpoint('task_inspector_body', '[id^="task_rev_"]') : () => {};
-    await api.post('/api/task-reviews', payload);
-    if (selectedInspectedTaskId !== taskId || initializedTaskReviewId !== taskId) return;
-    markSaved();
-    await submitCustomRatings('task', taskId);
-    if (selectedInspectedTaskId === taskId) loadTaskInspectorStats(taskId, true);
+    return taskInspectorReviewEditor()?.save();
 }

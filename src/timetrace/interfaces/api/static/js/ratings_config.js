@@ -63,7 +63,7 @@ async function renderCustomRatingsInputs(targetType, targetId, containerId, exis
         const wasUnavailable = card.getAttribute('data-rating-unavailable') === 'true';
         card.setAttribute('data-rating-unavailable', 'true');
         const message = document.createElement('p');
-        message.textContent = 'This rating definition is unavailable. Discard day drafts to remove it, or restore the definition and Refresh.';
+        message.textContent = 'This rating definition is unavailable. Discard drafts to remove it, or restore the definition and Refresh.';
         if (!wasUnavailable) card.appendChild(message);
         container.appendChild(card); container.ratingUnavailable = true;
     }
@@ -102,7 +102,7 @@ function validateRequiredCustomRatings(targetType, targetId, editorRoot = null) 
     for (const card of root?.querySelectorAll('[data-rating-def-id]') || []) {
         const input = card.querySelector('.custom-rating-input');
         if (card.getAttribute('data-rating-unavailable') === 'true') {
-            alert('A rating definition is unavailable. Discard day drafts or restore it and Refresh before saving.');
+            alert('A rating definition is unavailable. Discard drafts or restore it and Refresh before saving.');
             return false;
         }
         if (input && !input.disabled && (Number(input.value) < Number(input.min) || Number(input.value) > Number(input.max)

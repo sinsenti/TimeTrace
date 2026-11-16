@@ -1,0 +1,22 @@
+<section id="{{ task_review_prefix }}_task_postmortem" class="task-postmortem rev-card" data-settings-draft-retained="true" aria-labelledby="{{ task_review_prefix }}_review_heading">
+    <h3 id="{{ task_review_prefix }}_review_heading">Task post-mortem</h3>
+    <p>This task only. Review its own evidence above; reviewing does not complete the task or clear schedules.</p>
+    <fieldset data-task-review="fields" disabled>
+        <legend>Review text and task ratings</legend>
+        <label for="{{ task_review_prefix }}_difficulty">Difficulty (1–10)</label>
+        <input id="{{ task_review_prefix }}_difficulty" data-task-review="difficulty" type="number" min="1" max="10" value="3">
+        <label for="{{ task_review_prefix }}_went_well">What went well</label>
+        <textarea id="{{ task_review_prefix }}_went_well" data-task-review="what_went_well" rows="3"></textarea>
+        <label for="{{ task_review_prefix }}_blockers">Blockers / delays</label>
+        <textarea id="{{ task_review_prefix }}_blockers" data-task-review="blockers" rows="3"></textarea>
+        <label for="{{ task_review_prefix }}_takeaways">Key takeaways</label>
+        <textarea id="{{ task_review_prefix }}_takeaways" data-task-review="key_takeaways" rows="3"></textarea>
+        <div id="{{ task_review_prefix }}_task_postmortem_ratings" data-task-review="ratings" data-settings-draft-retained="true"></div>
+    </fieldset>
+    <p data-task-review="status" role="status" aria-live="polite">Select a task to load its post-mortem.</p>
+    <div class="task-detail-actions">
+        <button type="button" data-task-review="save" disabled>Save task review</button>
+        <button type="button" data-task-review="discard" disabled>Discard drafts</button>
+        <button type="button" data-task-review="retry" disabled>Retry refresh</button>
+    </div>
+</section>

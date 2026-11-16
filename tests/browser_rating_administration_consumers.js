@@ -72,6 +72,13 @@
         localStorage.setItem('timetrace_user_settings', JSON.stringify({idleDetectorEnabled:false,enableVimMotions:false,enableSessionReview:true}));
     }, {origin}));
     const p = resources.p = await at('page-create', () => context.newPage()), definitions = resources.definitions, errors = [], readbacks = [], samples = [], writes = [];
+    const taskReview = p.locator('#revision_task_postmortem');
+    const taskReviewField = name => taskReview.locator(`[data-task-review="${name}"]`);
+    const taskReviewReady = () => p.waitForFunction(() => {
+        const root = document.getElementById('revision_task_postmortem');
+        const save = root?.querySelector('[data-task-review="save"]');
+        return root && root.getAttribute('aria-busy') !== 'true' && save && !save.disabled;
+    });
     p.on('pageerror', e => errors.push(e.message));
     p.on('request', r => {if (['POST','PUT','DELETE'].includes(r.method())) writes.push({url:r.url(),body:r.postDataJSON()});});
     const api = resources.api = async (url, method='GET', data) => at(`api:${method}:${url}`, async () => {
@@ -121,17 +128,18 @@
         await at('task-tab', () => p.locator('#rev_tab_btn_task_inspector').click());
         await at('task-search', () => p.locator('#task_inspector_search').fill(task.title));
         await at('task-select', () => p.locator('#task_inspector_dropdown .task-inspect-item').filter({hasText:task.title}).click());
-        await at('task-score', () => setScoreInput(p.locator('#task_custom_ratings_container .custom-rating-input'), 10));
-        await p.locator('#task_rev_takeaways').fill('Rating18 preserved task draft');
-        await at('task-save', () => p.getByRole('button',{name:'Save Task Review',exact:true}).click());
-        await at('task-save-settled', () => p.waitForFunction(()=>!hasSettingsDrafts(['task_inspector_body'])));
+        await at('task-review-ready', taskReviewReady);
+        await at('task-score', () => setScoreInput(p.locator('#revision_task_postmortem_ratings .custom-rating-input'), 10));
+        await taskReviewField('key_takeaways').fill('Rating18 preserved task draft');
+        await at('task-save', () => taskReview.locator('[data-task-review="save"]').click());
+        await at('task-save-settled', () => p.waitForFunction(()=>!hasSettingsDrafts(['revision_task_postmortem','revision_task_postmortem_ratings'])));
         const taskAfter = await api(`/api/tasks/${task.id}`);
         check(taskAfter.status===task.status,'Task review retained status');
         const retainedStart = Date.parse((await api(`/sessions/${session.id}`)).start_time);
         const originalStart = Date.parse(session.start_time);
         check(Number.isFinite(retainedStart)&&Number.isFinite(originalStart)&&retainedStart===originalStart,'Task review retained schedule');
         readbacks.push({task:taskAfter.id,status:taskAfter.status,session:session.id,exempt:true});
-        await p.locator('#task_rev_takeaways').fill('Independent task draft');
+        await taskReviewField('key_takeaways').fill('Independent task draft');
         await p.locator('#rev_tab_btn_day').click();await main(dates[0]);
         await root(dates[0]).locator('[data-day="notes"]').fill('Main retained draft');await setScore(dates[0],9);
         await p.getByRole('button',{name:'Show history',exact:true}).click();
@@ -199,7 +207,8 @@
         await root(dates[0]).getByRole('button',{name:'Discard drafts',exact:true}).click();await p.locator('#confirm_modal_proceed_btn').click();
         await root(dates[0]).locator('[data-day="status"]').filter({hasText:'Drafts discarded'}).waitFor();
         check(await root(dates[0]).locator('[data-rating-unavailable="true"]').count()===0,'Explicit Discard removes deleted draft');
-        await at('task-tab', () => p.locator('#rev_tab_btn_task_inspector').click());check(await p.locator('#task_rev_takeaways').inputValue()==='Independent task draft','Admin retained unrelated Task draft');
+        await at('task-tab', () => p.locator('#rev_tab_btn_task_inspector').click());
+        check(await taskReviewField('key_takeaways').inputValue()==='Independent task draft','Admin retained unrelated Task draft');
         check(errors.length===0,errors.join('; '));
         return {readbacks,samples,writes,errors,fakes:['One declared rating-entry rejection'],unrun:['Physical touch and screen reader acceptance']};
     });
