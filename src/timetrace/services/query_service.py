@@ -14,6 +14,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from dateutil.relativedelta import relativedelta
+from pydantic import PrivateAttr
 from sqlmodel import Session, select, text
 
 from timetrace.config import settings
@@ -52,6 +53,14 @@ _WEEKDAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 _ZERO_FILLABLE_MEASURES = {"sum_duration", "session_count", "task_count", "sum_estimated_duration"}
 
 _localtime_supported_cache: bool | None = None
+
+type _DimensionIdentity = tuple[str | int | float | bytes | None, ...]
+
+
+class _QueryRow(QueryRow):
+    # Presentation keys are lossy (NULL and empty text both become ""). Keep the SQL
+    # dimension values on each row through sorting/filling, never in public serialization.
+    _source_identity: _DimensionIdentity = PrivateAttr(default=())
 
 
 def _check_localtime_support(db: Session) -> bool:
@@ -329,7 +338,7 @@ class QueryService:
 
     def _execute(
         self, query: AnalyticsQuery, tz: ZoneInfo, tz_name: str, first_day_of_week: int
-    ) -> tuple[list[QueryRow], _ResolvedRange, CompiledQuery, bool]:
+    ) -> tuple[list[_QueryRow], _ResolvedRange, CompiledQuery, bool]:
         """Compile and run one query pass, returning fully post-processed rows.
 
         Factored out of `run()` so the comparison baseline (slice 4) can take exactly the
@@ -386,7 +395,7 @@ class QueryService:
         self,
         query: AnalyticsQuery,
         primary_range: _ResolvedRange,
-        rows: list[QueryRow],
+        rows: list[_QueryRow],
         tz: ZoneInfo,
         tz_name: str,
         first_day_of_week: int,
@@ -449,8 +458,8 @@ class QueryService:
     def _apply_comparison(
         self,
         query: AnalyticsQuery,
-        rows: list[QueryRow],
-        baseline_rows: list[QueryRow],
+        rows: list[_QueryRow],
+        baseline_rows: list[_QueryRow],
         is_calendar: bool,
         warnings: list[str],
     ) -> tuple[str, int, float | None]:
@@ -484,10 +493,10 @@ class QueryService:
                 )
             return "positional", 0, None
 
-        by_key = {tuple(r.keys): r.value for r in baseline_rows}
-        matched: set[tuple[str, ...]] = set()
+        by_key = {r._source_identity: r.value for r in baseline_rows}
+        matched: set[_DimensionIdentity] = set()
         for row in rows:
-            key = tuple(row.keys)
+            key = row._source_identity
             if key in by_key:
                 matched.add(key)
                 _attach(row, by_key[key])
@@ -535,7 +544,7 @@ class QueryService:
         raw_rows: list,
         resolved_range: _ResolvedRange,
         first_day_of_week: int,
-    ) -> list[QueryRow]:
+    ) -> list[_QueryRow]:
         n_dims = len(query.group_by)
 
         task_titles: dict[str, str] = {}
@@ -551,7 +560,7 @@ class QueryService:
             if ids:
                 habit_names = {h.id: h.name for h in self.db.exec(select(Habit).where(Habit.id.in_(ids))).all()}
 
-        rows: list[QueryRow] = []
+        rows: list[_QueryRow] = []
         for r in raw_rows:
             keys = [str(r[i]) if r[i] is not None else "" for i in range(n_dims)]
             value = r[n_dims]
@@ -570,14 +579,14 @@ class QueryService:
                 else:
                     labels.append(_label_for(dim, keys[i]))
 
-            rows.append(
-                QueryRow(keys=keys, labels=labels, value=float(value) if value is not None else None, count=count)
-            )
+            row = _QueryRow(keys=keys, labels=labels, value=float(value) if value is not None else None, count=count)
+            row._source_identity = tuple(r[i] for i in range(n_dims))
+            rows.append(row)
         return rows
 
     def _fill_gaps(
-        self, query: AnalyticsQuery, rows: list[QueryRow], resolved_range: _ResolvedRange, first_day_of_week: int
-    ) -> list[QueryRow]:
+        self, query: AnalyticsQuery, rows: list[_QueryRow], resolved_range: _ResolvedRange, first_day_of_week: int
+    ) -> list[_QueryRow]:
         dim = query.group_by[0]
         by_key = {r.keys[0]: r for r in rows}
 
@@ -605,17 +614,18 @@ class QueryService:
                 filled.append(existing)
             else:
                 extra_keys = rows[0].keys[1:] if rows and len(rows[0].keys) > 1 else []
-                filled.append(
-                    QueryRow(
-                        keys=[key] + extra_keys,
-                        labels=[_label_for(dim, key)] + (rows[0].labels[1:] if rows else []),
-                        value=default_value,
-                        count=0,
-                    )
+                row = _QueryRow(
+                    keys=[key] + extra_keys,
+                    labels=[_label_for(dim, key)] + (rows[0].labels[1:] if rows else []),
+                    value=default_value,
+                    count=0,
                 )
+                # The compiler emits integer hour/weekday buckets, not presentation strings.
+                row._source_identity = (int(key) if dim in (Dimension.HOUR_OF_DAY, Dimension.WEEKDAY) else key,)
+                filled.append(row)
         return filled
 
-    def _reorder_weekday(self, rows: list[QueryRow], first_day_of_week: int, descending: bool) -> list[QueryRow]:
+    def _reorder_weekday(self, rows: list[_QueryRow], first_day_of_week: int, descending: bool) -> list[_QueryRow]:
         order = [(first_day_of_week + i) % 7 for i in range(7)]
         if descending:
             order = list(reversed(order))
