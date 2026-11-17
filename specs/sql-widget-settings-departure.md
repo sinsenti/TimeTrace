@@ -2,7 +2,9 @@
 Status: Built — integrated with the owner-accepted UI in dev at `2992d96`
 Date: 2026-11-11
 
-Owner approval: “approve for now. maybe later i will change this”. The approved behavior may be revised later; no implementation, verification or acceptance is inferred from approval. Original Draft remains preserved in `ticket-13-after-reviewed-date`.
+Original owner approval: “approve for now. maybe later i will change this”. Approval alone did not
+establish implementation or acceptance; subsequent delivery is recorded below. Original Draft
+provenance is `ticket-13-after-reviewed-date` (a historical local branch, not a public attachment).
 
 ## Delivery reconciliation (2026-11-17)
 
@@ -11,9 +13,12 @@ implemented. Recorded bounded native evidence includes Cancel retention and acce
 departure; source/regression checks are part of the integrated UI delivery. The original problem,
 conditional approvals and verification requirements below are historical, not new open work.
 No historical failed/unknown capture is relabelled, and broad platform/manual limits remain deferred.
-See the [GitHub migration mapping](../docs/agents/github-migration.md) for the closed successor.
+See the [delivered successor](https://github.com/sinsenti/TimeTrace/issues/52) for sanitized bounded
+native evidence and reachable accepted-source/regression links, and the
+[shared delivery summary](README.md#delivery-status-and-evidence) for current checks and remaining
+verification. The [migration mapping](../docs/agents/github-migration.md) preserves original IDs.
 
-## Problem
+## Original problem (pre-repair snapshot)
 The SQL editor's full-viewport modal covers the navbar Settings link. Its Tab loop stays inside the dialog; Vim navigation ignores open dialogs. The existing `followSettingsLink(event)` dirty-draft confirmation therefore has no established native Settings caller while this editor is open. Current real-browser evidence records cancellation retaining the SQL draft as blocking UNRUN, not PASS. Independent Spec review of b8884c9 retains this as a P1 acceptance gap.
 
 ## Approved behavior
@@ -33,7 +38,7 @@ No schema, migration, backfill, JSON endpoint, query resource limit, identifier 
 - Tests: focused widget keyboard/draft regressions and a new actual native caller check; preserve the earlier probe and raw receipts as historical evidence.
 - Core/services/routers/models/CLI: unchanged.
 
-## Deferred-blur follow-up approval
+## Deferred-blur follow-up approval (historical)
 Owner: “continue according to your recommendation” after the explicit request to reproduce the independently reported Ctrl+Enter → blur → Settings Cancel edge, then narrowly repair preview invalidation if confirmed. Approval is conditional on reproduction, not a claim that the browser sequence has already been executed. Preserve the original clean `5dc48b7` worktree and receipts.
 
 An unchanged SQL/limit/chart deferred `change` MUST NOT revoke a current pending request or completed preview. Genuine input edits MUST still invalidate immediately; editing away and back MUST NOT resurrect an obsolete response. Add meaningful first-failing regressions and fresh native pointer/TabEnter Cancel coverage with newly edited, still-focused SQL and a completed Ctrl+Enter preview. No automatic queries/saves, new global guard, shortcut, confirmation policy or structured-builder redesign. Existing fresh-isolation, shutdown, evidence and independent-review requirements apply. Historical settled-input native passes remain valid, not proof of this additional ordering.
@@ -44,7 +49,11 @@ Cancel with dirty or clean inputs; visible/hidden SQL pane and SQL-disabled UI; 
 ## Out of scope
 Global beforeunload/history/navigation guards, navbar stacking changes, a new Settings shortcut, helper-dispatched clicks, forced clicks, browser Back substitution, automatic draft saving/restoration, new confirmation wording/policy, structured-builder redesign, provider/Test/Activate/inference calls, merging/pushing or acceptance waivers.
 
-## Verification
+## Original verification requirements
+
+These requirements describe the delivered amendment's verification contract, not a new execution
+request. The delivery note above takes precedence over historical pending-gate language below;
+failed/UNRUN receipts and platform/transport exclusions are preserved.
 - Meaningful first failing regressions against current source, then scoped implementation and focused green checks. Native tests must use real DOM input/link activation and the real confirmation, never direct handler invocation.
 - New private0700 roots/strict24 environment/new offline editable Python3.14.6 before app imports; safe-path full pytest/canonical Node/enumerated syntax, scoped lint/format and actual full Ruff compared to its fixed18/BOTH-stream baseline (not called lint-clean).
 - Fresh guarded SQL-on native fixture: edit all draft fields, register real confirmation before activating the new link, dismiss natively, verify route/all fields/preview/no persistence writes and unchanged full storage. Exercise native keyboard and focus trapping. Accepted departure, if tested, uses the real readonly Settings page with guarded requests and no provider/model calls.

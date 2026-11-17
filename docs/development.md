@@ -1,8 +1,38 @@
 # Development reference
 
 Use [AGENTS.md](../AGENTS.md) for shared working rules and [CLAUDE.md](../CLAUDE.md) for detailed
-owner decisions and historical rationale. This reference describes code inspected at `d64d877`;
-recheck the affected implementation rather than treating this snapshot as a permanent guarantee.
+owner decisions and historical rationale. The [shared delivery summary](../specs/README.md#delivery-status-and-evidence)
+distinguishes accepted UI delivery, module history, latest integrated checks and remaining verification.
+Earlier inspections (including `d64d877`) and dated candidate receipts below are historical snapshots;
+recheck the affected implementation rather than treating them as permanent guarantees.
+
+## Current-status precedence
+
+All 25 UI tickets are delivered, owner-accepted and merged at `2992d96`; later comparison-identity
+repairs are integrated locally at `c7b3456`. References below to pending UI tickets, closure gates,
+"Approved, not Built", or missing whole-UI acceptance describe earlier checkpoints, not live blockers.
+The original failures/UNKNOWN/UNRUN and deferred manual observations remain unchanged. GitHub is the
+live tracker; use the [successor mapping](agents/github-migration.md), not old local frontiers.
+
+Current entry points and implementations include:
+
+- [Kanban, Grouped and Outline](../src/timetrace/interfaces/api/templates/tasks.html), including the
+  retained inspector; Grouped/Outline no longer fall back to Kanban as unfinished slices.
+- [Tabbed Settings](../src/timetrace/interfaces/api/routers/web.py) at `/settings` (Browser),
+  `/settings/ai` (AI) and `/settings?category=providers`; the shared
+  [navbar](../src/timetrace/interfaces/api/templates/components/navbar.html) targets `/settings`.
+- [Persisted dashboards](../src/timetrace/services/dashboard_service.py), optional SQL widgets,
+  [Performed time by day](../src/timetrace/core/dashboard_seeds.py) and the
+  [guarded SQL Settings departure](../specs/sql-widget-settings-departure.md).
+- Compact Habits, shared Timer/idle recovery, reviews/ratings, Markdown export and chat-first Assistant
+  approval workflows are delivered; their older candidate sections retain bounded evidence, not open
+  implementation tasks. [AI Settings ownership](ai-maintenance.md#ai-settings-editors) includes behavior
+  Cancel and independent provider drafts.
+
+Browser verification uses tracked `tests/browser_*.js` manual/native probes with an external browser
+bridge and isolated synthetic daemon. There is no installed browser framework or single automatic
+browser-suite command; that is not an absence of browser evidence. See
+[bounded verification](https://github.com/sinsenti/TimeTrace/issues/55) for exact unproved cells.
 
 ## Isolated development
 
@@ -76,7 +106,10 @@ In the table, `static/`, `templates/`, and `routers/` shorthand is under `interf
 Templates include shared pieces from `templates/components/`, but there is no common base template.
 The root app is the runtime entry point, not the separate unused `interfaces/api/main.py` instance.
 
-### Current implementation versus older notes
+### Implementation notes and historical adoption checkpoints
+
+The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording
+in these retained adoption notes; implementation details and original evidence limits still apply.
 
 - **Statistics:** `/stats` renders the Widget canvas with a seeded Overview plus persisted named
   dashboards and editable/reorderable/removable widgets. `dashboards.js` loads saved dashboard detail,
@@ -178,7 +211,9 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   Remembered-instruction release hardening now has fake-agent coverage for
   both chat modes, server-side original-message intent gating, one-proposal uniqueness, draft-batch
   retention, failure redaction, and instruction/API lifecycle edge cases. The browser drawer
-  checklist remains a manual acceptance checklist; there is intentionally no browser framework.
+  checklist requires itemized reconciliation against later native approval evidence; see the
+  [hardening plan's current-status note](ai-release-hardening-plan.md#current-status-and-evidence).
+  There is intentionally no installed browser framework.
 - **CLI:** no Textual dependency or TUI implementation exists in the current tree. The numeric
   `@task` grammars in `parse_inline_timer`, `parse_inline_session_edit`, and `parse_inline_retro`
   have no call sites. Do not confuse these with the live `parse_inline_task` creation parser.
@@ -495,6 +530,11 @@ devmerge limits UNWAIVED. No appimport/tests/browser/syntax/lint/passingreruns/s
 no amend/pushPR/devmerge/humanwhole25 claim. STOP fresh closure DOC two-axis review and parent disposition.
 
 ## Testing and checks
+
+The coverage description and observed-baseline paragraph below retain earlier inspection results,
+not the latest suite count. Use the [shared delivery summary](../specs/README.md#delivery-status-and-evidence)
+for current integrated receipts. "No browser test suite" means no installed automatic browser suite;
+tracked manual/native probes and their bounded execution evidence exist as described above.
 
 Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed
 because the repository-root `copy.py` shadows Python's standard-library `copy` module. For a

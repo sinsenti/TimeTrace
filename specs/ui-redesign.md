@@ -15,26 +15,29 @@ accepted the UI and approved the merge into `dev` at `2992d96`. Recorded final c
 independent review axes. These are historical results, not newly executed tests. Explicit platform,
 accessibility and manual verification limits remain separate from implementation completion.
 GitHub Issues is now the live tracker; see [migration mapping](../docs/agents/github-migration.md).
-The approval/prototype chronology below is historical and does not override this delivery status.
+Use the [shared delivery summary](README.md#delivery-status-and-evidence) for later integrated checks
+and separate remaining verification. The approval/prototype chronology below is historical and does
+not override this delivery status.
 
 ### Evidence and precedence
 
 - [Coverage/issue plan](../.scratch/ui-redesign/plan.md): settled directions, full surface inventory,
   22 historical candidate slices and open decisions. The delivery table below now uses the approved
   25 published ticket IDs; the backlog maps between these numbering systems.
-- [Combined review checkpoint](../docs/agents/github-migration.md#local-archive-cleanup): latest owner
-  clarification, theme references and exact prototype verification limits. It supersedes earlier lanes.
-- [Prototype decision history](/home/user/git/personal/TimeTrace/src/timetrace/interfaces/api/prototypes/app_shell/README.md): selected
-  page interactions and historical rejected alternatives. Compare the selected references, not old trials.
-- Current source at `82fabdc652c59da87de0f57d7770d0aa32fb7f64`, including current working-tree docs,
-  [owner working-tree development reference](/home/user/git/personal/TimeTrace/docs/development.md), [owner decisions](../CLAUDE.md),
-  [AI maintenance](../docs/ai-maintenance.md) and final
-  [recurrence decisions](../docs/recurrence-engine-plan.md#12-settled-owner-decisions-2026-09-01--these-override-10).
+- [Historical independent spec review](../.scratch/ui-redesign/spec-review.md): recorded corrections
+  and prototype verification limits. Prototype/checkpoint artifacts themselves were local-only;
+  [archive recovery notes](../docs/agents/github-migration.md#local-archive-cleanup) are not a public
+  prototype attachment. The approved requirements below retain the selected production choices.
+- Historical pre-delivery source baseline: `82fabdc652c59da87de0f57d7770d0aa32fb7f64`, not current
+  shipped source. Use the [delivered parent](https://github.com/sinsenti/TimeTrace/issues/14) for
+  reachable accepted-source references and the [development reference](../docs/development.md),
+  [owner decisions](../CLAUDE.md), [AI maintenance](../docs/ai-maintenance.md) and final
+  [recurrence decisions](../docs/recurrence-engine-plan.md#12-settled-owner-decisions-2026-09-01--these-override-10)
+  for maintenance.
 
-Historical prototype/checkpoint artifacts and the owner working-tree development reference are
-external read-only evidence under `/home/user/git/personal/TimeTrace`, not bundled in this seed.
-The prototype/checkpoint artifacts are currently untracked in that checkout. See the execution record
-for portability limits; no historical assertions have been rerun here.
+The original prototype decision record was `src/timetrace/interfaces/api/prototypes/app_shell/README.md`
+(local-only/untracked). It is provenance, not a required public dependency or a portable source link.
+No prototype files were imported or historical assertions rerun in this reconciliation.
 
 Latest recorded owner decisions outrank old prototype proposals. Current code establishes shipped
 contracts, not permission to contradict a recorded owner decision; report any conflict. The unrelated
@@ -366,8 +369,8 @@ without stamp/create-all fallback. Report new failures separately from baseline 
 ## Exclusions and evidence limits
 
 The historical approval record did not itself start production code or prototype cleanup.
-Implementation has since been requested under the execution record; this seed changes documentation
-only. No fresh layout/palette design interview; no mock workflow selectors/sample fixtures/debug
+Implementation has since been delivered and accepted as recorded above; the original seed changed
+documentation only. No fresh layout/palette design interview; no mock workflow selectors/sample fixtures/debug
 counters in final UI. No domain-policy
 rewrite, performed/recorded conflation, arbitrary timezone bucketing, stronger AI scope isolation,
 new export formats/import UI, Habit metadata schema, provider/network tests, sync, multi-user,
