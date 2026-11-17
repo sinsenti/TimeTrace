@@ -22,6 +22,10 @@ for original local IDs and their successors, not current issue states.
 | SQL Settings departure/deferred blur | [Delivered amendment](https://github.com/sinsenti/TimeTrace/issues/52); [Settings link](../src/timetrace/interfaces/api/templates/components/widget_builder_modal.html) and [focus/changed-input invalidation](../src/timetrace/interfaces/api/static/js/widget_builder.js). | Later bounded Cancel/accepted-departure evidence does not pass old UNRUN/failure records or supply missing captures. |
 | Remembered-instruction hardening | [Delivered fake-first hardening](https://github.com/sinsenti/TimeTrace/issues/53), [maintenance contract](../docs/ai-maintenance.md), [chat regressions](../tests/test_ai_instruction_chat.py) and [native approval probe](../tests/browser_instruction_approval.js). | Save/Dismiss/conflict/read-retry/inert-text browser evidence is bounded; request → card → later-conversation prompt and other original smoke cells need itemized reconciliation. No provider certification. |
 
+Separate confirmed bug: [remembered-instruction tool result failure](https://github.com/sinsenti/TimeTrace/issues/57)
+can occur after a pending proposal is persisted; card existence does not establish successful
+model-facing tool delivery. This does not reopen the accepted UI or rewrite its historical checks.
+
 **Latest recorded integrated checks (2026-11-17), separate from those histories:** comparison identity
 [fix and serialization guard](https://github.com/sinsenti/TimeTrace/issues/54#issuecomment-6958336213)
 were integrated locally into `dev` at `c7b3456` (implementation `59bd301`, guard `3db4b8b`).

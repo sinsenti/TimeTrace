@@ -314,7 +314,8 @@ delete decisions first obtain missing knowledge. If still unknown, resize revert
 stops before confirmation, with an action-specific retry message. Retry the action to look up
 metadata again; no write is queued or replayed. Moves and ordinary session saves remain available.
 Known virtual/series identities retain their scope choices even without metadata, and synthetic
-IDs still materialize server-side. Keyboard Delete uses the same guarded deletion path as mouse actions. A deletion request token prevents late lookups/confirmations
+IDs still materialize server-side. The Calendar's Vim `x` shortcut uses the same guarded deletion path
+as mouse actions; literal `Delete` is unbound. A deletion request token prevents late lookups/confirmations
 from replacing a newer target; canceling, closing or reopening the session editor invalidates it.
 Server-side recurrence scope/history validation remains authoritative.
 
