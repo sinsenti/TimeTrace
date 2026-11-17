@@ -41,9 +41,17 @@ test('real API duplicate serialized cells retain both authoritative duration val
     assert.equal(input.rows.length, 2);
     assert.deepEqual(input.rows[0].keys, input.rows[1].keys);
     assert.deepEqual(input.rows.map(r => r.value).sort(), [1, 2]);
-    const { chart } = renderer().draw(input);
+    const b = renderer();
+    const { chart } = b.draw(input);
     assert.deepEqual(plain(chart.data.datasets[0].data), input.rows.map(r => r.value));
     assert.equal(chart.data.labels.length, 2);
+    if (input.comparison) {
+        assert.deepEqual(plain(chart.data.datasets[1].data), input.rows.map(r => r.comparison_value));
+        for (const datasetIndex of [0, 1]) for (let index = 0; index < input.rows.length; index++) {
+            chart.options.onClick({}, [{ datasetIndex, index }]);
+            assert.equal(b.clicks.at(-1).row, input.rows[index]);
+        }
+    }
 });
 
 test('collision fallback preserves null zero negative baseline values order counts and exact source clicks', () => {

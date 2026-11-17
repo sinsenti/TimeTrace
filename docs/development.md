@@ -99,9 +99,12 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
   multidimensional hour/weekday fill and stably retain all weekday secondary rows. Distinct-key
   stacked charts preserve sparse source cells and separate primary/ghost stacks; duplicate
   serialized key pairs use explained separate-row bars with full labels/ordinal/exact values/
-  source-row clicks, no aggregation/rekey/spec rewrite. Pre-existing NULL/empty comparison-key
-  ambiguity (actual primary[1,2]/baseline[2,2]) remains UNFIXED/UNWAIVED; faithfully displaying
-  supplied baselines is not correctness certification. Ticket12 is bounded-completed after fresh
+  source-row clicks, no aggregation/rekey/spec rewrite. Keyed comparisons retain raw typed SQL
+  dimension identities internally, including NULL versus empty text in every dimension component.
+  Matching and dropped-baseline counts use those identities, not the lossy public string keys;
+  filled hour/weekday buckets use the compiler's integer identities. Public keys/labels and saved
+  specs are unchanged; colliding display keys still use the separate-row renderer fallback.
+  Ticket12 is bounded-completed after fresh
   integrated checks/genuine parent252-label gate/explicit five-DOC closure release; fresh closure
   DOC gate was subsequently disposed before parent activated19/earlier13–14 resource unlock; its earlier
   pending receipts remain historical. Current19 has a separate pending closure gate. See
@@ -534,6 +537,15 @@ SQLModel relationship-annotation exemptions in `pyproject.toml`/`db/models.py`. 
 JS file, run `node --check path/to/file.js` when Node is available. Also exercise affected pages,
 API calls, and shared consumers on the scratch daemon; syntax checks do not test browser behavior.
 Do not use live AI providers as automated test fixtures or expose personal data in logs/reports.
+
+### Comparison identity regressions
+
+`tests/test_query_comparison_identity.py` covers the real root analytics HTTP endpoint and the
+public `QueryService.run` response/row `model_dump(mode="json")` contract. Both retain the existing
+public fields and string keys while attaching distinct NULL/empty-category baselines correctly;
+HTTP response filtering alone does not cover direct service callers. The existing renderer suite
+`tests/test_widget_stack_collision.cjs` accepts a captured HTTP response through
+`TIMETRACE_COLLISION_API_RESPONSE` to check separate-row baseline rendering and source-row clicks.
 
 ## Migration verification
 
