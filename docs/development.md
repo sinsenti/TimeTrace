@@ -538,6 +538,15 @@ JS file, run `node --check path/to/file.js` when Node is available. Also exercis
 API calls, and shared consumers on the scratch daemon; syntax checks do not test browser behavior.
 Do not use live AI providers as automated test fixtures or expose personal data in logs/reports.
 
+### Comparison identity regressions
+
+`tests/test_query_comparison_identity.py` covers the real root analytics HTTP endpoint and the
+public `QueryService.run` response/row `model_dump(mode="json")` contract. Both retain the existing
+public fields and string keys while attaching distinct NULL/empty-category baselines correctly;
+HTTP response filtering alone does not cover direct service callers. The existing renderer suite
+`tests/test_widget_stack_collision.cjs` accepts a captured HTTP response through
+`TIMETRACE_COLLISION_API_RESPONSE` to check separate-row baseline rendering and source-row clicks.
+
 ## Migration verification
 
 The source tree currently ends at `0013_ai_data_scope`; inspect revision ids and

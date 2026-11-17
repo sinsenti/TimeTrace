@@ -1,11 +1,14 @@
-"""Comparison source identities survive presentation-key collisions at the analytics HTTP seam."""
+"""Comparison identities and public serialization through analytics HTTP and QueryService.run."""
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from timetrace.core.query_spec import AnalyticsQuery
 from timetrace.db.models import DayReview, Task
 from timetrace.db.models import Session as SessionModel
+from timetrace.interfaces.api.schemas import QueryContextRequest
+from timetrace.services import QueryService
 
 
 def seed_category_periods(db, primary, baseline):
@@ -241,5 +244,49 @@ def test_keyed_percentage_and_score_comparisons_use_points_not_percent_change(
     assert row["comparison_value"] == baseline
     assert row["delta"] == delta
     assert row["delta_pct"] is None
+    assert result["comparison"]["alignment"] == "by_key"
+    assert result["comparison"]["dropped_keys"] == 0
+
+
+def test_direct_query_response_and_row_json_dumps_keep_public_shape_and_correct_baselines(db):
+    seed_category_periods(db, [(None, 1), ("", 2)], [(None, 3), ("", 5)])
+    query = AnalyticsQuery.model_validate(
+        {
+            "source": "sessions",
+            "measure": "sum_duration",
+            "group_by": ["category"],
+            "sort": "value_asc",
+            "date_range": {"preset": "custom", "start_date": "2026-04-15", "end_date": "2026-04-15"},
+            "comparison": {"mode": "custom", "start_date": "2026-04-14", "end_date": "2026-04-14"},
+        }
+    )
+
+    response = QueryService(db).run(query, QueryContextRequest())
+    result = response.model_dump(mode="json")
+    rows = [row.model_dump(mode="json") for row in response.rows]
+
+    assert set(result) == {"columns", "rows", "total", "row_count", "meta", "comparison_total", "comparison"}
+    assert result["row_count"] == 2
+    assert result["rows"] == rows
+    assert rows == [
+        {
+            "keys": [""],
+            "labels": [""],
+            "value": 1,
+            "count": 1,
+            "comparison_value": 3,
+            "delta": -2,
+            "delta_pct": pytest.approx(-66.6666667),
+        },
+        {
+            "keys": [""],
+            "labels": [""],
+            "value": 2,
+            "count": 1,
+            "comparison_value": 5,
+            "delta": -3,
+            "delta_pct": -60,
+        },
+    ]
     assert result["comparison"]["alignment"] == "by_key"
     assert result["comparison"]["dropped_keys"] == 0
