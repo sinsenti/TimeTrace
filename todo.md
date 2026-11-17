@@ -1,5 +1,10 @@
 # TimeTrace backlog
 
+**Historical roadmap, not the live ticket queue.** GitHub Issues now tracks actionable work;
+see [migration mapping](docs/agents/github-migration.md). Unchecked future ideas below remain
+unscheduled owner-gated context, not permission to implement them. Google Calendar has a separate
+deferred planning map; its migration does not approve the historical infrastructure proposals below.
+
 This is a status-oriented backlog, not a list of presumed missing features. Check current code and
 owner decisions before reopening historical items. `[x]` means verified shipped; unchecked items
 may be deferred rather than active work.

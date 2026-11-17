@@ -97,7 +97,7 @@ module-deepening work, production files or tests are copied or changed.
 
 Historical reference artifacts remain **external and currently untracked** in the owner checkout:
 
-- [Combined prototype checkpoint](/home/user/git/personal/TimeTrace/.scratch/ui-redesign-lanes.3zT4LG/combined/README.md).
+- [Combined prototype checkpoint](../../docs/agents/github-migration.md#local-archive-cleanup).
 - [Prototype decision history](/home/user/git/personal/TimeTrace/src/timetrace/interfaces/api/prototypes/app_shell/README.md).
 - Theme and Assistant/Export lanes under `/home/user/git/personal/TimeTrace/.scratch/ui-redesign-lanes.3zT4LG/`.
 

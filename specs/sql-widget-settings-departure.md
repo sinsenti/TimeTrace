@@ -1,8 +1,17 @@
 # SQL widget: reachable guarded Settings departure
-Status: Approved — not Built
+Status: Built — integrated with the owner-accepted UI in dev at `2992d96`
 Date: 2026-11-11
 
 Owner approval: “approve for now. maybe later i will change this”. The approved behavior may be revised later; no implementation, verification or acceptance is inferred from approval. Original Draft remains preserved in `ticket-13-after-reviewed-date`.
+
+## Delivery reconciliation (2026-11-17)
+
+The SQL Settings link, focus-trap integration and narrow unchanged-input deferred-blur repair are
+implemented. Recorded bounded native evidence includes Cancel retention and accepted Settings
+departure; source/regression checks are part of the integrated UI delivery. The original problem,
+conditional approvals and verification requirements below are historical, not new open work.
+No historical failed/unknown capture is relabelled, and broad platform/manual limits remain deferred.
+See the [GitHub migration mapping](../docs/agents/github-migration.md) for the closed successor.
 
 ## Problem
 The SQL editor's full-viewport modal covers the navbar Settings link. Its Tab loop stays inside the dialog; Vim navigation ignores open dialogs. The existing `followSettingsLink(event)` dirty-draft confirmation therefore has no established native Settings caller while this editor is open. Current real-browser evidence records cancellation retaining the SQL draft as blocking UNRUN, not PASS. Independent Spec review of b8884c9 retains this as a P1 acceptance gap.

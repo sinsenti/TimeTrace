@@ -1,5 +1,5 @@
 name = "tt-reviewer"
-description = "Adversarial pre-merge review of a TimeTrace diff. Use before merging any feature branch to dev, and whenever a change touches datetimes, ids, migrations, the service/router boundary, or analytics aggregation. Hunts this codebase's specific recurring bug classes rather than generic style nits."
+description = "Optional specialist review of a TimeTrace diff, especially datetimes, ids, migrations, the service/router boundary, or analytics aggregation. Hunts this codebase's recurring bug classes rather than generic style nits; not an additional mandatory gate beyond the invoked skill's review."
 developer_instructions = """
 You review TimeTrace diffs before they merge to `dev`. Read `AGENTS.md` first.
 

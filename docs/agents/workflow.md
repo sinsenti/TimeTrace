@@ -17,9 +17,31 @@ In Codex, invoke skills with `$ask-matt`, `$grill-with-docs`, `$to-spec`, `$to-t
 `SKILL.md` when no dedicated invocation tool exists. Preserve upstream invocation policies in
 `agents/openai.yaml`; explicit-only workflows should remain explicit-only.
 
-The generic recipes do not authorize commits, resets, merges, PRs, provider calls, or changes to
-personal data. Follow `AGENTS.md`, the approved spec, and the user's actual authorization.
-Use the existing local tracker/domain configuration in `docs/agents/`; setup is already complete.
+Use GitHub Issues via `docs/agents/issue-tracker.md` and the domain configuration in
+`docs/agents/domain.md`; setup is complete. Keep upstream skill files unchanged.
+
+## Default skill workflow
+
+The owner selected the installed Matt Pocock skills' defaults on 2026-11-17. Read the invoked
+skill and its linked references, then follow its process rather than a repository-specific duplicate.
+Invoking a skill authorizes its normal procedural steps, including commits, branches/worktrees,
+subagents, integration merges, issue updates, pushes/PRs when that skill calls for them, and cleanup.
+Do not add per-action permission prompts, a separate spec-approval ceremony, mandatory tuicr, or an
+extra adversarial/re-review gate. Follow the skill's own interviews, testing-seam agreement, ticket
+approval, review and completion requirements.
+
+`to-spec` publishes a GitHub spec issue with its default readiness label. `implement` reviews and
+commits the requested work. `implement-spec` executes its task graph with isolated fresh-context
+workers and an integration branch, performs its final `code-review`, resolves work as specified and
+cleans up its worktrees. Follow each skill's actual instructions; for example, reporting a completed
+integration branch does not itself add an unrequested merge into `dev`.
+
+This policy supersedes older generic procedural prohibitions in local records and migrated issue
+bodies. It does not resolve unanswered product/technical questions, change approved feature behavior,
+resume deferred efforts, or override data/privacy safeguards. Preserve dirty user work; resets and
+cleanup must not discard unrelated changes. Use synthetic isolated DB/timer/key state and fake
+providers for development. Skill execution is not permission to use personal data or incur provider
+costs. Report unavailable tools and unrun checks honestly.
 
 ## Updating skills
 
@@ -40,45 +62,12 @@ The initial shared installation is upstream 1.3.2 at
 The 12 other upstream skills under `misc/` and `in-progress/` are not part of the published bundle;
 they include Claude-only hooks and experimental workflows and are not installed here.
 
-## Whole-delivery review
+## Project verification
 
-Before implementing a multi-ticket spec, record the starting commit as the fixed review base.
-Before declaring the whole delivery complete:
-
-1. Run the full project checks on the integrated result, separating baseline failures and unrun checks.
-2. Use `code-review` against the starting commit for all tickets, tests and delivery documentation
-   together. Per-ticket reviews do not replace this review.
-3. Trace affected workflows through every relevant caller, including pre-existing renderers and
-   handlers newly reached by the change. Where relevant, cover alternate entry points, interrupted
-   initialization, delayed/failed reads, and preservation of unsaved input.
-4. Fix confirmed findings with caller-visible regressions for behavior changes. Re-run applicable
-   checks and obtain an independent review of the amendments until no confirmed findings remain.
-5. Report the reviewed base/final commit, resolved/outstanding findings, exact check results and
-   deferred manual acceptance. If required checks/review remain incomplete, report that status.
-
-This preserves the local whole-delivery rule formerly patched into `implement-spec`. Implementation
-completion is separate from human acceptance and permission to commit, publish or merge.
-
-## Pre-merge gate
-
-Only run this flow when a merge is requested. Before a feature merges into `dev`:
-
-1. Complete automated verification: full regression suite, Ruff with baseline failures distinguished,
-   and changed-JavaScript syntax checks. Follow `docs/development.md#testing-and-checks`.
-   Schema changes additionally require fresh and existing-copy migration verification, row/FK
-   checks, and an isolated daemon/ORM smoke check as described in
-   `docs/development.md#migration-verification`. Work only against disposable isolated databases.
-2. Obtain an independent adversarial review (the optional `tt-reviewer` role or `code-review`), fix
-   confirmed findings, and re-run affected checks. Clean reviews need not manufacture defects.
-3. Open the branch diff for explicit human review in tuicr. With tmux, use
-   `scripts/agents/tuicr/tuicr-window.sh /path/to/worktree`; otherwise start tuicr in the worktree.
-   The helper defaults to `dev..HEAD`, or the working tree when there are no commits ahead.
-4. Tell the owner the review is ready, then wait for feedback. Read it with `tuicr review list`
-   and `tuicr review comments --repo /path/to/worktree --session <slug>` when ready. Fix blocking
-   issues; address suggestions or explain why they were declined. Do not impersonate the owner
-   or write comments into their review without authorization. Re-check feedback after amendments.
-5. Merge only after the owner explicitly approves the reviewed result. Passing checks and resolving
-   comments do not independently authorize merging. Pushes and PRs require their own authorization.
+Use `docs/development.md#testing-and-checks` for the existing test/lint commands and
+`docs/development.md#migration-verification` for safe migration checks. These technical checks
+remain applicable; the invoked skill supplies the review/delivery process. The old custom
+whole-delivery and human/tuicr pre-merge ceremonies are no longer project requirements.
 
 ## Retained helpers
 
@@ -91,7 +80,8 @@ and `TT_WORKTREE_PREFIX` can override it. Worktree creation still uses a file co
 stop the source daemon first or use `--empty`. The legacy ship gate also uses a file copy and
 checks committed changes against a base; use a consistent disposable source DB and separately
 check uncommitted changes, Node runtime tests, and fresh migrations. The authoritative complete
-verification procedure remains `docs/development.md`; a helper verdict is not merge permission.
+technical verification procedure remains `docs/development.md`. Tuicr and these helpers are optional
+utilities, not additional skill-execution gates.
 
 ## Migration audit (2026-11-13)
 

@@ -36,13 +36,13 @@ fix(tasks): preserve links after refresh [module-deepening/06]
 
 ## Tickets and subtickets
 
-Follow the [local issue tracker](agents/issue-tracker.md) for ticket identities. Include the feature
-slug because ticket numbering restarts within each feature. For example, `[module-deepening/04]`
-identifies ticket `04` in `.scratch/module-deepening/issues/`.
+Follow the [GitHub issue tracker](agents/issue-tracker.md) for ticket identities. GitHub issue
+numbers are repository-wide; use the real issue number, for example `[#54]`, when a commit belongs
+to an issue. Historical `[module-deepening/04]` references retain their original local meaning;
+use the migration mapping to find their GitHub successors rather than interpreting `04` as issue #4.
 
-Use a subticket's actual identifier if one is already defined in the tracker. Preserve its feature
-context; do not invent a numbering scheme just for commit messages. A ticket may have several
-focused commits using the same reference. A reference records association, not completion or approval.
+A ticket may have several focused commits using the same reference. A bracketed reference records
+association, not completion; use closing keywords only when the issue is actually resolved.
 
 ## Commit boundaries and body
 

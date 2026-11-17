@@ -9,12 +9,14 @@ runbook. Historical snapshots below explain past fixes; verify current source be
 
 ### Issue tracker
 
-Issues live in `.scratch/<feature>/`; approved specs remain in `specs/`.
+Issues and new skill-published specs live in GitHub Issues (`sinsenti/TimeTrace`). Existing `specs/`
+files retain supporting contracts/history. Follow the installed skills' default execution workflow.
+Existing `.scratch/` tickets are historical records, not the live tracker.
 Read `docs/agents/issue-tracker.md` before reading or publishing tickets.
 
 ### Triage labels
 
-Use the five default triage roles as local issue status strings.
+Use the five default triage roles as GitHub issue labels.
 Read `docs/agents/triage-labels.md` when triaging issues.
 
 ### Domain docs

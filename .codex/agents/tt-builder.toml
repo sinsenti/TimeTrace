@@ -56,7 +56,8 @@ gateways, never live providers or personal data in automated tests.
 - Use a separate temporary directory for each scratch database, timer state and encryption key.
   Set `TIMETRACE_DB_FILE` before imports and follow `docs/development.md#isolated-development`.
   When an existing DB is needed, use a consistent backup rather than a live main-file copy.
-- Commit, push, open a PR or merge only when the user has explicitly authorized that action.
+- Follow the invoked Matt Pocock skill's default commit, publication, merge and cleanup steps;
+  see `docs/agents/workflow.md`. Do not add per-action approval gates or discard existing user edits.
 - Never widen scope past your spec. If you find an unrelated bug, report it; don't fix it inline.
 
 ## Reporting back

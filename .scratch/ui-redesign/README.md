@@ -1,5 +1,11 @@
 # Whole-UI redesign — implementation backlog
 
+> **Historical tracker — migrated 2026-11-17.** All 25 implementation tickets are delivered,
+> owner-accepted and merged into `dev` at `2992d96`. The live successor is
+> [Whole-UI redesign](https://github.com/sinsenti/TimeTrace/issues/14), closed as completed.
+> [Original record → GitHub mapping](../../docs/agents/github-migration.md) identifies every child.
+> The original publication/status wording below is historical, not a new open frontier.
+
 **Publication:** Approved 25-ticket breakdown, published 2026-11-01.
 **Implementation spec:** [Whole-UI redesign](../../specs/ui-redesign.md) — Approved 2026-11-01; O1–O8 resolved.
 **Historical frontier checkpoint:** 03, 05, 06, 08, 09, 13, 14, 15, 18, 20, 21, 24 after bounded tickets **01 + 02 + 04 + 10 + 11 + 12 + 19 completed**; **seven complete/18 pending**. Ticket19 exact reviewed `625e5f2e5525a2307fda6cbe0f8a02f4462ecaf9` was normally FF-integrated from clean a8e (two commits/14paths); ONE exact625-parent five-DOC closure is released, with fresh independent closure DOC Standards+Spec and parent disposition STILL REQUIRED before authoritative19 acceptance or03/20 continuation. Prior12 closure review was disposed before19 activation; historical receipts remain. Already-run468Python/226warnings,237canonicalNode,92syntax,focused2Python/13Node/scopedPython and actual Ruff18 BOTH fixed streams remain evidence, not rerun; all239 source/test/spec bytes immutable. Genuine independent parent13 FIRST invocations/50actualcontexts-pages/errors[] means12 ordinary plus labelled coherent5, NOT all13 original green. Owner explicitly approved ONLY narrow test-only case5 idle-flag simulation/use of departure-guard evidence AFTER parent caught its permission overstep and revoked release BEFORE postgate document edit/stage/commit/cleanup. Originalcase5 FIRST FAILED startup wait and unchanged-source initialization counterexample remain UNFIXED/UNWAIVED/reserved03/whole-delivery follow-up, not real bootstrap/OSidle proof. [Current bounded19 evidence](ticket-19-evidence.md#owner-approved-bounded-closure-and-current-gate-2026-11-06) preserves history/unchanged criteria/fakes/manual limits. Explicitly transferred ONLY-own109363/start817653/18227 cleanup sent sole verified retained-pidfd SIGTERM; initial optional-key existence error and immediate PID-absence assertion failure retained. Parent-authorized later read-only audit observed actual PIDabsence13:36:28.080063UTC/socket111/healthrefusal/normal appended shutdown/unchanged storage+0013FK/all40Tasks-FTS40-docsize40-data3-idx1-config1. Parent accepted actual later absence, not weaker not-live; DB/timer/logs/venv retained, optional source-defined key absent.03/20 continuation stays HELD, not new DAG edges. Unchanged graph:07/17 blocked05,16 blocked15,22 blocked05/15/21,23 blocked21;20's19 predecessor is bounded delivered, not continuation permission;25 not done.13/14 separately coordinated; both stopped13 unit/TDD checkpoints are NOT donors/completed acceptance/SQL runtime permission. All11 original/stopped checkpoints and owner228 dirty root preserved. `/settings` Browser, `/settings/ai` AI, `/settings?category=providers` Providers; generic navbar still `/settings/ai` until03, old Preferences retained, Timer unintegrated. Quick Add04 distinct from Assistant21–23; Grouped/Outline06/07 and AI behavior Cancel20 deferred. Spec **Approved, not Built**; contrast/comparison/caption/initialization/manual/provider-SQL/transport/whole-delivery-adversarial-tuicr-human limits UNWAIVED; no whole25/human/push/PR/dev merge acceptance.
@@ -79,31 +85,31 @@ gates; predecessor decisions still apply to dependent workflows.
 
 | Ticket | Technical blockers | Approved decision references |
 | --- | --- | --- |
-| [01: Calendar shell and shared appearance](issues/01-calendar-shell.md) | None technically | O1, O2 |
-| [02: Session editing and scheduling](issues/02-session-editing.md) | 01 | Inherited; O8 |
-| [03: Timer and idle recovery](issues/03-timer-idle-recovery.md) | 01 | Inherited; O8 |
-| [04: Kanban and task quick editing](issues/04-kanban-quick-edit.md) | 01 | Inherited; O8 |
-| [05: Task details and work accounting](issues/05-task-details-accounting.md) | 04 | Inherited; O8 |
-| [06: Grouped task list](issues/06-grouped-task-list.md) | 04 | O2 |
-| [07: Outline and inline inspector](issues/07-outline-inspector.md) | 05 | O2 |
-| [08: Status management](issues/08-status-management.md) | 04 | Inherited; O8 |
-| [09: Advanced filters and Calendar task tabs](issues/09-filters-task-tabs.md) | 04 | Inherited; O8 |
-| [10: Compact Habit cards](issues/10-compact-habits.md) | 01 | O3 |
-| [11: Dashboard and widget canvas](issues/11-dashboard-canvas.md) | 01 | Inherited; O8 |
-| [12: Structured widget builder and comparisons](issues/12-structured-widget-builder.md) | 11 | Inherited; O8 |
-| [13: Optional read-only SQL widgets](issues/13-read-only-sql-widgets.md) | 11 | Inherited; O8 |
-| [14: Performed-time widget and preset](issues/14-performed-time-widget.md) | 11 | O4 |
-| [15: Day workspace and independent history editors](issues/15-day-workspace.md) | 01 | O5 |
-| [16: Session reviews](issues/16-session-reviews.md) | 15 | O5 |
-| [17: Task post-mortems](issues/17-task-post-mortems.md) | 05 | O5 |
-| [18: Rating-definition administration](issues/18-rating-administration.md) | 01 | O5 |
-| [19: Tabbed browser preferences](issues/19-browser-preferences.md) | 01 | O2 |
-| [20: AI settings and providers](issues/20-ai-settings-providers.md) | 19 | Inherited; O8 |
-| [21: Clean shared Assistant](issues/21-clean-assistant.md) | 01 | O6 |
-| [22: Proposal approval and recovery](issues/22-proposal-approval.md) | 02, 05, 15, 21 | O6 |
-| [23: Remembered-instruction approval](issues/23-instruction-approval.md) | 21 | O6 |
-| [24: Markdown export workflow](issues/24-markdown-export.md) | 01 | O7 |
-| [25: Whole-app adoption verification](issues/25-whole-app-verification.md) | 02–24 | O1, O2, O3, O4, O5, O6, O7 |
+| [01: Calendar shell and shared appearance](https://github.com/sinsenti/TimeTrace/issues/15) | None technically | O1, O2 |
+| [02: Session editing and scheduling](https://github.com/sinsenti/TimeTrace/issues/16) | 01 | Inherited; O8 |
+| [03: Timer and idle recovery](https://github.com/sinsenti/TimeTrace/issues/17) | 01 | Inherited; O8 |
+| [04: Kanban and task quick editing](https://github.com/sinsenti/TimeTrace/issues/18) | 01 | Inherited; O8 |
+| [05: Task details and work accounting](https://github.com/sinsenti/TimeTrace/issues/19) | 04 | Inherited; O8 |
+| [06: Grouped task list](https://github.com/sinsenti/TimeTrace/issues/25) | 04 | O2 |
+| [07: Outline and inline inspector](https://github.com/sinsenti/TimeTrace/issues/26) | 05 | O2 |
+| [08: Status management](https://github.com/sinsenti/TimeTrace/issues/27) | 04 | Inherited; O8 |
+| [09: Advanced filters and Calendar task tabs](https://github.com/sinsenti/TimeTrace/issues/28) | 04 | Inherited; O8 |
+| [10: Compact Habit cards](https://github.com/sinsenti/TimeTrace/issues/29) | 01 | O3 |
+| [11: Dashboard and widget canvas](https://github.com/sinsenti/TimeTrace/issues/30) | 01 | Inherited; O8 |
+| [12: Structured widget builder and comparisons](https://github.com/sinsenti/TimeTrace/issues/31) | 11 | Inherited; O8 |
+| [13: Optional read-only SQL widgets](https://github.com/sinsenti/TimeTrace/issues/32) | 11 | Inherited; O8 |
+| [14: Performed-time widget and preset](https://github.com/sinsenti/TimeTrace/issues/33) | 11 | O4 |
+| [15: Day workspace and independent history editors](https://github.com/sinsenti/TimeTrace/issues/34) | 01 | O5 |
+| [16: Session reviews](https://github.com/sinsenti/TimeTrace/issues/35) | 15 | O5 |
+| [17: Task post-mortems](https://github.com/sinsenti/TimeTrace/issues/36) | 05 | O5 |
+| [18: Rating-definition administration](https://github.com/sinsenti/TimeTrace/issues/37) | 01 | O5 |
+| [19: Tabbed browser preferences](https://github.com/sinsenti/TimeTrace/issues/38) | 01 | O2 |
+| [20: AI settings and providers](https://github.com/sinsenti/TimeTrace/issues/39) | 19 | Inherited; O8 |
+| [21: Clean shared Assistant](https://github.com/sinsenti/TimeTrace/issues/40) | 01 | O6 |
+| [22: Proposal approval and recovery](https://github.com/sinsenti/TimeTrace/issues/41) | 02, 05, 15, 21 | O6 |
+| [23: Remembered-instruction approval](https://github.com/sinsenti/TimeTrace/issues/42) | 21 | O6 |
+| [24: Markdown export workflow](https://github.com/sinsenti/TimeTrace/issues/43) | 01 | O7 |
+| [25: Whole-app adoption verification](https://github.com/sinsenti/TimeTrace/issues/44) | 02–24 | O1, O2, O3, O4, O5, O6, O7 |
 
 All edges point to earlier tickets; there is no cycle. The approved independent routes are intentional:
 SQL adoption need not wait for structured-builder adoption; task post-mortems need task details, not

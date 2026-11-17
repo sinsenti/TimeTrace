@@ -1,5 +1,5 @@
 # Whole-UI redesign
-Status: Approved
+Status: Built — owner-accepted and merged into dev at `2992d96` (2026-11-16)
 Date: 2026-11-01
 Owner approval: 2026-11-01 — all questionnaire recommendations and final specification approved.
 
@@ -9,17 +9,20 @@ TimeTrace's shipped workflows need a coherent, readable interface without losing
 accounting, review or AI approval behavior. The owner approved the selected page compositions,
 all eight questionnaire recommendations and this final production contract. The 25-ticket breakdown
 and local publication are also approved; see the [published backlog](../.scratch/ui-redesign/README.md).
-**This contract is approved, not built.** The owner has subsequently requested implementation,
-local branches/commits and integration merges; see the [execution record](../.scratch/ui-redesign/implementation.md).
-The earlier approval-only checkpoint did not itself authorize implementation. Technical prerequisites
-and later review gates remain in force; no production ticket is completed by this documentation seed.
+**Delivery reconciliation (2026-11-17):** all 25 implementation tickets were delivered, the owner
+accepted the UI and approved the merge into `dev` at `2992d96`. Recorded final checks: 614 Python /
+801 Node tests, 34 changed-JS syntax checks, 18 inherited Ruff findings and zero findings on both
+independent review axes. These are historical results, not newly executed tests. Explicit platform,
+accessibility and manual verification limits remain separate from implementation completion.
+GitHub Issues is now the live tracker; see [migration mapping](../docs/agents/github-migration.md).
+The approval/prototype chronology below is historical and does not override this delivery status.
 
 ### Evidence and precedence
 
 - [Coverage/issue plan](../.scratch/ui-redesign/plan.md): settled directions, full surface inventory,
   22 historical candidate slices and open decisions. The delivery table below now uses the approved
   25 published ticket IDs; the backlog maps between these numbering systems.
-- [Combined review checkpoint](/home/user/git/personal/TimeTrace/.scratch/ui-redesign-lanes.3zT4LG/combined/README.md): latest owner
+- [Combined review checkpoint](../docs/agents/github-migration.md#local-archive-cleanup): latest owner
   clarification, theme references and exact prototype verification limits. It supersedes earlier lanes.
 - [Prototype decision history](/home/user/git/personal/TimeTrace/src/timetrace/interfaces/api/prototypes/app_shell/README.md): selected
   page interactions and historical rejected alternatives. Compare the selected references, not old trials.
@@ -295,40 +298,39 @@ The owner approved the 25-ticket proposal with “everything feels right, approv
 shared acceptance and the mapping from the original 22 candidates. The subsequent final approval
 also resolves O1–O8; decision IDs in the table below are approved requirements, not outstanding gates.
 
-Tickets are **ready-for-agent**, subject to their technical predecessors. Ticket **01** is the current
-unblocked frontier. Implementation is now requested; the documentation seed does not implement a
-production ticket. Shared theme/preference adoption precedes 01, not Settings. Keep tests inside
-every ticket; 25 is cross-page acceptance, not postponed integration testing. Existing production
-entry paths remain usable while replacements wait. The execution record separates the subsequent
-implementation/local-commit/integration-merge request from the historical approval checkpoint.
+At original publication, tickets were **ready-for-agent**, subject to their technical predecessors,
+and ticket **01** was the first unblocked frontier. All are now delivered. Shared theme/preference adoption precedes 01,
+not Settings. Keep tests inside every ticket; 25 is cross-page acceptance, not postponed integration
+testing. Existing production entry paths remain usable while replacements wait. Implementation
+start and later commit/merge permission are separate from recording this approval.
 
 | Ticket | Verifiable workflow | Technical predecessors / approved decision references |
 | --- | --- | --- |
-| [01](../.scratch/ui-redesign/issues/01-calendar-shell.md) | Calendar shell and shared appearance | None technically; O1–O2 |
-| [02](../.scratch/ui-redesign/issues/02-session-editing.md) | Session editing and scheduling | 01 |
-| [03](../.scratch/ui-redesign/issues/03-timer-idle-recovery.md) | Timer and idle recovery | 01 |
-| [04](../.scratch/ui-redesign/issues/04-kanban-quick-edit.md) | Kanban and task quick editing | 01 |
-| [05](../.scratch/ui-redesign/issues/05-task-details-accounting.md) | Task details and work accounting | 04 |
-| [06](../.scratch/ui-redesign/issues/06-grouped-task-list.md) | Grouped task list | 04; O2 |
-| [07](../.scratch/ui-redesign/issues/07-outline-inspector.md) | Outline and inline inspector | 05; O2 |
-| [08](../.scratch/ui-redesign/issues/08-status-management.md) | Status management | 04 |
-| [09](../.scratch/ui-redesign/issues/09-filters-task-tabs.md) | Advanced filters and Calendar task tabs | 04 |
-| [10](../.scratch/ui-redesign/issues/10-compact-habits.md) | Compact Habit cards | 01; O3 |
-| [11](../.scratch/ui-redesign/issues/11-dashboard-canvas.md) | Dashboard and widget canvas | 01 |
-| [12](../.scratch/ui-redesign/issues/12-structured-widget-builder.md) | Structured widget builder and comparisons | 11 |
-| [13](../.scratch/ui-redesign/issues/13-read-only-sql-widgets.md) | Optional read-only SQL widgets | 11 |
-| [14](../.scratch/ui-redesign/issues/14-performed-time-widget.md) | Performed-time widget and preset | 11; O4 |
-| [15](../.scratch/ui-redesign/issues/15-day-workspace.md) | Day workspace and independent history editors | 01; O5 |
-| [16](../.scratch/ui-redesign/issues/16-session-reviews.md) | Session reviews | 15; O5 |
-| [17](../.scratch/ui-redesign/issues/17-task-post-mortems.md) | Task post-mortems | 05; O5 |
-| [18](../.scratch/ui-redesign/issues/18-rating-administration.md) | Rating-definition administration | 01; O5 |
-| [19](../.scratch/ui-redesign/issues/19-browser-preferences.md) | Tabbed browser preferences | 01; O2 |
-| [20](../.scratch/ui-redesign/issues/20-ai-settings-providers.md) | AI settings and providers | 19 |
-| [21](../.scratch/ui-redesign/issues/21-clean-assistant.md) | Clean shared Assistant | 01; O6 |
-| [22](../.scratch/ui-redesign/issues/22-proposal-approval.md) | Proposal approval and recovery | 02, 05, 15, 21; O6 |
-| [23](../.scratch/ui-redesign/issues/23-instruction-approval.md) | Remembered-instruction approval | 21; O6 |
-| [24](../.scratch/ui-redesign/issues/24-markdown-export.md) | Markdown export workflow | 01; O7 |
-| [25](../.scratch/ui-redesign/issues/25-whole-app-verification.md) | Whole-app adoption verification | 02–24; O1–O7 |
+| [01](https://github.com/sinsenti/TimeTrace/issues/15) | Calendar shell and shared appearance | None technically; O1–O2 |
+| [02](https://github.com/sinsenti/TimeTrace/issues/16) | Session editing and scheduling | 01 |
+| [03](https://github.com/sinsenti/TimeTrace/issues/17) | Timer and idle recovery | 01 |
+| [04](https://github.com/sinsenti/TimeTrace/issues/18) | Kanban and task quick editing | 01 |
+| [05](https://github.com/sinsenti/TimeTrace/issues/19) | Task details and work accounting | 04 |
+| [06](https://github.com/sinsenti/TimeTrace/issues/25) | Grouped task list | 04; O2 |
+| [07](https://github.com/sinsenti/TimeTrace/issues/26) | Outline and inline inspector | 05; O2 |
+| [08](https://github.com/sinsenti/TimeTrace/issues/27) | Status management | 04 |
+| [09](https://github.com/sinsenti/TimeTrace/issues/28) | Advanced filters and Calendar task tabs | 04 |
+| [10](https://github.com/sinsenti/TimeTrace/issues/29) | Compact Habit cards | 01; O3 |
+| [11](https://github.com/sinsenti/TimeTrace/issues/30) | Dashboard and widget canvas | 01 |
+| [12](https://github.com/sinsenti/TimeTrace/issues/31) | Structured widget builder and comparisons | 11 |
+| [13](https://github.com/sinsenti/TimeTrace/issues/32) | Optional read-only SQL widgets | 11 |
+| [14](https://github.com/sinsenti/TimeTrace/issues/33) | Performed-time widget and preset | 11; O4 |
+| [15](https://github.com/sinsenti/TimeTrace/issues/34) | Day workspace and independent history editors | 01; O5 |
+| [16](https://github.com/sinsenti/TimeTrace/issues/35) | Session reviews | 15; O5 |
+| [17](https://github.com/sinsenti/TimeTrace/issues/36) | Task post-mortems | 05; O5 |
+| [18](https://github.com/sinsenti/TimeTrace/issues/37) | Rating-definition administration | 01; O5 |
+| [19](https://github.com/sinsenti/TimeTrace/issues/38) | Tabbed browser preferences | 01; O2 |
+| [20](https://github.com/sinsenti/TimeTrace/issues/39) | AI settings and providers | 19 |
+| [21](https://github.com/sinsenti/TimeTrace/issues/40) | Clean shared Assistant | 01; O6 |
+| [22](https://github.com/sinsenti/TimeTrace/issues/41) | Proposal approval and recovery | 02, 05, 15, 21; O6 |
+| [23](https://github.com/sinsenti/TimeTrace/issues/42) | Remembered-instruction approval | 21; O6 |
+| [24](https://github.com/sinsenti/TimeTrace/issues/43) | Markdown export workflow | 01; O7 |
+| [25](https://github.com/sinsenti/TimeTrace/issues/44) | Whole-app adoption verification | 02–24; O1–O7 |
 
 Compared with the earlier 22 candidates, builder/SQL, session/task reviews and domain/instruction
 approval are split. Task post-mortems do not wait for day reviews; rating administration does not wait
@@ -379,5 +381,5 @@ reviews and parent corrections are recorded in the [review findings](../.scratch
 Both CHANGES findings and all three NITS were incorporated as documentation corrections, not code
 repairs. Subsequent owner approvals cover the 25-ticket breakdown/publication, all O1–O7 answers
 and O8 final implementation-spec/verification approval. These approvals do not certify implementation
-or turn historical receipts into newly executed tests. Implementation is now requested; no production
-ticket has been implemented by this documentation seed.
+or turn historical receipts into newly executed tests. Later implementation/acceptance is reconciled
+at the top of this specification; original failed and unknown observations remain unchanged.

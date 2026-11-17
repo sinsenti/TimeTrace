@@ -1,0 +1,1077 @@
+{
+  "date": "2026-11-17",
+  "repository": "sinsenti/TimeTrace",
+  "manifest_sha256": "2958c494b2d24f27fba44c44124b638539ca3515954dfc3a1b0c36b59698072d",
+  "counts": {
+    "issues": 56,
+    "open": 20,
+    "closed": 36,
+    "subissues": 48,
+    "blockers": 80
+  },
+  "local_archive": {
+    "directory": "~/.local/state/timetrace/archives/cleanup-20261117-175652",
+    "archive": "historical-records.tar.gz",
+    "manifest": "manifest.json",
+    "tracked_diff": "tracked-changes.patch",
+    "verified_archived_files": 253,
+    "removed_files": 223,
+    "note": "Source paths are original migration identities; archived paths need not remain in the checkout."
+  },
+  "issues": [
+    {
+      "key": "agenda",
+      "number": 1,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/1",
+      "sources": [
+        "specs/agenda-plan-record.md",
+        ".scratch/agenda-plan-record/README.md",
+        ".scratch/agenda-plan-record/spec.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "agenda-01",
+      "number": 2,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/2",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/01-real-agenda-and-data-foundation.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": []
+    },
+    {
+      "key": "agenda-02",
+      "number": 3,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/3",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/02-manual-recorded-work.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-01"
+      ]
+    },
+    {
+      "key": "agenda-03",
+      "number": 4,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/4",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/03-multiple-running-timers.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-02"
+      ]
+    },
+    {
+      "key": "agenda-04",
+      "number": 5,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/5",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/04-per-timer-idle-review.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-03"
+      ]
+    },
+    {
+      "key": "agenda-05",
+      "number": 6,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/6",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/05-explicit-session-extension.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-03"
+      ]
+    },
+    {
+      "key": "agenda-06",
+      "number": 7,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/7",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/06-delete-or-squeeze.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-03"
+      ]
+    },
+    {
+      "key": "agenda-07",
+      "number": 8,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/8",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/07-existing-calendar-integration.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-03"
+      ]
+    },
+    {
+      "key": "agenda-08",
+      "number": 9,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/9",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/08-statistics-and-comparisons.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-02"
+      ]
+    },
+    {
+      "key": "agenda-09",
+      "number": 10,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/10",
+      "sources": [
+        ".scratch/agenda-plan-record/issues/09-complete-flow-verification.md",
+        "specs/agenda-plan-record.md",
+        "GLOSSARY.md"
+      ],
+      "import_state": "open",
+      "parent": "agenda",
+      "blockers": [
+        "agenda-04",
+        "agenda-05",
+        "agenda-06",
+        "agenda-07",
+        "agenda-08"
+      ]
+    },
+    {
+      "key": "google",
+      "number": 11,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/11",
+      "sources": [
+        ".scratch/google-calendar-sync/map.md",
+        ".scratch/google-calendar-sync/issues/02-imported-event-model.md",
+        ".scratch/google-calendar-sync/issues/07-focus-time-refactor-prerequisite.md"
+      ],
+      "import_state": "open",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "google-01",
+      "number": 12,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/12",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/01-google-api-constraints.md",
+        "docs/research/google-calendar-import.md",
+        ".scratch/google-calendar-sync/issues/02-imported-event-model.md"
+      ],
+      "import_state": "closed",
+      "parent": "google",
+      "blockers": []
+    },
+    {
+      "key": "google-02",
+      "number": 20,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/20",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/02-imported-event-model.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "google-01",
+        "google-07"
+      ]
+    },
+    {
+      "key": "google-03",
+      "number": 21,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/21",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/03-calendar-connection-lifecycle.md",
+        ".scratch/google-calendar-sync/map.md",
+        "docs/research/google-calendar-import.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "google-01",
+        "google-07"
+      ]
+    },
+    {
+      "key": "google-04",
+      "number": 22,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/22",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/04-polling-recovery.md",
+        ".scratch/google-calendar-sync/map.md",
+        "docs/research/google-calendar-import.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "google-01",
+        "google-07"
+      ]
+    },
+    {
+      "key": "google-05",
+      "number": 23,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/23",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/05-source-change-lifecycle.md",
+        ".scratch/google-calendar-sync/issues/02-imported-event-model.md",
+        ".scratch/google-calendar-sync/map.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "google-01",
+        "google-02",
+        "google-03"
+      ]
+    },
+    {
+      "key": "google-06",
+      "number": 24,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/24",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/06-backend-contract-acceptance.md",
+        ".scratch/google-calendar-sync/map.md",
+        ".scratch/google-calendar-sync/issues/02-imported-event-model.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "google-02",
+        "google-03",
+        "google-04",
+        "google-05"
+      ]
+    },
+    {
+      "key": "google-07",
+      "number": 13,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/13",
+      "sources": [
+        ".scratch/google-calendar-sync/issues/07-focus-time-refactor-prerequisite.md",
+        ".scratch/google-calendar-sync/map.md",
+        "specs/agenda-plan-record.md",
+        ".scratch/agenda-plan-record/issues/09-complete-flow-verification.md",
+        "GLOSSARY.md",
+        "docs/recurrence-engine-plan.md"
+      ],
+      "import_state": "open",
+      "parent": "google",
+      "blockers": [
+        "agenda-09"
+      ]
+    },
+    {
+      "key": "ui",
+      "number": 14,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/14",
+      "sources": [
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md"
+      ],
+      "import_state": "closed",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "ui-01",
+      "number": 15,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/15",
+      "sources": [
+        ".scratch/ui-redesign/issues/01-calendar-shell.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/calendar.js",
+        "tests/test_calendar_shell.cjs",
+        "tests/test_browser_preferences.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": []
+    },
+    {
+      "key": "ui-02",
+      "number": 16,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/16",
+      "sources": [
+        ".scratch/ui-redesign/issues/02-session-editing.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/session_modal.js",
+        "tests/test_session_editing.py",
+        "tests/test_session_editing.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-03",
+      "number": 17,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/17",
+      "sources": [
+        ".scratch/ui-redesign/issues/03-timer-idle-recovery.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/timer_control.js",
+        "tests/test_timer_recovery.py",
+        "tests/test_timer_startup_preferences.cjs",
+        ".scratch/codex-continuation/closure03-13-audit.md"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-04",
+      "number": 18,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/18",
+      "sources": [
+        ".scratch/ui-redesign/issues/04-kanban-quick-edit.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/task_modal.js",
+        "tests/test_task_quick_edit.cjs",
+        "tests/test_ai_quick_add_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-05",
+      "number": 19,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/19",
+      "sources": [
+        ".scratch/ui-redesign/issues/05-task-details-accounting.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/services/task_service.py",
+        "tests/test_task_work_accounting.py",
+        "tests/test_task_details.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-04"
+      ]
+    },
+    {
+      "key": "ui-06",
+      "number": 25,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/25",
+      "sources": [
+        ".scratch/ui-redesign/issues/06-grouped-task-list.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/grouped_tasks.js",
+        "tests/test_grouped_tasks.cjs",
+        "tests/test_grouped_tasks.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-04"
+      ]
+    },
+    {
+      "key": "ui-07",
+      "number": 26,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/26",
+      "sources": [
+        ".scratch/ui-redesign/issues/07-outline-inspector.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/outline_tasks.js",
+        "tests/test_outline_tasks.cjs",
+        "tests/test_outline_tasks.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-05"
+      ]
+    },
+    {
+      "key": "ui-08",
+      "number": 27,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/27",
+      "sources": [
+        ".scratch/ui-redesign/issues/08-status-management.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/kanban.js",
+        "tests/test_status_management.cjs",
+        "tests/test_status_management_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-04"
+      ]
+    },
+    {
+      "key": "ui-09",
+      "number": 28,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/28",
+      "sources": [
+        ".scratch/ui-redesign/issues/09-filters-task-tabs.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/custom_filter.js",
+        "tests/test_filters_task_tabs.py",
+        "tests/test_calendar_task_tabs.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-04"
+      ]
+    },
+    {
+      "key": "ui-10",
+      "number": 29,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/29",
+      "sources": [
+        ".scratch/ui-redesign/issues/10-compact-habits.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/habits.js",
+        "tests/test_habit_cards.cjs",
+        "tests/test_habit_cards_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-11",
+      "number": 30,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/30",
+      "sources": [
+        ".scratch/ui-redesign/issues/11-dashboard-canvas.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/dashboards.js",
+        "tests/test_dashboard_canvas.cjs",
+        "tests/test_dashboard_canvas.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-12",
+      "number": 31,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/31",
+      "sources": [
+        ".scratch/ui-redesign/issues/12-structured-widget-builder.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/widget_builder.js",
+        "tests/test_structured_widget_builder_api.py",
+        "tests/test_widget_stack_collision.cjs",
+        "tests/test_query_date_validation.py",
+        ".scratch/ui-redesign/ticket-12-evidence.md"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-11"
+      ]
+    },
+    {
+      "key": "ui-13",
+      "number": 32,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/32",
+      "sources": [
+        ".scratch/ui-redesign/issues/13-read-only-sql-widgets.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/widget_builder.js",
+        "tests/test_sql_widget_builder.cjs",
+        "tests/test_sql_widgets_api.py",
+        "tests/test_sql_query_service.py",
+        ".scratch/codex-continuation/closure03-13-audit.md"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-11"
+      ]
+    },
+    {
+      "key": "ui-14",
+      "number": 33,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/33",
+      "sources": [
+        ".scratch/ui-redesign/issues/14-performed-time-widget.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/dashboards.js",
+        "tests/test_performed_time_widget.py",
+        "tests/test_performed_time_widget.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-11"
+      ]
+    },
+    {
+      "key": "ui-15",
+      "number": 34,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/34",
+      "sources": [
+        ".scratch/ui-redesign/issues/15-day-workspace.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/day_review.js",
+        "src/timetrace/interfaces/api/static/js/day_history.js",
+        "tests/test_day_workspace.cjs",
+        "tests/test_day_workspace_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-16",
+      "number": 35,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/35",
+      "sources": [
+        ".scratch/ui-redesign/issues/16-session-reviews.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/session_review.js",
+        "tests/test_session_reviews.cjs",
+        "tests/test_session_reviews_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-15"
+      ]
+    },
+    {
+      "key": "ui-17",
+      "number": 36,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/36",
+      "sources": [
+        ".scratch/ui-redesign/issues/17-task-post-mortems.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/task_postmortem.js",
+        "tests/test_task_postmortems.cjs",
+        "tests/test_task_postmortems.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-05"
+      ]
+    },
+    {
+      "key": "ui-18",
+      "number": 37,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/37",
+      "sources": [
+        ".scratch/ui-redesign/issues/18-rating-administration.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/ratings_config.js",
+        "tests/test_rating_administration.py",
+        "tests/test_rating_consumer_lifecycle.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-19",
+      "number": 38,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/38",
+      "sources": [
+        ".scratch/ui-redesign/issues/19-browser-preferences.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/settings.js",
+        "src/timetrace/interfaces/api/static/js/browser_preferences.js",
+        "tests/test_browser_preferences.cjs",
+        "tests/test_timer_startup_preferences.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-20",
+      "number": 39,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/39",
+      "sources": [
+        ".scratch/ui-redesign/issues/20-ai-settings-providers.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/ai_settings_page.js",
+        "tests/test_ai_settings_providers.py",
+        "tests/test_ai_settings_page.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-19"
+      ]
+    },
+    {
+      "key": "ui-21",
+      "number": 40,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/40",
+      "sources": [
+        ".scratch/ui-redesign/issues/21-clean-assistant.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/interfaces/api/static/js/ai_assistant.js",
+        "tests/test_clean_assistant_lifecycle.cjs",
+        "tests/test_clean_assistant_contract.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-22",
+      "number": 41,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/41",
+      "sources": [
+        ".scratch/ui-redesign/issues/22-proposal-approval.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/services/ai_draft_service.py",
+        "tests/test_ai_proposal_approval.py",
+        "tests/test_ai_proposal_recovery.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-02",
+        "ui-05",
+        "ui-15",
+        "ui-21"
+      ]
+    },
+    {
+      "key": "ui-23",
+      "number": 42,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/42",
+      "sources": [
+        ".scratch/ui-redesign/issues/23-instruction-approval.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/services/ai_instruction_service.py",
+        "tests/test_ai_instruction_approval.cjs",
+        "tests/test_ai_instruction_approval_api.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-21"
+      ]
+    },
+    {
+      "key": "ui-24",
+      "number": 43,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/43",
+      "sources": [
+        ".scratch/ui-redesign/issues/24-markdown-export.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "src/timetrace/services/analytics_service.py",
+        "tests/test_markdown_export.py",
+        "tests/test_markdown_export.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-01"
+      ]
+    },
+    {
+      "key": "ui-25",
+      "number": 44,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/44",
+      "sources": [
+        ".scratch/ui-redesign/issues/25-whole-app-verification.md",
+        ".scratch/ui-redesign/README.md",
+        "specs/ui-redesign.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "docs/development.md",
+        "tests/test_color_contrast.cjs",
+        "tests/test_draft_ownership.cjs",
+        "tests/test_browser_preferences.py"
+      ],
+      "import_state": "closed",
+      "parent": "ui",
+      "blockers": [
+        "ui-02",
+        "ui-03",
+        "ui-04",
+        "ui-05",
+        "ui-06",
+        "ui-07",
+        "ui-08",
+        "ui-09",
+        "ui-10",
+        "ui-11",
+        "ui-12",
+        "ui-13",
+        "ui-14",
+        "ui-15",
+        "ui-16",
+        "ui-17",
+        "ui-18",
+        "ui-19",
+        "ui-20",
+        "ui-21",
+        "ui-22",
+        "ui-23",
+        "ui-24"
+      ]
+    },
+    {
+      "key": "modules",
+      "number": 45,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/45",
+      "sources": [
+        "specs/module-deepening.md",
+        ".scratch/module-deepening/issues/01-task-work-accounting.md",
+        ".scratch/module-deepening/issues/02-provider-construction.md",
+        ".scratch/module-deepening/issues/03-chat-turn-lifecycle.md",
+        ".scratch/module-deepening/issues/04-scoped-ai-read-context.md",
+        ".scratch/module-deepening/issues/05-task-metadata-freshness.md",
+        ".scratch/module-deepening/issues/06-task-links-and-recurrence-safeguards.md",
+        "docs/development.md"
+      ],
+      "import_state": "closed",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "modules-01",
+      "number": 46,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/46",
+      "sources": [
+        ".scratch/module-deepening/issues/01-task-work-accounting.md",
+        "specs/module-deepening.md",
+        "src/timetrace/services/task_service.py",
+        "src/timetrace/services/ai_insights_service.py",
+        "tests/test_task_work_accounting.py"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": []
+    },
+    {
+      "key": "modules-02",
+      "number": 47,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/47",
+      "sources": [
+        ".scratch/module-deepening/issues/02-provider-construction.md",
+        "specs/module-deepening.md",
+        "src/timetrace/core/ai/providers.py",
+        "src/timetrace/services/ai_provider_service.py",
+        "tests/test_ai_provider_construction.py"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": [
+        "modules-01"
+      ]
+    },
+    {
+      "key": "modules-03",
+      "number": 48,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/48",
+      "sources": [
+        ".scratch/module-deepening/issues/03-chat-turn-lifecycle.md",
+        "specs/module-deepening.md",
+        "src/timetrace/services/ai_chat_service.py",
+        "tests/test_ai_chat_lifecycle.py",
+        "tests/test_ai_instruction_chat.py"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": [
+        "modules-02"
+      ]
+    },
+    {
+      "key": "modules-04",
+      "number": 49,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/49",
+      "sources": [
+        ".scratch/module-deepening/issues/04-scoped-ai-read-context.md",
+        "specs/module-deepening.md",
+        "src/timetrace/services/ai_tool_gateway.py",
+        "tests/test_ai_read_context.py",
+        "docs/ai-maintenance.md"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": [
+        "modules-03"
+      ]
+    },
+    {
+      "key": "modules-05",
+      "number": 50,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/50",
+      "sources": [
+        ".scratch/module-deepening/issues/05-task-metadata-freshness.md",
+        "specs/module-deepening.md",
+        "src/timetrace/interfaces/api/static/js/task_knowledge.js",
+        "tests/test_task_knowledge.cjs",
+        "docs/development.md"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": [
+        "modules-04"
+      ]
+    },
+    {
+      "key": "modules-06",
+      "number": 51,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/51",
+      "sources": [
+        ".scratch/module-deepening/issues/06-task-links-and-recurrence-safeguards.md",
+        "specs/module-deepening.md",
+        "src/timetrace/interfaces/api/static/js/calendar.js",
+        "src/timetrace/interfaces/api/static/js/session_modal.js",
+        "tests/test_calendar_task_registry.cjs",
+        "tests/test_recurrence_service.py"
+      ],
+      "import_state": "closed",
+      "parent": "modules",
+      "blockers": [
+        "modules-05"
+      ]
+    },
+    {
+      "key": "sql-departure",
+      "number": 52,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/52",
+      "sources": [
+        "specs/sql-widget-settings-departure.md",
+        ".scratch/codex-continuation/closure03-13-audit.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md",
+        "tests/test_sql_widget_builder.cjs"
+      ],
+      "import_state": "closed",
+      "parent": "ui-13",
+      "blockers": []
+    },
+    {
+      "key": "ai-hardening",
+      "number": 53,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/53",
+      "sources": [
+        "docs/ai-release-hardening-plan.md",
+        "todo.md",
+        "docs/ai-maintenance.md",
+        "tests/test_ai_instruction_chat.py",
+        ".scratch/codex-continuation/evidence/ticket-23/native/de6ead9-routefix10-approval01.final.json",
+        ".scratch/codex-continuation/evidence/ticket-23/native/source-native-binding-commit01.json",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md"
+      ],
+      "import_state": "closed",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "followup-comparison",
+      "number": 54,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/54",
+      "sources": [
+        ".scratch/ui-redesign/ticket-12-evidence.md",
+        "docs/development.md",
+        "src/timetrace/services/query_service.py",
+        "src/timetrace/interfaces/api/schemas.py",
+        "tests/test_widget_stack_collision.cjs"
+      ],
+      "import_state": "open",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "followup-verification",
+      "number": 55,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/55",
+      "sources": [
+        "docs/ai-release-hardening-plan.md",
+        "specs/module-deepening.md",
+        "docs/development.md",
+        ".scratch/codex-continuation/whole25-acceptance-inventory.md",
+        ".scratch/codex-continuation/remaining-gates.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md"
+      ],
+      "import_state": "open",
+      "parent": null,
+      "blockers": []
+    },
+    {
+      "key": "followup-docs",
+      "number": 56,
+      "url": "https://github.com/sinsenti/TimeTrace/issues/56",
+      "sources": [
+        "README.md",
+        "specs/README.md",
+        "specs/ui-redesign.md",
+        "specs/sql-widget-settings-departure.md",
+        "specs/module-deepening.md",
+        "docs/ai-release-hardening-plan.md",
+        ".scratch/ui-redesign/README.md",
+        ".scratch/codex-continuation/README.md",
+        ".scratch/codex-continuation/CURRENT.json",
+        ".scratch/codex-continuation/evidence/premerge-candidate/REPORT.md"
+      ],
+      "import_state": "open",
+      "parent": null,
+      "blockers": []
+    }
+  ]
+}

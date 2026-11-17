@@ -3,7 +3,7 @@
 ## Delivery boundary
 
 This is an **unstaged, uncommitted implementation continuation**, not ticket closure, reviewer approval,
-human acceptance or merge permission. The [issue](issues/10-compact-habits.md) remains ready-for-agent,
+human acceptance or merge permission. The [issue](https://github.com/sinsenti/TimeTrace/issues/29) remains ready-for-agent,
 with its original criteria unchecked. The [spec](../../specs/ui-redesign.md) remains Approved, not Built.
 Only 01/02/04/11 have recorded closure; no other ticket is completed by this receipt.
 
