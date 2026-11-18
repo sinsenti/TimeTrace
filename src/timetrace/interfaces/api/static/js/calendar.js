@@ -189,15 +189,73 @@ async function isRecurringCalendarEvent(event) {
  * `estimated_minutes` -- that side effect used to re-trigger session generation and refill the
  * slot the user had just vacated.
  */
-let calendarPlanningRows = [];
-let calendarRecordedRows = new Map();
+let calendarDisplayRows = [];
 let calendarReadVersion = 0;
 const calendarWrites = new Set();
-const calendarNeedsReview = new Set();
+const calendarNeedsReview = new Map();
+
+function calendarScheduleNeedsReview(id) {
+    return calendarNeedsReview.has(id);
+}
+
+function renderCalendarScheduleReviews() {
+    const root = document.getElementById('calendar_schedule_reviews');
+    if (!root) return;
+    const focused = document.activeElement?.dataset?.reviewKey;
+    root.textContent = '';
+    const interval = row => `${new Date(row.start_time).toLocaleString()} — ${new Date(row.end_time).toLocaleString()}`;
+    for (const [id, attempt] of calendarNeedsReview) {
+        const panel = document.createElement('section');
+        const notice = document.createElement('p');
+        notice.setAttribute('role', 'status');
+        notice.textContent = `${attempt.title}: ${attempt.uncertain ? 'Save not confirmed.' : 'Schedule changed.'} ` +
+            `Attempted ${interval(attempt.payload)}. ` + (attempt.latest ? `Latest saved: ${interval(attempt.latest)}.`
+                : attempt.latest === null ? 'This entry is no longer available. Check Calendar for its replacement.' : attempt.error || 'Read the saved state before editing again.');
+        panel.appendChild(notice);
+        const button = (key, label, click) => {
+            const control = document.createElement('button');
+            control.type = 'button';
+            control.className = 'underline mr-3';
+            control.textContent = label;
+            control.dataset.reviewKey = `${id}:${key}`;
+            control.addEventListener('click', click);
+            panel.appendChild(control);
+            return control;
+        };
+        const read = button('read', 'Read latest schedule', async () => {
+            if (attempt.reading) return;
+            attempt.reading = true;
+            try {
+                const latest = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
+                if (latest?.id !== id || latest.kind !== 'scheduled_session') throw Error('Missing schedule');
+                attempt.latest = latest;
+            } catch (err) {
+                attempt.latest = err.status === 404 ? null : undefined;
+                attempt.error = 'Could not read saved schedule. Retry the read.';
+            } finally {
+                attempt.reading = false;
+            }
+            if (calendarNeedsReview.get(id) === attempt) renderCalendarScheduleReviews();
+        });
+        const done = attempt.latest !== undefined && button('done', 'Reviewed — discard attempt', () => {
+            if (attempt.reading || calendarNeedsReview.get(id) !== attempt) return;
+            calendarNeedsReview.delete(id);
+            renderCalendarScheduleReviews();
+            const region = document.getElementById('calendar');
+            if (document.activeElement === document.body && region) {
+                region.setAttribute('tabindex', '-1');
+                region.focus({ preventScroll: true });
+            }
+            void refreshSessionDisplay();
+        });
+        root.appendChild(panel);
+        for (const control of [read, done]) if (control && control.dataset.reviewKey === focused) control.focus();
+    }
+    root.hidden = !calendarNeedsReview.size;
+}
 
 function calendarSessionRows() {
-    const rows = typeof allSessions === 'undefined' ? [] : allSessions;
-    return [...rows.filter(row => !row.is_virtual).map(row => calendarRecordedRows.get(row.id) || row), ...calendarPlanningRows];
+    return calendarDisplayRows;
 }
 
 async function handleCalendarEventUpdate(event, changeType = 'move', info = null) {
@@ -233,9 +291,10 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
         if (typed) {
             const uncertain = !err.status || err.status >= 500;
             reconcile = uncertain || err.status === 409;
-            if (reconcile) calendarNeedsReview.add(id);
-            alert(uncertain ? 'Move or resize not confirmed. Review the refreshed calendar before trying anything else.'
-                : err.status === 409 ? 'Schedule changed. Review the refreshed calendar before editing again.' : err.message);
+            if (reconcile) {
+                calendarNeedsReview.set(id, { title: event.title || 'Scheduled session', payload, uncertain });
+                renderCalendarScheduleReviews();
+            } else alert(err.message);
         } else console.error('Failed to update session:', err);
     } finally {
         calendarWrites.delete(id);
@@ -262,13 +321,13 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     const query = `start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`;
     try {
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
-        const [legacy, planning] = await Promise.all([api.get(`/sessions?${query}`), api.get(`/agenda?${query}`)]);
-        if (!Array.isArray(legacy) || !Array.isArray(planning?.items)) throw new Error('Invalid calendar range response');
+        const [legacy, planning] = await Promise.allSettled([api.get(`/sessions?${query}`), api.get(`/agenda?${query}`)]);
+        if (current() && Array.isArray(legacy.value)) allSessions = legacy.value;
+        if (!Array.isArray(planning.value?.items)) throw planning.reason || new Error('Invalid calendar range response');
         if (current()) {
-            allSessions = legacy;
-            calendarPlanningRows = planning.items.filter(row => row.kind === 'scheduled_session');
-            calendarRecordedRows = new Map(planning.items.filter(row => row.kind === 'recorded_work').map(row => [row.id, row]));
-            calendarNeedsReview.clear();
+            // The display must never mix two database snapshots of the same occurrence.
+            calendarDisplayRows = planning.value.items.filter(row => row.kind === 'scheduled_session' ||
+                (Date.parse(row.start_time) >= +fetchInfo.start && Date.parse(row.start_time) < +fetchInfo.end));
         }
         const rows = calendarSessionRows();
         const visible = typeof sessionMatchesBreakdownFilter === 'function' ? rows.filter(sessionMatchesBreakdownFilter) : rows;
@@ -276,7 +335,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
         if (!current()) return;
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
-        taskKnowledge.viewResult('calendar', true);
+        taskKnowledge.viewResult('calendar', Array.isArray(legacy.value));
     } catch (err) {
         if (current()) taskKnowledge.viewResult('calendar', false);
         failureCallback(err);
@@ -284,7 +343,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
 }
 
 function forgetCalendarPlanningRow(id) {
-    calendarPlanningRows = calendarPlanningRows.filter(row => row.id !== id);
+    calendarDisplayRows = calendarDisplayRows.filter(row => row.id !== id);
 }
 
 function rememberSavedSession(savedSession, previousId, event = null) {
@@ -294,11 +353,14 @@ function rememberSavedSession(savedSession, previousId, event = null) {
         if (typed && String(previousId).startsWith('virt:')) {
             allSessions = allSessions.filter(row => row.id !== previousId);
         }
-        const rows = typed ? calendarPlanningRows : allSessions;
-        const idx = rows.findIndex(s => String(s.id) === String(previousId));
-        if (idx !== -1) rows[idx] = savedSession;
-        else rows.push(savedSession);
+        if (!typed) {
+            const index = allSessions.findIndex(row => row.id === previousId);
+            if (index !== -1) allSessions[index] = savedSession;
+            else allSessions.push(savedSession);
+        }
     }
+    calendarDisplayRows = calendarDisplayRows.filter(row => row.id !== previousId && row.id !== savedSession.id);
+    calendarDisplayRows.push(savedSession);
     taskKnowledge.invalidate();
     if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) event = calendar.getEventById(String(previousId));
     if (event) {

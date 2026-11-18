@@ -166,6 +166,73 @@ let sessionModalOwner = null;
 // The returned row ID is writer identity, not an editable draft field.
 const sessionModalDraftFields = 'input:not(#edit_session_id), select, textarea';
 
+// Shared by explicit Schedule dialogs and Calendar's external task drops, not owned by a popup.
+let scheduleCreatePending = false;
+let unconfirmedScheduleCreate = null;
+
+function renderScheduleCreateRecovery() {
+    const panel = document.getElementById('schedule_create_recovery');
+    const attempt = unconfirmedScheduleCreate;
+    if (!panel) return;
+    panel.hidden = !attempt;
+    if (!attempt) return;
+    const fmt = value => new Date(value).toLocaleString();
+    const status = document.getElementById('schedule_create_recovery_status');
+    const inspect = document.getElementById('schedule_create_inspect');
+    const allow = document.getElementById('schedule_create_new_intent');
+    status.textContent = `Schedule creation not confirmed (${fmt(attempt.payload.start_time)} — ${fmt(attempt.payload.end_time)}). ` +
+        (attempt.result || 'Check saved schedules before starting another plan.');
+    allow.disabled = !attempt.inspected;
+    inspect.onclick = async () => {
+        if (attempt.reading) return;
+        attempt.reading = true;
+        attempt.inspected = false;
+        allow.disabled = true;
+        try {
+            const { start_time, end_time, task_id } = attempt.payload;
+            // A plan can outlast the maximum viewport; its start still fits this read.
+            const inspectEnd = new Date(Math.min(+new Date(end_time), +new Date(start_time) + 60000));
+            const query = `start=${encodeURIComponent(start_time)}&end=${encodeURIComponent(inspectEnd.toISOString())}`;
+            const result = await api.get(`/agenda?${query}`);
+            const matches = result.items.filter(row => row.kind === 'scheduled_session' && !row.is_virtual &&
+                row.task_id === task_id && +new Date(row.start_time) === +new Date(start_time) && +new Date(row.end_time) === +new Date(end_time));
+            attempt.result = matches.length ? `Possible saved plan IDs: ${matches.map(row => row.id).join(', ')}. Do not recreate a plan that already exists.`
+                : 'No matching saved plan is visible in this interval. That does not prove the first request failed.';
+            attempt.inspected = true;
+        } catch {
+            attempt.result = 'Could not check saved schedules. Retry the read; creating another plan is blocked.';
+        } finally {
+            attempt.reading = false;
+        }
+        if (attempt === unconfirmedScheduleCreate) renderScheduleCreateRecovery();
+    };
+    allow.onclick = () => {
+        if (attempt !== unconfirmedScheduleCreate || !attempt.inspected || attempt.reading) return;
+        unconfirmedScheduleCreate = null;
+        renderScheduleCreateRecovery();
+        const active = document.activeElement;
+        if (panel.contains?.(active) || active === document.body) document.getElementById('session_modal_save_btn')?.focus();
+    };
+}
+
+async function createScheduledSessionFromEditor(payload) {
+    if (unconfirmedScheduleCreate || scheduleCreatePending) {
+        throw Object.assign(new Error(unconfirmedScheduleCreate ? 'Close this editor and check Schedule creation recovery before starting another plan.'
+            : 'Another Schedule creation is still pending.'), { scheduleRecovery: true });
+    }
+    scheduleCreatePending = true;
+    try {
+        return await api.saveScheduledSession(null, payload);
+    } catch (err) {
+        if (err.status && err.status < 500) throw err;
+        unconfirmedScheduleCreate = { payload };
+        renderScheduleCreateRecovery();
+        throw Object.assign(new Error('Save not confirmed. Close this editor and check Schedule creation recovery before starting another plan.'), { scheduleRecovery: true });
+    } finally {
+        scheduleCreatePending = false;
+    }
+}
+
 function setSessionSavePending(owner, pending) {
     owner.pending = pending;
     if (sessionModalOwner !== owner) return;
@@ -436,6 +503,10 @@ async function saveSessionFromModal() {
     const owner = sessionModalOwner;
     if (!owner || owner.pending || owner.blocked || document.getElementById('session_modal').classList.contains('hidden')) return;
     const typed = owner.intent === 'schedule';
+    if (typed && typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(owner.session?.id)) {
+        sessionModalFeedback('Review the previous attempt in Calendar before editing this entry again.');
+        return;
+    }
     const metadata = document.getElementById('session_modal_metadata');
     const intent = document.getElementById('session_modal_intent');
     setSessionSavePending(owner, true);
@@ -472,11 +543,14 @@ async function saveSessionFromModal() {
             if (metadata && !sessionId) metadata.inert = true;
             owner.submittedTimes = [startVal, endVal];
         }
-        savedSession = typed ? await api.saveScheduledSession(previous, payload) : sessionId
+        savedSession = typed ? (previous ? await api.saveScheduledSession(previous, payload)
+            : await createScheduledSessionFromEditor(payload)) : sessionId
             ? await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload)
             : await api.post('/sessions', payload);
     } catch (err) {
-        if (typed) {
+        if (typed && err.scheduleRecovery) {
+            if (sessionModalOwner === owner) sessionModalFeedback(err.message);
+        } else if (typed) {
             const uncertain = !err.status || err.status >= 500;
             owner.blocked = uncertain || err.status === 409;
             if (sessionModalOwner === owner) {

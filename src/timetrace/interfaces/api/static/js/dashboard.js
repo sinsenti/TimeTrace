@@ -22,6 +22,39 @@ async function resolveCalendarDropTask(taskId, taskTitle) {
     return null;
 }
 
+async function scheduleCalendarDrop(info) {
+    // FullCalendar's external event is provisional, not a saved row.
+    const { title, start, extendedProps = {} } = info.event;
+    info.event.remove();
+    const taskId = extendedProps.taskId || null;
+    const targetTask = await resolveCalendarDropTask(taskId, title);
+    const estimate = Number(extendedProps.estimatedMinutes) || 15;
+    const minutes = estimate > 120 ? 30 : estimate;
+    const payload = {
+        task_id: taskId,
+        start_time: start.toISOString(),
+        end_time: new Date(+start + minutes * 60000).toISOString(),
+        tags: targetTask?.tags || '',
+        notes: ''
+    };
+    let saved;
+    try {
+        saved = await createScheduledSessionFromEditor(payload);
+    } catch (err) {
+        if (!err.scheduleRecovery) alert(`Could not schedule task: ${err.message}`);
+        return;
+    }
+    rememberSavedSession(saved);
+    await refreshSessionDisplay();
+    // Status is best effort and never determines whether the plan was saved.
+    if (taskId && targetTask?.status?.toLowerCase() !== 'ongoing') {
+        try {
+            await api.put(`/api/tasks/${encodeURIComponent(taskId)}`, { status: 'Scheduled' });
+            await taskKnowledge.changed();
+        } catch (_) { /* The schedule remains saved. */ }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     if (typeof fetchAllTasksRegistry === 'function') {
         await fetchAllTasksRegistry();
@@ -158,41 +191,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 openEditSessionModal(info.event.id, info.el);
             },
 
-            eventReceive: async function(info) {
-                // FullCalendar's external event is provisional, not a saved row.
-                const { title, start, extendedProps = {} } = info.event;
-                info.event.remove();
-                const taskId = extendedProps.taskId || null;
-                const targetTask = await resolveCalendarDropTask(taskId, title);
-                const estimate = Number(extendedProps.estimatedMinutes) || 15;
-                const minutes = estimate > 120 ? 30 : estimate;
-                const payload = {
-                    task_id: taskId,
-                    start_time: start.toISOString(),
-                    end_time: new Date(+start + minutes * 60000).toISOString(),
-                    tags: targetTask?.tags || '',
-                    notes: ''
-                };
-                let saved;
-                try {
-                    saved = await api.saveScheduledSession(null, payload);
-                } catch (err) {
-                    alert(!err.status || err.status >= 500
-                        ? 'Drop not confirmed. Check the refreshed Calendar before scheduling this task again.'
-                        : `Could not schedule task: ${err.message}`);
-                    await refreshSessionDisplay();
-                    return;
-                }
-                rememberSavedSession(saved);
-                await refreshSessionDisplay();
-                // Status is best effort and never determines whether the plan was saved.
-                if (taskId && targetTask?.status?.toLowerCase() !== 'ongoing') {
-                    try {
-                        await api.put(`/api/tasks/${encodeURIComponent(taskId)}`, { status: 'Scheduled' });
-                        await taskKnowledge.changed();
-                    } catch (_) { /* The schedule remains saved. */ }
-                }
-            },
+            eventReceive: scheduleCalendarDrop,
 
             datesSet: function(info) {
                 const titleEl = document.getElementById('calendar_range_title');

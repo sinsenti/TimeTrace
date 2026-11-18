@@ -27,7 +27,7 @@ const agendaPage = (() => {
     const interval = (start, end) => [start, end].map(value => value ? new Date(value).toLocaleString() : 'No end').join(' — ');
     const kind = row => row.kind === 'scheduled_session' ? (row.is_virtual ? 'Projected schedule' : 'Scheduled session')
         : row.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy history';
-    const taskTitle = row => row.task_id ? tasks[row.task_id]?.title || 'Task unavailable' : 'No task';
+    const taskTitle = row => row.task_id ? taskKnowledge.get(row.task_id)?.title || 'Task unavailable' : 'No task';
     const make = (tag, text, className) => {
         const el = document.createElement(tag);
         el.textContent = text;
@@ -35,7 +35,7 @@ const agendaPage = (() => {
         return el;
     };
     const clear = el => { el.textContent = ''; };
-    let tasks = {}, rows = [], owner = null, generation = 0, createPending = false, unconfirmedCreate = null;
+    let rows = [], owner = null, generation = 0, createPending = false, unconfirmedCreate = null;
     let activeDate = localDay(new Date());
     date.value = activeDate;
 
@@ -70,12 +70,12 @@ const agendaPage = (() => {
         const empty = make('option', 'No task');
         empty.value = '';
         select.appendChild(empty);
-        for (const task of Object.values(tasks)) {
+        for (const task of taskKnowledge.values()) {
             const option = make('option', task.title);
             option.value = task.id;
             select.appendChild(option);
         }
-        if (selected && !tasks[selected]) {
+        if (selected && !taskKnowledge.get(selected)) {
             const option = make('option', 'Task unavailable');
             option.value = selected;
             select.appendChild(option);
@@ -88,10 +88,8 @@ const agendaPage = (() => {
         const [start, end] = localDayBounds(activeDate);
         const query = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
         get('status').textContent = 'Loading agenda…';
-        const [range, metadata] = await Promise.allSettled([api.get(`/agenda?${query}`), taskKnowledge.load(true)]);
+        const [range] = await Promise.allSettled([api.get(`/agenda?${query}`), taskKnowledge.load(true)]);
         if (read !== generation) return;
-        if (metadata.status === 'fulfilled') tasks = metadata.value;
-        updateTaskOptions();
         const rangeFailed = range.status === 'rejected' || !Array.isArray(range.value?.items);
         if (!rangeFailed) rows = range.value.items;
         ledger();
@@ -275,6 +273,12 @@ const agendaPage = (() => {
             event.returnValue = '';
         }
     });
+    function refreshTaskLabels() {
+        updateTaskOptions();
+        if (owner?.row) get('inspector-title').textContent = taskTitle(owner.row);
+        ledger();
+    }
+
     void refresh();
-    return { refresh };
+    return { refresh, refreshTaskLabels };
 })();

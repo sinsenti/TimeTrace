@@ -244,6 +244,8 @@ fields; Save is blocked until its review/rating inputs are ready. Late statistic
 responses cannot replace a newer selection or refresh. Timer option refresh retains a selected task
 even when completion, filtering or unavailable metadata excludes it; only an explicit detach clears it.
 Attachment refreshes update labels without reattaching or changing IDs, tags, notes or times.
+Folio refreshes task labels in the ledger, picker and open inspector from this same registry,
+without reopening or reinitializing the selected draft.
 Every successful metadata load also updates local labels, so transient recovery cannot clear a
 warning while leaving old attachment text behind. Task editors fetch current task data rather
 than using stale registry entries or title-only fallbacks as editable snapshots. AI accept/undo/reapply (including undo-all) use this path before
@@ -595,8 +597,13 @@ aggregates over the old session cohort retain their old basis.
 
 Task accounting adds only future-starting plans to scheduled time. Completion keeps the separate
 own/subtree choices and refuses a clear affecting a protected plan before changing either scope.
-Old series-delete scopes refuse a typed target rather than erasing its exception or partially
-truncating its series. Task deletion still detaches plans and history and removes the deleted
+Completion clear reconciles only selected exact legacy anchors and leaves skips, rather than
+resurrecting projections. Old series-delete scopes refuse a typed target rather than erasing its
+exception or partially truncating its series. Delete following uses the selected canonical tick's
+original rule wall time at a DST gap, not the wall time obtained by converting that instant back.
+The report-only `timetrace recurrence audit` lists uncertain legacy candidates only. `--delete`
+rechecks the exact confirmed rows under the writer lock before writing its JSON backup and deleting;
+a changed target aborts the full selection. Task deletion still detaches plans and history and removes the deleted
 task's exception links in the locked transaction. This does not introduce destructive plan consent,
 work recording/attachment, reassignment, or version-aware AI restores.
 
@@ -606,14 +613,19 @@ intervals are always separate; projected originals are provisional until saved. 
 history and explicit recorded work are labeled separately. Only plan endpoints are editable after
 create. No recording, fill metrics, Start-from-plan, or destructive plan actions are available.
 
-Calendar keeps its existing layout and legacy start-window totals, while displaying typed overlapping
-plans and exactly one projection per anchor. Calendar ranges default to **Scheduled session** with an
+Calendar keeps its existing layout and legacy start-window totals. The display uses one `/agenda`
+snapshot: legacy/work rows are start-window filtered and typed plans overlap, including exactly one
+projection per anchor. The old `/sessions` range read is kept separate for legacy totals. Calendar ranges default to **Scheduled session** with an
 explicit legacy choice; Tasks/Details **Schedule** and external task drops create plans. Legacy
 history edits still use `/sessions`. A captured plan's typed response includes `series_task_id` and
 `occurrence_start` for Calendar resize scope; ordinary plans omit them. Legacy virtual deletion keeps
 its server-guarded scopes, but saved plan deletion is unavailable. Acknowledgements replace the draft
 or event identity and revision before refresh; retries of failed display reads do not repeat writes.
-A stale or unconfirmed write requires review of server state rather than an automatic retry.
+A stale Calendar gesture retains the attempted interval separately from the saved event. Read the
+latest state and explicitly discard the attempt before making another gesture. An unconfirmed
+Schedule create stays blocked across modal reopenings or task drops on the same page. Check the
+relevant interval with a read, explicitly allow a new plan, then use a new gesture; neither action
+replays the original write. These guards are page-local, not cross-tab receipts.
 
 Hourly quick-add titles on task POST/PUT stage a plan in the task transaction; day offsets remain
 assigned dates. Legacy AI approvals refuse title scheduling before task/plan writes, while snapshot

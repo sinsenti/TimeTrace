@@ -319,7 +319,9 @@ test('Folio acknowledges a create before refreshing and retains later endpoint t
 test('Calendar shows overlap plans and one typed projection without changing its legacy totals input', async () => {
     const recurring = { id: 'virt:task:20990104T090000Z', kind: 'scheduled_session', is_virtual: true, projection_revision: 'anchor-token' };
     const p = sessionPage(async url => url.startsWith('/agenda?') ? { items: [
-        recurring, { id: 'carry-in', kind: 'scheduled_session', revision: 3 }, { id: 'legacy-carry-in', kind: 'legacy_uncertain' },
+        { id: 'legacy', kind: 'legacy_uncertain', start_time: '2099-01-04T08:00Z' },
+        recurring, { id: 'carry-in', kind: 'scheduled_session', revision: 3 },
+        { id: 'legacy-carry-in', kind: 'legacy_uncertain', start_time: '2099-01-03T23:00Z' },
     ] } : url.startsWith('/sessions?') ? [{ id: 'legacy' }, { id: recurring.id, is_virtual: true }] : []);
     p.context.URLSearchParams = URLSearchParams;
     p.context.onEvents = data => { p.events = data; };
@@ -456,4 +458,126 @@ test('Folio reads the 23-hour local spring-forward day, not a UTC date or fixed 
         if (originalZone === undefined) delete process.env.TZ;
         else process.env.TZ = originalZone;
     }
+});
+
+for (const materialized of [false, true]) {
+    test(`Calendar trusts the planning snapshot even when the totals snapshot is ${materialized ? 'older' : 'newer'}`, async () => {
+        const anchor = 'virt:series:20990104T090000Z';
+        const real = { id: 'legacy-moved', kind: 'legacy_uncertain', start_time: '2099-01-04T10:00Z' };
+        const projection = { id: anchor, kind: 'scheduled_session', is_virtual: true, start_time: '2099-01-04T09:00Z' };
+        const held = deferred(), started = deferred();
+        const p = sessionPage(async url => {
+            if (url.startsWith('/agenda?')) return { items: [materialized ? real : projection] };
+            if (url.startsWith('/sessions?')) { started.resolve(); return held.promise; }
+            return [];
+        });
+        p.context.onEvents = events => { p.events = events; };
+        const read = p.run('fetchCalendarEvents({start:new Date("2099-01-04Z"),end:new Date("2099-01-05Z")}, onEvents, () => {})');
+        await started.promise;
+        held.resolve([materialized ? projection : real]);
+        await read;
+        assert.deepEqual(Array.from(p.events, event => event.id), [materialized ? real.id : anchor]);
+        assert.equal(p.context.allSessions[0].id, materialized ? anchor : real.id);
+    });
+}
+
+test('stale Calendar drag retains attempted and latest intervals and blocks writes until explicit review', async () => {
+    const latest = { id: 'plan-a', kind: 'scheduled_session', revision: 2,
+        start_time: '2099-01-04T08:00Z', end_time: '2099-01-04T09:00Z' };
+    const p = sessionPage(async (url, options) => {
+        if (url.startsWith('/agenda?')) return { items: [latest] };
+        if (url === '/scheduled-sessions/plan-a') return latest;
+        if (options.method === 'GET') return [];
+        return new Response(JSON.stringify({ detail: 'Schedule changed.' }), { status: 409 });
+    });
+    const panel = p.element('calendar_schedule_reviews');
+    p.context.event = { id: latest.id, title: 'First plan', start: new Date('2099-01-04T10:00Z'),
+        end: new Date('2099-01-04T11:00Z'), extendedProps: { kind: 'scheduled_session', revision: 1 } };
+    await p.run('handleCalendarEventUpdate(event)');
+    await p.run('fetchCalendarEvents({ start: new Date("2099-01-04Z"), end: new Date("2099-01-05Z") }, () => {}, () => {})');
+    await p.run('handleCalendarEventUpdate(event)');
+    assert.equal(p.writes.length, 1);
+    const review = panel.children.at(-1);
+    assert.match(review.children[0].textContent, /Attempted.*First plan|First plan.*Attempted/);
+    await review.children[1].click();
+    const inspected = panel.children.at(-1);
+    assert.match(inspected.children[0].textContent, /Attempted.*Latest saved/s);
+    assert.equal(p.writes.length, 1);
+    await inspected.children[2].click();
+    p.context.event.extendedProps.revision = 2;
+    await p.run('handleCalendarEventUpdate(event)');
+    assert.equal(p.writes[1].payload.expected_revision, 2);
+});
+
+test('lost Schedule create stays blocked across modal reopen and task drop until inspection and new intent', async () => {
+    let failRead = true, committed;
+    const p = sessionPage(async (url, options) => {
+        if (url.startsWith('/agenda?')) {
+            if (failRead) throw Error('range read unavailable');
+            return { items: [committed] };
+        }
+        if (options.method === 'GET') return [];
+        committed = { ...JSON.parse(options.body), id: 'real-committed', kind: 'scheduled_session', revision: 1 };
+        if (p.writes.length === 1) throw Error('lost response after commit');
+        return committed;
+    });
+    const panel = p.element('schedule_create_recovery');
+    p.element('schedule_create_recovery_status');
+    const inspect = p.element('schedule_create_inspect');
+    const allow = p.element('schedule_create_new_intent');
+    p.load('dashboard.js');
+    const reopen = () => p.run('openCreateSessionModal(new Date("2099-01-04T09:00Z"), new Date("2099-01-04T10:00Z"), null, "", "schedule")');
+    reopen();
+    await p.run('saveSessionFromModal()');
+    p.run('closeSessionModal()');
+    reopen();
+    await p.run('saveSessionFromModal()');
+    p.context.drop = { event: { start: new Date('2099-01-04T09:00Z'), remove() {} } };
+    await p.run('scheduleCalendarDrop(drop)');
+    assert.equal(p.writes.length, 1);
+    await inspect.onclick();
+    assert.equal(allow.disabled, true);
+    await p.run('scheduleCalendarDrop(drop)');
+    assert.equal(p.writes.length, 1);
+    failRead = false;
+    await inspect.onclick();
+    assert.equal(panel.hidden, false);
+    assert.match(p.elements.get('schedule_create_recovery_status').textContent, /real-committed/);
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes.length, 1);
+    allow.onclick();
+    await p.run('scheduleCalendarDrop(drop)');
+    assert.equal(p.writes.length, 2);
+});
+
+test('same-page task metadata refresh retitles the Folio inspector without replacing its draft or focus', async () => {
+    let title = 'Original label';
+    const held = deferred(), requested = deferred();
+    let hold = false;
+    const plan = { id: 'folio-id', task_id: 'task-1', kind: 'scheduled_session', revision: 1,
+        start_time: '2099-01-04T09:00Z', end_time: '2099-01-04T10:00Z', original_start: '2099-01-04T09:00Z', original_end: '2099-01-04T10:00Z' };
+    const p = sessionPage(async url => {
+        if (url.startsWith('/agenda?')) {
+            if (hold) { requested.resolve(); await held.promise; }
+            return { items: [plan] };
+        }
+        if (url === '/api/tasks?status=all') return [{ id: 'task-1', title }];
+        return [];
+    });
+    await loadFolio(p);
+    p.elements.get('agenda-ledger').children.at(-1).click();
+    const end = p.elements.get('agenda-end');
+    end.value = '2099-01-04T11:15';
+    end.focus();
+    hold = true;
+    const old = p.run('agendaPage.refresh()');
+    await requested.promise;
+    title = '<Renamed task>';
+    await p.run('taskKnowledge.changed()');
+    held.resolve();
+    await old;
+    assert.equal(p.elements.get('agenda-inspector-title').textContent, '<Renamed task>');
+    assert.equal(p.elements.get('agenda-task').value, 'task-1');
+    assert.equal(end.value, '2099-01-04T11:15');
+    assert.equal(p.context.document.activeElement, end);
 });
