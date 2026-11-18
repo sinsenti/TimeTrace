@@ -12,7 +12,7 @@ import pytest
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
-from timetrace.core.exceptions import ValidationError
+from timetrace.core.exceptions import ConflictError, ValidationError
 from timetrace.core.recurrence import format_occurrence_id
 from timetrace.db.models import RecurrenceException, Task
 from timetrace.db.models import Session as SessionModel
@@ -1162,7 +1162,7 @@ def test_editing_fingerprinted_legacy_row_does_not_resurrect_its_anchor(client, 
     params = {"start": anchor.isoformat(), "end": (anchor + timedelta(hours=3)).isoformat()}
     assert [row["id"] for row in client.get("/sessions", params=params).json()] == [row_id]
     assert [row["id"] for row in client.get("/agenda", params=params).json()["items"]] == [row_id]
-    assert db.exec(select(RecurrenceException)).all() == []  # reads must not acquire series ownership
+    assert RecurrenceService(db).get_exception(task.id, anchor) is None  # reads never acquire ownership
 
     if action == "move":
         moved = anchor + timedelta(hours=2)
@@ -1524,3 +1524,107 @@ def test_fall_fold_legacy_window_does_not_leak_an_ended_first_fold(client, db, f
     assert projected == [client.get(f"/scheduled-sessions/{virtual_id}").json()]
     second_id = format_occurrence_id(task_id, datetime(2027, 11, 7, 6, 30))
     assert client.get(f"/scheduled-sessions/{second_id}").status_code == 404
+
+
+def test_delete_following_excludes_spring_gap_anchor_and_retains_prior_occurrence(client, db, fixed_recurrence_clock):
+    prior = datetime(2027, 3, 13, 7, 30)
+    anchor = datetime(2027, 3, 14, 7, 30)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York").id
+    current_id = format_occurrence_id(task_id, anchor)
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    assert current_id in [row["id"] for row in client.get(route).json()["items"]]
+    response = client.delete(f"/sessions/{current_id}?scope=following")
+    assert response.status_code == 204, response.text
+    assert [row["id"] for row in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]
+
+
+def test_subtree_clear_skips_only_selected_exact_fingerprinted_anchors(client, db):
+    parent = client.post("/api/tasks", json={"title": "Parent"}).json()["id"]
+    anchor = (datetime.now(UTC) + timedelta(days=3)).replace(microsecond=0)
+    child = client.post(
+        "/api/tasks",
+        json={
+            "title": "Recurring child",
+            "parent_id": parent,
+            "is_recurring": True,
+            "recurrence_rule": "daily",
+            "recurrence_dtstart": anchor.isoformat(),
+            "recurrence_timezone": "UTC",
+            "recurrence_duration_minutes": 30,
+        },
+    ).json()["id"]
+    response = client.post(
+        "/sessions",
+        json={
+            "task_id": child,
+            "notes": "Recurring: Recurring child",
+            "start_time": anchor.isoformat(),
+            "end_time": (anchor + timedelta(minutes=30)).isoformat(),
+        },
+    )
+    assert response.status_code == 201
+    assert RecurrenceService(db).get_exception(child, anchor) is None
+    cleared = client.post(
+        f"/api/tasks/{parent}/clear-scheduled-sessions", json={"include_subtasks": True, "session_ids": []}
+    )
+    assert cleared.json()["deleted_session_ids"] == [response.json()["id"]]
+    exception = RecurrenceService(db).get_exception(child, anchor)
+    assert exception and exception.kind == "skip" and exception.session_id is None
+    params = {"start": anchor.isoformat(), "end": (anchor + timedelta(days=2)).isoformat()}
+    assert [item["id"] for item in client.get("/agenda", params=params).json()["items"]] == [
+        format_occurrence_id(child, (anchor + timedelta(days=1)).replace(tzinfo=None))
+    ]
+
+
+def test_elapsed_placeholder_audit_preserves_typed_work_and_rechecks_confirmation(db):
+    created = datetime(2000, 1, 1, 9)
+    task = Task(title="Audit fixture", created_at=created, estimated_minutes=15)
+    db.add(task)
+    db.flush()
+
+    def seed(day, kind):
+        start = created + timedelta(days=day)
+        row = SessionModel(
+            task_id=task.id,
+            start_time=start,
+            end_time=start + timedelta(minutes=15),
+            duration_seconds=900,
+            notes="Recurring: Audit fixture",
+            kind=kind,
+            provenance="manual" if kind == "recorded_work" else None,
+        )
+        db.add(row)
+        return row
+
+    work = seed(1, "recorded_work")
+    legacy = seed(2, "legacy_uncertain")
+    convertible = seed(3, "legacy_uncertain")
+    db.commit()
+    legacy_id, work_id, converted_id = legacy.id, work.id, convertible.id
+    service = RecurrenceService(db)
+    preview = service.preview_legacy_placeholder_audit()
+    assert [row["session_id"] for row in preview] == [legacy_id, converted_id]
+    convertible.kind, convertible.provenance = "recorded_work", "manual"
+    db.commit()
+    with pytest.raises(ConflictError, match="changed.*no rows"):
+        service.delete_audited_placeholders(preview, lambda _: pytest.fail("stale audit must not back up or delete"))
+    assert {row["id"] for row in SessionService(db).list_sessions()} == {legacy_id, work_id, converted_id}
+    backed_up = []
+    assert service.delete_audited_placeholders(service.preview_legacy_placeholder_audit(), backed_up.extend) == 1
+    assert [row["session_id"] for row in backed_up] == [legacy_id]
+    assert {row["id"] for row in SessionService(db).list_sessions()} == {work_id, converted_id}
+
+
+def test_delete_following_targets_first_fold_occurrence_only(client, db, fixed_recurrence_clock):
+    prior = datetime(2027, 11, 6, 5, 30)
+    first_fold = datetime(2027, 11, 7, 5, 30)
+    second_fold = first_fold + timedelta(hours=1)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York").id
+    route = "/agenda?start=2027-11-06T00:00Z&end=2027-11-10T00:00Z"
+    before = client.get(route).json()["items"]
+    wrong_id = format_occurrence_id(task_id, second_fold)
+    assert client.delete(f"/sessions/{wrong_id}?scope=following").status_code == 404
+    assert client.get(route).json()["items"] == before
+    correct_id = format_occurrence_id(task_id, first_fold)
+    assert client.delete(f"/sessions/{correct_id}?scope=following").status_code == 204
+    assert [row["id"] for row in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]

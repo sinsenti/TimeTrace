@@ -12,6 +12,7 @@ every past day that already has a real logged row.
 """
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
@@ -32,6 +33,7 @@ from timetrace.core.recurrence import (
     format_occurrence_id,
     next_occurrence,
     occurrence_at,
+    occurrence_wall_start,
     parse_occurrence_id,
     preset_to_rrule,
     rrule_to_preset,
@@ -40,16 +42,18 @@ from timetrace.core.recurrence import (
 )
 from timetrace.core.timezones import (
     daemon_timezone_name,
+    daemon_tzinfo,
     from_local_naive,
     resolve_timezone,
     to_local_naive,
 )
-from timetrace.db.models import RecurrenceException, ScheduledSession, Task, TaskStatus
+from timetrace.db.models import RatingEntry, RecurrenceException, ScheduledSession, Task, TaskStatus
 from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.utils import ensure_utc
 
 # Fingerprint written only by the removed pre-generator (see migration `0006` and the
-# `tt recurrence-audit` CLI, `interfaces/cli/commands.py:LEGACY_PLACEHOLDER_PREFIX`). Adoption in
+# the `timetrace recurrence audit` command). Adoption in
 # `reconcile_series` must only ever claim rows carrying this marker -- never an arbitrary real
 # session that happens to sit on a projected occurrence's instant, which could just as easily be
 # the user's own unrelated work coinciding with the series' usual time.
@@ -112,9 +116,121 @@ class ProjectedOccurrence:
         }
 
 
+def _legacy_derived_duration_seconds(estimated_minutes: int | None) -> int:
+    """Duration the removed pre-generator would have written for a task.
+
+    Mirrors the old `TaskService.schedule_recurrent_sessions_three_months`:
+    `30 if estimated_minutes > 120 else estimated_minutes`, defaulting to 15 like the model.
+    """
+    est = 15 if estimated_minutes is None else estimated_minutes
+    return (30 if est > 120 else est) * 60
+
+
+def _has_legacy_placeholder_fingerprint(row: SessionModel) -> bool:
+    return (row.notes or "").startswith(_LEGACY_PLACEHOLDER_PREFIX)
+
+
 class RecurrenceService:
     def __init__(self, db: Session):
         self.db = db
+
+    def preview_legacy_placeholder_audit(self, ids: set[str] | None = None) -> list[dict[str, Any]]:
+        """Read-only diagnostic for the removed pre-generator, never for typed work."""
+        # The DB stores naive UTC; compare naive-to-naive, never against an aware datetime.
+        now_naive_utc = _now_naive()
+        tz = daemon_tzinfo()
+
+        query = (
+            select(SessionModel, Task)
+            .join(Task, SessionModel.task_id == Task.id, isouter=True)
+            .where(SessionModel.notes.like(f"{_LEGACY_PLACEHOLDER_PREFIX}%"))
+            .where(SessionModel.kind == "legacy_uncertain", SessionModel.start_time <= now_naive_utc)
+            .order_by(SessionModel.start_time)
+        )
+        if ids is not None:
+            query = query.where(SessionModel.id.in_(ids))
+        rows = self.db.exec(query).all()
+        linked_ids = set(
+            self.db.exec(
+                select(RecurrenceException.session_id).where(
+                    RecurrenceException.session_id.in_([row.id for row, _ in rows])
+                )
+            )
+        )
+
+        rated_ids = set(self.db.exec(select(RatingEntry.target_id).where(RatingEntry.target_type == "session")).all())
+
+        candidates = []
+        for sess, task in rows:
+            if not _has_legacy_placeholder_fingerprint(sess):
+                continue
+            duration = sess.duration_seconds or 0
+            derived = _legacy_derived_duration_seconds(task.estimated_minutes) if task else None
+            stamp_match = bool(task and sess.start_time.time() == task.created_at.time())
+            has_rating = sess.id in rated_ids
+            duration_match = derived is not None and duration == derived
+            expected_notes = f"{_LEGACY_PLACEHOLDER_PREFIX}{task.title}" if task else None
+
+            candidates.append(
+                {
+                    "session_id": sess.id,
+                    "task_id": sess.task_id,
+                    "task_title": task.title if task else None,
+                    "start_local": to_local_naive(sess.start_time, tz),
+                    "end_local": to_local_naive(sess.end_time, tz) if sess.end_time else None,
+                    "start_time_utc": sess.start_time.isoformat(),
+                    "end_time_utc": sess.end_time.isoformat() if sess.end_time else None,
+                    "duration_seconds": duration,
+                    "derived_duration_seconds": derived,
+                    "notes": sess.notes or "",
+                    "timezone": sess.timezone,
+                    "external_sync_id": sess.external_sync_id,
+                    "external_provider": sess.external_provider,
+                    "extended_properties_json": sess.extended_properties_json,
+                    "revision": sess.revision,
+                    "tags": sess.tags or "",
+                    "task_tags": (task.tags or "") if task else None,
+                    "review_skipped": bool(sess.review_skipped),
+                    "fingerprint_match": True,
+                    "created_at_stamp_match": stamp_match,
+                    "duration_matches_derived": duration_match,
+                    "has_rating_entry": has_rating,
+                    "notes_match_task_default": expected_notes is not None and (sess.notes or "") == expected_notes,
+                    "tags_differ_from_task": task is not None and (sess.tags or "") != (task.tags or ""),
+                    "counts_as_logged": bool(sess.end_time and sess.end_time <= now_naive_utc),
+                    "eligible": bool(
+                        stamp_match
+                        and duration_match
+                        and not sess.review_skipped
+                        and not has_rating
+                        and sess.end_time
+                        and sess.end_time <= now_naive_utc
+                        and sess.id not in linked_ids
+                    ),
+                }
+            )
+        return candidates
+
+    def delete_audited_placeholders(
+        self, preview: list[dict[str, Any]], backup: Callable[[list[dict[str, Any]]], None]
+    ) -> int:
+        """Revalidate the entire confirmed selection, then back it up and delete atomically."""
+        confirmed = {row["session_id"]: row for row in preview if row["eligible"]}
+        if not confirmed:
+            return 0
+        lock_sqlite_writer(self.db)
+        try:
+            current = self.preview_legacy_placeholder_audit(set(confirmed))
+            if {row["session_id"]: row for row in current} != confirmed:
+                raise ConflictError("The confirmed placeholders changed; no rows deleted. Run the audit again.")
+            backup(current)
+            for session_id in confirmed:
+                self.db.delete(self.db.get(SessionModel, session_id))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        return len(confirmed)
 
     # --- spec plumbing ---------------------------------------------------------------
 
@@ -539,7 +655,9 @@ class RecurrenceService:
         anchor = _naive_utc(from_occurrence_start)
         if task.recurrence_rrule:
             tz = resolve_timezone(task.recurrence_timezone)
-            until_local = to_local_naive(anchor - timedelta(seconds=1), tz)
+            spec = self.spec_for_task(task)
+            wall = occurrence_wall_start(spec, anchor) if spec else None
+            until_local = wall - timedelta(seconds=1) if wall else to_local_naive(anchor - timedelta(seconds=1), tz)
             candidate_rrule = set_until(task.recurrence_rrule, until_local)
             try:
                 validate_rrule(candidate_rrule, task.recurrence_dtstart, task.recurrence_timezone)
@@ -630,24 +748,27 @@ class RecurrenceService:
             row.kind == "legacy_uncertain"
             and row.task_id is not None
             and row.start_time > now
-            and (row.notes or "").startswith(_LEGACY_PLACEHOLDER_PREFIX)
+            and _has_legacy_placeholder_fingerprint(row)
         )
 
-    def reconcile_legacy_occurrence(self, row: SessionModel) -> RecurrenceException | None:
-        """Under the writer lock, resolve a selected row's anchor before editing or deleting it.
-
-        Unlike series reconciliation, this only adopts the selected row and never unlinks
-        other overrides. An existing exception at the anchor always wins.
-        """
-        linked = self.exception_for_session(row.id)
-        if linked or not self._legacy_adoption_candidate(row, _now_naive()):
-            return linked
+    def unclaimed_legacy_anchor(self, row: SessionModel) -> datetime | None:
+        """A selected exact legacy anchor that a write would claim, or no match."""
+        if not self._legacy_adoption_candidate(row, _now_naive()):
+            return None
         task = self.db.get(Task, row.task_id)
         if self.get_exception(row.task_id, row.start_time) or not self.occurrence_exists(task, row.start_time):
             return None
-        linked = RecurrenceException(
-            task_id=row.task_id, occurrence_start=row.start_time, kind="override", session_id=row.id
-        )
+        return row.start_time
+
+    def reconcile_legacy_occurrence(self, row: SessionModel) -> RecurrenceException | None:
+        """Under the writer lock, resolve a selected row's anchor before editing or deleting it."""
+        linked = self.exception_for_session(row.id)
+        if linked:
+            return linked
+        anchor = self.unclaimed_legacy_anchor(row)
+        if anchor is None:
+            return None
+        linked = RecurrenceException(task_id=row.task_id, occurrence_start=anchor, kind="override", session_id=row.id)
         self.db.add(linked)
         return linked
 

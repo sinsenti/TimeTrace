@@ -502,17 +502,21 @@ class TaskService:
         self, task_id: str, req: ClearScheduledSessionsRequest
     ) -> ClearScheduledSessionsResponse:
         lock_sqlite_writer(self.db)
-        task = self.db.get(Task, task_id)
-        if not task:
-            raise EntityNotFoundError("Task", task_id)
+        try:
+            task = self.db.get(Task, task_id)
+            if not task:
+                raise EntityNotFoundError("Task", task_id)
 
-        session_service = SessionService(self.db)
-        subtree_ids = self._collect_subtree_ids(task_id) if req.include_subtasks else []
-        session_service.require_legacy_clear_scope(task_id, req.session_ids, subtree_ids)
-        deleted_ids = session_service.clear_future_sessions([task_id], req.session_ids, commit=False)
-        if subtree_ids:
-            deleted_ids.extend(session_service.clear_future_sessions(subtree_ids, commit=False))
-        self.db.commit()
+            session_service = SessionService(self.db)
+            subtree_ids = self._collect_subtree_ids(task_id) if req.include_subtasks else []
+            session_service.require_legacy_clear_scope(task_id, req.session_ids, subtree_ids)
+            deleted_ids = session_service.clear_future_sessions([task_id], req.session_ids, commit=False)
+            if subtree_ids:
+                deleted_ids.extend(session_service.clear_future_sessions(subtree_ids, commit=False))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 

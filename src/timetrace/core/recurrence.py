@@ -287,7 +287,7 @@ def expand_overlapping(
     return sorted(anchors.values(), key=lambda occurrence: occurrence.start_utc)
 
 
-def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[datetime]:
+def _canonical_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[tuple[datetime, datetime]]:
     """Seek in local wall time, then match the inclusive UTC bounds after conversion."""
     tz = resolve_timezone(spec.timezone_name)
     rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
@@ -306,7 +306,16 @@ def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime
             # representable range; it cannot match any representable query anchor.
             continue
         if lower <= start <= upper:
-            yield start
+            yield start, local_start
+
+
+def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[datetime]:
+    return (start for start, _ in _canonical_starts(spec, lower, upper))
+
+
+def occurrence_wall_start(spec: RecurrenceSpec, start_utc: datetime) -> datetime | None:
+    """Return the original rule tick, not a round-trip conversion across a DST gap."""
+    return next((wall for _, wall in _canonical_starts(spec, start_utc, start_utc)), None)
 
 
 def occurrence_at(spec: RecurrenceSpec, start_utc: datetime, task_id: str) -> Occurrence | None:

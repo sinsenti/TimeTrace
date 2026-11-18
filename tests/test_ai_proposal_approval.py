@@ -1,6 +1,7 @@
 """Real API and draft-service approval controls for the proposal UI workflow."""
 
 import json
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from langchain_core.messages import AIMessage, AIMessageChunk
@@ -8,6 +9,7 @@ from langchain_core.messages import AIMessage, AIMessageChunk
 import timetrace.services.ai_chat_service as chat_module
 import timetrace.services.ai_tool_gateway as gateway_module
 from timetrace.db.models import AIProviderConfig
+from timetrace.db.models import Session as SessionModel
 from timetrace.services.ai_audit_service import AIAuditService
 from timetrace.services.ai_draft_service import AIDraftService
 
@@ -190,8 +192,6 @@ def test_sequential_same_target_accept_reports_later_stale_item_as_failed(client
 
 
 def test_legacy_ai_proposal_cannot_change_a_newly_captured_occurrence(client, db):
-    from datetime import UTC, datetime, timedelta
-
     anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
     end = anchor + timedelta(hours=1)
     task_response = client.post(
@@ -232,6 +232,7 @@ def test_legacy_ai_proposal_cannot_change_a_newly_captured_occurrence(client, db
 
 @pytest.mark.parametrize("operation", ["create", "update"])
 def test_legacy_ai_approval_refuses_title_scheduling_before_domain_write(client, db, operation):
+    now = datetime.now(UTC)
     task = client.post("/api/tasks", json={"title": "Original"}).json() if operation == "update" else None
     target = task["id"] if task else None
     drafts = AIDraftService(db)
@@ -242,4 +243,134 @@ def test_legacy_ai_approval_refuses_title_scheduling_before_domain_write(client,
     assert "scheduling" in item["error"]
     assert [row["title"] for row in client.get("/api/tasks?status=all").json()] == (["Original"] if task else [])
     assert client.get("/sessions").json() == []
-    assert client.get("/agenda?start=2026-01-01T00:00Z&end=2027-02-01T00:00Z").json()["items"] == []
+    params = {"start": now.isoformat(), "end": (datetime.now(UTC) + timedelta(hours=3)).isoformat()}
+    assert client.get("/agenda", params=params).json()["items"] == []
+
+
+def _approve_test_draft(client, db, op, entity, target, payload):
+    drafts = AIDraftService(db)
+    batch_id = drafts.create_batch(None, None, None, None, None, None).id
+    drafts.add_item(batch_id, op, entity, target, payload)
+    path = f"/api/ai/drafts/batches/{batch_id}"
+    result = client.post(f"{path}/accept", json={}).json()["items"][0]
+    return path, batch_id, result
+
+
+@pytest.mark.parametrize("when", ["accept", "undo-create", "reapply"])
+def test_ai_delete_rechecks_ratings_on_current_legacy_identity(client, db, when):
+    payload = {"start_time": "2001-01-04T09:00Z", "end_time": "2001-01-04T10:00Z", "notes": "Keep"}
+    if when == "undo-create":
+        path, batch_id, applied = _approve_test_draft(client, db, "create", "session", None, payload)
+        sid = applied["applied_entity_id"]
+    else:
+        sid = client.post("/sessions", json=payload).json()["id"]
+        if when == "reapply":
+            path, batch_id, applied = _approve_test_draft(client, db, "delete", "session", sid, {})
+            assert applied["status"] == "applied"
+            assert client.post(f"{path}/undo", json={}).json()["items"][0]["status"] == "undone"
+            (restored,) = client.get("/sessions").json()
+            assert restored["id"] != sid and restored["notes"] == "Keep"
+            sid = restored["id"]
+    definition = client.post("/rating-definitions", json={"name": "Evidence", "target_type": "session"}).json()["id"]
+    rating = client.post(
+        "/rating-entries",
+        json={
+            "rating_definition_id": definition,
+            "target_type": "session",
+            "target_id": sid,
+            "score": 3,
+        },
+    ).json()
+    if when == "accept":
+        _, batch_id, outcome = _approve_test_draft(client, db, "delete", "session", sid, {})
+    else:
+        operation = "undo" if when == "undo-create" else "reapply"
+        outcome = client.post(f"{path}/{operation}", json={}).json()["items"][0]
+    assert outcome["status"] == "failed" and "ratings" in outcome["error"]
+    assert client.get(f"/sessions/{sid}").json()["notes"] == "Keep"
+    assert (
+        client.get("/rating-entries", params={"target_type": "session", "target_id": sid}).json()[0]["id"]
+        == rating["id"]
+    )
+    assert AIAuditService(db).list_for_batch(batch_id)[0].transition == "failed"
+
+
+@pytest.mark.parametrize("dependency", ["work", "history", "child"])
+def test_legacy_ai_task_delete_refuses_unrestorable_dependents(client, db, dependency):
+    task_id = client.post("/api/tasks", json={"title": "Keep task"}).json()["id"]
+    if dependency == "child":
+        child = client.post("/api/tasks", json={"title": "Keep child", "parent_id": task_id}).json()["id"]
+    else:
+        row = SessionModel(
+            task_id=task_id,
+            start_time=datetime(2001, 1, 4, 9),
+            end_time=datetime(2001, 1, 4, 10),
+            duration_seconds=3600,
+            kind="recorded_work" if dependency == "work" else "legacy_uncertain",
+            provenance="manual" if dependency == "work" else None,
+        )
+        db.add(row)
+        db.commit()
+        sid = row.id
+    _, _, outcome = _approve_test_draft(client, db, "delete", "task", task_id, {})
+    assert outcome["status"] == "failed"
+    assert client.get(f"/api/tasks/{task_id}").status_code == 200
+    if dependency == "child":
+        assert client.get(f"/api/tasks/{child}").json()["parent_id"] == task_id
+    else:
+        assert client.get(f"/sessions/{sid}").json()["task_id"] == task_id
+
+
+def test_legacy_ai_delete_refuses_session_metadata_but_notes_edit_preserves_it(client, db):
+    row = SessionModel(
+        start_time=datetime(2001, 1, 4, 9),
+        end_time=datetime(2001, 1, 4, 10),
+        duration_seconds=3600,
+        notes="Before",
+        timezone="America/New_York",
+        external_sync_id="synthetic-event",
+        extended_properties_json='{"color":"green"}',
+    )
+    db.add(row)
+    db.commit()
+    sid = row.id
+    _, _, outcome = _approve_test_draft(client, db, "delete", "session", sid, {})
+    assert outcome["status"] == "failed" and "metadata" in outcome["error"]
+    path, _, updated = _approve_test_draft(client, db, "update", "session", sid, {"notes": "After"})
+    assert updated["status"] == "applied"
+    assert client.post(f"{path}/undo", json={}).json()["items"][0]["status"] == "undone"
+    current = client.get(f"/sessions/{sid}").json()
+    assert (
+        current["notes"],
+        current["timezone"],
+        current["external_sync_id"],
+        current["extended_properties_json"],
+    ) == (
+        "Before",
+        "America/New_York",
+        "synthetic-event",
+        '{"color":"green"}',
+    )
+
+
+@pytest.mark.parametrize("entity", ["session", "task"])
+def test_ai_undo_refuses_restore_when_original_task_link_no_longer_exists(client, db, entity):
+    task_id = client.post("/api/tasks", json={"title": "Original linked task"}).json()["id"]
+    if entity == "session":
+        created = client.post(
+            "/sessions",
+            json={
+                "task_id": task_id,
+                "start_time": "2001-01-04T09:00Z",
+                "end_time": "2001-01-04T10:00Z",
+            },
+        ).json()
+    else:
+        created = client.post("/api/tasks", json={"title": "Child to restore", "parent_id": task_id}).json()
+    path, _, applied = _approve_test_draft(client, db, "delete", entity, created["id"], {})
+    assert applied["status"] == "applied"
+    assert client.delete(f"/api/tasks/{task_id}").status_code == 204
+    result = client.post(f"{path}/undo", json={}).json()["items"][0]
+    assert result["status"] == "failed" and "task link" in result["error"]
+    assert client.get("/api/tasks?status=all").json() == []
+    assert client.get("/sessions").json() == []

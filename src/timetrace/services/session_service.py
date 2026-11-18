@@ -580,6 +580,8 @@ class SessionService:
             if scope == "only_this":
                 self.recurrence.skip(task.id, occurrence_start, commit=False)
             elif scope == "following":
+                if not self.recurrence.occurrence_exists(task, occurrence_start):
+                    raise EntityNotFoundError("Occurrence", session_id)
                 self.recurrence.truncate_series(task.id, occurrence_start, commit=False)
             else:
                 self.recurrence.end_series(task.id, commit=False)
@@ -770,6 +772,8 @@ class SessionService:
         deleted_ids = [s.id for s in to_delete]
         # Any occurrence materialized into one of these rows becomes a skip, so clearing the
         # schedule does not let the series re-project the work the user just cleared.
+        for row in to_delete:
+            self.recurrence.reconcile_legacy_occurrence(row)
         self.recurrence.detach_sessions(deleted_ids)
         for s in to_delete:
             self.db.delete(s)
