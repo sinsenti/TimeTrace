@@ -20,6 +20,7 @@ Storage conventions this module assumes:
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -272,20 +273,10 @@ def expand_overlapping(
     if carry_start >= window_end_utc:
         return []
 
-    tz = resolve_timezone(spec.timezone_name)
-    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
-    # Search local wall time conservatively (UTC offsets are strictly less than a day).
-    # Test exact UTC bounds below: DST gaps can shift or coalesce local anchors.
-    day = timedelta(days=1)
-    local_lower = carry_start - min(day, carry_start - datetime.min)
-    local_upper = window_end_utc + min(day, datetime.max - window_end_utc)
     anchors: dict[datetime, Occurrence] = {}
     # One iterator for the carry-in anchors and the viewport's own starts. Do not widen
     # the public window or loop through day-sized chunks over a long sparse carry-in.
-    for local_start in rule.xafter(local_lower, inc=True):
-        if local_start >= local_upper:
-            break
-        start = from_local_naive(local_start, tz)
+    for start in _canonical_utc_starts(spec, carry_start, window_end_utc):
         if not carry_start < start < window_end_utc or start in anchors:
             continue
         if len(anchors) == MAX_OCCURRENCES_PER_SERIES:
@@ -294,6 +285,35 @@ def expand_overlapping(
             )
         anchors[start] = Occurrence(start, start + duration, format_occurrence_id(task_id, start))
     return sorted(anchors.values(), key=lambda occurrence: occurrence.start_utc)
+
+
+def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[datetime]:
+    """Seek in local wall time, then match the inclusive UTC bounds after conversion."""
+    tz = resolve_timezone(spec.timezone_name)
+    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
+    # UTC offsets are strictly less than a day. A UTC instant need not round-trip to
+    # its original wall time in a DST gap; the second instant in a fold is not emitted.
+    day = timedelta(days=1)
+    local_lower = lower - min(day, lower - datetime.min)
+    local_upper = upper + min(day, datetime.max - upper)
+    for local_start in rule.xafter(local_lower, inc=True):
+        if local_start >= local_upper:
+            break
+        start = from_local_naive(local_start, tz)
+        if lower <= start <= upper:
+            yield start
+
+
+def occurrence_at(spec: RecurrenceSpec, start_utc: datetime, task_id: str) -> Occurrence | None:
+    """The occurrence at exactly this UTC anchor, never a neighboring instant."""
+    if start_utc.tzinfo is not None:
+        raise ValidationError("Occurrence start must be a naive UTC datetime.")
+    if spec.duration_minutes <= 0:
+        raise ValidationError("Recurrence duration must be a positive number of minutes.")
+    start = next(_canonical_utc_starts(spec, start_utc, start_utc), None)
+    if start is None:
+        return None
+    return Occurrence(start, start + timedelta(minutes=spec.duration_minutes), format_occurrence_id(task_id, start))
 
 
 def next_occurrence(spec: RecurrenceSpec, after_utc: datetime, task_id: str) -> Occurrence | None:

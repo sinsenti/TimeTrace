@@ -6,6 +6,7 @@ Pure `core/recurrence.py` logic (RFC 5545 parsing, DST handling, etc.) is tested
 """
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from sqlmodel import Session as DBSession
@@ -1381,3 +1382,125 @@ def test_legacy_write_does_not_steal_captured_anchor_or_claim_plain_row(client, 
     params = {"start": later.isoformat(), "end": (later + timedelta(hours=1)).isoformat()}
     (item,) = client.get("/agenda", params=params).json()["items"]
     assert item["is_virtual"] and datetime.fromisoformat(item["start_time"]) == later
+
+
+def test_spring_gap_agenda_anchor_can_be_read_and_captured(client, db):
+    # New York's nonexistent 02:30 maps to 07:30Z, which converts back to 03:30 local.
+    anchor = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
+    task_id = _mk_task(db, dtstart=datetime(2027, 3, 13, 7, 30), tz="America/New_York").id
+    params = {"start": "2027-03-14T07:45Z", "end": "2027-03-14T07:55Z"}
+    agenda = client.get("/agenda", params=params)
+    assert agenda.status_code == 200, agenda.text
+    (projection,) = agenda.json()["items"]
+    assert projection["id"] == format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    assert projection["is_virtual"]
+    assert datetime.fromisoformat(projection["start_time"]) == anchor
+    assert datetime.fromisoformat(projection["end_time"]) == datetime(2027, 3, 14, 8, tzinfo=UTC)
+
+    path = f"/scheduled-sessions/{projection['id']}"
+    single = client.get(path)
+    moved = {"start_time": "2027-03-14T09:00Z", "end_time": "2027-03-14T10:00Z"}
+    saved = client.put(path, json={**moved, "expected_projection_revision": projection["projection_revision"]})
+    assert (single.status_code, saved.status_code) == (200, 200), (single.text, saved.text)
+    assert single.json() == projection
+    plan = saved.json()
+    assert UUID(plan["id"]).version == 7 and not plan["is_virtual"]
+    assert plan["original_start"] == projection["start_time"]
+    assert plan["original_end"] == projection["end_time"]
+    assert datetime.fromisoformat(plan["start_time"]) == datetime.fromisoformat(moved["start_time"])
+    assert datetime.fromisoformat(plan["end_time"]) == datetime.fromisoformat(moved["end_time"])
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert client.get("/agenda", params=params).json()["items"] == []
+    assert client.get("/sessions").json() == []
+
+
+@pytest.mark.parametrize(
+    "case,action",
+    [("spring_gap", "delete"), ("spring_gap", "move"), ("second_fold", "delete"), ("fractional", "move")],
+)
+def test_legacy_fingerprint_ownership_requires_the_exact_utc_anchor(client, db, case, action):
+    captured = None
+    if case == "spring_gap":
+        canonical = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
+        start = canonical
+        task_id = _mk_task(db, dtstart=datetime(2027, 3, 13, 7, 30), tz="America/New_York").id
+    elif case == "second_fold":
+        canonical = datetime(2027, 11, 7, 5, 30, tzinfo=UTC)
+        start = datetime(2027, 11, 7, 6, 30, tzinfo=UTC)
+        task_id = _mk_task(db, dtstart=datetime(2027, 11, 6, 5, 30), tz="America/New_York").id
+        _, captured = _save_typed_occurrence(client, task_id, canonical, move=timedelta(hours=3))
+    else:
+        canonical = datetime(2027, 2, 1, 9, tzinfo=UTC)
+        start = datetime(2027, 2, 1, 8, 59, 59, 500000, tzinfo=UTC)
+        task_id = _mk_task(db, dtstart=canonical.replace(tzinfo=None)).id
+
+    seed = client.post(
+        "/sessions",
+        json={
+            "task_id": task_id,
+            "start_time": start.isoformat(),
+            "end_time": (start + timedelta(minutes=30)).isoformat(),
+            "notes": "Recurring: Standup",
+        },
+    )
+    assert seed.status_code == 201, seed.text
+    row_id = seed.json()["id"]
+    params = {"start": canonical.isoformat(), "end": (canonical + timedelta(hours=4)).isoformat()}
+    before = client.get("/agenda", params=params).json()["items"]
+    assert {item["id"] for item in before} == ({row_id, captured["id"]} if captured else {row_id})
+
+    if action == "delete":
+        removed = client.delete(f"/sessions/{row_id}?scope=only_this")
+        assert removed.status_code == 204, removed.text
+        expected_ids = set()
+    else:
+        moved = canonical + timedelta(hours=2)
+        saved = client.put(
+            f"/sessions/{row_id}",
+            json={"start_time": moved.isoformat(), "end_time": (moved + timedelta(minutes=30)).isoformat()},
+        )
+        assert saved.status_code == 200, saved.text
+        assert datetime.fromisoformat(saved.json()["start_time"]) == moved
+        expected_ids = {row_id}
+
+    if captured:
+        expected_ids.add(captured["id"])
+        assert client.get(f"/scheduled-sessions/{captured['id']}").json() == captured
+    if case == "fractional":
+        expected_ids.add(format_occurrence_id(task_id, canonical.replace(tzinfo=None)))
+    after = client.get("/agenda", params=params).json()["items"]
+    assert {item["id"] for item in after} == expected_ids
+    # A wrong-anchor override/skip can be invisible on the wire (a fractional start cannot
+    # even be encoded in a virt ID), so also check the persisted ownership/anchor directly.
+    exceptions = db.exec(select(RecurrenceException)).all()
+    if case == "fractional":
+        assert exceptions == []
+    else:
+        assert [exception.occurrence_start for exception in exceptions] == [canonical.replace(tzinfo=None)]
+        (exception,) = exceptions
+        assert exception.kind == ("skip" if case == "spring_gap" and action == "delete" else "override")
+        assert exception.session_id == (row_id if case == "spring_gap" and action == "move" else None)
+        assert exception.scheduled_session_id == (captured["id"] if captured else None)
+
+
+def test_fall_fold_legacy_window_does_not_leak_an_ended_first_fold(client, db):
+    task_id = _mk_task(db, dtstart=datetime(2027, 11, 6, 5, 30), tz="America/New_York").id
+    anchor = datetime(2027, 11, 7, 5, 30, tzinfo=UTC)
+    virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    first_fold = {"start": "2027-11-07T05:30Z", "end": "2027-11-07T05:55Z"}
+    second_fold = {"start": "2027-11-07T06:30Z", "end": "2027-11-07T07:00Z"}
+    before = client.get("/sessions", params=first_fold)
+    assert before.status_code == 200, before.text
+    (first,) = before.json()
+    assert first["id"] == virtual_id
+    assert datetime.fromisoformat(first["start_time"]) == anchor
+    assert datetime.fromisoformat(first["end_time"]) == datetime(2027, 11, 7, 6, tzinfo=UTC)
+
+    after = client.get("/sessions", params=second_fold)
+    assert after.status_code == 200, after.text
+    assert after.json() == []
+    assert client.get("/agenda", params=second_fold).json()["items"] == []
+    projected = client.get("/agenda", params=first_fold).json()["items"]
+    assert projected == [client.get(f"/scheduled-sessions/{virtual_id}").json()]
+    second_id = format_occurrence_id(task_id, datetime(2027, 11, 7, 6, 30))
+    assert client.get(f"/scheduled-sessions/{second_id}").status_code == 404

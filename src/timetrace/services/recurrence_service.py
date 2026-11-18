@@ -25,11 +25,13 @@ from timetrace.core.exceptions import ConflictError, EntityNotFoundError, Valida
 from timetrace.core.recurrence import (
     MAX_OCCURRENCES_PER_SERIES,
     MAX_WINDOW_DAYS,
+    Occurrence,
     RecurrenceSpec,
     expand,
     expand_overlapping,
     format_occurrence_id,
     next_occurrence,
+    occurrence_at,
     parse_occurrence_id,
     preset_to_rrule,
     rrule_to_preset,
@@ -116,7 +118,7 @@ class RecurrenceService:
 
     # --- spec plumbing ---------------------------------------------------------------
 
-    def spec_for_task(self, task: Task) -> RecurrenceSpec | None:
+    def spec_for_task(self, task: Task | None) -> RecurrenceSpec | None:
         """The series spec, or `None` if this task does not project.
 
         Fails closed: no fallback to `recurrence_rule`, `created_at` or `assigned_date`. Those
@@ -244,7 +246,8 @@ class RecurrenceService:
                 occurrences = expand_overlapping(spec, lower_req, upper, task.id, live_after=now)
             else:
                 lower = max(lower_req, now - timedelta(minutes=spec.duration_minutes))
-                occurrences = [occ for occ in expand(spec, lower, upper, task.id) if occ.end_utc > now]
+                cutoff = max(now, lower_req)
+                occurrences = [occ for occ in expand(spec, lower, upper, task.id) if occ.end_utc > cutoff]
             candidates.extend((task, occ) for occ in occurrences)
         if not candidates:
             return []
@@ -427,11 +430,12 @@ class RecurrenceService:
             raise ValidationError(f"Task '{task_id}' has no active recurrence to project.")
         return task, occurrence_start
 
-    def occurrence_exists(self, task: Task, occurrence_start: datetime) -> bool:
+    def _occurrence_at(self, task: Task | None, start: datetime) -> Occurrence | None:
         spec = self.spec_for_task(task)
-        if not spec:
-            return False
-        return bool(expand(spec, occurrence_start, occurrence_start + timedelta(seconds=1), task.id))
+        return occurrence_at(spec, start, task.id) if task is not None and spec is not None else None
+
+    def occurrence_exists(self, task: Task | None, occurrence_start: datetime) -> bool:
+        return self._occurrence_at(task, occurrence_start) is not None
 
     def projected_occurrence(self, occurrence_id: str, *, planning: bool = False) -> ProjectedOccurrence:
         """Read one virtual occurrence without materializing it (GET must not write)."""
@@ -439,10 +443,10 @@ class RecurrenceService:
         existing = self.get_exception(task.id, occurrence_start)
         if existing:
             raise EntityNotFoundError("Occurrence", occurrence_id)
-        if not self.occurrence_exists(task, occurrence_start):
+        occurrence = self._occurrence_at(task, occurrence_start)
+        if occurrence is None:
             raise EntityNotFoundError("Occurrence", occurrence_id)
-        duration = timedelta(minutes=task.recurrence_duration_minutes or 15)
-        end = occurrence_start + duration
+        end = occurrence.end_utc
         if planning:
             if end <= _now_naive() or (task.status or "").strip().lower() in self._completed_status_names():
                 raise EntityNotFoundError("Occurrence", occurrence_id)
@@ -468,11 +472,11 @@ class RecurrenceService:
                 raise ValidationError("This occurrence was already removed.")
             raise ValidationError("This occurrence was cancelled.")
 
-        if not self.occurrence_exists(task, occurrence_start):
+        occurrence = self._occurrence_at(task, occurrence_start)
+        if occurrence is None:
             raise EntityNotFoundError("Occurrence", occurrence_id)
 
-        duration_minutes = task.recurrence_duration_minutes or 15
-        if occurrence_start + timedelta(minutes=duration_minutes) <= _now_naive():
+        if occurrence.end_utc <= _now_naive():
             # An in-progress occurrence (start <= now < end) is exactly the "I'm working it
             # now" case and stays materializable; one that has fully elapsed with no row simply
             # did not happen, and writing a session for it now would fabricate work never logged.
@@ -480,9 +484,9 @@ class RecurrenceService:
 
         session = SessionModel(
             task_id=task.id,
-            start_time=occurrence_start,
-            end_time=occurrence_start + timedelta(minutes=duration_minutes),
-            duration_seconds=duration_minutes * 60,
+            start_time=occurrence.start_utc,
+            end_time=occurrence.end_utc,
+            duration_seconds=int((occurrence.end_utc - occurrence.start_utc).total_seconds()),
             tags=task.tags or "",
             notes="",
         )

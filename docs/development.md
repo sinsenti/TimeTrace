@@ -579,6 +579,9 @@ Legacy bounded `/sessions` still uses its row shape and start-in-window semantic
 typed list. Legacy fingerprint reconciliation runs on writes, not reads: a legacy row edit or
 only-this deletion first checks for a known fingerprint at the exact future anchor under the
 writer lock. It cannot claim an anchor with an existing exception or adopt recorded work.
+Typed range and point reads use the same UTC anchors: a spring-gap occurrence is addressable
+at its projected instant, and a fall-fold rule emits only its first instant. Legacy writes
+match the full UTC timestamp, never a rounded or neighboring anchor.
 
 Markdown Agenda shows plans and projected occurrences with explicit schedule labels (30-day
 planning window, plus the existing legacy agenda). It is not importable as Logged Sessions;
