@@ -1384,7 +1384,20 @@ def test_legacy_write_does_not_steal_captured_anchor_or_claim_plain_row(client, 
     assert item["is_virtual"] and datetime.fromisoformat(item["start_time"]) == later
 
 
-def test_spring_gap_agenda_anchor_can_be_read_and_captured(client, db):
+@pytest.fixture
+def fixed_recurrence_clock(monkeypatch):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            instant = datetime(2027, 1, 1, tzinfo=UTC)
+            return instant.astimezone(tz) if tz is not None else instant.astimezone().replace(tzinfo=None)
+
+    # Replace only the wall-clock source; recurrence, persistence and HTTP behavior stay real.
+    monkeypatch.setattr("timetrace.services.recurrence_service.datetime", FixedDateTime)
+    monkeypatch.setattr("timetrace.services.session_service.datetime", FixedDateTime)
+
+
+def test_spring_gap_agenda_anchor_can_be_read_and_captured(client, db, fixed_recurrence_clock):
     # New York's nonexistent 02:30 maps to 07:30Z, which converts back to 03:30 local.
     anchor = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
     task_id = _mk_task(db, dtstart=datetime(2027, 3, 13, 7, 30), tz="America/New_York").id
@@ -1418,7 +1431,7 @@ def test_spring_gap_agenda_anchor_can_be_read_and_captured(client, db):
     "case,action",
     [("spring_gap", "delete"), ("spring_gap", "move"), ("second_fold", "delete"), ("fractional", "move")],
 )
-def test_legacy_fingerprint_ownership_requires_the_exact_utc_anchor(client, db, case, action):
+def test_legacy_fingerprint_ownership_requires_the_exact_utc_anchor(client, db, case, action, fixed_recurrence_clock):
     captured = None
     if case == "spring_gap":
         canonical = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
@@ -1470,20 +1483,22 @@ def test_legacy_fingerprint_ownership_requires_the_exact_utc_anchor(client, db, 
         expected_ids.add(format_occurrence_id(task_id, canonical.replace(tzinfo=None)))
     after = client.get("/agenda", params=params).json()["items"]
     assert {item["id"] for item in after} == expected_ids
-    # A wrong-anchor override/skip can be invisible on the wire (a fractional start cannot
-    # even be encoded in a virt ID), so also check the persisted ownership/anchor directly.
-    exceptions = db.exec(select(RecurrenceException)).all()
+    # Fractional anchors are not encodable as virt IDs. Observe ownership through the
+    # public recurrence service rather than inspecting its storage representation.
+    recurrence = RecurrenceService(db)
+    if start != canonical:
+        assert recurrence.get_exception(task_id, start.replace(tzinfo=None)) is None
+    exception = recurrence.get_exception(task_id, canonical.replace(tzinfo=None))
     if case == "fractional":
-        assert exceptions == []
+        assert exception is None
     else:
-        assert [exception.occurrence_start for exception in exceptions] == [canonical.replace(tzinfo=None)]
-        (exception,) = exceptions
+        assert exception is not None
         assert exception.kind == ("skip" if case == "spring_gap" and action == "delete" else "override")
         assert exception.session_id == (row_id if case == "spring_gap" and action == "move" else None)
         assert exception.scheduled_session_id == (captured["id"] if captured else None)
 
 
-def test_fall_fold_legacy_window_does_not_leak_an_ended_first_fold(client, db):
+def test_fall_fold_legacy_window_does_not_leak_an_ended_first_fold(client, db, fixed_recurrence_clock):
     task_id = _mk_task(db, dtstart=datetime(2027, 11, 6, 5, 30), tz="America/New_York").id
     anchor = datetime(2027, 11, 7, 5, 30, tzinfo=UTC)
     virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))

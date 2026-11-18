@@ -21,6 +21,7 @@ from timetrace.core.recurrence import (
     format_occurrence_id,
     is_occurrence_id,
     next_occurrence,
+    occurrence_at,
     parse_occurrence_id,
     preset_to_rrule,
     rrule_to_preset,
@@ -334,3 +335,16 @@ def test_planning_overlap_counts_carry_in_and_in_window_anchors_against_one_cap(
     assert result[-1].start_utc == anchor + timedelta(days=499)
     with pytest.raises(ValidationError, match="more than 500 occurrences"):
         expand_overlapping(spec, start, start + timedelta(days=101), TASK_ID, live_after=start)
+
+
+def test_exact_occurrence_miss_skips_candidates_outside_the_utc_datetime_range():
+    spec = RecurrenceSpec(
+        rrule="FREQ=DAILY;COUNT=2",
+        dtstart_utc=datetime(9999, 12, 31, 1),
+        duration_minutes=30,
+        timezone_name="Etc/GMT+5",
+    )
+    first = occurrence_at(spec, datetime(9999, 12, 31, 1), TASK_ID)
+    assert first is not None
+    assert first.end_utc == datetime(9999, 12, 31, 1, 30)
+    assert occurrence_at(spec, datetime(9999, 12, 31, 20), TASK_ID) is None

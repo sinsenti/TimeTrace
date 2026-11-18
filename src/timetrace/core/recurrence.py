@@ -299,7 +299,12 @@ def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime
     for local_start in rule.xafter(local_lower, inc=True):
         if local_start >= local_upper:
             break
-        start = from_local_naive(local_start, tz)
+        try:
+            start = from_local_naive(local_start, tz)
+        except OverflowError:
+            # Padding can include a wall time whose UTC conversion lies outside datetime's
+            # representable range; it cannot match any representable query anchor.
+            continue
         if lower <= start <= upper:
             yield start
 
