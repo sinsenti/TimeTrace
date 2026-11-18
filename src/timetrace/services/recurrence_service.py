@@ -224,9 +224,7 @@ class RecurrenceService:
 
     # --- projection ------------------------------------------------------------------
 
-    def project_range(
-        self, start: datetime, end: datetime, reconcile: bool = True
-    ) -> list[ProjectedOccurrence]:
+    def project_range(self, start: datetime, end: datetime, reconcile: bool = True) -> list[ProjectedOccurrence]:
         """Virtual occurrences of every active series whose start falls in `[start, end)`.
 
         Future-only, with one exception: an occurrence that has started but not yet ended
@@ -341,9 +339,7 @@ class RecurrenceService:
                 return None
             exc = self.get_exception(task.id, occ.start_utc)
             if exc is None:
-                intervals = self._real_session_intervals([task.id], occ.start_utc, occ.end_utc).get(
-                    task.id, ()
-                )
+                intervals = self._real_session_intervals([task.id], occ.start_utc, occ.end_utc).get(task.id, ())
                 if not self._occurrence_covered(intervals, occ.start_utc, occ.end_utc):
                     return self._to_projected(task, occ.start_utc, occ.end_utc)
             cursor = occ.start_utc
@@ -387,6 +383,7 @@ class RecurrenceService:
         rows = self.db.exec(
             select(SessionModel).where(
                 SessionModel.task_id.in_(task_ids),
+                SessionModel.kind == "legacy_uncertain",
                 SessionModel.start_time < upper,
             )
         ).all()
@@ -425,9 +422,7 @@ class RecurrenceService:
         ).first()
 
     def exception_for_session(self, session_id: str) -> RecurrenceException | None:
-        return self.db.exec(
-            select(RecurrenceException).where(RecurrenceException.session_id == session_id)
-        ).first()
+        return self.db.exec(select(RecurrenceException).where(RecurrenceException.session_id == session_id)).first()
 
     # --- exceptions / materialization ------------------------------------------------
 
@@ -528,9 +523,7 @@ class RecurrenceService:
             existing.session_id = None
             self.db.add(existing)
         else:
-            self.db.add(
-                RecurrenceException(task_id=task_id, occurrence_start=occurrence_start, kind="skip")
-            )
+            self.db.add(RecurrenceException(task_id=task_id, occurrence_start=occurrence_start, kind="skip"))
         self.db.commit()
 
     def truncate_series(self, task_id: str, from_occurrence_start: datetime) -> int:
@@ -593,14 +586,14 @@ class RecurrenceService:
         for exc in self.db.exec(query).all():
             if exc.kind == "override" and exc.session_id:
                 session = self.db.get(SessionModel, exc.session_id)
-                if session and session.start_time and _naive_utc(session.start_time) > now:
+                if session and session.kind == "legacy_uncertain" and _naive_utc(session.start_time) > now:
                     self.db.delete(session)
                     deleted_sessions += 1
             self.db.delete(exc)
         return deleted_sessions
 
     def set_series_duration(self, task_id: str, duration_minutes: int) -> Task:
-        """"All future occurrences" resize: write the per-occurrence duration on the task."""
+        """ "All future occurrences" resize: write the per-occurrence duration on the task."""
         if duration_minutes <= 0:
             raise ValidationError("Recurrence duration must be a positive number of minutes.")
         task = self.db.get(Task, task_id)
@@ -646,11 +639,7 @@ class RecurrenceService:
         now = _now_naive()
         horizon = now + timedelta(days=MAX_WINDOW_DAYS)
 
-        exceptions = list(
-            self.db.exec(
-                select(RecurrenceException).where(RecurrenceException.task_id == task_id)
-            ).all()
-        )
+        exceptions = list(self.db.exec(select(RecurrenceException).where(RecurrenceException.task_id == task_id)).all())
         changes = 0
 
         occurrence_starts: set[datetime] = set()
@@ -686,6 +675,7 @@ class RecurrenceService:
         future_rows = self.db.exec(
             select(SessionModel).where(
                 SessionModel.task_id == task_id,
+                SessionModel.kind == "legacy_uncertain",
                 SessionModel.start_time > now,
             )
         ).all()
@@ -727,9 +717,7 @@ class RecurrenceService:
         """
         if not session_ids:
             return
-        rows = self.db.exec(
-            select(RecurrenceException).where(RecurrenceException.session_id.in_(session_ids))
-        ).all()
+        rows = self.db.exec(select(RecurrenceException).where(RecurrenceException.session_id.in_(session_ids))).all()
         for exc in rows:
             exc.kind = "skip"
             exc.session_id = None
@@ -739,9 +727,7 @@ class RecurrenceService:
         """Drop exception rows for tasks about to be deleted (no cascade exists for them)."""
         if not task_ids:
             return
-        rows = self.db.exec(
-            select(RecurrenceException).where(RecurrenceException.task_id.in_(task_ids))
-        ).all()
+        rows = self.db.exec(select(RecurrenceException).where(RecurrenceException.task_id.in_(task_ids))).all()
         for exc in rows:
             self.db.delete(exc)
 

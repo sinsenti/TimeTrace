@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator, model_validator
 
 from timetrace.config import settings
 from timetrace.core.query_spec import (
@@ -106,7 +106,49 @@ class TaskTreeResponse(BaseModel):
     subtasks: list[Any] = []
 
 
-class SessionCreate(BaseModel):
+class ScheduledSessionCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    task_id: str | None = None
+    start_time: datetime
+    end_time: datetime
+    tags: str = ""
+    notes: str | None = None
+
+
+class ScheduledSessionUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_time: datetime
+    end_time: datetime
+    expected_revision: StrictInt = Field(ge=1)
+
+
+class ScheduledSessionRead(ScheduledSessionCreate):
+    id: str
+    kind: Literal["scheduled_session"] = "scheduled_session"
+    is_virtual: Literal[False] = False
+    original_start: datetime
+    original_end: datetime
+    duration_seconds: int
+    revision: int
+
+
+TYPED_SESSION_FIELDS = frozenset(
+    {"kind", "original_start", "original_end", "provenance", "scheduled_session_id", "revision", "expected_revision"}
+)
+
+
+class LegacySessionRequest(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def reject_typed_session_fields(cls, value: Any) -> Any:
+        if isinstance(value, dict) and TYPED_SESSION_FIELDS.intersection(value):
+            raise ValueError("Typed session fields are not supported by this legacy route")
+        return value
+
+
+class SessionCreate(LegacySessionRequest):
     task_id: str | None = None
     start_time: datetime
     end_time: datetime
@@ -115,7 +157,7 @@ class SessionCreate(BaseModel):
     review_skipped: bool = False
 
 
-class SessionUpdate(BaseModel):
+class SessionUpdate(LegacySessionRequest):
     start_time: datetime | None = None
     end_time: datetime | None = None
     tags: str | None = None
@@ -152,7 +194,43 @@ class ProjectedOccurrenceRead(BaseModel):
     occurrence_start: datetime
 
 
-class TimerStartRequest(BaseModel):
+class AgendaProjectedPlanRead(ProjectedOccurrenceRead):
+    kind: Literal["scheduled_session"] = "scheduled_session"
+    original_start: datetime
+    original_end: datetime
+
+
+class AgendaLegacyRead(BaseModel):
+    id: str
+    kind: Literal["legacy_uncertain"] = "legacy_uncertain"
+    is_virtual: Literal[False] = False
+    task_id: str | None
+    start_time: datetime
+    end_time: datetime | None
+    duration_seconds: int | None
+    tags: str
+    notes: str | None
+    review_skipped: bool
+    timezone: str
+    external_sync_id: str | None
+    external_provider: str | None
+    extended_properties_json: str
+    revision: int
+
+
+class AgendaRecordedWorkRead(AgendaLegacyRead):
+    kind: Literal["recorded_work"] = "recorded_work"
+    provenance: Literal["manual", "timer"]
+    scheduled_session_id: str | None
+
+
+class AgendaRead(BaseModel):
+    items: list[ScheduledSessionRead | AgendaProjectedPlanRead | AgendaLegacyRead | AgendaRecordedWorkRead]
+    measurement_at: datetime
+    basis: Literal["current"] = "current"
+
+
+class TimerStartRequest(LegacySessionRequest):
     task_id: str | None = None
     tags: str = ""
     notes: str = ""
@@ -225,7 +303,7 @@ class RatingEntryCreate(BaseModel):
     notes: str | None = None
 
 
-class RetroSessionCreate(BaseModel):
+class RetroSessionCreate(LegacySessionRequest):
     task_id: str | None = None
     start_time: datetime
     end_time: datetime

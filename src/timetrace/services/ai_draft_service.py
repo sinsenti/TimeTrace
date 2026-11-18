@@ -19,9 +19,10 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.db.models import AIDraftBatch, AIDraftItem, AISettings, DayReview, Task, utc_now
 from timetrace.interfaces.api.schemas import (
+    TYPED_SESSION_FIELDS,
     CompletionPolicyPrompt,
     DayReviewCreate,
     SessionCreate,
@@ -306,6 +307,11 @@ class AIDraftService:
 
         live_before: dict[str, Any] | None = None
         if op in ("update", "delete"):
+            if entity_type == "session" and target_id:
+                try:
+                    SessionService(self.db).require_legacy_mutation_target(target_id)
+                except ConflictError as exc:
+                    return self._fail_item(item, f"AI cannot change a typed session: {exc}", actor=actor)
             live_before = self._fetch_live_snapshot(entity_type, target_id)
             if live_before is None:
                 return self._fail_item(item, "target no longer exists", actor=actor)
@@ -686,6 +692,8 @@ class AIDraftService:
         parser must not run a second time on a human-authored title (spec S8's "worst possible
         failure" -- see task_service.py's `parse_title_syntax` docstring)."""
         if entity_type == "session":
+            if TYPED_SESSION_FIELDS.intersection(payload):
+                raise ValidationError("AI draft snapshots cannot write typed session fields.")
             svc = SessionService(self.db)
             if op == "create":
                 req = SessionCreate(**self._filter_fields(payload, SessionCreate))
@@ -737,7 +745,7 @@ class AIDraftService:
             if op == "delete":
                 if not target_id:
                     raise ValidationError("task delete requires a target_id")
-                tsvc.delete_task(target_id)
+                tsvc.delete_task(target_id, allow_plan_detachment=False)
                 return None, target_id, None
             raise ValidationError(f"unsupported op '{op}' for entity_type 'task'")
 

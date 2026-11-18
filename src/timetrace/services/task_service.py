@@ -468,8 +468,11 @@ class TaskService:
 
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
-        sessions = session_service.list_future_sessions([task.id])
-        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
+        sessions = session_service.list_future_sessions([task.id]) + session_service.list_future_plans([task.id])
+        subtree_ids = self._collect_subtree_ids(task.id)
+        subtask_scheduled_count = len(session_service.list_future_sessions(subtree_ids)) + len(
+            session_service.list_future_plans(subtree_ids)
+        )
         if not sessions and not subtask_scheduled_count:
             return None
 
@@ -503,23 +506,22 @@ class TaskService:
             raise EntityNotFoundError("Task", task_id)
 
         session_service = SessionService(self.db)
-        deleted_ids: list[str] = []
-
-        deleted_ids.extend(session_service.clear_future_sessions([task_id], req.session_ids))
-
-        if req.include_subtasks:
-            subtree_ids = self._collect_subtree_ids(task_id)
-            if subtree_ids:
-                deleted_ids.extend(session_service.clear_future_sessions(subtree_ids))
+        subtree_ids = self._collect_subtree_ids(task_id) if req.include_subtasks else []
+        session_service.require_legacy_clear_scope(task_id, req.session_ids, subtree_ids)
+        deleted_ids = session_service.clear_future_sessions([task_id], req.session_ids, commit=False)
+        if subtree_ids:
+            deleted_ids.extend(session_service.clear_future_sessions(subtree_ids, commit=False))
+        self.db.commit()
 
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
-    def delete_task(self, task_id: str) -> None:
+    def delete_task(self, task_id: str, *, allow_plan_detachment: bool = True) -> None:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
 
         all_target_ids = self._get_all_descendant_task_ids(task_id)
+        SessionService(self.db).detach_plans_for_deleted_tasks(all_target_ids, allow=allow_plan_detachment)
 
         linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))).all()
         for s in linked_sessions:
@@ -538,6 +540,8 @@ class TaskService:
             return 0
 
         completed_ids = {t.id for t in completed_tasks}
+        all_target_ids = set().union(*(self._get_all_descendant_task_ids(task_id) for task_id in completed_ids))
+        SessionService(self.db).detach_plans_for_deleted_tasks(all_target_ids)
 
         linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(completed_ids))).all()
         for s in linked_sessions:

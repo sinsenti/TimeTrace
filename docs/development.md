@@ -547,9 +547,30 @@ HTTP response filtering alone does not cover direct service callers. The existin
 `tests/test_widget_stack_collision.cjs` accepts a captured HTTP response through
 `TIMETRACE_COLLISION_API_RESPONSE` to check separate-row baseline rendering and source-row clicks.
 
+## Agenda foundation checkpoint (#2)
+
+`SessionService` owns the additive `POST /scheduled-sessions`, `GET /scheduled-sessions/{id}`
+and `PUT /scheduled-sessions/{id}` interfaces. Create captures immutable original endpoints even
+for a past plan. PUT takes both current endpoints and the last read `expected_revision`; a stale
+write returns `409 revision_stale`. Plan task reassignment, recording/attachment and destructive
+plan actions are not enabled by this checkpoint.
+
+`GET /agenda?start=…&end=…` is a bounded JSON read (not an HTML page). It labels persisted plans,
+virtual projections, explicit work and uncertain legacy rows separately. Persisted intervals are
+selected by overlap with the requested UTC range; virtual projections keep their existing
+start-in-window rule and never materialize on this read. No plan fills or work comparisons are
+calculated. `session` stays the legacy/work table: existing IDs and metadata stay in place, old
+writers still create uncertain rows, and plans are not added to old performed-work queries or
+reviews. Task accounting adds only future-starting plans to scheduled time. Completion keeps
+its separate own/subtree choices; a selected scope that would clear a typed plan is refused.
+
+Folio B, Calendar dispatch, existing quick-add conversion, typed occurrence materialization,
+planning-read adapters for export/AI/timer and versioned approvals remain outside this checkpoint.
+See the [shared contract](agenda-contract.md) for the rest of #2 and downstream capabilities.
+
 ## Migration verification
 
-The source tree currently ends at `0013_ai_data_scope`; inspect revision ids and
+The source tree currently ends at `0014_agenda_foundation`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -563,6 +584,10 @@ review the result, including data movement and SQLite table rebuilds, before app
 4. Confirm the actual URL before each run. `run_migrations()` supplies `settings.database_url`;
    Alembic's `env.py` honors an explicitly configured `sqlalchemy.url` before its settings fallback.
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
+
+`tests/test_agenda_migration.py` exercises the fresh chain and a SQLite backup of a seeded 0013
+DB, comparing old metadata, relationships, JSON and polymorphic references and making real HTTP
+reads/writes on the migrated copy. Revision 0014 refuses downgrade when typed data exists.
 
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id

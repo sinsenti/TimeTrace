@@ -9,6 +9,26 @@ import timetrace.services.ai_chat_service as chat_module
 import timetrace.services.ai_tool_gateway as gateway_module
 from timetrace.db.models import AIProviderConfig
 from timetrace.services.ai_audit_service import AIAuditService
+from timetrace.services.ai_draft_service import AIDraftService
+
+
+def test_legacy_ai_undo_cannot_detach_a_new_scheduled_session(client, db):
+    drafts = AIDraftService(db)
+    batch = drafts.create_batch(None, None, "create_task", "Synthetic task", None, None)
+    drafts.add_item(batch.id, "create", "task", None, {"title": "Writing"})
+    route = f"/api/ai/drafts/batches/{batch.id}"
+    accepted = client.post(f"{route}/accept", json={}).json()["items"][0]
+    assert accepted["status"] == "applied"
+    task_id = accepted["applied_entity_id"]
+    plan = client.post(
+        "/scheduled-sessions",
+        json={"task_id": task_id, "start_time": "2099-01-04T14:00:00Z", "end_time": "2099-01-04T15:00:00Z"},
+    ).json()
+    undone = client.post(f"{route}/undo", json={}).json()["items"][0]
+    assert undone["status"] == "failed"
+    assert "with scheduled sessions" in undone["error"]
+    assert client.get(f"/api/tasks/{task_id}").status_code == 200
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
 
 
 @pytest.mark.parametrize("stream", [False, True], ids=["json", "sse"])

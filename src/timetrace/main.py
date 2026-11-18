@@ -90,7 +90,10 @@ def create_daemon_app() -> FastAPI:
 
     @app.exception_handler(ValidationError)
     async def validation_error_handler(request: Request, exc: ValidationError):
-        return JSONResponse(status_code=400, content={"detail": str(exc)})
+        content = {"detail": str(exc)}
+        if exc.code:
+            content["code"] = exc.code
+        return JSONResponse(status_code=400, content=content)
 
     @app.exception_handler(AIProviderError)
     async def ai_provider_error_handler(request: Request, exc: AIProviderError):
@@ -98,7 +101,10 @@ def create_daemon_app() -> FastAPI:
 
     @app.exception_handler(ConflictError)
     async def conflict_error_handler(request: Request, exc: ConflictError):
-        return JSONResponse(status_code=409, content={"detail": str(exc)})
+        content = {"detail": str(exc)}
+        if exc.code:
+            content["code"] = exc.code
+        return JSONResponse(status_code=409, content=content)
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -113,9 +119,7 @@ def create_daemon_app() -> FastAPI:
         logger.error("=" * 60)
         logger.error(f"HTTP 422 Validation Error on {request.method} {request.url.path}")
         logger.error(f"Incoming Request Body: {body_summary}")
-        validation_summary = [
-            {"loc": error.get("loc"), "type": error.get("type")} for error in exc.errors()
-        ]
+        validation_summary = [{"loc": error.get("loc"), "type": error.get("type")} for error in exc.errors()]
         logger.error(f"Validation Failure Details: {validation_summary}")
         logger.error("=" * 60)
 

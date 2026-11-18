@@ -3,9 +3,9 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.timezones import daemon_tzinfo, to_local_naive
-from timetrace.db.models import RatingDefinition, RatingEntry, Task
+from timetrace.db.models import RatingDefinition, RatingEntry, ScheduledSession, Task
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.schemas import RatingDefinitionCreate, RatingDefinitionUpdate, RatingEntryCreate
 from timetrace.interfaces.api.utils import ensure_utc
@@ -178,6 +178,8 @@ class RatingService:
         self.db.commit()
 
     def create_entry(self, req: RatingEntryCreate) -> RatingEntry:
+        if req.target_type == "session" and self.db.get(ScheduledSession, str(req.target_id)) is not None:
+            raise ConflictError("Scheduled sessions cannot receive session ratings.", code="plan_rating_unsupported")
         db_def = self.db.get(RatingDefinition, req.rating_definition_id)
         if not db_def:
             raise EntityNotFoundError("RatingDefinition", req.rating_definition_id)

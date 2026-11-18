@@ -6,9 +6,13 @@ from sqlmodel import Session as DBSession
 from timetrace.db.models import Session as SessionModel
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
+    AgendaRead,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
+    ScheduledSessionCreate,
+    ScheduledSessionRead,
+    ScheduledSessionUpdate,
     SessionCreate,
     SessionEditScope,
     SessionUpdate,
@@ -16,6 +20,26 @@ from timetrace.interfaces.api.schemas import (
 from timetrace.services import SessionService
 
 router = APIRouter(prefix="", tags=["Sessions"])
+
+
+@router.get("/agenda", response_model=AgendaRead)
+def list_agenda(start: datetime, end: datetime, db: DBSession = Depends(get_session)):
+    return SessionService(db).list_agenda(start, end)
+
+
+@router.post("/scheduled-sessions", response_model=ScheduledSessionRead, status_code=status.HTTP_201_CREATED)
+def create_scheduled_session(req: ScheduledSessionCreate, db: DBSession = Depends(get_session)):
+    return SessionService(db).create_scheduled_session(req)
+
+
+@router.get("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)
+def get_scheduled_session(plan_id: str, db: DBSession = Depends(get_session)):
+    return SessionService(db).get_scheduled_session(plan_id)
+
+
+@router.put("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)
+def update_scheduled_session(plan_id: str, req: ScheduledSessionUpdate, db: DBSession = Depends(get_session)):
+    return SessionService(db).update_scheduled_session(plan_id, req)
 
 
 @router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
@@ -28,7 +52,7 @@ def list_sessions(
     start: datetime | None = Query(None),
     end: datetime | None = Query(None),
     include_virtual: bool = Query(True, description="Include projected occurrences of recurring tasks"),
-    db: DBSession = Depends(get_session)
+    db: DBSession = Depends(get_session),
 ):
     return SessionService(db).list_sessions(start=start, end=end, include_virtual=include_virtual)
 
@@ -43,7 +67,7 @@ def update_session(
     session_id: str,
     req: SessionUpdate,
     scope: SessionEditScope = Query("only_this", description="'only_this' or 'all_future'"),
-    db: DBSession = Depends(get_session)
+    db: DBSession = Depends(get_session),
 ):
     return SessionService(db).update_session(session_id, req, scope=scope)
 
@@ -52,7 +76,7 @@ def update_session(
 def delete_session(
     session_id: str,
     scope: RecurrenceScope = Query("only_this", description="Deletion scope: 'only_this', 'following', 'all'"),
-    db: DBSession = Depends(get_session)
+    db: DBSession = Depends(get_session),
 ):
     SessionService(db).delete_session(session_id, scope=scope)
     return None
