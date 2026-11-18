@@ -16,6 +16,7 @@ from timetrace.core.timer import timer_manager
 from timetrace.db.session import init_db
 from timetrace.interfaces.api.routers import api_router
 from timetrace.interfaces.api.routers.web import router as web_router
+from timetrace.services.timer_service import TimerService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -32,7 +33,7 @@ async def idle_checker_loop():
             if settings.idle_detection_enabled and timer_manager.idle_detection_enabled and timer_manager.is_running:
                 idle_secs = get_idle_seconds()
                 if idle_secs >= timer_manager.idle_threshold_seconds:
-                    timer_manager.freeze_for_idle(idle_secs)
+                    await asyncio.to_thread(TimerService(None).freeze_for_idle, idle_secs)
         except Exception as exc:
             logger.warning(f"Idle loop error: {exc}")
 

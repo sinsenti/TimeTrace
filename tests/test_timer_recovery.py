@@ -204,3 +204,112 @@ def test_idle_status_names_next_persisted_plan_without_changing_legacy_wire(clie
     assert set(upcoming) == {"title", "start_time", "starts_in_minutes"}
     assert upcoming["title"] == "Reserved focus"
     assert datetime.fromisoformat(upcoming["start_time"]) == start
+
+
+@pytest.mark.parametrize("order", ["stop-first", "approval-first"])
+def test_ai_delete_and_stop_serialize_without_losing_the_task_link(tmp_path, monkeypatch, order):
+    from concurrent.futures import ThreadPoolExecutor
+    from pathlib import Path
+    from threading import Event
+
+    from sqlalchemy import event
+    from sqlmodel import Session, SQLModel, create_engine
+
+    from timetrace.interfaces.api.schemas import TaskCreate, TimerStartRequest
+    from timetrace.services.ai_draft_service import AIDraftService
+    from timetrace.services.session_service import SessionService
+    from timetrace.services.task_service import TaskService
+    from timetrace.services.timer_service import TimerService
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}")
+
+    @event.listens_for(engine, "connect")
+    def foreign_keys(connection, _):
+        connection.execute("PRAGMA foreign_keys=ON")
+
+    SQLModel.metadata.create_all(engine)
+    with Session(engine) as db:
+        tid = TaskService(db).create_task(TaskCreate(title="Timer race")).id
+        drafts = AIDraftService(db)
+        batch = drafts.create_batch(None, None, None, None, None, None).id
+        drafts.add_item(batch, "delete", "task", tid, {})
+        TimerService(db).start_timer(TimerStartRequest(task_id=tid))
+
+    def approve():
+        with Session(engine) as db:
+            return AIDraftService(db).accept_items(batch)["items"][0]
+
+    def stop():
+        with Session(engine) as db:
+            return TimerService(db).stop_timer().task_id
+
+    if order == "stop-first":
+        cleared, resume = Event(), Event()
+        write = Path.write_text
+
+        def hold_after_timer_file_clear(path, text, *args, **kwargs):
+            result = write(path, text, *args, **kwargs)
+            if path == timer_manager.state_file and not json.loads(text)["is_running"]:
+                cleared.set()
+                assert resume.wait(5)
+            return result
+
+        monkeypatch.setattr(Path, "write_text", hold_after_timer_file_clear)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            stopping = pool.submit(stop)
+            try:
+                assert cleared.wait(5)
+                approval = pool.submit(approve)
+                # Let the actual competing SQLite transaction run while file clear is held.
+                try:
+                    result = approval.result(timeout=0.3)
+                    assert result["status"] == "failed", result
+                except TimeoutError:
+                    pass
+            finally:
+                resume.set()
+            assert stopping.result(timeout=5) == tid
+            result = approval.result(timeout=5)
+    else:
+        locked, resume = Event(), Event()
+
+        # Observe the approval connection's actual first successful SQLite write.
+        # Hold it before the rest of the approval can inspect live timer context.
+        def hold_sqlite_writer(_conn, _cursor, statement, _params, _context, _many):
+            if not locked.is_set() and statement.lstrip().upper().startswith("UPDATE "):
+                locked.set()
+                assert resume.wait(5)
+
+        event.listen(engine, "after_cursor_execute", hold_sqlite_writer)
+        try:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                approval = pool.submit(approve)
+                try:
+                    assert locked.wait(5)
+                    stopping = pool.submit(stop)
+                    with pytest.raises(TimeoutError):
+                        stopping.result(timeout=0.3)
+                    assert json.loads(timer_manager.state_file.read_text())["task_id"] == tid
+                finally:
+                    resume.set()
+                result = approval.result(timeout=5)
+                assert stopping.result(timeout=5) == tid
+        finally:
+            event.remove(engine, "after_cursor_execute", hold_sqlite_writer)
+
+    assert result["status"] == "failed"
+    with Session(engine) as db:
+        (saved,) = SessionService(db).list_sessions()
+        assert saved["task_id"] == tid
+        assert TaskService(db).get_task_tree(tid)["id"] == tid
+        assert not TimerService(db).get_status()["is_running"]
+    engine.dispose()
+
+
+def test_timer_start_revalidates_task_before_publishing_context(client):
+    tid = client.post("/api/tasks", json={"title": "No dangling timer"}).json()["id"]
+    assert client.delete(f"/api/tasks/{tid}").status_code == 204
+    response = client.post("/timer/start", json={"task_id": tid})
+    assert response.status_code == 404
+    assert client.get("/timer/status").json()["task_id"] is None
+    assert client.get("/sessions").json() == []
