@@ -1130,3 +1130,254 @@ def test_concurrent_occurrence_edits_save_exactly_one_plan(tmp_path):
     finally:
         client.close()
         engine.dispose()
+
+
+@pytest.mark.parametrize("action", ["move", "delete"])
+def test_editing_fingerprinted_legacy_row_does_not_resurrect_its_anchor(client, db, action):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = _mk_task(db, dtstart=anchor, dur=30)
+
+    def create_legacy(start):
+        response = client.post(
+            "/sessions",
+            json={
+                "task_id": task.id,
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(minutes=30)).isoformat(),
+                "notes": f"Recurring: {task.title}",
+            },
+        )
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    row_id = create_legacy(anchor)
+    history_path = f"/sessions/{create_legacy(anchor - timedelta(days=3))}"
+    history = client.get(history_path).json()
+    params = {"start": anchor.isoformat(), "end": (anchor + timedelta(hours=3)).isoformat()}
+    assert [row["id"] for row in client.get("/sessions", params=params).json()] == [row_id]
+    assert [row["id"] for row in client.get("/agenda", params=params).json()["items"]] == [row_id]
+    assert db.exec(select(RecurrenceException)).all() == []  # reads must not acquire series ownership
+
+    if action == "move":
+        moved = anchor + timedelta(hours=2)
+        response = client.put(
+            f"/sessions/{row_id}",
+            json={"start_time": moved.isoformat(), "end_time": (moved + timedelta(minutes=30)).isoformat()},
+        )
+        assert response.status_code == 200, response.text
+        assert datetime.fromisoformat(response.json()["start_time"]) == moved
+        expected_ids = [row_id]
+    else:
+        response = client.delete(f"/sessions/{row_id}?scope=only_this")
+        assert response.status_code == 204, response.text
+        expected_ids = []
+
+    assert [row["id"] for row in client.get("/sessions", params=params).json()] == expected_ids
+    assert [row["id"] for row in client.get("/agenda", params=params).json()["items"]] == expected_ids
+    assert client.get(history_path).json() == history
+
+
+def test_agenda_keeps_slot_busy_when_capture_commits_mid_read(tmp_path):
+    from contextlib import closing
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import event
+    from sqlmodel import SQLModel, create_engine
+
+    from timetrace.db.session import get_session
+    from timetrace.main import create_daemon_app
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'agenda-snapshot.db'}")
+    with engine.connect() as conn:
+        # WAL makes a real writer commit possible while the reader's snapshot is open.
+        assert conn.exec_driver_sql("PRAGMA journal_mode=WAL").scalar_one() == "wal"
+    SQLModel.metadata.create_all(engine)
+
+    def request_db():
+        with DBSession(engine) as db:
+            yield db
+
+    app = create_daemon_app()
+    app.dependency_overrides[get_session] = request_db
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    try:
+        with closing(TestClient(app)) as client, closing(TestClient(app)) as writer:
+            with DBSession(engine) as db:
+                task_id = _mk_task(db, dtstart=anchor, dur=30).id
+            virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+            path = f"/scheduled-sessions/{virtual_id}"
+            before = client.get(path).json()
+            capture = None
+            legacy = None
+
+            def capture_after_plan_select(conn, cursor, statement, parameters, context, executemany):
+                nonlocal capture, legacy
+                if not statement.lstrip().upper().startswith("SELECT") or "FROM scheduled_session" not in statement:
+                    return
+                # The capture cannot reuse this still checked-out connection. Its PUT does
+                # not select scheduled_session; only this read's first plan SELECT triggers it.
+                if capture is None:
+                    capture = writer.put(
+                        path,
+                        json={
+                            "start_time": before["start_time"],
+                            "end_time": before["end_time"],
+                            "expected_projection_revision": before["projection_revision"],
+                        },
+                    )
+                    legacy = writer.post(
+                        "/sessions", json={"start_time": before["start_time"], "end_time": before["end_time"]}
+                    )
+
+            params = {"start": before["start_time"], "end": before["end_time"]}
+            event.listen(engine, "after_cursor_execute", capture_after_plan_select)
+            try:
+                during = client.get("/agenda", params=params)
+            finally:
+                event.remove(engine, "after_cursor_execute", capture_after_plan_select)
+            assert capture is not None and capture.status_code == 200
+            assert legacy is not None and legacy.status_code == 201
+            assert during.status_code == 200, during.text
+            assert during.json()["items"] == [before]
+            after = client.get("/agenda", params=params).json()["items"]
+            assert len(after) == 2
+            assert next(item for item in after if item["kind"] == "scheduled_session") == capture.json()
+            assert next(item for item in after if item["kind"] == "legacy_uncertain")["id"] == legacy.json()["id"]
+    finally:
+        engine.dispose()
+
+
+def test_agenda_accepts_exactly_400_days_including_one_carry_in(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    start = anchor + timedelta(minutes=15)
+    end = start + timedelta(days=400)
+    response = client.get("/agenda", params={"start": start.isoformat(), "end": end.isoformat()})
+    assert response.status_code == 200, response.text
+    entries = response.json()["items"]
+    assert [datetime.fromisoformat(entry["start_time"]) for entry in entries] == [
+        anchor + timedelta(days=day) for day in range(401)
+    ]
+    assert len({entry["id"] for entry in entries}) == 401
+    assert all(entry["task_id"] == task_id and entry["is_virtual"] for entry in entries)
+
+    too_wide = client.get(
+        "/agenda", params={"start": start.isoformat(), "end": (end + timedelta(seconds=1)).isoformat()}
+    )
+    assert too_wide.status_code == 400
+
+
+def test_agenda_finds_long_carry_in_without_widening_the_public_window(client, db):
+    anchor = (datetime.now(UTC) - timedelta(days=800)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=900 * 24 * 60, rrule="FREQ=YEARLY;COUNT=1").id
+    start = anchor + timedelta(days=801)
+    path = f"/scheduled-sessions/{format_occurrence_id(task_id, anchor.replace(tzinfo=None))}"
+    response = client.get(
+        "/agenda", params={"start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat()}
+    )
+    assert response.status_code == 200, response.text
+    (item,) = response.json()["items"]
+    assert item == client.get(path).json()
+    assert datetime.fromisoformat(item["end_time"]) == anchor + timedelta(days=900)
+
+
+def test_paused_series_typed_occurrence_is_missing_but_old_edit_token_is_stale(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor).id
+    virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    path = f"/scheduled-sessions/{virtual_id}"
+    active = client.get(path)
+    assert active.status_code == 200, active.text
+    projection = active.json()
+    assert client.put(f"/api/tasks/{task_id}", json={"is_recurring": False}).status_code == 200
+    stale = client.put(
+        path,
+        json={
+            "start_time": projection["start_time"],
+            "end_time": projection["end_time"],
+            "expected_projection_revision": projection["projection_revision"],
+        },
+    )
+    assert stale.status_code == 409 and stale.json()["code"] == "projection_stale"
+    assert client.get(f"/sessions/{virtual_id}").status_code == 400
+    missing = client.get(path)
+    assert missing.status_code == 404, missing.text
+    assert client.get(f"/scheduled-sessions/virt:{task_id}:bad-stamp").status_code == 404
+    assert client.get("/scheduled-sessions/00000000-0000-0000-0000-000000000000").status_code == 404
+    assert client.get("/agenda", params={"start": anchor.isoformat(), "end": anchor.isoformat()}).status_code == 400
+    assert client.get("/agenda", params={"start": "bad-date", "end": anchor.isoformat()}).status_code == 422
+
+
+def test_planning_reads_leave_flush_commit_and_rollback_to_the_caller(tmp_path):
+    from sqlmodel import SQLModel, create_engine
+
+    from timetrace.db.models import ScheduledSession
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'agenda-caller.db'}", connect_args={"timeout": 1})
+    SQLModel.metadata.create_all(engine)
+    start = (datetime.now(UTC) + timedelta(days=2)).replace(tzinfo=None)
+    end = start + timedelta(hours=1)
+    try:
+        with DBSession(engine) as caller, DBSession(engine) as observer:
+            service = SessionService(caller)
+            # A read-only snapshot must release its lock before the caller closes its session.
+            assert service.list_agenda(start, end).items == []
+            committed = ScheduledSession(
+                start_time=start, end_time=end, original_start=start, original_end=end, notes="saved notes"
+            )
+            observer.add(committed)
+            observer.commit()
+            committed_id = committed.id
+            assert [item.id for item in service.list_planning_plans(start, end)] == [committed_id]
+
+            flushed = ScheduledSession(start_time=start, end_time=end, original_start=start, original_end=end)
+            caller.add(flushed)
+            caller.flush()
+            saved = caller.get(ScheduledSession, committed_id)
+            pending = ScheduledSession(start_time=start, end_time=end, original_start=start, original_end=end)
+            caller.add(pending)
+            saved.notes = "unflushed edit"
+            snapshot = {item.id: item for item in service.list_agenda(start, end).items}
+            assert set(snapshot) == {committed_id, flushed.id}
+            assert snapshot[committed_id].notes == "saved notes"
+            assert saved.notes == "unflushed edit"
+            assert [item.id for item in SessionService(observer).list_planning_plans(start, end)] == [committed_id]
+
+            # The caller can still roll back both its flushed and its pending work.
+            caller.rollback()
+            assert [item.id for item in service.list_agenda(start, end).items] == [committed_id]
+
+            # Even a refused read must release its own SQLite snapshot, not leave a reader
+            # blocking commits until the caller's session eventually closes or rolls back.
+            dense = _mk_task(observer, dtstart=start - timedelta(days=501), dur=502 * 24 * 60)
+            with pytest.raises(ValidationError, match="more than 500 occurrences"):
+                service.list_agenda(start, end)
+            dense.is_recurring = False
+            observer.commit()
+    finally:
+        engine.dispose()
+
+
+def test_legacy_write_does_not_steal_captured_anchor_or_claim_plain_row(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    virtual_id, plan = _save_typed_occurrence(client, task_id, anchor, move=timedelta(hours=1))
+    later = anchor + timedelta(days=1)
+    for start, notes in ((anchor, "Recurring: Standup"), (later, "Ordinary legacy block")):
+        seed = client.post(
+            "/sessions",
+            json={
+                "task_id": task_id,
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(minutes=30)).isoformat(),
+                "notes": notes,
+            },
+        )
+        assert seed.status_code == 201, seed.text
+        deleted = client.delete(f"/sessions/{seed.json()['id']}")
+        assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert client.get(f"/scheduled-sessions/{virtual_id}").status_code == 404
+    params = {"start": later.isoformat(), "end": (later + timedelta(hours=1)).isoformat()}
+    (item,) = client.get("/agenda", params=params).json()["items"]
+    assert item["is_virtual"] and datetime.fromisoformat(item["start_time"]) == later

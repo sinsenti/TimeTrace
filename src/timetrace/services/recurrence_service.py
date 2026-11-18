@@ -27,6 +27,7 @@ from timetrace.core.recurrence import (
     MAX_WINDOW_DAYS,
     RecurrenceSpec,
     expand,
+    expand_overlapping,
     format_occurrence_id,
     next_occurrence,
     parse_occurrence_id,
@@ -239,13 +240,12 @@ class RecurrenceService:
             spec = self.spec_for_task(task)
             if not spec:
                 continue
-            duration = timedelta(minutes=spec.duration_minutes)
-            lower = max(lower_req - duration if overlap else lower_req, now - duration)
-            if lower >= upper:
-                continue
-            candidates.extend(
-                (task, occ) for occ in expand(spec, lower, upper, task.id) if occ.end_utc > max(now, lower_req)
-            )
+            if overlap:
+                occurrences = expand_overlapping(spec, lower_req, upper, task.id, live_after=now)
+            else:
+                lower = max(lower_req, now - timedelta(minutes=spec.duration_minutes))
+                occurrences = [occ for occ in expand(spec, lower, upper, task.id) if occ.end_utc > now]
+            candidates.extend((task, occ) for occ in occurrences)
         if not candidates:
             return []
 
@@ -413,7 +413,7 @@ class RecurrenceService:
 
     # --- exceptions / materialization ------------------------------------------------
 
-    def resolve_occurrence(self, occurrence_id: str) -> tuple[Task, datetime]:
+    def resolve_occurrence(self, occurrence_id: str, *, planning: bool = False) -> tuple[Task, datetime]:
         parsed = parse_occurrence_id(occurrence_id)
         if not parsed:
             raise ValidationError(f"'{occurrence_id}' is not a recurrence occurrence id.")
@@ -422,6 +422,8 @@ class RecurrenceService:
         if not task:
             raise EntityNotFoundError("Task", task_id)
         if not self.spec_for_task(task):
+            if planning:
+                raise EntityNotFoundError("Occurrence", occurrence_id)
             raise ValidationError(f"Task '{task_id}' has no active recurrence to project.")
         return task, occurrence_start
 
@@ -433,7 +435,7 @@ class RecurrenceService:
 
     def projected_occurrence(self, occurrence_id: str, *, planning: bool = False) -> ProjectedOccurrence:
         """Read one virtual occurrence without materializing it (GET must not write)."""
-        task, occurrence_start = self.resolve_occurrence(occurrence_id)
+        task, occurrence_start = self.resolve_occurrence(occurrence_id, planning=planning)
         existing = self.get_exception(task.id, occurrence_start)
         if existing:
             raise EntityNotFoundError("Occurrence", occurrence_id)
@@ -617,6 +619,34 @@ class RecurrenceService:
             statement = statement.where(ScheduledSession.id != exclude_plan_id)
         self.db.execute(statement.values(revision=ScheduledSession.revision + 1))
 
+    @staticmethod
+    def _legacy_adoption_candidate(row: SessionModel, now: datetime) -> bool:
+        # Never claim ordinary uncertain history just because it overlaps a projection.
+        return (
+            row.kind == "legacy_uncertain"
+            and row.task_id is not None
+            and row.start_time > now
+            and (row.notes or "").startswith(_LEGACY_PLACEHOLDER_PREFIX)
+        )
+
+    def reconcile_legacy_occurrence(self, row: SessionModel) -> RecurrenceException | None:
+        """Under the writer lock, resolve a selected row's anchor before editing or deleting it.
+
+        Unlike series reconciliation, this only adopts the selected row and never unlinks
+        other overrides. An existing exception at the anchor always wins.
+        """
+        linked = self.exception_for_session(row.id)
+        if linked or not self._legacy_adoption_candidate(row, _now_naive()):
+            return linked
+        task = self.db.get(Task, row.task_id)
+        if self.get_exception(row.task_id, row.start_time) or not self.occurrence_exists(task, row.start_time):
+            return None
+        linked = RecurrenceException(
+            task_id=row.task_id, occurrence_start=row.start_time, kind="override", session_id=row.id
+        )
+        self.db.add(linked)
+        return linked
+
     def reconcile_series(self, task_id: str, *, commit: bool = True) -> int:
         """Idempotent legacy adoption/cleanup during explicit writes.
 
@@ -685,12 +715,7 @@ class RecurrenceService:
             )
         ).all()
         for row in future_rows:
-            if row.id in linked_session_ids:
-                continue
-            if not (row.notes or "").startswith(_LEGACY_PLACEHOLDER_PREFIX):
-                # Not a row the old pre-generator wrote -- e.g. the user's own session that
-                # happens to coincide with a projected occurrence's instant. Adoption must never
-                # claim it: a later scope=all/following delete would destroy real user work.
+            if row.id in linked_session_ids or not self._legacy_adoption_candidate(row, now):
                 continue
             start = _naive_utc(row.start_time)
             if start not in occurrence_starts or start in claimed:

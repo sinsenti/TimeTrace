@@ -9,7 +9,7 @@ from timetrace.core.exceptions import ConflictError, EntityNotFoundError, Valida
 from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id, parse_occurrence_id
 from timetrace.db.models import RecurrenceException, ScheduledSession, Task, generate_uuid7
 from timetrace.db.models import Session as SessionModel
-from timetrace.db.session import lock_sqlite_writer
+from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import (
     AgendaLegacyRead,
     AgendaProjectedPlanRead,
@@ -241,7 +241,8 @@ class SessionService:
     ) -> list[ScheduledSessionRead | AgendaProjectedPlanRead]:
         """Explicit plans and live projections overlapping [start, end), never work or legacy rows."""
         start, end = self._planning_bounds(start, end)
-        return self._planning_plans(start, end)
+        with sqlite_read_snapshot(self.db) as reader:
+            return SessionService(reader)._planning_plans(start, end)
 
     def _planning_plans(self, start: datetime, end: datetime) -> list[ScheduledSessionRead | AgendaProjectedPlanRead]:
         items = [
@@ -259,10 +260,12 @@ class SessionService:
     def list_agenda(self, start: datetime, end: datetime) -> AgendaRead:
         start, end = self._planning_bounds(start, end)
         measurement_at = datetime.now(UTC)
-        items = self._planning_plans(start, end)
-        for row in self._overlapping_session_rows(start, end):
-            read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
-            items.append(read_type.model_validate(row).model_copy(update=self._utc_session_times(row)))
+        with sqlite_read_snapshot(self.db) as reader:
+            agenda = SessionService(reader)
+            items = agenda._planning_plans(start, end)
+            for row in agenda._overlapping_session_rows(start, end):
+                read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
+                items.append(read_type.model_validate(row).model_copy(update=self._utc_session_times(row)))
         items.sort(key=lambda item: (item.start_time, item.id))
         return AgendaRead(items=items, measurement_at=measurement_at)
 
@@ -348,12 +351,10 @@ class SessionService:
         end: datetime,
         include_virtual: bool = True,
     ) -> list[dict[str, Any]]:
-        """Returns sessions whose time window overlaps ``[start, end)``.
+        """Compatibility read: overlapping session rows plus optional start-in-window projections.
 
-        ``list_sessions`` intentionally filters by session start for calendar range reads. AI
-        conflict detection also needs an event that started just before the requested window, so
-        this companion keeps that boundary behavior explicit while still using this service as the
-        real/virtual recurrence merge funnel.
+        This preserves the legacy DTO and shares the overlap query with ``list_agenda``. New
+        planning consumers should use ``list_agenda`` for typed plans and projection carry-ins.
         """
         start_utc = ensure_utc(start)
         end_utc = ensure_utc(end)
@@ -382,6 +383,10 @@ class SessionService:
 
     def next_upcoming_occurrence(self, within_days: int = 30) -> dict[str, Any] | None:
         """Earliest future plan, legacy commitment or live recurrence projection."""
+        with sqlite_read_snapshot(self.db) as reader:
+            return SessionService(reader)._next_upcoming_occurrence(within_days)
+
+    def _next_upcoming_occurrence(self, within_days: int) -> dict[str, Any] | None:
         now = datetime.now(UTC)
         now_naive = now.replace(tzinfo=None)
         legacy = self.db.exec(
@@ -453,15 +458,18 @@ class SessionService:
 
     def _update_legacy_session(self, session_id: str, req: SessionUpdate, scope: str) -> LegacySessionRead:
         self.require_legacy_mutation_target(session_id)
+        db_session = None
+        if not is_occurrence_id(session_id):
+            db_session = self.db.get(SessionModel, session_id)
+            if not db_session:
+                raise EntityNotFoundError("Session", session_id)
+            self.recurrence.reconcile_legacy_occurrence(db_session)
+
         if scope == "all_future":
             self._apply_series_duration(session_id, req)
 
-        if is_occurrence_id(session_id):
-            session_id = self.recurrence.materialize(session_id).id
-
-        db_session = self.db.get(SessionModel, session_id)
-        if not db_session:
-            raise EntityNotFoundError("Session", session_id)
+        if db_session is None:
+            db_session = self.recurrence.materialize(session_id)
 
         update_dict = req.model_dump(exclude_unset=True)
         for key, val in update_dict.items():
@@ -567,7 +575,11 @@ class SessionService:
         if not db_session:
             raise EntityNotFoundError("Session", session_id)
 
-        exception = self.recurrence.exception_for_session(db_session.id)
+        exception = (
+            self.recurrence.reconcile_legacy_occurrence(db_session)
+            if scope == "only_this"
+            else self.recurrence.exception_for_session(db_session.id)
+        )
         task = self.db.get(Task, db_session.task_id) if db_session.task_id else None
         now_naive = datetime.now(UTC).replace(tzinfo=None)
         row_start = ensure_utc(db_session.start_time).replace(tzinfo=None) if db_session.start_time else None

@@ -8,6 +8,7 @@ from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to
 from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, QuerySource, SortKey
 from timetrace.db.models import Habit, HabitLog, Task
 from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.query_service import QueryService
@@ -77,10 +78,8 @@ class AnalyticsService:
     ) -> str:
         """Generates clean, scannable Markdown briefings for sessions, tasks, or habits without decorative icons."""
         now = datetime.now(UTC)
-        tasks = self.db.exec(select(Task)).all()
-        tasks_map = {t.id: t for t in tasks}
-
         if mode == "tasks_short":
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: tasks_concise_briefing",
@@ -102,6 +101,7 @@ class AnalyticsService:
             return "\n".join(lines)
 
         elif mode == "tasks_full":
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: tasks_complete_dossier",
@@ -180,6 +180,7 @@ class AnalyticsService:
             return "\n".join(lines)
 
         elif mode in ("all", "all_date_range"):
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: complete_system_export",
@@ -263,14 +264,14 @@ class AnalyticsService:
 
         else:
             # Default Mode: "sessions" (Chronological Agenda)
-            sessions = self.db.exec(select(SessionModel)).all()
+            # Preserve the legacy briefing horizon as well as the bounded plan window. Both
+            # reads must agree on whether an occurrence is projected or already a real row.
+            with sqlite_read_snapshot(self.db) as reader:
+                sessions = reader.exec(select(SessionModel)).all()
+                tasks_map = {task.id: task for task in reader.exec(select(Task))}
+                plans = SessionService(reader).list_planning_plans(now, now + timedelta(days=30))
             today_date = now.date()
             tomorrow_date = today_date + timedelta(days=1)
-
-            # Settled owner decision Q3: the agenda's forward-looking sections must go through
-            # the same merge funnel as the calendar, or a recurring series (which no longer has
-            # pre-generated rows) silently disappears from "Later Today / Tomorrow / Upcoming".
-            plans = SessionService(self.db).list_planning_plans(now, now + timedelta(days=30))
 
             group_now: list[dict] = []
             group_later: list[dict] = []

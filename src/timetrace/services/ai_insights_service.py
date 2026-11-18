@@ -635,6 +635,7 @@ class AIInsightsService:
         warnings: list[str] = []
         candidates: list[dict[str, Any]] = []
         target_ids: set[str] = set()
+        service = SessionService(self.db)
 
         if not proposed_sessions:
             return {
@@ -660,7 +661,16 @@ class AIInsightsService:
                 continue
             session_id = payload.get("session_id") or payload.get("id")
             if session_id and not str(session_id).startswith("candidate:"):
-                target_ids.add(str(session_id))
+                target_id = str(session_id)
+                try:
+                    service.require_legacy_mutation_target(target_id)
+                except ConflictError:
+                    errors.append(
+                        f"proposal {index + 1}: AI proposals cannot edit this scheduled session or recorded work. "
+                        "Choose another time without replacing the existing item."
+                    )
+                else:
+                    target_ids.add(target_id)
             task_id = payload.get("task_id")
             if task_id and self.db.get(Task, task_id) is None:
                 errors.append(f"proposal {index + 1}: task_id '{task_id}' does not exist")

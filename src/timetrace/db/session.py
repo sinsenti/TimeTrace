@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 from alembic import command
@@ -64,6 +66,27 @@ def lock_sqlite_writer(db: Session) -> None:
     db.execute(text("UPDATE task SET id = id WHERE 0"))
     db.flush()
     db.expire_all()
+
+
+@contextmanager
+def sqlite_read_snapshot(db: Session) -> Iterator[Session]:
+    """Read one SQLite snapshot without flushing or taking ownership of the caller's transaction."""
+    connection = db.connection()
+    # SQLAlchemy autobegin is logical: in sqlite3's legacy mode a SELECT does not
+    # start a database transaction. Join an actual transaction if the caller has one.
+    sqlite_connection = connection.connection.driver_connection
+    owns_snapshot = not sqlite_connection.in_transaction
+    if owns_snapshot:
+        connection.exec_driver_sql("BEGIN")
+    try:
+        # A separate identity map avoids stale cached rows and preserves unflushed
+        # caller changes. Already-flushed writes are visible on the same connection.
+        with Session(connection, autoflush=False, join_transaction_mode="rollback_only") as reader:
+            yield reader
+    finally:
+        if owns_snapshot and sqlite_connection.in_transaction:
+            # End only the read transaction we opened, also when a read is refused.
+            connection.exec_driver_sql("ROLLBACK")
 
 
 def get_session():

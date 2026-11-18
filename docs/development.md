@@ -560,15 +560,25 @@ plan actions are not enabled by this checkpoint.
 with both edited current endpoints and `expected_projection_revision` to capture it as a real
 plan. Adopt the returned UUID and then use its numeric `revision` for later edits. A changed,
 suppressed, skipped, already materialized or elapsed projection cannot be claimed with an old
-token (`409 projection_stale`). No legacy override is converted into a plan. Use
+token (`409 projection_stale`). A typed GET of a well-formed occurrence in a paused series
+returns `404`; the legacy GET retains its existing error behavior. No legacy override is
+converted into a plan. Use
 `?scope=all_future` only for a resize: it changes the selected occurrence and the series duration
 in one transaction, not the intervals of other captured overrides. Captured originals are never
 rewritten. Skips and typed anchors survive ordinary task rule edits, including reactivation.
 
 `GET /agenda?start=…&end=…` is bounded JSON (not HTML). It merges persisted plans, live virtual
 projections, explicit work and uncertain legacy rows on UTC interval overlap. No reads materialize
-or archive projections. Legacy bounded `/sessions` still uses its row shape and start-in-window
-semantics. It is not the typed list. Legacy fingerprint reconciliation runs on writes, not reads.
+or archive projections. Each planning merge reads plans, recurrence rules, exceptions and applicable legacy
+rows from one SQLite snapshot. It joins any already-open database transaction without flushing
+or committing caller changes; otherwise its read scope ends before returning. The maximum
+requested window is 400 days. Live occurrences starting before the window can carry into it;
+carry-ins and in-window starts share the 500 unique anchors per series limit. A planning read
+that exceeds the occurrence limit is refused instead of reporting a partially empty schedule.
+Legacy bounded `/sessions` still uses its row shape and start-in-window semantics. It is not the
+typed list. Legacy fingerprint reconciliation runs on writes, not reads: a legacy row edit or
+only-this deletion first checks for a known fingerprint at the exact future anchor under the
+writer lock. It cannot claim an anchor with an existing exception or adopt recorded work.
 
 Markdown Agenda shows plans and projected occurrences with explicit schedule labels (30-day
 planning window, plus the existing legacy agenda). It is not importable as Logged Sessions;
@@ -576,7 +586,9 @@ legacy `/markdown/export`, system-wide sessions logs, reviews and performed SQL 
 plans. Idle timer status uses the next persisted or projected schedule without changing the old
 wire shape or writing timer state. AI range, conflict and free-slot reads see persisted plans under
 the existing data scope. Legacy proposals/approvals may not modify typed plans, even through a
-former virtual ID. AI/statistics aggregates over the old session cohort retain their old basis.
+former virtual ID, or edit explicit recorded work. Schedule validation rejects these targets
+without removing the existing commitment from conflicts or daily capacity. AI/statistics
+aggregates over the old session cohort retain their old basis.
 
 Task accounting adds only future-starting plans to scheduled time. Completion keeps the separate
 own/subtree choices and refuses a clear affecting a protected plan before changing either scope.

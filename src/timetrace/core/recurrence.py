@@ -194,11 +194,7 @@ def set_until(rrule: str, until_local_naive: datetime) -> str:
     if until_local_naive.tzinfo is not None:
         raise ValidationError("UNTIL must be a naive local datetime.")
     stamp = until_local_naive.replace(microsecond=0).strftime(_UNTIL_STAMP_FMT)
-    kept = [
-        f"{key}={value}"
-        for key, value in _rrule_parts(rrule).items()
-        if key not in ("UNTIL", "COUNT")
-    ]
+    kept = [f"{key}={value}" for key, value in _rrule_parts(rrule).items() if key not in ("UNTIL", "COUNT")]
     kept.append(f"UNTIL={stamp}")
     return ";".join(kept)
 
@@ -249,6 +245,55 @@ def expand(
         if len(occurrences) >= MAX_OCCURRENCES_PER_SERIES:
             break
     return occurrences
+
+
+def expand_overlapping(
+    spec: RecurrenceSpec,
+    window_start_utc: datetime,
+    window_end_utc: datetime,
+    task_id: str,
+    *,
+    live_after: datetime,
+) -> list[Occurrence]:
+    """Expand a bounded planning viewport plus live carry-ins, with one shared anchor budget."""
+    if any(value.tzinfo is not None for value in (window_start_utc, window_end_utc, live_after)):
+        raise ValidationError("Projection window bounds must be naive UTC datetimes.")
+    if window_end_utc <= window_start_utc:
+        return []
+    if window_end_utc - window_start_utc > timedelta(days=MAX_WINDOW_DAYS):
+        raise ValidationError(f"Projection window exceeds the maximum of {MAX_WINDOW_DAYS} days.")
+    if spec.duration_minutes <= 0:
+        raise ValidationError("Recurrence duration must be a positive number of minutes.")
+
+    duration = timedelta(minutes=spec.duration_minutes)
+    cutoff = max(window_start_utc, live_after)
+    # An earlier anchor cannot end after the cutoff, no matter when the series began.
+    carry_start = cutoff - min(duration, cutoff - datetime.min)
+    if carry_start >= window_end_utc:
+        return []
+
+    tz = resolve_timezone(spec.timezone_name)
+    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
+    # Search local wall time conservatively (UTC offsets are strictly less than a day).
+    # Test exact UTC bounds below: DST gaps can shift or coalesce local anchors.
+    day = timedelta(days=1)
+    local_lower = carry_start - min(day, carry_start - datetime.min)
+    local_upper = window_end_utc + min(day, datetime.max - window_end_utc)
+    anchors: dict[datetime, Occurrence] = {}
+    # One iterator for the carry-in anchors and the viewport's own starts. Do not widen
+    # the public window or loop through day-sized chunks over a long sparse carry-in.
+    for local_start in rule.xafter(local_lower, inc=True):
+        if local_start >= local_upper:
+            break
+        start = from_local_naive(local_start, tz)
+        if not carry_start < start < window_end_utc or start in anchors:
+            continue
+        if len(anchors) == MAX_OCCURRENCES_PER_SERIES:
+            raise ValidationError(
+                f"Planning range overlaps more than {MAX_OCCURRENCES_PER_SERIES} occurrences of a series."
+            )
+        anchors[start] = Occurrence(start, start + duration, format_occurrence_id(task_id, start))
+    return sorted(anchors.values(), key=lambda occurrence: occurrence.start_utc)
 
 
 def next_occurrence(spec: RecurrenceSpec, after_utc: datetime, task_id: str) -> Occurrence | None:
