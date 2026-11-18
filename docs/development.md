@@ -589,19 +589,23 @@ review the result, including data movement and SQLite table rebuilds, before app
    Alembic's `env.py` honors an explicitly configured `sqlalchemy.url` before its settings fallback.
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
-Startup and `timetrace db migrate` use Alembic only. If an existing non-empty database has no
-recorded revision, or migration assets are missing, startup fails instead of stamping or
-creating tables. For missing assets, run from a complete TimeTrace checkout. For an unversioned
-database (including one from an older `create_all` fallback), stop writers and keep a consistent
-backup before seeking schema recovery or restoring a known Alembic-tracked backup. Do not stamp
-head, hand-edit the revision marker, or delete the database to bypass the guard. This guard does
-not repair databases already incorrectly stamped by an older build.
+Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
+Alembic entrypoints and resolve the required schema revision (`0014_agenda_foundation`) in the
+migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
+complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
+when the application starts depending on a later schema revision.
+
+A non-empty database without a recorded revision is refused rather than stamped or recreated.
+For an unversioned database (including one from an older `create_all` fallback), stop writers and
+keep a consistent backup before seeking schema recovery or restoring a known Alembic-tracked
+backup. Do not stamp head, hand-edit the revision marker, or delete the database to bypass the
+guard. This does not repair databases already incorrectly stamped by an older build.
 
 `tests/test_agenda_migration.py` exercises root startup on both a fresh database and a SQLite
 backup of a seeded 0013 database, compares old metadata, relationships, JSON and polymorphic
 references, and makes real HTTP reads/writes on the upgraded copy. It also exercises startup
-refusal with unversioned data or missing Alembic configuration. Revision 0014 refuses downgrade
-when typed data exists.
+refusal with unversioned data, missing Alembic configuration, or a chain truncated at 0013.
+Revision 0014 refuses downgrade when typed data exists.
 
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id

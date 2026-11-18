@@ -226,6 +226,54 @@ except RuntimeError as exc:
     assert not db_file.exists()
 
 
+def test_daemon_refuses_truncated_migration_chain_before_opening_database(tmp_path):
+    checkout = tmp_path / "truncated"
+    assets = checkout / "src"
+    shutil.copytree(ROOT / "src" / "timetrace", assets / "timetrace", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copy2(ROOT / "alembic.ini", checkout / "alembic.ini")
+    (assets / "timetrace" / "db" / "migrations" / "versions" / "0014_agenda_foundation.py").unlink()
+
+    old, copied = tmp_path / "old.sqlite", tmp_path / "copied.sqlite"
+    run_on(old, "-m", "alembic", "upgrade", OLD)
+    with closing(sqlite3.connect(old)) as source:
+        seed_old(source)
+        source.commit()
+        before = tuple(source.iterdump())
+        with closing(sqlite3.connect(copied)) as destination:
+            source.backup(destination)
+
+    startup = """
+import os
+import sys
+
+sys.path.insert(0, sys.argv[1])
+os.chdir(sys.argv[2])  # Outside both source checkouts.
+
+from fastapi.testclient import TestClient
+
+opened_databases = []
+def record_sqlite_open(event, args):
+    if event == 'sqlite3.connect':
+        opened_databases.append(args[0])
+sys.addaudithook(record_sqlite_open)
+
+from timetrace.main import create_daemon_app
+
+try:
+    with TestClient(create_daemon_app()) as client:
+        health = client.get('/health')
+        raise AssertionError(f'daemon started with truncated migrations: /health {health.status_code}')
+except RuntimeError as exc:
+    assert '0014_agenda_foundation' in str(exc), str(exc)
+    assert 'complete TimeTrace' in str(exc), str(exc)
+assert opened_databases == [], opened_databases
+"""
+    run_on(copied, "-c", startup, str(assets), str(tmp_path))
+    with closing(sqlite3.connect(copied.as_uri() + "?mode=ro", uri=True)) as conn:
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == (OLD,)
+        assert tuple(conn.iterdump()) == before
+
+
 BOOT = """
 from fastapi.testclient import TestClient
 from timetrace.main import create_daemon_app
