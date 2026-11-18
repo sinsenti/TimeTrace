@@ -298,3 +298,38 @@ def test_session_materialization_resize_move_skip_and_series_delete_preserve_his
     assert client.delete(f"/sessions/{occurrences[2]['id']}?scope={delete_scope}").status_code == 204
     assert client.get(f"/sessions/{history['id']}").json()["notes"] == "Past work"
     assert client.get(f"/api/tasks/{task_id}").json()["estimated_minutes"] == 123
+
+
+def test_folio_route_and_daily_feed_reload_same_length_move(client):
+    page = client.get("/agenda-view")
+    assert page.status_code == 200
+    assert "text/html" in page.headers["content-type"]
+    assert 'href="/agenda-view"' in page.text and 'aria-current="page">Agenda' in page.text
+    assert 'id="agenda-form"' in page.text
+    assert not any("fullcalendar" in line.lower() for line in page.text.splitlines() if "<script src=" in line)
+    assert 'href="/agenda-view"' in client.get("/dashboard").text
+
+    day = "/agenda?start=2000-01-04T00:00Z&end=2000-01-05T00:00Z"
+    assert client.get(day).json()["items"] == []
+    task_id = client.post("/api/tasks", json={"title": "Writing"}).json()["id"]
+    plan = client.post(
+        "/scheduled-sessions",
+        json={
+            "task_id": task_id,
+            "start_time": "2000-01-04T09:00Z",
+            "end_time": "2000-01-04T10:00Z",
+        },
+    ).json()
+    assert client.get(day).json()["items"] == [plan]
+    move = {"start_time": "2000-01-04T11:00Z", "end_time": "2000-01-04T12:00Z", "expected_revision": 1}
+    assert client.put(f"/scheduled-sessions/{plan['id']}", json=move).status_code == 200
+    assert client.get(day).json()["items"] == [
+        {
+            **plan,
+            "start_time": "2000-01-04T11:00:00Z",
+            "end_time": "2000-01-04T12:00:00Z",
+            "revision": 2,
+        }
+    ]
+    assert client.put(f"/scheduled-sessions/{plan['id']}", json=move).status_code == 409
+    assert client.get("/sessions").json() == []

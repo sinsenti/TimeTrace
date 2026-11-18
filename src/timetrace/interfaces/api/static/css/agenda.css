@@ -1,0 +1,41 @@
+/* Page-local palette for the shared shell; appearance.css supplies the light palettes. */
+.agenda-page { font-family: system-ui, sans-serif; }
+:root[data-appearance="dark"]:has(.agenda-page) {
+    --bg-main: #0b0c10; --bg-header: #12131d; --bg-card: #181923;
+    --border-color: #252738; --border-muted: #54586b; --text-main: #e2e8f0;
+    --accent-primary: #c4b5fd;
+}
+.folio { max-width: 1280px; margin: auto; padding: 34px 48px 90px; overflow-wrap: anywhere; }
+.folio-masthead { border-bottom: 1px solid var(--border-muted); padding-bottom: 26px; }
+.folio h1 { font: clamp(2.4rem, 6vw, 3.625rem)/1.08 Georgia, serif; letter-spacing: -.035em; margin: 22px 0 14px; }
+.folio h1 em { color: var(--accent-primary, var(--text-main)); }
+.folio-deck { font: 1rem/1.8 Georgia, serif; }
+.folio-eyebrow, .folio-section-title > span, .agenda-time, .agenda-type { font: .78rem/1.55 ui-monospace, monospace; }
+.folio-eyebrow, .agenda-type { text-transform: uppercase; }
+.folio-strip, .folio-section-title, .folio-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
+.folio-strip { padding: 13px 0; border-bottom: 1px solid var(--border-muted); }
+.folio-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); gap: 44px; align-items: start; margin-top: 26px; }
+.folio-section-title { border-bottom: 2px solid var(--border-muted); padding-bottom: 12px; }
+.folio h2 { font: 1.5rem/1.3 Georgia, serif; }
+.folio-inspector { border-left: 1px solid var(--border-muted); padding-left: 24px; min-width: 0; }
+.folio dl { margin: .8rem 0; }
+.folio dt { font-weight: 600; }
+.folio dd { margin-bottom: .65rem; white-space: pre-wrap; }
+.folio p[role="status"] { margin: .65rem 0; }
+.folio button, .folio input, .folio select, .folio textarea { color: inherit; background: var(--bg-card); border: 1px solid var(--border-muted); border-radius: 5px; padding: .45em .65em; max-width: 100%; }
+.folio button:not(:disabled, [aria-disabled="true"]) { cursor: pointer; }
+.folio button:is(:disabled, [aria-disabled="true"]) { opacity: .6; }
+.folio :focus-visible { outline: 2px solid var(--focus-color, currentColor); outline-offset: 2px; }
+.folio label, .folio fieldset { min-width: 0; }
+.folio form label { display: grid; gap: .2rem; margin-bottom: .65rem; }
+.folio .agenda-entry { display: grid; grid-template-columns: 5.5em minmax(0, 1fr); width: 100%; gap: 16px; background: none; border: 0; border-radius: 0; border-bottom: 1px solid var(--border-muted); padding: 20px 8px; text-align: left; }
+.folio .agenda-entry[aria-pressed="true"] { box-shadow: inset 3px 0 var(--focus-color, currentColor); background: var(--bg-card); }
+.agenda-time span, .agenda-type, .agenda-name { display: block; }
+.agenda-name { font: 1.35rem/1.3 Georgia, serif; }
+.folio [hidden] { display: none !important; }
+@media (max-width: 740px) {
+    .folio { padding: 28px 18px 70px; }
+    .folio-columns { display: flex; flex-direction: column; gap: 24px; }
+    .folio-columns > * { width: 100%; }
+    .folio-inspector { border-top: 1px solid var(--border-muted); border-left: 0; padding: 22px 0 0; }
+}

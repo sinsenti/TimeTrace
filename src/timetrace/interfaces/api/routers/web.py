@@ -16,31 +16,26 @@ templates = Jinja2Templates(directory=TEMPLATES_DIR)
 
 @router.get("/dashboard")
 def get_web_dashboard(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="dashboard.html",
-        context={"active_page": "dashboard"}
-    )
+    return templates.TemplateResponse(request=request, name="dashboard.html", context={"active_page": "dashboard"})
+
+
+@router.get("/agenda-view")
+def get_agenda_page(request: Request):
+    return templates.TemplateResponse(request=request, name="agenda.html", context={"active_page": "agenda"})
 
 
 @router.get("/tasks")
 @router.get("/kanban")
 @router.get("/tasks-view")
 def get_tasks_kanban_page(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="tasks.html",
-        context={"active_page": "tasks"}
-    )
+    return templates.TemplateResponse(request=request, name="tasks.html", context={"active_page": "tasks"})
 
 
 @router.get("/task-inspector/{task_id}")
 @router.get("/tasks-detail/{task_id}")
 def get_single_task_detail_page(task_id: str, request: Request):
     return templates.TemplateResponse(
-        request=request,
-        name="task_detail.html",
-        context={"active_page": "tasks", "task_id": task_id}
+        request=request, name="task_detail.html", context={"active_page": "tasks", "task_id": task_id}
     )
 
 
@@ -62,20 +57,12 @@ def get_stats_dashboard(request: Request):
 
 @router.get("/habits-view")
 def get_habits_dashboard(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="habits.html",
-        context={"active_page": "habits"}
-    )
+    return templates.TemplateResponse(request=request, name="habits.html", context={"active_page": "habits"})
 
 
 @router.get("/revision")
 def get_revision_dashboard(request: Request):
-    return templates.TemplateResponse(
-        request=request,
-        name="revision.html",
-        context={"active_page": "revision"}
-    )
+    return templates.TemplateResponse(request=request, name="revision.html", context={"active_page": "revision"})
 
 
 @router.get("/settings")

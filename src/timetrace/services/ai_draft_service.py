@@ -734,13 +734,13 @@ class AIDraftService:
             tsvc = TaskService(self.db)
             if op == "create":
                 req = TaskCreate(**self._filter_fields(payload, TaskCreate))
-                result = tsvc.create_task(req, parse_title_syntax=not restore)
+                result = tsvc.create_task(req, parse_title_syntax=not restore, allow_title_schedule=False)
                 return self.normalize_task(result), result.id, None
             if op == "update":
                 if not target_id:
                     raise ValidationError("task update requires a target_id")
                 req = TaskUpdate(**self._filter_fields(payload, TaskUpdate))
-                result = tsvc.update_task(target_id, req, parse_title_syntax=not restore)
+                result = tsvc.update_task(target_id, req, parse_title_syntax=not restore, allow_title_schedule=False)
                 return self.normalize_task(result), result.id, result.completion_policy
             if op == "delete":
                 if not target_id:

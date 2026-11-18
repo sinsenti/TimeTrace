@@ -228,3 +228,18 @@ def test_legacy_ai_proposal_cannot_change_a_newly_captured_occurrence(client, db
     assert client.get("/agenda", params=params).json()["items"] == [plan]
     reflected = client.post("/reflections", json={"session_id": plan["id"], "energy_level": 3})
     assert reflected.status_code == 409, reflected.text
+
+
+@pytest.mark.parametrize("operation", ["create", "update"])
+def test_legacy_ai_approval_refuses_title_scheduling_before_domain_write(client, db, operation):
+    task = client.post("/api/tasks", json={"title": "Original"}).json() if operation == "update" else None
+    target = task["id"] if task else None
+    drafts = AIDraftService(db)
+    batch = drafts.create_batch(None, None, f"{operation}_task", "Synthetic quick add", None, None)
+    drafts.add_item(batch.id, operation, "task", target, {"title": "No implicit plan t:2h"})
+    item = client.post(f"/api/ai/drafts/batches/{batch.id}/accept", json={}).json()["items"][0]
+    assert item["status"] == "failed"
+    assert "scheduling" in item["error"]
+    assert [row["title"] for row in client.get("/api/tasks?status=all").json()] == (["Original"] if task else [])
+    assert client.get("/sessions").json() == []
+    assert client.get("/agenda?start=2026-01-01T00:00Z&end=2027-02-01T00:00Z").json()["items"] == []

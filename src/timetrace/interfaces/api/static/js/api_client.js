@@ -28,7 +28,9 @@ class ApiClient {
                 } catch (e) {
                     errorData = { detail: response.statusText };
                 }
-                throw new Error(errorData.detail || `HTTP Error ${response.status}`);
+                throw Object.assign(new Error(errorData.detail || `HTTP Error ${response.status}`), {
+                    status: response.status, code: errorData.code
+                });
             }
 
             const contentType = response.headers.get('content-type');
@@ -63,6 +65,18 @@ class ApiClient {
             headers,
             body: body ? JSON.stringify(body) : null
         });
+    }
+
+    async saveScheduledSession(row, fields, scope = 'only_this') {
+        const saved = row ? await this.put(
+            `/scheduled-sessions/${encodeURIComponent(row.id)}?scope=${encodeURIComponent(scope)}`,
+            { start_time: fields.start_time, end_time: fields.end_time,
+                ...(row.is_virtual ? { expected_projection_revision: row.projection_revision } : { expected_revision: row.revision }) }
+        ) : await this.post('/scheduled-sessions', fields);
+        if (!saved?.id || saved.kind !== 'scheduled_session' || !Number.isInteger(saved.revision)) {
+            throw new Error('Missing schedule acknowledgement');
+        }
+        return saved;
     }
 
     delete(url, headers = {}) {

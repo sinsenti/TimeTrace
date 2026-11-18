@@ -461,6 +461,8 @@ assert log_before.pop('task')['id'] == task_id
 response = client.delete('/api/tasks/' + task_id)
 assert response.status_code == 204, response.text
 expected = dict(before, task_id=None, revision=before['revision'] + 1)
+assert expected.pop('series_task_id') == task_id
+assert expected.pop('occurrence_start') == before['original_start']
 assert client.get(path).json() == expected
 assert client.get(log_path).json() == dict(log_before, task_id=None)
 """

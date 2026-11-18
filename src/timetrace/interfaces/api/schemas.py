@@ -140,6 +140,8 @@ class ScheduledSessionRead(ScheduledSessionCreate):
     original_end: datetime
     duration_seconds: int
     revision: int
+    series_task_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    occurrence_start: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 TYPED_SESSION_FIELDS = frozenset(
@@ -628,6 +630,7 @@ class DashboardDataResponse(BaseModel):
 
 class ScheduledSessionInfo(BaseModel):
     id: str
+    kind: Literal["legacy_uncertain", "scheduled_session"] = "legacy_uncertain"
     start_time: datetime
     end_time: datetime | None
     duration_seconds: int | None
@@ -642,6 +645,7 @@ class CompletionPolicyPrompt(BaseModel):
     scheduled_sessions: list[ScheduledSessionInfo]
     scheduled_seconds: int
     subtask_scheduled_count: int
+    subtask_protected_plan_count: int = 0
 
 
 class TaskReadResponse(BaseModel):

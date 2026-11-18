@@ -600,8 +600,26 @@ truncating its series. Task deletion still detaches plans and history and remove
 task's exception links in the locked transaction. This does not introduce destructive plan consent,
 work recording/attachment, reassignment, or version-aware AI restores.
 
-Folio B, Calendar dispatch and explicit quick-add conversion remain outside this checkpoint.
-See the [shared contract](agenda-contract.md) for the rest of #2 and downstream capabilities.
+The Folio B page is `/agenda-view` (navbar **Agenda**). Its ledger reads the browser-local day
+from `/agenda`; the task picker uses the shared `/api/tasks?status=all` registry. Original and current
+intervals are always separate; projected originals are provisional until saved. Uncertain legacy
+history and explicit recorded work are labeled separately. Only plan endpoints are editable after
+create. No recording, fill metrics, Start-from-plan, or destructive plan actions are available.
+
+Calendar keeps its existing layout and legacy start-window totals, while displaying typed overlapping
+plans and exactly one projection per anchor. Calendar ranges default to **Scheduled session** with an
+explicit legacy choice; Tasks/Details **Schedule** and external task drops create plans. Legacy
+history edits still use `/sessions`. A captured plan's typed response includes `series_task_id` and
+`occurrence_start` for Calendar resize scope; ordinary plans omit them. Legacy virtual deletion keeps
+its server-guarded scopes, but saved plan deletion is unavailable. Acknowledgements replace the draft
+or event identity and revision before refresh; retries of failed display reads do not repeat writes.
+A stale or unconfirmed write requires review of server state rather than an automatic retry.
+
+Hourly quick-add titles on task POST/PUT stage a plan in the task transaction; day offsets remain
+assigned dates. Legacy AI approvals refuse title scheduling before task/plan writes, while snapshot
+restores still bypass title parsing. Completion displays protected plans without trimming the
+requested own/subtree scope and retains the server's atomic refusal. See the
+[shared contract](agenda-contract.md) for downstream capabilities.
 
 ## Migration verification
 

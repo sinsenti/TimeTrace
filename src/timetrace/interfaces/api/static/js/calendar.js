@@ -47,7 +47,7 @@ function createPlanningSession(taskId = null) {
     const date = new Date(calendar.getDate());
     const now = new Date();
     date.setHours(now.getHours(), Math.floor(now.getMinutes() / 15) * 15, 0, 0);
-    openCreateSessionModal(date, null, taskId);
+    openCreateSessionModal(date, null, taskId, "", "schedule");
 }
 
 function filterPlanningTasks(query) {
@@ -153,8 +153,14 @@ function formatCalEventFromSession(s, idx = 0) {
         backgroundColor: color,
         borderColor: 'transparent',
         classNames: isVirtual ? ['tt-virtual-occurrence'] : [],
-        editable: true,
+        editable: s.kind !== 'recorded_work',
         extendedProps: {
+            kind: s.kind || 'legacy_uncertain',
+            revision: s.revision ?? null,
+            projectionRevision: s.projection_revision ?? null,
+            originalStart: s.original_start ?? null,
+            originalEnd: s.original_end ?? null,
+            occurrenceStart: s.occurrence_start ?? null,
             taskId: s.task_id || null,
             taskTitle: matchedTask ? matchedTask.title : '',
             notes: s.notes || '',
@@ -168,6 +174,7 @@ function formatCalEventFromSession(s, idx = 0) {
 async function isRecurringCalendarEvent(event) {
     const props = event.extendedProps || {};
     if (props.isVirtual || props.seriesTaskId || String(event.id).startsWith('virt:')) return true;
+    if (props.kind === 'scheduled_session') return false;
     return taskKnowledge.recurrenceFor(props.taskId);
 }
 
@@ -182,52 +189,64 @@ async function isRecurringCalendarEvent(event) {
  * `estimated_minutes` -- that side effect used to re-trigger session generation and refill the
  * slot the user had just vacated.
  */
+let calendarPlanningRows = [];
+let calendarRecordedRows = new Map();
+let calendarReadVersion = 0;
+const calendarWrites = new Set();
+const calendarNeedsReview = new Set();
+
+function calendarSessionRows() {
+    const rows = typeof allSessions === 'undefined' ? [] : allSessions;
+    return [...rows.filter(row => !row.is_virtual).map(row => calendarRecordedRows.get(row.id) || row), ...calendarPlanningRows];
+}
+
 async function handleCalendarEventUpdate(event, changeType = 'move', info = null) {
-    const startIso = event.start.toISOString();
-    const endIso = event.end ? event.end.toISOString() : event.start.toISOString();
-
-    const payload = {
-        start_time: startIso,
-        end_time: endIso
-    };
-
-    const wasVirtual = Boolean(event.extendedProps && event.extendedProps.isVirtual) || String(event.id).startsWith('virt:');
-    let scope = 'only_this';
-
-    const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
-    if (recurring === null) {
-        if (info && typeof info.revert === 'function') info.revert();
-        alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
+    const id = event.id;
+    const props = event.extendedProps || {};
+    const typed = props.kind === 'scheduled_session';
+    if (calendarWrites.has(id) || calendarNeedsReview.has(id) || props.kind === 'recorded_work') {
+        info?.revert?.();
         return;
     }
-    if (recurring) {
-        const choice = typeof showRecurringResizeScopePrompt === 'function'
-            ? await showRecurringResizeScopePrompt()
-            : 'only_this';
-        if (!choice) {
-            if (info && typeof info.revert === 'function') info.revert();
+    const payload = { start_time: event.start.toISOString(), end_time: (event.end || event.start).toISOString() };
+    const wasVirtual = Boolean(props.isVirtual) || String(id).startsWith('virt:');
+    const target = { id, is_virtual: wasVirtual, revision: props.revision, projection_revision: props.projectionRevision };
+    let scope = 'only_this';
+    let reconcile = false;
+    let updatedSession;
+    calendarWrites.add(id);
+    try {
+        const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
+        if (recurring === null) {
+            info?.revert?.();
+            alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
             return;
         }
-        scope = choice;
-    }
-
-    let updatedSession = null;
-    try {
-        updatedSession = await api.put(
-            `/sessions/${encodeURIComponent(event.id)}?scope=${encodeURIComponent(scope)}`,
-            payload
-        );
+        if (recurring) {
+            scope = typeof showRecurringResizeScopePrompt === 'function' ? await showRecurringResizeScopePrompt() : 'only_this';
+            if (!scope) { info?.revert?.(); return; }
+        }
+        updatedSession = typed ? await api.saveScheduledSession(target, payload, scope)
+            : await api.put(`/sessions/${encodeURIComponent(id)}?scope=${encodeURIComponent(scope)}`, payload);
     } catch (err) {
-        console.error("Failed to update session:", err);
-        if (info && typeof info.revert === 'function') info.revert();
+        info?.revert?.();
+        if (typed) {
+            const uncertain = !err.status || err.status >= 500;
+            reconcile = uncertain || err.status === 409;
+            if (reconcile) calendarNeedsReview.add(id);
+            alert(uncertain ? 'Move or resize not confirmed. Review the refreshed calendar before trying anything else.'
+                : err.status === 409 ? 'Schedule changed. Review the refreshed calendar before editing again.' : err.message);
+        } else console.error('Failed to update session:', err);
+    } finally {
+        calendarWrites.delete(id);
+    }
+    if (!updatedSession) {
+        if (reconcile) await refreshSessionDisplay();
         return;
     }
-
-    // Commit the returned identity before fallible range reads or a second user gesture.
-    rememberSavedSession(updatedSession, event.id, event);
-    if (wasVirtual || scope === 'all_future') {
-        await refreshSessionDisplay();
-    } else {
+    rememberSavedSession(updatedSession, id, event);
+    if (typed || wasVirtual || scope === 'all_future') await refreshSessionDisplay();
+    else {
         try {
             if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         } catch (err) {
@@ -238,44 +257,56 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     const generation = taskKnowledge.state().generation;
+    const version = ++calendarReadVersion;
+    const current = () => generation === taskKnowledge.state().generation && version === calendarReadVersion;
+    const query = `start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`;
     try {
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
-        const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
-        const current = generation === taskKnowledge.state().generation;
-        if (current) allSessions = res || [];
-        // Settle superseded FullCalendar requests with the last-known display, not old rows.
-
-        const visibleForCalendar = typeof sessionMatchesBreakdownFilter === 'function'
-            ? allSessions.filter(sessionMatchesBreakdownFilter)
-            : allSessions;
-
-        const events = visibleForCalendar.map((s, idx) => formatCalEventFromSession(s, idx));
-        successCallback(events);
-        if (!current) return;
+        const [legacy, planning] = await Promise.all([api.get(`/sessions?${query}`), api.get(`/agenda?${query}`)]);
+        if (!Array.isArray(legacy) || !Array.isArray(planning?.items)) throw new Error('Invalid calendar range response');
+        if (current()) {
+            allSessions = legacy;
+            calendarPlanningRows = planning.items.filter(row => row.kind === 'scheduled_session');
+            calendarRecordedRows = new Map(planning.items.filter(row => row.kind === 'recorded_work').map(row => [row.id, row]));
+            calendarNeedsReview.clear();
+        }
+        const rows = calendarSessionRows();
+        const visible = typeof sessionMatchesBreakdownFilter === 'function' ? rows.filter(sessionMatchesBreakdownFilter) : rows;
+        successCallback(visible.map(formatCalEventFromSession));
+        if (!current()) return;
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
         taskKnowledge.viewResult('calendar', true);
     } catch (err) {
-        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('calendar', false);
+        if (current()) taskKnowledge.viewResult('calendar', false);
         failureCallback(err);
     }
 }
 
+function forgetCalendarPlanningRow(id) {
+    calendarPlanningRows = calendarPlanningRows.filter(row => row.id !== id);
+}
+
 function rememberSavedSession(savedSession, previousId, event = null) {
     if (!savedSession) return;
+    const typed = savedSession.kind === 'scheduled_session';
     if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-        const idx = allSessions.findIndex(s => String(s.id) === String(previousId));
-        if (idx !== -1) allSessions[idx] = savedSession;
-        else allSessions.push(savedSession);
+        if (typed && String(previousId).startsWith('virt:')) {
+            allSessions = allSessions.filter(row => row.id !== previousId);
+        }
+        const rows = typed ? calendarPlanningRows : allSessions;
+        const idx = rows.findIndex(s => String(s.id) === String(previousId));
+        if (idx !== -1) rows[idx] = savedSession;
+        else rows.push(savedSession);
     }
     taskKnowledge.invalidate();
-    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) {
-        event = calendar.getEventById(String(previousId));
-    }
-    if (event && String(event.id) !== String(savedSession.id)) {
-        event.setProp?.('id', String(savedSession.id));
-        event.setExtendedProp?.('isVirtual', false);
-        event.setProp?.('classNames', []);
+    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) event = calendar.getEventById(String(previousId));
+    if (event) {
+        const formatted = formatCalEventFromSession(savedSession, 0);
+        if (String(event.id) !== formatted.id) event.setProp?.('id', formatted.id);
+        for (const [key, value] of Object.entries(formatted.extendedProps)) event.setExtendedProp?.(key, value);
+        event.setProp?.('classNames', formatted.classNames);
+        if (typed && savedSession.start_time && savedSession.end_time) event.setDates?.(savedSession.start_time, savedSession.end_time);
     }
 }
 

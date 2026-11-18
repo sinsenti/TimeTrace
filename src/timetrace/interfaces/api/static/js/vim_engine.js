@@ -23,11 +23,12 @@ function initVimCursor() {
 }
 
 function getSessionUnderCursor() {
-    if (!cursorStart || typeof allSessions === 'undefined' || !allSessions || allSessions.length === 0) {
+    if (!cursorStart || typeof allSessions === 'undefined' || !allSessions) {
         return null;
     }
     const cursorMs = cursorStart.getTime();
-    return allSessions.find(s => {
+    const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows() : allSessions;
+    return rows.find(s => {
         const sStart = new Date(s.start_time).getTime();
         const sEnd = s.end_time ? new Date(s.end_time).getTime() : (sStart + VIM_STEP_MS);
         return cursorMs >= sStart && cursorMs < sEnd;
@@ -56,7 +57,7 @@ function handleOpenSessionAfter() {
     }
     end = new Date(start.getTime() + VIM_STEP_MS);
     if (typeof openCreateSessionModal === 'function') {
-        openCreateSessionModal(start, end);
+        openCreateSessionModal(start, end, null, "", "calendar");
     }
 }
 
@@ -70,7 +71,7 @@ function handleOpenSessionBefore() {
     }
     start = new Date(end.getTime() - VIM_STEP_MS);
     if (typeof openCreateSessionModal === 'function') {
-        openCreateSessionModal(start, end);
+        openCreateSessionModal(start, end, null, "", "calendar");
     }
 }
 
@@ -221,7 +222,7 @@ function setupVimKeyboardListeners() {
                 e.preventDefault();
                 const selectedRange = getActiveSelectionRange();
                 if (selectedRange) {
-                    openCreateSessionModal(selectedRange.start, selectedRange.end);
+                    openCreateSessionModal(selectedRange.start, selectedRange.end, null, "", "calendar");
                 }
                 break;
 

@@ -939,6 +939,9 @@ def test_typed_all_future_resize_captures_before_changing_series_duration(client
     )
     assert response.status_code == 200, response.text
     plan = response.json()
+    assert plan["series_task_id"] == task.id
+    assert datetime.fromisoformat(plan["occurrence_start"]) == anchor
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
     assert plan["original_end"] == old["end_time"]
     assert plan["duration_seconds"] == 3600
     assert client.get(next_path).json()["duration_seconds"] == 3600
@@ -961,6 +964,8 @@ def test_typed_all_future_resize_captures_before_changing_series_duration(client
         },
     )
     assert response.status_code == 200, response.text
+    assert response.json()["series_task_id"] == task.id
+    assert response.json()["occurrence_start"] == plan["occurrence_start"]
     assert response.json()["original_end"] == old["end_time"]
     assert client.get(next_path).json()["duration_seconds"] == 5400
 

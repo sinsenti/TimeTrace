@@ -517,10 +517,12 @@ function cancelInspectorTaskProperties() {
 
 // Detail-page adapters for the existing shared Session controller. No Calendar instance is needed.
 function rememberDetailSavedSession(savedSession, previousId) {
+    if (!savedSession) return;
+    taskKnowledge.invalidate();
+    if (savedSession.kind === 'scheduled_session') return;
     const index = detailRecordedSessions.findIndex(session => session.id === previousId);
     if (index >= 0) detailRecordedSessions[index] = savedSession;
     else detailRecordedSessions.push(savedSession);
-    taskKnowledge.invalidate();
 }
 async function refreshDetailSessionDisplay() {
     await taskKnowledge.refresh();
@@ -538,7 +540,7 @@ function scheduleInspectorSession() {
     if (!currentTreeData) return;
     const start = new Date();
     const minutes = currentTreeData.estimated_minutes > 0 ? currentTreeData.estimated_minutes : 30;
-    openCreateSessionModal(start, new Date(start.getTime() + minutes * 60000), currentTreeData.id, currentTreeData.title);
+    openCreateSessionModal(start, new Date(start.getTime() + minutes * 60000), currentTreeData.id, currentTreeData.title, "schedule");
 }
 async function quickEditInspectorTask(taskId) {
     // Force an authoritative snapshot before the shared editor, not a last-known fallback.

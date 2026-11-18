@@ -53,6 +53,12 @@ class SessionService:
         return self._recurrence
 
     def create_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
+        response = self.stage_scheduled_session(req)
+        self.db.commit()
+        return response
+
+    def stage_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
+        """Insert in the caller's transaction; an attached new task must already be flushed."""
         start, end = self._scheduled_interval(req.start_time, req.end_time)
         columns = ("id", "task_id", "start_time", "end_time", "original_start", "original_end", "tags", "notes")
         values = (generate_uuid7(), req.task_id, start, end, start, end, req.tags, req.notes)
@@ -64,17 +70,16 @@ class SessionService:
         plan = self.db.scalars(statement).one_or_none()
         if plan is None:
             raise EntityNotFoundError("Task", req.task_id)
-        response = self._read_scheduled_session(plan)
-        self.db.commit()
-        return response
+        return self._read_scheduled_session(plan)
 
     def get_scheduled_session(self, plan_id: str) -> ScheduledSessionRead | AgendaProjectedPlanRead:
         if is_occurrence_id(plan_id):
             return self._read_projected_plan(self.recurrence.projected_occurrence(plan_id, planning=True))
-        plan = self.db.get(ScheduledSession, plan_id)
-        if plan is None:
+        result = self.db.exec(self._plans_with_series().where(ScheduledSession.id == plan_id)).one_or_none()
+        if result is None:
             raise EntityNotFoundError("Scheduled session", plan_id)
-        return self._read_scheduled_session(plan)
+        plan, exception = result
+        return self._read_scheduled_session(plan, exception)
 
     def update_scheduled_session(
         self, plan_id: str, req: ScheduledSessionUpdate | ScheduledOccurrenceUpdate, scope: str = "only_this"
@@ -128,7 +133,7 @@ class SessionService:
             if self.db.get(ScheduledSession, plan_id) is None:
                 raise EntityNotFoundError("Scheduled session", plan_id)
             raise self._stale_plan()
-        response = self._read_scheduled_session(plan)
+        response = self._read_scheduled_session(plan, self.recurrence.exception_for_plan(plan_id))
         self.db.commit()
         return response
 
@@ -154,21 +159,20 @@ class SessionService:
             )
             self.db.add(plan)
             self.db.flush()
-            self.db.add(
-                RecurrenceException(
-                    task_id=occurrence.task_id,
-                    occurrence_start=occurrence.start_utc,
-                    kind="override",
-                    scheduled_session_id=plan.id,
-                )
+            exception = RecurrenceException(
+                task_id=occurrence.task_id,
+                occurrence_start=occurrence.start_utc,
+                kind="override",
+                scheduled_session_id=plan.id,
             )
+            self.db.add(exception)
             if resize_series:
                 if start != occurrence.start_utc:
                     raise ValidationError("scope 'all_future' only changes the occurrence length.")
                 self.recurrence.set_series_duration(
                     occurrence.task_id, self._series_minutes(start, end), exclude_plan_id=plan.id
                 )
-            response = self._read_scheduled_session(plan)
+            response = self._read_scheduled_session(plan, exception)
             self.db.commit()
         except IntegrityError:
             self.db.rollback()
@@ -213,7 +217,9 @@ class SessionService:
         return start, end
 
     @staticmethod
-    def _read_scheduled_session(plan: ScheduledSession) -> ScheduledSessionRead:
+    def _read_scheduled_session(
+        plan: ScheduledSession, exception: RecurrenceException | None = None
+    ) -> ScheduledSessionRead:
         return ScheduledSessionRead(
             id=plan.id,
             task_id=plan.task_id,
@@ -225,6 +231,8 @@ class SessionService:
             tags=plan.tags,
             notes=plan.notes,
             revision=plan.revision,
+            series_task_id=exception.task_id if exception else None,
+            occurrence_start=ensure_utc(exception.occurrence_start) if exception else None,
         )
 
     @staticmethod
@@ -244,11 +252,17 @@ class SessionService:
         with sqlite_read_snapshot(self.db) as reader:
             return SessionService(reader)._planning_plans(start, end)
 
+    @staticmethod
+    def _plans_with_series():
+        return select(ScheduledSession, RecurrenceException).outerjoin(
+            RecurrenceException, RecurrenceException.scheduled_session_id == ScheduledSession.id
+        )
+
     def _planning_plans(self, start: datetime, end: datetime) -> list[ScheduledSessionRead | AgendaProjectedPlanRead]:
         items = [
-            self._read_scheduled_session(plan)
-            for plan in self.db.exec(
-                select(ScheduledSession).where(ScheduledSession.start_time < end, ScheduledSession.end_time > start)
+            self._read_scheduled_session(plan, exception)
+            for plan, exception in self.db.exec(
+                self._plans_with_series().where(ScheduledSession.start_time < end, ScheduledSession.end_time > start)
             )
         ]
         items.extend(
