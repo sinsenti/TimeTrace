@@ -599,8 +599,10 @@ Task accounting adds only future-starting plans to scheduled time. Completion ke
 own/subtree choices and refuses a clear affecting a protected plan before changing either scope.
 Completion clear reconciles only selected exact legacy anchors and leaves skips, rather than
 resurrecting projections. Old series-delete scopes refuse a typed target rather than erasing its
-exception or partially truncating its series. Delete following uses the selected canonical tick's
-original rule wall time at a DST gap, not the wall time obtained by converting that instant back.
+exception or partially truncating its series. Delete following uses canonical UTC membership to
+choose a local rule cutoff, coalescing duplicate ticks. If no single local `UNTIL` can keep all
+prior instants while removing the selected and later ones (or the bounded cutoff check is exceeded),
+the operation refuses with `409 utc_scope_unrepresentable` before changing the rule or exceptions.
 The report-only `timetrace recurrence audit` lists uncertain legacy candidates only. `--delete`
 rechecks the exact confirmed rows under the writer lock before writing its JSON backup and deleting;
 a changed target aborts the full selection. Task deletion still detaches plans and history and removes the deleted
@@ -613,25 +615,37 @@ intervals are always separate; projected originals are provisional until saved. 
 history and explicit recorded work are labeled separately. Only plan endpoints are editable after
 create. No recording, fill metrics, Start-from-plan, or destructive plan actions are available.
 
-Calendar keeps its existing layout and legacy start-window totals. The display uses one `/agenda`
-snapshot: legacy/work rows are start-window filtered and typed plans overlap, including exactly one
-projection per anchor. The old `/sessions` range read is kept separate for legacy totals. Calendar ranges default to **Scheduled session** with an
+Calendar keeps its existing layout and legacy start-window totals. It requests
+`/agenda?legacy_cohort=start&start=…&end=…` for a single display snapshot: legacy/work rows use
+start-in-window (including zero-length imports), while typed plans overlap, including one projection
+per anchor. Default `/agenda` still uses overlap. The old `/sessions` range read stays separate for
+legacy totals. Calendar ranges default to **Scheduled session** with an
 explicit legacy choice; Tasks/Details **Schedule** and external task drops create plans. Legacy
 history edits still use `/sessions`. A captured plan's typed response includes `series_task_id` and
 `occurrence_start` for Calendar resize scope; ordinary plans omit them. Legacy virtual deletion keeps
 its server-guarded scopes, but saved plan deletion is unavailable. Acknowledgements replace the draft
 or event identity and revision before refresh; retries of failed display reads do not repeat writes.
 A stale Calendar gesture retains the attempted interval separately from the saved event. Read the
-latest state and explicitly discard the attempt before making another gesture. An unconfirmed
+latest state and explicitly discard the attempt before making another gesture. The review follows
+the original series anchor across capture; the read-only `/agenda/occurrences/{virt_id}` resolves
+its exact current occupant, even when moved out of view. An unconfirmed
 Schedule create stays blocked across modal reopenings or task drops on the same page. Check the
 relevant interval with a read, explicitly allow a new plan, then use a new gesture; neither action
-replays the original write. These guards are page-local, not cross-tab receipts.
+replays the original write. A task drop held on metadata across recovery must start with a new
+gesture. These guards are page-local, not cross-tab receipts.
 
 Hourly quick-add titles on task POST/PUT stage a plan in the task transaction; day offsets remain
 assigned dates. Legacy AI approvals refuse title scheduling before task/plan writes, while snapshot
 restores still bypass title parsing. Completion displays protected plans without trimming the
 requested own/subtree scope and retains the server's atomic refusal. See the
 [shared contract](agenda-contract.md) for downstream capabilities.
+
+Singular timer Start validates its task while holding the SQLite writer lock; Split and Stop hold
+that lock from context consumption through history commit. This orders Timer and legacy AI deletion
+within the daemon. Freeze/toggle and idle resolution also serialize with timer mutations in the
+process; the existing pre-idle and resolution commits retain their historical failure behavior.
+This does not make SQLite and the timer JSON crash-atomic or change ordinary human task-deletion
+behavior for live timer context. Legacy mutations still create uncertain history, not typed work.
 
 ## Migration verification
 

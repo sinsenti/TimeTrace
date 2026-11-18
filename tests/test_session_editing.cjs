@@ -581,3 +581,71 @@ test('same-page task metadata refresh retitles the Folio inspector without repla
     assert.equal(end.value, '2099-01-04T11:15');
     assert.equal(p.context.document.activeElement, end);
 });
+
+for (const kind of ['scheduled_session', 'legacy_uncertain']) {
+    test(`Calendar review follows a captured projection into its ${kind} successor without unlocking`, async () => {
+        const anchor = '2099-01-04T09:00:00Z';
+        const virtual = 'virt:series:20990104T090000Z';
+        const latest = { id: 'successor', kind, revision: 2, series_task_id: 'series', occurrence_start: anchor,
+            start_time: '2099-01-04T11:00:00Z', end_time: '2099-01-04T12:00:00Z' };
+        const p = sessionPage(async (url, options) => {
+            if (url.startsWith('/agenda?')) return { items: [latest] };
+            if (url === `/agenda/occurrences/${encodeURIComponent(virtual)}`) return latest;
+            if (options.method === 'GET') return [];
+            if (url.includes('successor')) return kind === 'scheduled_session' ? latest : { ...latest, kind: undefined };
+            return new Response(JSON.stringify({ detail: 'Projection changed' }), { status: 409 });
+        });
+        const panel = p.element('calendar_schedule_reviews');
+        p.context.event = { id: virtual, start: new Date('2099-01-04T10:00Z'), end: new Date('2099-01-04T10:30Z'),
+            extendedProps: { kind: 'scheduled_session', isVirtual: true, seriesTaskId: 'series', occurrenceStart: anchor } };
+        await p.run('handleCalendarEventUpdate(event)');
+        p.context.onEvents = events => { p.context.event = { ...events[0], start: new Date(events[0].start), end: new Date(events[0].end) }; };
+        await p.run('fetchCalendarEvents({start:new Date("2099-01-04Z"),end:new Date("2099-01-05Z")}, onEvents, () => {})');
+        await p.run('handleCalendarEventUpdate(event)');
+        assert.equal(p.writes.length, 1);
+        await panel.children.at(-1).children[1].click();
+        const review = panel.children.at(-1);
+        assert.match(review.children[0].textContent, /Latest saved/);
+        await review.children[2].click();
+        assert.equal(p.writes.length, 1, 'review is not another write');
+        await p.run('handleCalendarEventUpdate(event)');
+        assert.match(p.writes[1].url, /\/(scheduled-sessions|sessions)\/successor\?/);
+    });
+}
+
+test('Calendar invalidates a held drop across create recovery and rejects latched drops before metadata', async () => {
+    const held = deferred(), requested = deferred();
+    let metadataReads = 0, committed;
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') {
+            metadataReads++;
+            requested.resolve();
+            return held.promise;
+        }
+        if (url.startsWith('/agenda?')) return { items: [committed] };
+        if (options.method === 'GET') return [];
+        if (url.startsWith('/api/tasks/')) return {};
+        committed = { ...JSON.parse(options.body), id: 'saved-plan', kind: 'scheduled_session', revision: 1 };
+        if (p.writes.filter(w => w.method === 'POST').length === 1) throw Error('lost response');
+        return committed;
+    });
+    p.element('schedule_create_recovery');
+    p.element('schedule_create_recovery_status');
+    const inspect = p.element('schedule_create_inspect');
+    const allow = p.element('schedule_create_new_intent');
+    p.load('dashboard.js');
+    p.context.drop = { event: { start: new Date('2099-01-04T09:00Z'), extendedProps: { taskId: 'linked' }, remove() {} } };
+    const old = p.run('scheduleCalendarDrop(drop)');
+    await requested.promise;
+    p.run('openCreateSessionModal(new Date("2099-01-04T09:00Z"), new Date("2099-01-04T10:00Z"), null, "", "schedule")');
+    await p.run('saveSessionFromModal()');
+    const latched = p.run('scheduleCalendarDrop(drop)');
+    await inspect.onclick();
+    allow.onclick();
+    held.resolve([{ id: 'linked', title: 'Linked', status: 'Ongoing' }]);
+    await Promise.all([old, latched]);
+    assert.equal(metadataReads, 1);
+    assert.equal(p.writes.filter(w => w.method === 'POST').length, 1);
+    await p.run('scheduleCalendarDrop(drop)');
+    assert.equal(p.writes.filter(w => w.method === 'POST').length, 2);
+});

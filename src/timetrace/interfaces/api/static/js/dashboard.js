@@ -26,6 +26,8 @@ async function scheduleCalendarDrop(info) {
     // FullCalendar's external event is provisional, not a saved row.
     const { title, start, extendedProps = {} } = info.event;
     info.event.remove();
+    const intent = scheduleCreateIntent();
+    if (intent === null) return;
     const taskId = extendedProps.taskId || null;
     const targetTask = await resolveCalendarDropTask(taskId, title);
     const estimate = Number(extendedProps.estimatedMinutes) || 15;
@@ -39,7 +41,7 @@ async function scheduleCalendarDrop(info) {
     };
     let saved;
     try {
-        saved = await createScheduledSessionFromEditor(payload);
+        saved = await createScheduledSessionFromEditor(payload, intent);
     } catch (err) {
         if (!err.scheduleRecovery) alert(`Could not schedule task: ${err.message}`);
         return;

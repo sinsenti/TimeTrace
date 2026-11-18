@@ -194,8 +194,19 @@ let calendarReadVersion = 0;
 const calendarWrites = new Set();
 const calendarNeedsReview = new Map();
 
-function calendarScheduleNeedsReview(id) {
-    return calendarNeedsReview.has(id);
+function calendarOccurrenceId(id, seriesTaskId, occurrenceStart) {
+    if (id?.startsWith('virt:')) return id;
+    // Date rounds to milliseconds; reject fractional anchor text before converting.
+    if (!seriesTaskId || !occurrenceStart || /\.\d*[1-9]\d*(?:Z|[+-]\d\d:\d\d)$/.test(occurrenceStart)) return null;
+    const stamp = new Date(occurrenceStart).toISOString();
+    return `virt:${seriesTaskId}:${stamp.replace(/[-:]/g, '').replace('.000Z', 'Z')}`;
+}
+
+function calendarScheduleNeedsReview(row) {
+    if (!row) return false;
+    const occurrence = calendarOccurrenceId(row.id, row.series_task_id, row.occurrence_start);
+    return calendarNeedsReview.has(occurrence || row.id) ||
+        [...calendarNeedsReview.values()].some(attempt => attempt.latest?.id === row.id);
 }
 
 function renderCalendarScheduleReviews() {
@@ -204,7 +215,7 @@ function renderCalendarScheduleReviews() {
     const focused = document.activeElement?.dataset?.reviewKey;
     root.textContent = '';
     const interval = row => `${new Date(row.start_time).toLocaleString()} — ${new Date(row.end_time).toLocaleString()}`;
-    for (const [id, attempt] of calendarNeedsReview) {
+    for (const [key, attempt] of calendarNeedsReview) {
         const panel = document.createElement('section');
         const notice = document.createElement('p');
         notice.setAttribute('role', 'status');
@@ -217,7 +228,7 @@ function renderCalendarScheduleReviews() {
             control.type = 'button';
             control.className = 'underline mr-3';
             control.textContent = label;
-            control.dataset.reviewKey = `${id}:${key}`;
+            control.dataset.reviewKey = `${attempt.id}:${key}`;
             control.addEventListener('click', click);
             panel.appendChild(control);
             return control;
@@ -226,8 +237,12 @@ function renderCalendarScheduleReviews() {
             if (attempt.reading) return;
             attempt.reading = true;
             try {
-                const latest = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
-                if (latest?.id !== id || latest.kind !== 'scheduled_session') throw Error('Missing schedule');
+                const path = attempt.occurrence ? `/agenda/occurrences/${encodeURIComponent(attempt.occurrence)}`
+                    : `/scheduled-sessions/${encodeURIComponent(attempt.id)}`;
+                const latest = await api.get(path);
+                const latestKey = attempt.occurrence
+                    ? calendarOccurrenceId(latest?.id, latest?.series_task_id, latest?.occurrence_start) : latest?.id;
+                if (latestKey !== key) throw Error('Schedule identity mismatch');
                 attempt.latest = latest;
             } catch (err) {
                 attempt.latest = err.status === 404 ? null : undefined;
@@ -235,11 +250,11 @@ function renderCalendarScheduleReviews() {
             } finally {
                 attempt.reading = false;
             }
-            if (calendarNeedsReview.get(id) === attempt) renderCalendarScheduleReviews();
+            if (calendarNeedsReview.get(key) === attempt) renderCalendarScheduleReviews();
         });
         const done = attempt.latest !== undefined && button('done', 'Reviewed — discard attempt', () => {
-            if (attempt.reading || calendarNeedsReview.get(id) !== attempt) return;
-            calendarNeedsReview.delete(id);
+            if (attempt.reading || calendarNeedsReview.get(key) !== attempt) return;
+            calendarNeedsReview.delete(key);
             renderCalendarScheduleReviews();
             const region = document.getElementById('calendar');
             if (document.activeElement === document.body && region) {
@@ -262,7 +277,10 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
     const id = event.id;
     const props = event.extendedProps || {};
     const typed = props.kind === 'scheduled_session';
-    if (calendarWrites.has(id) || calendarNeedsReview.has(id) || props.kind === 'recorded_work') {
+    const occurrence = calendarOccurrenceId(id, props.seriesTaskId, props.occurrenceStart);
+    const key = occurrence || id;
+    if (calendarWrites.has(key) || calendarScheduleNeedsReview({ id, series_task_id: props.seriesTaskId,
+        occurrence_start: props.occurrenceStart }) || props.kind === 'recorded_work') {
         info?.revert?.();
         return;
     }
@@ -272,7 +290,7 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
     let scope = 'only_this';
     let reconcile = false;
     let updatedSession;
-    calendarWrites.add(id);
+    calendarWrites.add(key);
     try {
         const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
         if (recurring === null) {
@@ -292,12 +310,12 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
             const uncertain = !err.status || err.status >= 500;
             reconcile = uncertain || err.status === 409;
             if (reconcile) {
-                calendarNeedsReview.set(id, { title: event.title || 'Scheduled session', payload, uncertain });
+                calendarNeedsReview.set(key, { id, occurrence, title: event.title || 'Scheduled session', payload, uncertain });
                 renderCalendarScheduleReviews();
             } else alert(err.message);
         } else console.error('Failed to update session:', err);
     } finally {
-        calendarWrites.delete(id);
+        calendarWrites.delete(key);
     }
     if (!updatedSession) {
         if (reconcile) await refreshSessionDisplay();
@@ -321,7 +339,7 @@ async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) 
     const query = `start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`;
     try {
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
-        const [legacy, planning] = await Promise.allSettled([api.get(`/sessions?${query}`), api.get(`/agenda?${query}`)]);
+        const [legacy, planning] = await Promise.allSettled([api.get(`/sessions?${query}`), api.get(`/agenda?${query}&legacy_cohort=start`)]);
         if (current() && Array.isArray(legacy.value)) allSessions = legacy.value;
         if (!Array.isArray(planning.value?.items)) throw planning.reason || new Error('Invalid calendar range response');
         if (current()) {

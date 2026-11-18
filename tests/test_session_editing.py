@@ -333,3 +333,61 @@ def test_folio_route_and_daily_feed_reload_same_length_move(client):
     ]
     assert client.put(f"/scheduled-sessions/{plan['id']}", json=move).status_code == 409
     assert client.get("/sessions").json() == []
+
+
+@pytest.mark.parametrize("materialization", ["typed", "legacy"])
+def test_calendar_snapshot_and_point_read_preserve_occurrence_identity(client, materialization):
+    start = (datetime.now(UTC) + timedelta(days=3)).replace(microsecond=0)
+    task_id = client.post(
+        "/api/tasks",
+        json={
+            "title": "Series",
+            "is_recurring": True,
+            "recurrence_timezone": "UTC",
+            "recurrence_dtstart": start.isoformat(),
+            "recurrence_duration_minutes": 30,
+        },
+    ).json()["id"]
+    params = {"start": start.isoformat(), "end": (start + timedelta(hours=4)).isoformat()}
+    (projected,) = client.get("/agenda", params=params).json()["items"]
+    update = {
+        "start_time": (start + timedelta(hours=1)).isoformat(),
+        "end_time": (start + timedelta(hours=2)).isoformat(),
+    }
+    if materialization == "typed":
+        update["expected_projection_revision"] = projected["projection_revision"]
+    prefix = "/scheduled-sessions" if materialization == "typed" else "/sessions"
+    saved = client.put(f"{prefix}/{projected['id']}", json=update).json()
+    (shown,) = client.get("/agenda", params={**params, "legacy_cohort": "start"}).json()["items"]
+    assert (shown["id"], shown["series_task_id"], shown["occurrence_start"]) == (
+        saved["id"],
+        task_id,
+        projected["occurrence_start"],
+    )
+    latest = client.get(f"/agenda/occurrences/{projected['id']}")
+    assert latest.status_code == 200 and latest.json() == shown
+    if materialization == "legacy":
+        assert "occurrence_start" not in client.get(f"/sessions/{saved['id']}").json()
+
+
+def test_calendar_start_cohort_keeps_zero_length_markdown_row_at_view_boundary(client):
+    start = datetime(2001, 1, 4, tzinfo=UTC)
+    imported = client.post(
+        "/markdown/import",
+        content="---\ndate: 2001-01-04\n---\n# Logged Sessions\n- [00:00 - 00:00] | #zero | Boundary\n",
+        headers={"Content-Type": "text/plain"},
+    )
+    assert imported.status_code == 201 and imported.json()["imported_sessions"] == 1, imported.text
+    plan = client.post(
+        "/scheduled-sessions",
+        json={
+            "start_time": (start - timedelta(hours=1)).isoformat(),
+            "end_time": (start + timedelta(hours=1)).isoformat(),
+        },
+    ).json()
+    params = {"start": start.isoformat(), "end": (start + timedelta(hours=2)).isoformat()}
+    (legacy,) = client.get("/sessions", params=params).json()
+    assert legacy["duration_seconds"] == 0
+    assert client.get("/agenda", params=params).json()["items"] == [plan]
+    calendar = client.get("/agenda", params={**params, "legacy_cohort": "start"}).json()
+    assert [item["id"] for item in calendar["items"]] == [plan["id"], legacy["id"]]

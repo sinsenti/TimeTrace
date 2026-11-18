@@ -236,6 +236,9 @@ class AgendaLegacyRead(LegacySessionRead):
     is_virtual: Literal[False] = False
     revision: int
 
+    series_task_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    occurrence_start: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
+
 
 class AgendaRecordedWorkRead(AgendaLegacyRead):
     kind: Literal["recorded_work"] = "recorded_work"

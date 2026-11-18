@@ -1,10 +1,12 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session as DBSession
 
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
+    AgendaLegacyRead,
     AgendaProjectedPlanRead,
     AgendaRead,
     LegacySessionRead,
@@ -25,8 +27,21 @@ router = APIRouter(prefix="", tags=["Sessions"])
 
 
 @router.get("/agenda", response_model=AgendaRead)
-def list_agenda(start: datetime, end: datetime, db: DBSession = Depends(get_session)):
-    return SessionService(db).list_agenda(start, end)
+def list_agenda(
+    start: datetime,
+    end: datetime,
+    legacy_cohort: Literal["overlap", "start"] = "overlap",
+    db: DBSession = Depends(get_session),
+):
+    return SessionService(db).list_agenda(start, end, legacy_start_cohort=legacy_cohort == "start")
+
+
+@router.get(
+    "/agenda/occurrences/{occurrence_id}",
+    response_model=ScheduledSessionRead | AgendaProjectedPlanRead | AgendaLegacyRead,
+)
+def get_agenda_occurrence(occurrence_id: str, db: DBSession = Depends(get_session)):
+    return SessionService(db).get_agenda_occurrence(occurrence_id)
 
 
 @router.post("/scheduled-sessions", response_model=ScheduledSessionRead, status_code=status.HTTP_201_CREATED)

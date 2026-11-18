@@ -27,7 +27,7 @@ from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 
-from timetrace.core.exceptions import ValidationError
+from timetrace.core.exceptions import ConflictError, ValidationError
 from timetrace.core.timezones import from_local_naive, resolve_timezone, to_local_naive
 
 MAX_OCCURRENCES_PER_SERIES = 500  # hard cap per expand() call; truncates rather than hanging
@@ -313,9 +313,40 @@ def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime
     return (start for start, _ in _canonical_starts(spec, lower, upper))
 
 
-def occurrence_wall_start(spec: RecurrenceSpec, start_utc: datetime) -> datetime | None:
-    """Return the original rule tick, not a round-trip conversion across a DST gap."""
-    return next((wall for _, wall in _canonical_starts(spec, start_utc, start_utc)), None)
+def following_until(spec: RecurrenceSpec, anchor: datetime) -> datetime | None:
+    """Find a wall UNTIL that separates canonical UTC starts, or None if there are no later starts."""
+    day = timedelta(days=1)
+    lower = anchor - min(day, anchor - datetime.min)
+    upper = anchor + min(day, datetime.max - anchor)
+    tz = resolve_timezone(spec.timezone_name)
+    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
+    earliest_wall: dict[datetime, datetime] = {}
+    later_wall = None
+    for index, wall in enumerate(rule.xafter(lower, inc=True)):
+        if wall > upper:
+            # UTC offsets are less than a day; this tick and all later wall times
+            # cannot precede the cutoff. No need to expand the rest of the series.
+            later_wall = wall
+            break
+        if index == MAX_OCCURRENCES_PER_SERIES:
+            raise ConflictError(
+                "Too many local rule ticks to verify this UTC cutoff.", code="utc_scope_unrepresentable"
+            )
+        try:
+            start = from_local_naive(wall, tz)
+        except OverflowError:
+            continue
+        earliest_wall.setdefault(start, wall)
+    # Duplicate gap ticks share a canonical ID. Keeping any earlier representation is enough.
+    first_removed = min((wall for start, wall in earliest_wall.items() if start >= anchor), default=later_wall)
+    if first_removed is None:
+        return None
+    if any(wall >= first_removed for start, wall in earliest_wall.items() if start < anchor):
+        raise ConflictError(
+            "Delete following cannot preserve earlier UTC occurrences with this local rule. Use Only this instead.",
+            code="utc_scope_unrepresentable",
+        )
+    return first_removed - timedelta(seconds=1)
 
 
 def occurrence_at(spec: RecurrenceSpec, start_utc: datetime, task_id: str) -> Occurrence | None:

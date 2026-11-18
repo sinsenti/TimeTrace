@@ -168,6 +168,7 @@ const sessionModalDraftFields = 'input:not(#edit_session_id), select, textarea';
 
 // Shared by explicit Schedule dialogs and Calendar's external task drops, not owned by a popup.
 let scheduleCreatePending = false;
+let scheduleCreateGeneration = 0;
 let unconfirmedScheduleCreate = null;
 
 function renderScheduleCreateRecovery() {
@@ -209,22 +210,31 @@ function renderScheduleCreateRecovery() {
     allow.onclick = () => {
         if (attempt !== unconfirmedScheduleCreate || !attempt.inspected || attempt.reading) return;
         unconfirmedScheduleCreate = null;
+        scheduleCreateGeneration++;
         renderScheduleCreateRecovery();
         const active = document.activeElement;
         if (panel.contains?.(active) || active === document.body) document.getElementById('session_modal_save_btn')?.focus();
     };
 }
 
-async function createScheduledSessionFromEditor(payload) {
+function scheduleCreateIntent() {
+    return unconfirmedScheduleCreate || scheduleCreatePending ? null : scheduleCreateGeneration;
+}
+
+async function createScheduledSessionFromEditor(payload, intent = scheduleCreateGeneration) {
     if (unconfirmedScheduleCreate || scheduleCreatePending) {
         throw Object.assign(new Error(unconfirmedScheduleCreate ? 'Close this editor and check Schedule creation recovery before starting another plan.'
             : 'Another Schedule creation is still pending.'), { scheduleRecovery: true });
+    }
+    if (intent !== scheduleCreateGeneration) {
+        throw Object.assign(new Error('This drop predates schedule recovery. Start a new gesture.'), { scheduleRecovery: true });
     }
     scheduleCreatePending = true;
     try {
         return await api.saveScheduledSession(null, payload);
     } catch (err) {
         if (err.status && err.status < 500) throw err;
+        scheduleCreateGeneration++;
         unconfirmedScheduleCreate = { payload };
         renderScheduleCreateRecovery();
         throw Object.assign(new Error('Save not confirmed. Close this editor and check Schedule creation recovery before starting another plan.'), { scheduleRecovery: true });
@@ -503,7 +513,7 @@ async function saveSessionFromModal() {
     const owner = sessionModalOwner;
     if (!owner || owner.pending || owner.blocked || document.getElementById('session_modal').classList.contains('hidden')) return;
     const typed = owner.intent === 'schedule';
-    if (typed && typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(owner.session?.id)) {
+    if (typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(owner.session)) {
         sessionModalFeedback('Review the previous attempt in Calendar before editing this entry again.');
         return;
     }

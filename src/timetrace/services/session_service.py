@@ -271,17 +271,65 @@ class SessionService:
         )
         return items
 
-    def list_agenda(self, start: datetime, end: datetime) -> AgendaRead:
+    def list_agenda(self, start: datetime, end: datetime, *, legacy_start_cohort: bool = False) -> AgendaRead:
         start, end = self._planning_bounds(start, end)
         measurement_at = datetime.now(UTC)
         with sqlite_read_snapshot(self.db) as reader:
             agenda = SessionService(reader)
             items = agenda._planning_plans(start, end)
-            for row in agenda._overlapping_session_rows(start, end):
-                read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
-                items.append(read_type.model_validate(row).model_copy(update=self._utc_session_times(row)))
+            if legacy_start_cohort:
+                # Calendar uses the legacy start-window predicate, including zero-length imports.
+                rows = reader.exec(
+                    select(SessionModel, RecurrenceException)
+                    .outerjoin(RecurrenceException, RecurrenceException.session_id == SessionModel.id)
+                    .where(SessionModel.start_time >= start, SessionModel.start_time < end)
+                    .order_by(RecurrenceException.id)
+                )
+                seen: set[str] = set()
+                for row, exception in rows:
+                    if row.id not in seen:
+                        items.append(agenda._read_agenda_session(row, exception))
+                        seen.add(row.id)
+            else:
+                items.extend(agenda._read_agenda_session(row) for row in agenda._overlapping_session_rows(start, end))
         items.sort(key=lambda item: (item.start_time, item.id))
         return AgendaRead(items=items, measurement_at=measurement_at)
+
+    def get_agenda_occurrence(
+        self, occurrence_id: str
+    ) -> ScheduledSessionRead | AgendaProjectedPlanRead | AgendaLegacyRead:
+        """Find the exact current occupant of a recurrence identity, not a same-time match."""
+        anchor = parse_occurrence_id(occurrence_id)
+        if anchor is None:
+            raise EntityNotFoundError("Occurrence", occurrence_id)
+        with sqlite_read_snapshot(self.db) as reader:
+            agenda = SessionService(reader)
+            exception = agenda.recurrence.get_exception(*anchor)
+            if exception is None:
+                return agenda.get_scheduled_session(occurrence_id)
+            if exception.scheduled_session_id:
+                plan = reader.get(ScheduledSession, exception.scheduled_session_id)
+                if plan is not None:
+                    return agenda._read_scheduled_session(plan, exception)
+            if exception.session_id:
+                row = reader.get(SessionModel, exception.session_id)
+                if row is not None and row.kind == "legacy_uncertain":
+                    return agenda._read_agenda_session(row, exception)
+            raise EntityNotFoundError("Occurrence", occurrence_id)
+
+    @classmethod
+    def _read_agenda_session(cls, row: SessionModel, exception: RecurrenceException | None = None) -> AgendaLegacyRead:
+        read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
+        update = cls._utc_session_times(row)
+        if exception and row.kind == "legacy_uncertain":
+            return read_type.model_validate(row).model_copy(
+                update={
+                    **update,
+                    "series_task_id": exception.task_id,
+                    "occurrence_start": ensure_utc(exception.occurrence_start),
+                }
+            )
+        return read_type.model_validate(row).model_copy(update=update)
 
     @staticmethod
     def _utc_session_times(row: SessionModel) -> dict[str, datetime | None]:
@@ -301,7 +349,8 @@ class SessionService:
             item["is_virtual"] = False
         return item
 
-    def create_session(self, req: SessionCreate) -> LegacySessionRead:
+    def legacy_create_candidate(self, req: SessionCreate) -> SessionModel:
+        """Normalize a legacy create without staging any database changes."""
         start_utc = ensure_utc(req.start_time)
         end_utc = ensure_utc(req.end_time)
 
@@ -315,7 +364,7 @@ class SessionService:
                 valid_task_id = None
 
         duration = int((end_utc - start_utc).total_seconds())
-        db_session = SessionModel(
+        return SessionModel(
             task_id=valid_task_id,
             start_time=start_utc.replace(tzinfo=None),
             end_time=end_utc.replace(tzinfo=None),
@@ -324,6 +373,9 @@ class SessionService:
             notes=req.notes or "",
             review_skipped=req.review_skipped,
         )
+
+    def create_session(self, req: SessionCreate) -> LegacySessionRead:
+        db_session = self.legacy_create_candidate(req)
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
@@ -485,29 +537,40 @@ class SessionService:
         if db_session is None:
             db_session = self.recurrence.materialize(session_id)
 
-        update_dict = req.model_dump(exclude_unset=True)
-        for key, val in update_dict.items():
-            if key in ("start_time", "end_time") and val is not None:
-                setattr(db_session, key, ensure_utc(val).replace(tzinfo=None))
-            elif key == "task_id" and val is not None:
-                if self.db.get(Task, val):
-                    db_session.task_id = val
-                else:
-                    db_session.task_id = None
-            else:
-                setattr(db_session, key, val)
-
-        if db_session.start_time and db_session.end_time:
-            st = ensure_utc(db_session.start_time)
-            et = ensure_utc(db_session.end_time)
-            if et <= st:
-                raise ValidationError("end_time must be strictly after start_time")
-            db_session.duration_seconds = max(0, int((et - st).total_seconds()))
+        candidate = self.legacy_update_candidate(db_session, req)
+        for field in (*req.model_fields_set, "duration_seconds"):
+            setattr(db_session, field, getattr(candidate, field))
 
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
         return self._read_legacy_session(db_session)
+
+    def legacy_update_candidate(self, row: SessionModel, req: SessionUpdate) -> SessionModel:
+        """Normalize an edit on a transient copy; leave the existing row and exception untouched."""
+        candidate = SessionModel(**row.model_dump())
+        update_dict = req.model_dump(exclude_unset=True)
+        for key, val in update_dict.items():
+            if key in ("start_time", "end_time") and val is not None:
+                setattr(candidate, key, ensure_utc(val).replace(tzinfo=None))
+            elif key == "task_id" and val is not None:
+                if self.db.get(Task, val):
+                    candidate.task_id = val
+                else:
+                    candidate.task_id = None
+            else:
+                setattr(candidate, key, val)
+
+        if candidate.start_time and candidate.end_time:
+            st = ensure_utc(candidate.start_time)
+            et = ensure_utc(candidate.end_time)
+            if et <= st:
+                raise ValidationError("end_time must be strictly after start_time")
+            candidate.duration_seconds = max(0, int((et - st).total_seconds()))
+
+        if candidate.start_time is None:
+            raise ValidationError("start_time must not be null")
+        return candidate
 
     def _apply_series_duration(self, session_id: str, req: SessionUpdate) -> None:
         """Write the requested length to the series' `recurrence_duration_minutes`."""

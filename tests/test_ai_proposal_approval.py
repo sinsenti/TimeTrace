@@ -374,3 +374,52 @@ def test_ai_undo_refuses_restore_when_original_task_link_no_longer_exists(client
     assert result["status"] == "failed" and "task link" in result["error"]
     assert client.get("/api/tasks?status=all").json() == []
     assert client.get("/sessions").json() == []
+
+
+@pytest.mark.parametrize("change", ["notes", "move", "create", "reapply"])
+def test_ai_does_not_write_a_prospective_unclaimed_recurrence_anchor(client, db, change):
+    start = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = client.post(
+        "/api/tasks",
+        json={
+            "title": "Series",
+            "is_recurring": True,
+            "recurrence_timezone": "UTC",
+            "recurrence_dtstart": start.isoformat(),
+            "recurrence_duration_minutes": 30,
+        },
+    ).json()
+    target = {
+        "task_id": task["id"],
+        "start_time": start.isoformat(),
+        "end_time": (start + timedelta(minutes=30)).isoformat(),
+        "notes": "Recurring: Series",
+    }
+    if change == "create":
+        _, _, result = _approve_test_draft(client, db, "create", "session", None, target)
+        assert result["status"] == "failed" and "anchor" in result["error"]
+        assert client.get("/sessions").json() == []
+        return
+    original = (
+        {**target, "notes": "Ordinary"}
+        if change == "notes"
+        else {
+            **target,
+            "start_time": (start - timedelta(hours=1)).isoformat(),
+            "end_time": (start - timedelta(minutes=30)).isoformat(),
+        }
+    )
+    if change == "reapply":
+        assert client.put(f"/api/tasks/{task['id']}", json={"is_recurring": False}).status_code == 200
+    sid = client.post("/sessions", json=original).json()["id"]
+    path = f"/sessions/{sid}"
+    before = client.get(path).json()
+    draft, _, result = _approve_test_draft(client, db, "update", "session", sid, target)
+    if change == "reapply":
+        assert result["status"] == "applied"
+        assert client.post(f"{draft}/undo", json={}).json()["items"][0]["status"] == "undone"
+        assert client.put(f"/api/tasks/{task['id']}", json={"is_recurring": True}).status_code == 200
+        before = client.get(path).json()
+        result = client.post(f"{draft}/reapply", json={}).json()["items"][0]
+    assert result["status"] == "failed" and "anchor" in result["error"]
+    assert client.get(path).json() == before

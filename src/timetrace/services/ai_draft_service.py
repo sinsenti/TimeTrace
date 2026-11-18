@@ -701,7 +701,7 @@ class AIDraftService:
         session_task_ref = payload.get("task_id") if entity_type == "session" and op in ("create", "update") else None
         parent_ref = payload.get("parent_id") if restore and entity_type == "task" and op == "create" else None
         target_check = target_id and (op == "delete" or (op == "update" and entity_type == "session"))
-        if target_check or session_task_ref or parent_ref:
+        if target_check or entity_type == "session" or parent_ref:
             lock_sqlite_writer(self.db)
         if session_task_ref and self.db.get(Task, session_task_ref) is None:
             raise ConflictError("Referenced task_id no longer exists; the session's task link cannot be preserved.")
@@ -722,12 +722,20 @@ class AIDraftService:
             svc = SessionService(self.db)
             if op == "create":
                 req = SessionCreate(**self._filter_fields(payload, SessionCreate))
+                self._require_prospective_session(svc, svc.legacy_create_candidate(req))
                 result = svc.create_session(req)
                 return self.normalize_session(result), result.id, None
             if op == "update":
                 if not target_id:
                     raise ValidationError("session update requires a target_id")
                 req = SessionUpdate(**self._filter_fields(payload, SessionUpdate))
+                row = self.db.get(SessionModel, target_id)
+                candidate = svc.legacy_update_candidate(row, req)
+                self._require_prospective_session(svc, candidate)
+                before = self.normalize_session(row)
+                inverse = SessionUpdate(**self._filter_fields(before, SessionUpdate))
+                if self.normalize_session(svc.legacy_update_candidate(candidate, inverse)) != before:
+                    raise ConflictError("AI v1 cannot restore this session's interval or metadata after the edit.")
                 result = svc.update_session(target_id, req)
                 return self.normalize_session(result), result.id, None
             if op == "delete":
@@ -789,6 +797,15 @@ class AIDraftService:
             is not None
         ):
             raise ConflictError(f"AI cannot delete a {target_type} with ratings; v1 undo cannot restore them.")
+
+    @staticmethod
+    def _require_prospective_session(sessions: SessionService, candidate: SessionModel) -> None:
+        if not sessions.recurrence.exception_for_session(candidate.id) and (
+            sessions.recurrence.unclaimed_legacy_anchor(candidate) is not None
+        ):
+            raise ConflictError("AI v1 cannot undo a change that creates an unclaimed recurrence anchor.")
+        if candidate.notes is None or candidate.tags is None or candidate.review_skipped is None:
+            raise ConflictError("AI v1 cannot restore this session's proposed metadata exactly.")
 
     def _require_restorable_session(self, session_id: str, *, deleting: bool) -> None:
         sessions = SessionService(self.db)

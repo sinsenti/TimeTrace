@@ -30,10 +30,10 @@ from timetrace.core.recurrence import (
     RecurrenceSpec,
     expand,
     expand_overlapping,
+    following_until,
     format_occurrence_id,
     next_occurrence,
     occurrence_at,
-    occurrence_wall_start,
     parse_occurrence_id,
     preset_to_rrule,
     rrule_to_preset,
@@ -645,8 +645,8 @@ class RecurrenceService:
         Truncating at or before the series' first occurrence would write a rule with `UNTIL`
         before `DTSTART` -- zero occurrences, forever -- which `validate_rrule` would reject on
         every future save. That case (and any other anchor that happens to zero out the rule)
-        means "the series should not exist" and is routed to the same outcome as `end_series`
-        instead of ever being persisted.
+        disables recurrence instead of persisting an empty rule. Earlier exception rows
+        still belong outside the requested deletion scope.
         """
         task = self.db.get(Task, task_id)
         if not task:
@@ -656,17 +656,19 @@ class RecurrenceService:
         if task.recurrence_rrule:
             tz = resolve_timezone(task.recurrence_timezone)
             spec = self.spec_for_task(task)
-            wall = occurrence_wall_start(spec, anchor) if spec else None
-            until_local = wall - timedelta(seconds=1) if wall else to_local_naive(anchor - timedelta(seconds=1), tz)
-            candidate_rrule = set_until(task.recurrence_rrule, until_local)
+            until_local = following_until(spec, anchor) if spec else to_local_naive(anchor - timedelta(seconds=1), tz)
+            candidate_rrule = set_until(task.recurrence_rrule, until_local) if until_local else task.recurrence_rrule
             try:
                 validate_rrule(candidate_rrule, task.recurrence_dtstart, task.recurrence_timezone)
             except ValidationError:
-                return self.end_series(task_id, commit=commit)
+                candidate_rrule = None
             deleted = self._drop_exceptions(task_id, at_or_after=anchor)
-            task.recurrence_rrule = candidate_rrule
-            task.recurrence_rule = rrule_to_preset(candidate_rrule)
-            self.invalidate_plan_revisions(task_id)
+            if candidate_rrule != task.recurrence_rrule:
+                task.recurrence_rrule = candidate_rrule
+                task.recurrence_rule = rrule_to_preset(candidate_rrule) if candidate_rrule else None
+                if candidate_rrule is None:
+                    task.is_recurring = False
+                self.invalidate_plan_revisions(task_id)
 
         else:
             deleted = self._drop_exceptions(task_id, at_or_after=anchor)

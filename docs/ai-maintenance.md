@@ -18,7 +18,9 @@ rationale; it is not a checklist of missing work.
   would be lost. Undo refuses to recreate a dangling session-task or parent link. Ordinary
   restorable rows keep the existing new-ID audit trail; old snapshots are not rewritten.
   Identity-preserving edits can retain linked evidence and external metadata, but v1 cannot
-  restore a projected recurrence after claiming it.
+  restore a projected recurrence after claiming it. Session create, update and reapply also
+  validate the normalized prospective row under the same lock, refusing edits that would create
+  a new legacy anchor claim on the inverse operation.
 - Treat model output, user custom instructions, task titles/descriptions/notes, imported text, and
   tool results as untrusted data. None may override system safety rules or gain authority merely by
   containing instructions.

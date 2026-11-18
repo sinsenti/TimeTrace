@@ -1628,3 +1628,40 @@ def test_delete_following_targets_first_fold_occurrence_only(client, db, fixed_r
     correct_id = format_occurrence_id(task_id, first_fold)
     assert client.delete(f"/sessions/{correct_id}?scope=following").status_code == 204
     assert [row["id"] for row in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]
+
+
+@pytest.mark.parametrize("minute", [30, 45])
+@pytest.mark.parametrize("select_later", [False, True])
+def test_following_refuses_unrepresentable_utc_cut_without_changing_series(
+    client, db, fixed_recurrence_clock, minute, select_later
+):
+    first = datetime(2027, 3, 13, 7)
+    cut = datetime(2027, 3, 14, 7, minute if select_later else 0)
+    task_id = _mk_task(
+        db, dtstart=first, tz="America/New_York", rrule=f"FREQ=DAILY;BYHOUR=2,3;BYMINUTE=0,{minute};BYSETPOS=2,3"
+    ).id
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    before = client.get(route).json()["items"]
+    cut_id = format_occurrence_id(task_id, cut)
+    assert cut_id in [item["id"] for item in before]
+    response = client.delete(f"/sessions/{cut_id}?scope=following")
+    if select_later:
+        assert response.status_code == 409 and response.json()["code"] == "utc_scope_unrepresentable"
+        assert client.get(route).json()["items"] == before
+        assert RecurrenceService(db).get_exception(task_id, cut) is None
+    else:
+        assert response.status_code == 204, response.text
+        assert [item["id"] for item in client.get(route).json()["items"]] == [
+            item["id"] for item in before if datetime.fromisoformat(item["start_time"]).replace(tzinfo=None) < cut
+        ]
+
+
+def test_delete_following_coalesces_duplicate_gap_ticks(client, db, fixed_recurrence_clock):
+    prior, cut = datetime(2027, 3, 13, 8, 30), datetime(2027, 3, 14, 7, 30)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York", rrule="FREQ=DAILY;BYHOUR=2,3;BYMINUTE=30").id
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    cut_id = format_occurrence_id(task_id, cut)
+    before = client.get(route).json()["items"]
+    assert [r["id"] for r in before].count(cut_id) == 1
+    assert client.delete(f"/sessions/{cut_id}?scope=following").status_code == 204
+    assert [r["id"] for r in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]
