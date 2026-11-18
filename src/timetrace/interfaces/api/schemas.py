@@ -200,10 +200,12 @@ class AgendaProjectedPlanRead(ProjectedOccurrenceRead):
     original_end: datetime
 
 
-class AgendaLegacyRead(BaseModel):
+class LegacySessionRead(BaseModel):
+    """The pre-Agenda row shape; never expose storage-only fields to legacy editors."""
+
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
-    kind: Literal["legacy_uncertain"] = "legacy_uncertain"
-    is_virtual: Literal[False] = False
     task_id: str | None
     start_time: datetime
     end_time: datetime | None
@@ -215,6 +217,11 @@ class AgendaLegacyRead(BaseModel):
     external_sync_id: str | None
     external_provider: str | None
     extended_properties_json: str
+
+
+class AgendaLegacyRead(LegacySessionRead):
+    kind: Literal["legacy_uncertain"] = "legacy_uncertain"
+    is_virtual: Literal[False] = False
     revision: int
 
 

@@ -1,9 +1,14 @@
 from fastapi import APIRouter, Depends
 from sqlmodel import Session as DBSession
 
-from timetrace.db.models import Session as SessionModel
 from timetrace.db.session import get_session
-from timetrace.interfaces.api.schemas import IdleResolveRequest, IdleToggleRequest, TimerSplitRequest, TimerStartRequest
+from timetrace.interfaces.api.schemas import (
+    IdleResolveRequest,
+    IdleToggleRequest,
+    LegacySessionRead,
+    TimerSplitRequest,
+    TimerStartRequest,
+)
 from timetrace.services import TimerService
 
 router = APIRouter(prefix="/timer", tags=["Active Timer"])
@@ -19,12 +24,12 @@ def start_timer(req: TimerStartRequest, db: DBSession = Depends(get_session)):
     return TimerService(db).start_timer(req)
 
 
-@router.post("/split", response_model=SessionModel)
+@router.post("/split", response_model=LegacySessionRead)
 def split_timer(req: TimerSplitRequest, db: DBSession = Depends(get_session)):
     return TimerService(db).split_timer(req)
 
 
-@router.post("/stop", response_model=SessionModel)
+@router.post("/stop", response_model=LegacySessionRead)
 def stop_timer(db: DBSession = Depends(get_session)):
     return TimerService(db).stop_timer()
 

@@ -3,10 +3,10 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session as DBSession
 
-from timetrace.db.models import Session as SessionModel
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
     AgendaRead,
+    LegacySessionRead,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
@@ -42,7 +42,7 @@ def update_scheduled_session(plan_id: str, req: ScheduledSessionUpdate, db: DBSe
     return SessionService(db).update_scheduled_session(plan_id, req)
 
 
-@router.post("/sessions", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+@router.post("/sessions", response_model=LegacySessionRead, status_code=status.HTTP_201_CREATED)
 def create_session(req: SessionCreate, db: DBSession = Depends(get_session)):
     return SessionService(db).create_session(req)
 
@@ -62,7 +62,7 @@ def get_session_by_id(session_id: str, db: DBSession = Depends(get_session)):
     return SessionService(db).get_session_by_id(session_id)
 
 
-@router.put("/sessions/{session_id}", response_model=SessionModel)
+@router.put("/sessions/{session_id}", response_model=LegacySessionRead)
 def update_session(
     session_id: str,
     req: SessionUpdate,
@@ -82,7 +82,7 @@ def delete_session(
     return None
 
 
-@router.post("/sessions/retro", response_model=SessionModel, status_code=status.HTTP_201_CREATED)
+@router.post("/sessions/retro", response_model=LegacySessionRead, status_code=status.HTTP_201_CREATED)
 def create_retro_session(req: RetroSessionCreate, db: DBSession = Depends(get_session)):
     return SessionService(db).create_retro_session(req)
 

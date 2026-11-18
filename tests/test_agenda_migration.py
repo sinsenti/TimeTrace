@@ -2,6 +2,7 @@
 
 import json
 import os
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -21,14 +22,15 @@ END = "2000-01-04 15:00:00.000000"
 
 
 def run_on(db_file, *python_args):
-    return subprocess.run(
+    result = subprocess.run(
         [sys.executable, "-P", *python_args],
         cwd=ROOT,
         env={**os.environ, "TIMETRACE_DB_FILE": str(db_file), "TIMETRACE_IDLE_DETECTION_ENABLED": "false"},
         capture_output=True,
-        check=True,
         timeout=45,
-    ).stdout
+    )
+    assert result.returncode == 0, result.stderr.decode()
+    return result.stdout
 
 
 def seed_old(conn):
@@ -178,11 +180,68 @@ def legacy_snapshot(conn, tables):
     }
 
 
+def test_daemon_refuses_unversioned_old_database_without_changing_it(tmp_path):
+    db_file = tmp_path / "unversioned.sqlite"
+    run_on(db_file, "-m", "alembic", "upgrade", OLD)
+    with closing(sqlite3.connect(db_file)) as conn:
+        seed_old(conn)
+        conn.execute("DROP TABLE alembic_version")
+        conn.commit()
+        before = tuple(conn.iterdump())
+
+    startup = """
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+
+try:
+    with TestClient(create_daemon_app()):
+        raise AssertionError('daemon started with an unversioned database')
+except RuntimeError as exc:
+    assert 'unversioned' in str(exc).lower(), str(exc)
+    assert 'backup' in str(exc).lower(), str(exc)
+"""
+    run_on(db_file, "-c", startup)
+    with closing(sqlite3.connect(db_file)) as conn:
+        assert tuple(conn.iterdump()) == before
+
+
+def test_daemon_refuses_missing_alembic_assets_without_creating_schema(tmp_path):
+    assets = tmp_path / "incomplete" / "src"
+    shutil.copytree(ROOT / "src" / "timetrace", assets / "timetrace", ignore=shutil.ignore_patterns("__pycache__"))
+    db_file = tmp_path / "missing_assets.sqlite"
+    startup = """
+import sys
+sys.path.insert(0, sys.argv[1])
+
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+
+try:
+    with TestClient(create_daemon_app()):
+        raise AssertionError('daemon started without Alembic assets')
+except RuntimeError as exc:
+    assert 'migration assets are missing' in str(exc), str(exc)
+"""
+    run_on(db_file, "-c", startup, str(assets))
+    assert not db_file.exists()
+
+
+BOOT = """
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+
+with TestClient(create_daemon_app()) as client:
+    assert client.get('/health').json()['status'] == 'ok'
+    response = client.get('/sessions')
+    assert response.status_code == 200, response.text
+"""
+
+
 def test_agenda_migration_fresh_and_consistent_seeded_copy(tmp_path):
     fresh, old, upgraded = [tmp_path / name / "test.sqlite" for name in ("fresh", "old", "upgraded")]
     for path in (fresh, old, upgraded):
         path.parent.mkdir()
-    run_on(fresh, "-m", "alembic", "upgrade", "head")
+    run_on(fresh, "-c", BOOT)
     with closing(sqlite3.connect(fresh)) as conn:
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD,)
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
@@ -214,7 +273,7 @@ def test_agenda_migration_fresh_and_consistent_seeded_copy(tmp_path):
         assert source.execute("PRAGMA foreign_key_check").fetchall() == []
         with closing(sqlite3.connect(upgraded)) as copy:
             source.backup(copy)
-    run_on(upgraded, "-m", "alembic", "upgrade", "head")
+    run_on(upgraded, "-c", BOOT)
 
     with closing(sqlite3.connect(upgraded)) as conn:
         assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == (HEAD,)

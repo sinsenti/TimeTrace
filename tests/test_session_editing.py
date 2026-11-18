@@ -95,6 +95,51 @@ def test_plan_accounting_counts_only_future_schedule_and_task_deletion_detaches_
         assert client.get(f"/scheduled-sessions/{plan['id']}").json() == {**plan, "task_id": None, "revision": 2}
 
 
+def test_legacy_session_read_modify_write_preserves_the_old_row_shape(client):
+    task = client.post("/api/tasks", json={"title": "Review notes"}).json()
+    start, end = "2000-01-04T14:00:00Z", "2000-01-04T15:15:00Z"
+    created = post_session(client, task["id"], start, end, notes="Original", tags="#writing", review_skipped=True)
+    url = f"/sessions/{created['id']}"
+    read = client.get(url).json()
+    update = client.put(url, json={**read, "notes": "Edited"})
+    assert update.status_code == 200, update.text
+
+    base = {
+        "id": created["id"],
+        "task_id": task["id"],
+        "start_time": start,
+        "end_time": end,
+        "duration_seconds": 4500,
+        "tags": "#writing",
+        "notes": "Original",
+        "review_skipped": True,
+        "timezone": "UTC",
+        "external_sync_id": None,
+        "external_provider": None,
+        "extended_properties_json": "{}",
+    }
+    assert created == base
+    assert update.json() == {**base, "notes": "Edited"}
+    result = client.get(url).json()
+    assert result.pop("task")["id"] == task["id"]
+    expected = {
+        **base,
+        "notes": "Edited",
+        "start_time": "2000-01-04T14:00:00+00:00",
+        "end_time": "2000-01-04T15:15:00+00:00",
+    }
+    assert result == expected
+    window = {"start": "2000-01-04T00:00:00Z", "end": "2000-01-05T00:00:00Z"}
+    for params in ({}, window):
+        assert client.get("/sessions", params=params).json() == [{**expected, "is_virtual": False}]
+    typed = client.get("/agenda", params=window).json()["items"][0]
+    assert typed == {**base, "notes": "Edited", "kind": "legacy_uncertain", "is_virtual": False, "revision": 1}
+
+    retro = client.post("/sessions/retro", json={"start_time": start, "end_time": end})
+    assert retro.status_code == 201, retro.text
+    assert set(retro.json()) == base.keys()
+
+
 def test_legacy_routes_refuse_typed_writes_without_silently_creating_history(client):
     payload = {"start_time": "2000-01-04T14:00:00Z", "end_time": "2000-01-04T15:15:00Z"}
     saved = client.post("/scheduled-sessions", json=payload).json()
@@ -220,10 +265,12 @@ def test_session_materialization_resize_move_skip_and_series_delete_preserve_his
     occurrences = client.get("/sessions", params=params).json()
     assert len(occurrences) == 5 and all(s["id"].startswith("virt:") for s in occurrences)
     first = occurrences[0]
+    assert first["is_virtual"] is True
+    assert first["series_task_id"] == task_id and first["occurrence_start"] == first["start_time"]
     response = client.put(
         f"/sessions/{first['id']}?scope=all_future",
         json={
-            "start_time": first["start_time"],
+            **first,
             "end_time": (start + timedelta(minutes=60)).isoformat(),
             "notes": "Edited\noccurrence",
         },

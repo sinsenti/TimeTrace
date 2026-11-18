@@ -563,6 +563,10 @@ calculated. `session` stays the legacy/work table: existing IDs and metadata sta
 writers still create uncertain rows, and plans are not added to old performed-work queries or
 reviews. Task accounting adds only future-starting plans to scheduled time. Completion keeps
 its separate own/subtree choices; a selected scope that would clear a typed plan is refused.
+Legacy session responses retain their pre-Agenda fields so a caller can edit and PUT a fetched
+row. Type, provenance, association and revision are not editable via the legacy API. For task
+deletion, the SQLite writer lock is acquired before loading the root/completed set or finding
+descendants; plan detachment, AI refusal and ORM cascade use that same transaction.
 
 Folio B, Calendar dispatch, existing quick-add conversion, typed occurrence materialization,
 planning-read adapters for export/AI/timer and versioned approvals remain outside this checkpoint.
@@ -585,9 +589,19 @@ review the result, including data movement and SQLite table rebuilds, before app
    Alembic's `env.py` honors an explicitly configured `sqlalchemy.url` before its settings fallback.
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
-`tests/test_agenda_migration.py` exercises the fresh chain and a SQLite backup of a seeded 0013
-DB, comparing old metadata, relationships, JSON and polymorphic references and making real HTTP
-reads/writes on the migrated copy. Revision 0014 refuses downgrade when typed data exists.
+Startup and `timetrace db migrate` use Alembic only. If an existing non-empty database has no
+recorded revision, or migration assets are missing, startup fails instead of stamping or
+creating tables. For missing assets, run from a complete TimeTrace checkout. For an unversioned
+database (including one from an older `create_all` fallback), stop writers and keep a consistent
+backup before seeking schema recovery or restoring a known Alembic-tracked backup. Do not stamp
+head, hand-edit the revision marker, or delete the database to bypass the guard. This guard does
+not repair databases already incorrectly stamped by an older build.
+
+`tests/test_agenda_migration.py` exercises root startup on both a fresh database and a SQLite
+backup of a seeded 0013 database, compares old metadata, relationships, JSON and polymorphic
+references, and makes real HTTP reads/writes on the upgraded copy. It also exercises startup
+refusal with unversioned data or missing Alembic configuration. Revision 0014 refuses downgrade
+when typed data exists.
 
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id

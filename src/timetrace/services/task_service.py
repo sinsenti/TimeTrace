@@ -14,7 +14,7 @@ from timetrace.interfaces.api.schemas import (
     ClearScheduledSessionsRequest,
     ClearScheduledSessionsResponse,
     CompletionPolicyPrompt,
-    ScheduledSessionInfo,
+    LegacySessionRead,
     TaskCreate,
     TaskReadResponse,
     TaskReviewCreate,
@@ -429,13 +429,6 @@ class TaskService:
         if st:
             task.status_id = st.id
 
-    def _get_all_descendant_task_ids(self, task_id: str) -> set[str]:
-        ids = {task_id}
-        subtask_ids = self.db.exec(select(Task.id).where(Task.parent_id == task_id)).all()
-        for sub_id in subtask_ids:
-            ids.update(self._get_all_descendant_task_ids(sub_id))
-        return ids
-
     def _status_flags(self, name: str | None) -> tuple[bool, bool]:
         if name is None:
             return (False, False)
@@ -468,26 +461,11 @@ class TaskService:
 
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
-        sessions = session_service.list_future_sessions([task.id]) + session_service.list_future_plans([task.id])
-        subtree_ids = self._collect_subtree_ids(task.id)
-        subtask_scheduled_count = len(session_service.list_future_sessions(subtree_ids)) + len(
-            session_service.list_future_plans(subtree_ids)
-        )
-        if not sessions and not subtask_scheduled_count:
+        scheduled_sessions = session_service.list_completion_schedules([task.id])
+        subtask_scheduled_count = len(session_service.list_completion_schedules(self._collect_subtree_ids(task.id)))
+        if not scheduled_sessions and not subtask_scheduled_count:
             return None
-
-        scheduled_sessions = [
-            ScheduledSessionInfo(
-                id=s.id,
-                start_time=ensure_utc(s.start_time),
-                end_time=ensure_utc(s.end_time) if s.end_time else None,
-                duration_seconds=s.duration_seconds,
-                tags=s.tags,
-                notes=s.notes,
-            )
-            for s in sessions
-        ]
-        scheduled_seconds = sum(s.duration_seconds or 0 for s in sessions)
+        scheduled_seconds = sum(s.duration_seconds or 0 for s in scheduled_sessions)
 
         return CompletionPolicyPrompt(
             reason=reason,
@@ -515,40 +493,44 @@ class TaskService:
 
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
+    def _lock_task_deletion_scope(self) -> None:
+        # Start a SQLite write transaction even if this session already read AI drafts.
+        # A zero-row UPDATE leaves data untouched and holds the writer lock through commit.
+        self.db.execute(sa.text("UPDATE task SET id = id WHERE 0"))
+        self.db.flush()
+        # The ORM cascade must see the same hierarchy as the locked scope queries, even
+        # when a caller loaded a relationship before the competing writer committed.
+        self.db.expire_all()
+
+    def _detach_task_history(self, task_ids: set[str], *, allow_plan_detachment: bool = True) -> None:
+        SessionService(self.db).detach_plans_for_deleted_tasks(task_ids, allow=allow_plan_detachment)
+        for row in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))):
+            row.task_id = None
+        # `recurrenceexception` rows have no cascade; their FK would dangle.
+        RecurrenceService(self.db).delete_for_task(list(task_ids))
+
     def delete_task(self, task_id: str, *, allow_plan_detachment: bool = True) -> None:
+        self._lock_task_deletion_scope()
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
-
-        all_target_ids = self._get_all_descendant_task_ids(task_id)
-        SessionService(self.db).detach_plans_for_deleted_tasks(all_target_ids, allow=allow_plan_detachment)
-
-        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))).all()
-        for s in linked_sessions:
-            s.task_id = None
-            self.db.add(s)
-
-        # `recurrenceexception` rows have no cascade; their FK would dangle.
-        RecurrenceService(self.db).delete_for_task(list(all_target_ids))
-
+        self._detach_task_history(
+            {task_id, *self._collect_subtree_ids(task_id)}, allow_plan_detachment=allow_plan_detachment
+        )
         self.db.delete(db_task)
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
+        self._lock_task_deletion_scope()
         completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         if not completed_tasks:
+            self.db.commit()
             return 0
 
-        completed_ids = {t.id for t in completed_tasks}
-        all_target_ids = set().union(*(self._get_all_descendant_task_ids(task_id) for task_id in completed_ids))
-        SessionService(self.db).detach_plans_for_deleted_tasks(all_target_ids)
-
-        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(completed_ids))).all()
-        for s in linked_sessions:
-            s.task_id = None
-            self.db.add(s)
-
-        RecurrenceService(self.db).delete_for_task(list(completed_ids))
+        scope = {task.id for task in completed_tasks}
+        for task in completed_tasks:
+            scope.update(self._collect_subtree_ids(task.id))
+        self._detach_task_history(scope)
 
         count = 0
         for task in completed_tasks:
@@ -634,7 +616,7 @@ class TaskService:
 
         session_list = []
         for s in sessions:
-            s_dict = s.model_dump()
+            s_dict = LegacySessionRead.model_validate(s).model_dump()
             s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
             s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
             session_list.append(s_dict)

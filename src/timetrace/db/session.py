@@ -2,7 +2,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlmodel import Session, SQLModel, create_engine, text
+from sqlmodel import Session, create_engine, text
 
 from timetrace.config import settings
 
@@ -16,27 +16,23 @@ def run_migrations() -> None:
     """Executes Alembic migrations programmatically up to the latest revision."""
     project_root = Path(__file__).resolve().parents[3]
     ini_path = project_root / "alembic.ini"
+    migrations = Path(__file__).resolve().with_name("migrations")
+    if not ini_path.is_file() or not (migrations / "env.py").is_file() or not (migrations / "versions").is_dir():
+        raise RuntimeError("Alembic migration assets are missing. Use a complete TimeTrace checkout or installation.")
 
-    if not ini_path.exists():
-        SQLModel.metadata.create_all(engine)
-        return
+    with engine.connect() as connection:
+        objects = set(connection.scalars(text("SELECT name FROM sqlite_schema WHERE name NOT GLOB 'sqlite_*'")))
+        versioned = "alembic_version" in objects and connection.scalar(text("SELECT version_num FROM alembic_version"))
+        if objects - {"alembic_version"} and not versioned:
+            raise RuntimeError(
+                f"Unversioned TimeTrace database at {settings.db_file}. No migration was attempted. "
+                "Keep a consistent backup and restore a known Alembic-tracked backup or request schema recovery; "
+                "do not stamp this database as current."
+            )
 
     alembic_cfg = Config(str(ini_path))
+    alembic_cfg.set_main_option("script_location", str(migrations))
     alembic_cfg.set_main_option("sqlalchemy.url", settings.database_url)
-
-    with Session(engine) as session:
-        tables = session.exec(text("SELECT name FROM sqlite_master WHERE type='table';")).all()
-        table_names = [t[0] for t in tables]
-
-    if table_names and "task" in table_names and "alembic_version" not in table_names:
-        # Bootstrap: tables already exist (built by an older create_all fallback)
-        # but were never tracked by Alembic. Nothing to migrate, just start tracking.
-        command.stamp(alembic_cfg, "head")
-        return
-
-    # Let failures surface instead of silently falling back to stamp/create_all —
-    # a swallowed error here previously left a database stamped at a revision it
-    # never actually finished applying (see CLAUDE.md "Known issue").
     command.upgrade(alembic_cfg, "head")
 
 

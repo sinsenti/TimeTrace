@@ -13,9 +13,11 @@ from timetrace.interfaces.api.schemas import (
     AgendaProjectedPlanRead,
     AgendaRead,
     AgendaRecordedWorkRead,
+    LegacySessionRead,
     ReflectionCreate,
     RetroSessionCreate,
     ScheduledSessionCreate,
+    ScheduledSessionInfo,
     ScheduledSessionRead,
     ScheduledSessionUpdate,
     SessionCreate,
@@ -121,11 +123,9 @@ class SessionService:
                 select(ScheduledSession).where(ScheduledSession.start_time < end, ScheduledSession.end_time > start)
             )
         ]
-        for row in self.list_overlapping_sessions(start, end, include_virtual=False):
-            if row["kind"] == "recorded_work":
-                items.append(AgendaRecordedWorkRead.model_validate(row))
-            else:
-                items.append(AgendaLegacyRead.model_validate(row))
+        for row in self._overlapping_session_rows(start, end):
+            read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
+            items.append(read_type.model_validate(row).model_copy(update=self._utc_session_times(row)))
         for occurrence in self.recurrence.project_range(start, end, reconcile=False):
             row = occurrence.to_dict()
             items.append(
@@ -136,7 +136,25 @@ class SessionService:
         items.sort(key=lambda item: (item.start_time, item.id))
         return AgendaRead(items=items, measurement_at=measurement_at)
 
-    def create_session(self, req: SessionCreate) -> SessionModel:
+    @staticmethod
+    def _utc_session_times(row: SessionModel) -> dict[str, datetime | None]:
+        return {"start_time": ensure_utc(row.start_time), "end_time": ensure_utc(row.end_time)}
+
+    @classmethod
+    def _read_legacy_session(cls, row: SessionModel) -> LegacySessionRead:
+        return LegacySessionRead.model_validate(row).model_copy(update=cls._utc_session_times(row))
+
+    @classmethod
+    def _legacy_session_dict(cls, row: SessionModel, *, list_item: bool = False) -> dict[str, Any]:
+        read = cls._read_legacy_session(row)
+        item = read.model_dump()
+        item["start_time"] = read.start_time.isoformat()
+        item["end_time"] = read.end_time.isoformat() if read.end_time is not None else None
+        if list_item:
+            item["is_virtual"] = False
+        return item
+
+    def create_session(self, req: SessionCreate) -> LegacySessionRead:
         start_utc = ensure_utc(req.start_time)
         end_utc = ensure_utc(req.end_time)
 
@@ -162,9 +180,7 @@ class SessionService:
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
 
     def list_sessions(
         self,
@@ -186,16 +202,7 @@ class SessionService:
             naive_end = ensure_utc(end).replace(tzinfo=None)
             query = query.where(SessionModel.start_time < naive_end)
 
-        sessions = self.db.exec(query).all()
-        result = []
-        for s in sessions:
-            s_dict = s.model_dump()
-            if s.start_time:
-                s_dict["start_time"] = ensure_utc(s.start_time).isoformat()
-            if s.end_time:
-                s_dict["end_time"] = ensure_utc(s.end_time).isoformat()
-            s_dict["is_virtual"] = False
-            result.append(s_dict)
+        result = [self._legacy_session_dict(row, list_item=True) for row in self.db.exec(query)]
 
         if start and end and include_virtual:
             if (ensure_utc(end) - ensure_utc(start)) > timedelta(days=MAX_WINDOW_DAYS):
@@ -223,20 +230,10 @@ class SessionService:
         if end_utc <= start_utc:
             raise ValidationError("end must be strictly after start")
 
-        naive_start = start_utc.replace(tzinfo=None)
-        naive_end = end_utc.replace(tzinfo=None)
-        query = select(SessionModel).where(
-            SessionModel.start_time < naive_end,
-            or_(SessionModel.end_time.is_(None), SessionModel.end_time > naive_start),
-        )
-        sessions = self.db.exec(query).all()
-        result: list[dict[str, Any]] = []
-        for s in sessions:
-            s_dict = s.model_dump()
-            s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
-            s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-            s_dict["is_virtual"] = False
-            result.append(s_dict)
+        result = [
+            self._legacy_session_dict(row, list_item=True)
+            for row in self._overlapping_session_rows(start_utc.replace(tzinfo=None), end_utc.replace(tzinfo=None))
+        ]
 
         if include_virtual:
             if (end_utc - start_utc) > timedelta(days=MAX_WINDOW_DAYS):
@@ -245,6 +242,13 @@ class SessionService:
 
         result.sort(key=lambda item: item.get("start_time") or "")
         return result
+
+    def _overlapping_session_rows(self, naive_start: datetime, naive_end: datetime) -> list[SessionModel]:
+        query = select(SessionModel).where(
+            SessionModel.start_time < naive_end,
+            or_(SessionModel.end_time.is_(None), SessionModel.end_time > naive_start),
+        )
+        return list(self.db.exec(query))
 
     def list_projected_occurrences(self, start: datetime, end: datetime) -> list[ProjectedOccurrence]:
         """Projected occurrences only, for callers that already hold the real rows (the
@@ -296,15 +300,13 @@ class SessionService:
         if not s:
             raise EntityNotFoundError("Session", session_id)
 
-        s_dict = s.model_dump()
-        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
-        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+        s_dict = self._legacy_session_dict(s)
         if s.task:
             s_dict["task"] = s.task.model_dump()
 
         return s_dict
 
-    def update_session(self, session_id: str, req: SessionUpdate, scope: str = "only_this") -> SessionModel:
+    def update_session(self, session_id: str, req: SessionUpdate, scope: str = "only_this") -> LegacySessionRead:
         """Apply an edit, materializing a virtual occurrence first if needed.
 
         `scope="only_this"` touches this occurrence alone. `scope="all_future"` additionally
@@ -351,9 +353,7 @@ class SessionService:
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
 
     def _apply_series_duration(self, session_id: str, req: SessionUpdate) -> None:
         """Write the requested length to the series' `recurrence_duration_minutes`."""
@@ -460,7 +460,7 @@ class SessionService:
             self.db.delete(row)
             self.db.commit()
 
-    def create_retro_session(self, req: RetroSessionCreate) -> SessionModel:
+    def create_retro_session(self, req: RetroSessionCreate) -> LegacySessionRead:
         start_utc = ensure_utc(req.start_time)
         end_utc = ensure_utc(req.end_time)
 
@@ -483,14 +483,11 @@ class SessionService:
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
 
-    def list_future_sessions(self, task_ids: list[str]) -> list[SessionModel]:
+    def _future_legacy_sessions(self, task_ids: list[str], now_naive: datetime) -> list[SessionModel]:
         if not task_ids:
             return []
-        now_naive = datetime.now(UTC).replace(tzinfo=None)
         return list(
             self.db.exec(
                 select(SessionModel).where(
@@ -501,18 +498,25 @@ class SessionService:
             ).all()
         )
 
-    def list_future_plans(self, task_ids: list[str]) -> list[ScheduledSessionRead]:
+    @staticmethod
+    def _future_plan_scope(task_ids: list[str], now: datetime):
+        return ScheduledSession.task_id.in_(task_ids), ScheduledSession.start_time > now
+
+    def list_completion_schedules(self, task_ids: list[str]) -> list[ScheduledSessionInfo]:
         if not task_ids:
             return []
         now = datetime.now(UTC).replace(tzinfo=None)
-        return [
-            self._read_scheduled_session(plan)
-            for plan in self.db.exec(
-                select(ScheduledSession).where(
-                    ScheduledSession.task_id.in_(task_ids), ScheduledSession.start_time > now
-                )
+        sessions = [
+            ScheduledSessionInfo.model_validate(row, from_attributes=True).model_copy(
+                update=self._utc_session_times(row)
             )
+            for row in self._future_legacy_sessions(task_ids, now)
         ]
+        for plan in self.db.exec(select(ScheduledSession).where(*self._future_plan_scope(task_ids, now))):
+            sessions.append(
+                ScheduledSessionInfo.model_validate(self._read_scheduled_session(plan), from_attributes=True)
+            )
+        return sessions
 
     def require_legacy_clear_scope(
         self, own_task_id: str, selected_ids: list[str] | None, subtree_ids: list[str]
@@ -521,7 +525,9 @@ class SessionService:
             for plan_id in selected_ids:
                 self.require_legacy_mutation_target(plan_id, deleting=True)
         all_scope_ids = subtree_ids + ([own_task_id] if selected_ids is None else [])
-        if self.list_future_plans(all_scope_ids):
+        now = datetime.now(UTC).replace(tzinfo=None)
+        plan_exists = select(ScheduledSession.id).where(*self._future_plan_scope(all_scope_ids, now)).exists()
+        if all_scope_ids and self.db.exec(select(plan_exists)).one():
             raise ConflictError(
                 "Clearing explicit scheduled sessions is not supported yet.", code="plan_delete_unsupported"
             )
@@ -564,12 +570,9 @@ class SessionService:
         return (int(logged_seconds), int(scheduled_seconds) + int(plan_seconds))
 
     def detach_plans_for_deleted_tasks(self, task_ids: set[str], *, allow: bool = True) -> None:
-        """Stage detachment in the caller's task-delete transaction, retaining history."""
+        """Stage detachment in the caller's already locked task-delete transaction."""
         plans = select(ScheduledSession.id).where(ScheduledSession.task_id.in_(task_ids))
         if not allow:
-            # Acquire SQLite's writer lock before checking; no concurrent create may slip
-            # between the approval guard and the task deletion in the caller's transaction.
-            self.db.execute(update(ScheduledSession).where(False).values(revision=ScheduledSession.revision))
             if self.db.exec(plans.limit(1)).first() is not None:
                 raise ConflictError("AI cannot delete a task with scheduled sessions; use task management.")
             return
@@ -587,7 +590,7 @@ class SessionService:
     def clear_future_sessions(
         self, task_ids: list[str], session_ids: list[str] | None = None, *, commit: bool = True
     ) -> list[str]:
-        future_sessions = self.list_future_sessions(task_ids)
+        future_sessions = self._future_legacy_sessions(task_ids, datetime.now(UTC).replace(tzinfo=None))
 
         if session_ids is not None:
             requested_ids = set(session_ids)
