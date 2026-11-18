@@ -555,26 +555,42 @@ for a past plan. PUT takes both current endpoints and the last read `expected_re
 write returns `409 revision_stale`. Plan task reassignment, recording/attachment and destructive
 plan actions are not enabled by this checkpoint.
 
-`GET /agenda?start=…&end=…` is a bounded JSON read (not an HTML page). It labels persisted plans,
-virtual projections, explicit work and uncertain legacy rows separately. Persisted intervals are
-selected by overlap with the requested UTC range; virtual projections keep their existing
-start-in-window rule and never materialize on this read. No plan fills or work comparisons are
-calculated. `session` stays the legacy/work table: existing IDs and metadata stay in place, old
-writers still create uncertain rows, and plans are not added to old performed-work queries or
-reviews. Task accounting adds only future-starting plans to scheduled time. Completion keeps
-its separate own/subtree choices; a selected scope that would clear a typed plan is refused.
-Legacy session responses retain their pre-Agenda fields so a caller can edit and PUT a fetched
-row. Type, provenance, association and revision are not editable via the legacy API. For task
-deletion, the SQLite writer lock is acquired before loading the root/completed set or finding
-descendants; plan detachment, AI refusal and ORM cascade use that same transaction.
+`GET /scheduled-sessions/{id}` also accepts `virt:` recurrence IDs. A live projection returns
+`is_virtual: true`, transient original endpoints and `projection_revision`. PUT to the virtual ID
+with both edited current endpoints and `expected_projection_revision` to capture it as a real
+plan. Adopt the returned UUID and then use its numeric `revision` for later edits. A changed,
+suppressed, skipped, already materialized or elapsed projection cannot be claimed with an old
+token (`409 projection_stale`). No legacy override is converted into a plan. Use
+`?scope=all_future` only for a resize: it changes the selected occurrence and the series duration
+in one transaction, not the intervals of other captured overrides. Captured originals are never
+rewritten. Skips and typed anchors survive ordinary task rule edits, including reactivation.
 
-Folio B, Calendar dispatch, existing quick-add conversion, typed occurrence materialization,
-planning-read adapters for export/AI/timer and versioned approvals remain outside this checkpoint.
+`GET /agenda?start=…&end=…` is bounded JSON (not HTML). It merges persisted plans, live virtual
+projections, explicit work and uncertain legacy rows on UTC interval overlap. No reads materialize
+or archive projections. Legacy bounded `/sessions` still uses its row shape and start-in-window
+semantics. It is not the typed list. Legacy fingerprint reconciliation runs on writes, not reads.
+
+Markdown Agenda shows plans and projected occurrences with explicit schedule labels (30-day
+planning window, plus the existing legacy agenda). It is not importable as Logged Sessions;
+legacy `/markdown/export`, system-wide sessions logs, reviews and performed SQL do not include
+plans. Idle timer status uses the next persisted or projected schedule without changing the old
+wire shape or writing timer state. AI range, conflict and free-slot reads see persisted plans under
+the existing data scope. Legacy proposals/approvals may not modify typed plans, even through a
+former virtual ID. AI/statistics aggregates over the old session cohort retain their old basis.
+
+Task accounting adds only future-starting plans to scheduled time. Completion keeps the separate
+own/subtree choices and refuses a clear affecting a protected plan before changing either scope.
+Old series-delete scopes refuse a typed target rather than erasing its exception or partially
+truncating its series. Task deletion still detaches plans and history and removes the deleted
+task's exception links in the locked transaction. This does not introduce destructive plan consent,
+work recording/attachment, reassignment, or version-aware AI restores.
+
+Folio B, Calendar dispatch and explicit quick-add conversion remain outside this checkpoint.
 See the [shared contract](agenda-contract.md) for the rest of #2 and downstream capabilities.
 
 ## Migration verification
 
-The source tree currently ends at `0014_agenda_foundation`; inspect revision ids and
+The source tree currently ends at `0015_typed_recurrence`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -590,7 +606,7 @@ review the result, including data movement and SQLite table rebuilds, before app
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
 Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
-Alembic entrypoints and resolve the required schema revision (`0014_agenda_foundation`) in the
+Alembic entrypoints and resolve the required schema revision (`0015_typed_recurrence`) in the
 migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
 complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
 when the application starts depending on a later schema revision.
@@ -602,10 +618,11 @@ backup. Do not stamp head, hand-edit the revision marker, or delete the database
 guard. This does not repair databases already incorrectly stamped by an older build.
 
 `tests/test_agenda_migration.py` exercises root startup on both a fresh database and a SQLite
-backup of a seeded 0013 database, compares old metadata, relationships, JSON and polymorphic
-references, and makes real HTTP reads/writes on the upgraded copy. It also exercises startup
-refusal with unversioned data, missing Alembic configuration, or a chain truncated at 0013.
-Revision 0014 refuses downgrade when typed data exists.
+backups of seeded 0013 and 0014 databases, compares old metadata, relationships, JSON and
+polymorphic references, and exercises HTTP capture and task detachment under SQLite foreign keys.
+It also exercises startup refusal with unversioned data, missing Alembic configuration, and
+missing required revisions or ancestors before SQLite is opened. Revision 0015 refuses downgrade
+when a typed override exists; 0014 refuses downgrade with typed plan/work data.
 
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id

@@ -9,7 +9,7 @@ from sqlmodel import Session, create_engine, text
 from timetrace.config import settings
 
 # The models depend on this schema even if an incomplete installation reports an older head.
-MINIMUM_SCHEMA_REVISION = "0014_agenda_foundation"
+MINIMUM_SCHEMA_REVISION = "0015_typed_recurrence"
 
 settings.db_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -34,7 +34,7 @@ def run_migrations() -> None:
     )
     try:
         required = ScriptDirectory.from_config(alembic_cfg).get_revision(MINIMUM_SCHEMA_REVISION)
-    except CommandError as exc:
+    except (CommandError, KeyError) as exc:
         raise RuntimeError(required_revision_error) from exc
     # Alembic also accepts partial identifiers; require the exact revision.
     if required is None or required.revision != MINIMUM_SCHEMA_REVISION:
@@ -56,6 +56,14 @@ def run_migrations() -> None:
 def init_db() -> None:
     """Initializes and updates the database schema on daemon startup."""
     run_migrations()
+
+
+def lock_sqlite_writer(db: Session) -> None:
+    # A zero-row UPDATE acquires the SQLite writer lock even in a session with prior reads.
+    # Re-read ORM state after locking so guards and writes see the same committed graph.
+    db.execute(text("UPDATE task SET id = id WHERE 0"))
+    db.flush()
+    db.expire_all()
 
 
 def get_session():

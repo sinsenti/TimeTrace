@@ -151,3 +151,26 @@ def test_legacy_markdown_export_and_import_contract_remains_available(client):
     imported = client.post("/markdown/import", content=exported.text, headers={"Content-Type": "text/plain"})
     assert imported.status_code == 201
     assert imported.json()["status"] == "success"
+
+
+def test_markdown_agenda_labels_typed_plans_and_cannot_import_them_as_work(client):
+    now = datetime.now(UTC)
+    for start, title in ((now - timedelta(minutes=5), "Writing now"), (now + timedelta(days=2), "Writing later")):
+        response = client.post(
+            "/scheduled-sessions",
+            json={
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(hours=1)).isoformat(),
+                "notes": title,
+            },
+        )
+        assert response.status_code == 201, response.text
+    agenda = client.get("/api/agenda/export?mode=sessions").text
+    assert "Writing now (SCHEDULED SESSION)" in agenda
+    assert "Writing later (SCHEDULED SESSION)" in agenda
+    assert "Writing now (SCHEDULED SESSION) (ACTIVE)" not in agenda
+    assert "Writing later" not in client.get("/markdown/export").text
+    assert "Writing later" not in client.get("/api/agenda/export?mode=all").text
+    response = client.post("/markdown/import", content=agenda, headers={"Content-Type": "text/plain"})
+    assert response.status_code == 400, response.text
+    assert client.get("/sessions").json() == []

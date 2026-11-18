@@ -11,14 +11,17 @@ occurrence with no session row means it did not happen, and emitting it would do
 every past day that already has a real logged row.
 """
 
+import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from hashlib import sha256
 from typing import Any
 
+from sqlalchemy import update
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.recurrence import (
     MAX_OCCURRENCES_PER_SERIES,
     MAX_WINDOW_DAYS,
@@ -38,7 +41,7 @@ from timetrace.core.timezones import (
     resolve_timezone,
     to_local_naive,
 )
-from timetrace.db.models import RecurrenceException, Task, TaskStatus
+from timetrace.db.models import RecurrenceException, ScheduledSession, Task, TaskStatus
 from timetrace.db.models import Session as SessionModel
 from timetrace.interfaces.api.utils import ensure_utc
 
@@ -80,6 +83,7 @@ class ProjectedOccurrence:
     end_utc: datetime
     duration_seconds: int
     tags: str
+    projection_revision: str
 
     def to_dict(self) -> dict[str, Any]:
         """The same keys a real row gets from `SessionService.list_sessions`, plus the virtual
@@ -108,9 +112,6 @@ class ProjectedOccurrence:
 class RecurrenceService:
     def __init__(self, db: Session):
         self.db = db
-        # Per-instance memo so one calendar refetch does not re-run adoption once per series
-        # per projected window.
-        self._reconciled: set[str] = set()
 
     # --- spec plumbing ---------------------------------------------------------------
 
@@ -224,75 +225,44 @@ class RecurrenceService:
 
     # --- projection ------------------------------------------------------------------
 
-    def project_range(self, start: datetime, end: datetime, reconcile: bool = True) -> list[ProjectedOccurrence]:
-        """Virtual occurrences of every active series whose start falls in `[start, end)`.
-
-        Future-only, with one exception: an occurrence that has started but not yet ended
-        (`start <= now < end`) is neither a real row nor a "did not happen" gap, so it still
-        projects. The lower bound used for `expand()` is therefore only clamped to `now` minus
-        that series' own duration -- never further back -- and anything whose `end_utc` has
-        already elapsed is filtered back out below.
-        """
-        lower_req = _naive_utc(start)
-        upper = _naive_utc(end)
-        if lower_req is None or upper is None:
-            return []
+    def project_range(self, start: datetime, end: datetime, *, overlap: bool = False) -> list[ProjectedOccurrence]:
+        """Live projections in a bounded window. Legacy Calendar selects by start; planning by overlap."""
+        lower_req, upper = _naive_utc(start), _naive_utc(end)
         if (upper - lower_req) > timedelta(days=MAX_WINDOW_DAYS):
             raise ValidationError(f"Requested range exceeds the maximum of {MAX_WINDOW_DAYS} days.")
-
         now = _now_naive()
-        if upper <= now:
-            # Entirely in the past: no in-progress occurrence can live in a window that ends
-            # before now, and a fully past occurrence with no row simply did not happen.
+        if lower_req >= upper or (upper <= now and not overlap):
             return []
 
-        tasks = self.list_recurring_tasks()
-        if not tasks:
-            return []
-
-        if reconcile:
-            for task in tasks:
-                self.reconcile_series(task.id)
-
-        specs: dict[str, RecurrenceSpec] = {}
-        task_lowers: dict[str, datetime] = {}
-        window_floor = max(lower_req, now)
-        for task in tasks:
+        candidates = []
+        for task in self.list_recurring_tasks():
             spec = self.spec_for_task(task)
             if not spec:
                 continue
-            specs[task.id] = spec
-            task_lower = max(lower_req, now - timedelta(minutes=spec.duration_minutes))
-            task_lowers[task.id] = task_lower
-            window_floor = min(window_floor, task_lower)
-
-        if not specs or window_floor >= upper:
+            duration = timedelta(minutes=spec.duration_minutes)
+            lower = max(lower_req - duration if overlap else lower_req, now - duration)
+            if lower >= upper:
+                continue
+            candidates.extend(
+                (task, occ) for occ in expand(spec, lower, upper, task.id) if occ.end_utc > max(now, lower_req)
+            )
+        if not candidates:
             return []
 
-        exceptions = self._exceptions_in_window(list(specs.keys()), window_floor, upper)
-        session_intervals = self._real_session_intervals(list(specs.keys()), window_floor, upper)
-
-        result: list[ProjectedOccurrence] = []
-        for task_id, spec in specs.items():
-            task_lower = task_lowers[task_id]
-            if task_lower >= upper:
-                continue
-            task = next(t for t in tasks if t.id == task_id)
-            intervals = session_intervals.get(task_id, ())
-            for occ in expand(spec, task_lower, upper, task_id):
-                if occ.end_utc <= now:
-                    continue  # fully elapsed -- a past occurrence with no row did not happen
-                if (task_id, occ.start_utc) in exceptions:
-                    continue
-                if self._occurrence_covered(intervals, occ.start_utc, occ.end_utc):
-                    # A real session of this task already occupies this slot. Suppress the
-                    # ghost at display time only -- no exception is written, so this claims
-                    # nothing and a later scope delete still cannot touch the real row. See
-                    # module docstring / `reconcile_series` for why adoption itself must not
-                    # do this.
-                    continue
-                result.append(self._to_projected(task, occ.start_utc, occ.end_utc))
-        result.sort(key=lambda o: o.start_utc)
+        task_ids = list({task.id for task, _ in candidates})
+        first_start = min(occ.start_utc for _, occ in candidates)
+        last_end = max(occ.end_utc for _, occ in candidates)
+        exceptions = self._exceptions_in_window(task_ids, first_start, upper)
+        # A legacy interval can suppress a projection even when the legacy interval starts
+        # after the requested window ends. Use the same interval as single-occurrence reads.
+        intervals = self._real_session_intervals(task_ids, first_start, last_end if overlap else upper)
+        result = [
+            self._to_projected(task, occ.start_utc, occ.end_utc)
+            for task, occ in candidates
+            if (task.id, occ.start_utc) not in exceptions
+            and not self._occurrence_covered(intervals.get(task.id, ()), occ.start_utc, occ.end_utc)
+        ]
+        result.sort(key=lambda occurrence: occurrence.start_utc)
         return result
 
     def project_task(self, task: Task, start: datetime, end: datetime) -> list[ProjectedOccurrence]:
@@ -319,7 +289,7 @@ class RecurrenceService:
         horizon = now + timedelta(days=min(within_days, MAX_WINDOW_DAYS))
         # No adoption pass here: `/timer/status` is polled every few seconds and this is a
         # display-only lookup, so it must stay read-only and cheap.
-        occurrences = self.project_range(now, horizon, reconcile=False)
+        occurrences = self.project_range(now, horizon)
         return occurrences[0] if occurrences else None
 
     def next_occurrence_for_task(self, task: Task, after: datetime | None = None) -> ProjectedOccurrence | None:
@@ -346,14 +316,26 @@ class RecurrenceService:
         return None
 
     def _to_projected(self, task: Task, start_utc: datetime, end_utc: datetime) -> ProjectedOccurrence:
+        occurrence_id = format_occurrence_id(task.id, start_utc)
+        # A virtual has no stored revision; detect changes to its projection and source rule.
+        basis = (
+            occurrence_id,
+            end_utc.isoformat(),
+            task.title,
+            task.tags or "",
+            task.recurrence_rrule,
+            task.recurrence_dtstart.isoformat(),
+            task.recurrence_timezone,
+        )
         return ProjectedOccurrence(
-            occurrence_id=format_occurrence_id(task.id, start_utc),
+            occurrence_id=occurrence_id,
             task_id=task.id,
             task_title=task.title,
             start_utc=start_utc,
             end_utc=end_utc,
             duration_seconds=int((end_utc - start_utc).total_seconds()),
             tags=task.tags or "",
+            projection_revision=sha256(json.dumps(basis).encode()).hexdigest(),
         )
 
     def _exceptions_in_window(
@@ -424,6 +406,11 @@ class RecurrenceService:
     def exception_for_session(self, session_id: str) -> RecurrenceException | None:
         return self.db.exec(select(RecurrenceException).where(RecurrenceException.session_id == session_id)).first()
 
+    def exception_for_plan(self, plan_id: str) -> RecurrenceException | None:
+        return self.db.exec(
+            select(RecurrenceException).where(RecurrenceException.scheduled_session_id == plan_id)
+        ).one_or_none()
+
     # --- exceptions / materialization ------------------------------------------------
 
     def resolve_occurrence(self, occurrence_id: str) -> tuple[Task, datetime]:
@@ -444,7 +431,7 @@ class RecurrenceService:
             return False
         return bool(expand(spec, occurrence_start, occurrence_start + timedelta(seconds=1), task.id))
 
-    def projected_occurrence(self, occurrence_id: str) -> ProjectedOccurrence:
+    def projected_occurrence(self, occurrence_id: str, *, planning: bool = False) -> ProjectedOccurrence:
         """Read one virtual occurrence without materializing it (GET must not write)."""
         task, occurrence_start = self.resolve_occurrence(occurrence_id)
         existing = self.get_exception(task.id, occurrence_start)
@@ -453,7 +440,14 @@ class RecurrenceService:
         if not self.occurrence_exists(task, occurrence_start):
             raise EntityNotFoundError("Occurrence", occurrence_id)
         duration = timedelta(minutes=task.recurrence_duration_minutes or 15)
-        return self._to_projected(task, occurrence_start, occurrence_start + duration)
+        end = occurrence_start + duration
+        if planning:
+            if end <= _now_naive() or (task.status or "").strip().lower() in self._completed_status_names():
+                raise EntityNotFoundError("Occurrence", occurrence_id)
+            intervals = self._real_session_intervals([task.id], occurrence_start, end)
+            if self._occurrence_covered(intervals.get(task.id, ()), occurrence_start, end):
+                raise EntityNotFoundError("Occurrence", occurrence_id)
+        return self._to_projected(task, occurrence_start, end)
 
     def materialize(self, occurrence_id: str) -> SessionModel:
         """Turn a virtual occurrence into a real session row + an `override` exception.
@@ -500,33 +494,26 @@ class RecurrenceService:
                 session_id=session.id,
             )
         )
-        try:
-            self.db.commit()
-        except IntegrityError:
-            # The unique constraint on (task_id, occurrence_start) is the concurrency backstop.
-            self.db.rollback()
-            existing = self.get_exception(task.id, occurrence_start)
-            if existing and existing.kind == "override" and existing.session_id:
-                found = self.db.get(SessionModel, existing.session_id)
-                if found:
-                    return found
-            raise ValidationError("This occurrence was modified concurrently; reload and retry.") from None
-        self.db.refresh(session)
+        # Caller holds the writer lock and commits the materialization with its edit.
+        self.db.flush()
         return session
 
-    def skip(self, task_id: str, occurrence_start: datetime) -> None:
+    def skip(self, task_id: str, occurrence_start: datetime, *, commit: bool = True) -> None:
         """Cancel one occurrence. Converts an existing `override` into a `skip`."""
         occurrence_start = _naive_utc(occurrence_start)
         existing = self.get_exception(task_id, occurrence_start)
         if existing:
+            if existing.scheduled_session_id is not None:
+                raise self._protected_plan_delete()
             existing.kind = "skip"
             existing.session_id = None
             self.db.add(existing)
         else:
             self.db.add(RecurrenceException(task_id=task_id, occurrence_start=occurrence_start, kind="skip"))
-        self.db.commit()
+        if commit:
+            self.db.commit()
 
-    def truncate_series(self, task_id: str, from_occurrence_start: datetime) -> int:
+    def truncate_series(self, task_id: str, from_occurrence_start: datetime, *, commit: bool = True) -> int:
         """End the series just before `from_occurrence_start` ("this and following").
 
         Deletes the exceptions at or after that instant and the materialized session rows of
@@ -551,28 +538,32 @@ class RecurrenceService:
             try:
                 validate_rrule(candidate_rrule, task.recurrence_dtstart, task.recurrence_timezone)
             except ValidationError:
-                return self.end_series(task_id)
+                return self.end_series(task_id, commit=commit)
+            deleted = self._drop_exceptions(task_id, at_or_after=anchor)
             task.recurrence_rrule = candidate_rrule
             task.recurrence_rule = rrule_to_preset(candidate_rrule)
-            self.db.add(task)
+            self.invalidate_plan_revisions(task_id)
 
-        deleted = self._drop_exceptions(task_id, at_or_after=anchor)
-        self.db.commit()
+        else:
+            deleted = self._drop_exceptions(task_id, at_or_after=anchor)
+        if commit:
+            self.db.commit()
         return deleted
 
-    def end_series(self, task_id: str) -> int:
+    def end_series(self, task_id: str, *, commit: bool = True) -> int:
         """Stop the series entirely ("all"). Past logged rows are never touched."""
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
 
+        deleted = self._drop_exceptions(task_id, at_or_after=None)
         task.is_recurring = False
         task.recurrence_rrule = None
         task.recurrence_rule = None
         self.db.add(task)
 
-        deleted = self._drop_exceptions(task_id, at_or_after=None)
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return deleted
 
     def _drop_exceptions(self, task_id: str, at_or_after: datetime | None) -> int:
@@ -582,6 +573,12 @@ class RecurrenceService:
         query = select(RecurrenceException).where(RecurrenceException.task_id == task_id)
         if at_or_after is not None:
             query = query.where(RecurrenceException.occurrence_start >= at_or_after)
+        protected = query.where(RecurrenceException.scheduled_session_id.is_not(None)).limit(1)
+        if self.db.exec(protected).first() is not None:
+            raise self._protected_plan_delete()
+        # Preserve fingerprinted legacy ownership reconciliation, but only on this explicit
+        # mutation (never a range read). This also resolves stale legacy links before clearing.
+        self.reconcile_series(task_id, commit=False)
         deleted_sessions = 0
         for exc in self.db.exec(query).all():
             if exc.kind == "override" and exc.session_id:
@@ -592,8 +589,15 @@ class RecurrenceService:
             self.db.delete(exc)
         return deleted_sessions
 
-    def set_series_duration(self, task_id: str, duration_minutes: int) -> Task:
-        """ "All future occurrences" resize: write the per-occurrence duration on the task."""
+    @staticmethod
+    def _protected_plan_delete() -> ConflictError:
+        return ConflictError(
+            "This scope would remove a scheduled occurrence. Plan deletion is not supported yet.",
+            code="plan_delete_unsupported",
+        )
+
+    def set_series_duration(self, task_id: str, duration_minutes: int, *, exclude_plan_id: str | None = None) -> None:
+        """Stage a series resize in the caller's transaction, leaving existing overrides alone."""
         if duration_minutes <= 0:
             raise ValidationError("Recurrence duration must be a positive number of minutes.")
         task = self.db.get(Task, task_id)
@@ -601,24 +605,29 @@ class RecurrenceService:
             raise EntityNotFoundError("Task", task_id)
         if not task.is_recurring or not task.recurrence_rrule:
             raise ValidationError("Task is not recurring, so it has no series duration.")
-        task.recurrence_duration_minutes = int(duration_minutes)
-        self.db.add(task)
-        self.db.commit()
-        self.db.refresh(task)
-        return task
+        if task.recurrence_duration_minutes != duration_minutes:
+            task.recurrence_duration_minutes = duration_minutes
+            self.invalidate_plan_revisions(task_id, exclude_plan_id=exclude_plan_id)
 
-    def reconcile_series(self, task_id: str) -> int:
-        """Idempotent adoption/cleanup after a rule change or on first projection.
+    def invalidate_plan_revisions(self, task_id: str, *, exclude_plan_id: str | None = None) -> None:
+        """A linked plan's revision also protects its use as a series-resize target."""
+        targets = select(RecurrenceException.scheduled_session_id).where(RecurrenceException.task_id == task_id)
+        statement = update(ScheduledSession).where(ScheduledSession.id.in_(targets))
+        if exclude_plan_id is not None:
+            statement = statement.where(ScheduledSession.id != exclude_plan_id)
+        self.db.execute(statement.values(revision=ScheduledSession.revision + 1))
+
+    def reconcile_series(self, task_id: str, *, commit: bool = True) -> int:
+        """Idempotent legacy adoption/cleanup during explicit writes.
 
         Two directions, both exact-match only and both future-only:
 
         * a real future session row of the task sitting **exactly** on a projected occurrence
           with no exception is adopted as `kind="override"` (this is what stops a legacy DB
           double-rendering rows the old generator left at occurrence instants);
-        * an exception whose `occurrence_start` is no longer an occurrence of the current rule
-          is dropped -- a `skip` outright (the anchor it cancelled is gone), an `override` by
-          deleting the exception and **keeping** the session row (real user work, just no
-          longer part of the series).
+        * an obsolete legacy override is unlinked, preserving its session row. Skips and
+          typed overrides retain their anchors, so re-enabling or changing a rule back does
+          not resurrect a cancelled or explicitly scheduled occurrence.
 
         Past exceptions are never touched. Nor is an exception whose `occurrence_start` sits
         beyond the horizon this method actually expanded: `expand()` is bounded by both
@@ -628,10 +637,6 @@ class RecurrenceService:
         looked at -- and must be left alone rather than judged stale and deleted. Returns the
         number of rows changed.
         """
-        if task_id in self._reconciled:
-            return 0
-        self._reconciled.add(task_id)
-
         task = self.db.get(Task, task_id)
         if not task:
             return 0
@@ -654,7 +659,7 @@ class RecurrenceService:
 
         for exc in exceptions:
             occ_start = _naive_utc(exc.occurrence_start)
-            if occ_start <= now:
+            if exc.kind == "skip" or exc.scheduled_session_id is not None or occ_start <= now:
                 continue
             if occ_start > expanded_horizon:
                 # Outside the horizon this call actually expanded -- unknown, not stale.
@@ -666,7 +671,7 @@ class RecurrenceService:
             changes += 1
 
         if not spec:
-            if changes:
+            if changes and commit:
                 self.db.commit()
             return changes
 
@@ -701,7 +706,7 @@ class RecurrenceService:
             claimed.add(start)
             changes += 1
 
-        if changes:
+        if changes and commit:
             try:
                 self.db.commit()
             except IntegrityError:

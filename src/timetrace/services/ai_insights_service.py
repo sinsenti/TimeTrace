@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy import or_, text
 from sqlmodel import Session, func, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.query_spec import (
     AnalyticsQuery,
     ChartType,
@@ -302,10 +302,11 @@ class AIInsightsService:
         batch_id: str | None = None,
         include_pending: bool = True,
     ) -> list[dict[str, Any]]:
-        rows = SessionService(self.db).list_overlapping_sessions(start, end, include_virtual=True)
+        service = SessionService(self.db)
+        items = service.list_agenda(start, end).items
         records: dict[str, dict[str, Any]] = {}
-        for row in rows:
-            record = self._session_record(row, end)
+        for item in items:
+            record = self._session_record(item.model_dump(mode="json"), end)
             if record is not None:
                 records[str(record["id"])] = record
 
@@ -326,6 +327,11 @@ class AIInsightsService:
             baseline = self._load_json(item.baseline_json)
             target_id = str(item.target_id) if item.target_id else None
             if item.op in ("update", "delete") and target_id:
+                try:
+                    service.require_legacy_mutation_target(target_id)
+                except ConflictError:
+                    # A legacy draft cannot change typed commitments, even in its busy-window overlay.
+                    continue
                 records.pop(target_id, None)
             if item.op not in ("create", "update"):
                 continue
@@ -372,6 +378,7 @@ class AIInsightsService:
             "duration_minutes": int((end - start).total_seconds() // 60),
             "tags": row.get("tags") or "",
             "notes": row.get("notes") or "",
+            **{key: row[key] for key in ("kind", "original_start", "original_end", "revision") if key in row},
             "is_virtual": bool(row.get("is_virtual")),
             "is_pending": bool(row.get("is_pending")),
             "draft_item_id": row.get("draft_item_id"),

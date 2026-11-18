@@ -185,3 +185,22 @@ def test_status_retains_mode_target_attachment_and_idle_toggle_does_not_clear_ga
     assert status["elapsed_seconds"] == 0
     assert status["remaining_seconds"] is None
     assert client.get("/sessions").json() == []
+
+
+def test_idle_status_names_next_persisted_plan_without_changing_legacy_wire(client):
+    start = datetime.now(UTC) + timedelta(hours=2)
+    response = client.post(
+        "/scheduled-sessions",
+        json={
+            "start_time": start.isoformat(),
+            "end_time": (start + timedelta(hours=1)).isoformat(),
+            "notes": "Reserved focus",
+        },
+    )
+    assert response.status_code == 201
+    status = client.get("/timer/status").json()
+    upcoming = status["next_session"]
+    assert upcoming == status["next_scheduled_session"]
+    assert set(upcoming) == {"title", "start_time", "starts_in_minutes"}
+    assert upcoming["title"] == "Reserved focus"
+    assert datetime.fromisoformat(upcoming["start_time"]) == start

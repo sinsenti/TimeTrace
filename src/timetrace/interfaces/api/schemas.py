@@ -124,6 +124,14 @@ class ScheduledSessionUpdate(BaseModel):
     expected_revision: StrictInt = Field(ge=1)
 
 
+class ScheduledOccurrenceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_time: datetime
+    end_time: datetime
+    expected_projection_revision: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+
 class ScheduledSessionRead(ScheduledSessionCreate):
     id: str
     kind: Literal["scheduled_session"] = "scheduled_session"
@@ -198,6 +206,8 @@ class AgendaProjectedPlanRead(ProjectedOccurrenceRead):
     kind: Literal["scheduled_session"] = "scheduled_session"
     original_start: datetime
     original_end: datetime
+    projection_revision: str
+    task_title: str
 
 
 class LegacySessionRead(BaseModel):

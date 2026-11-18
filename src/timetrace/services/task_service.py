@@ -10,6 +10,7 @@ from timetrace.core.inline_parser import parse_inline_task
 from timetrace.core.timezones import daemon_tzinfo, to_local_naive
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.schemas import (
     ClearScheduledSessionsRequest,
     ClearScheduledSessionsResponse,
@@ -326,13 +327,18 @@ class TaskService:
         return to_local_naive(occurrence.start_utc, daemon_tzinfo()).date().strftime("%Y-%m-%d")
 
     def update_task(self, task_id: str, req: TaskUpdate, parse_title_syntax: bool = True) -> TaskWithPolicyResponse:
+        update_dict = req.model_dump(exclude_unset=True)
+        recurrence = RecurrenceService(self.db)
+        touches_recurrence = recurrence.touches_recurrence(update_dict)
+        if touches_recurrence:
+            lock_sqlite_writer(self.db)
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
 
         old_status_name = db_task.status
+        old_spec = recurrence.spec_for_task(db_task) if touches_recurrence else None
 
-        update_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
 
         # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
@@ -365,7 +371,6 @@ class TaskService:
             if st:
                 db_task.status = st.name
 
-        recurrence = RecurrenceService(self.db)
         if db_task.is_recurring:
             now_completed_status, _ = self._status_flags(db_task.status)
             if now_completed_status:
@@ -382,13 +387,14 @@ class TaskService:
             db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
         self.db.add(db_task)
+        if touches_recurrence:
+            if old_spec != recurrence.spec_for_task(db_task):
+                recurrence.invalidate_plan_revisions(db_task.id)
+            recurrence.reconcile_series(db_task.id, commit=False)
         self.db.commit()
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
-
-        if RecurrenceService.touches_recurrence(update_dict):
-            recurrence.reconcile_series(db_task.id)
 
         policy = None
         if not db_task.is_recurring:
@@ -479,6 +485,7 @@ class TaskService:
     def clear_scheduled_sessions(
         self, task_id: str, req: ClearScheduledSessionsRequest
     ) -> ClearScheduledSessionsResponse:
+        lock_sqlite_writer(self.db)
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
@@ -493,15 +500,6 @@ class TaskService:
 
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
-    def _lock_task_deletion_scope(self) -> None:
-        # Start a SQLite write transaction even if this session already read AI drafts.
-        # A zero-row UPDATE leaves data untouched and holds the writer lock through commit.
-        self.db.execute(sa.text("UPDATE task SET id = id WHERE 0"))
-        self.db.flush()
-        # The ORM cascade must see the same hierarchy as the locked scope queries, even
-        # when a caller loaded a relationship before the competing writer committed.
-        self.db.expire_all()
-
     def _detach_task_history(self, task_ids: set[str], *, allow_plan_detachment: bool = True) -> None:
         SessionService(self.db).detach_plans_for_deleted_tasks(task_ids, allow=allow_plan_detachment)
         for row in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))):
@@ -510,7 +508,7 @@ class TaskService:
         RecurrenceService(self.db).delete_for_task(list(task_ids))
 
     def delete_task(self, task_id: str, *, allow_plan_detachment: bool = True) -> None:
-        self._lock_task_deletion_scope()
+        lock_sqlite_writer(self.db)
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
@@ -521,7 +519,7 @@ class TaskService:
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
-        self._lock_task_deletion_scope()
+        lock_sqlite_writer(self.db)
         completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         if not completed_tasks:
             self.db.commit()

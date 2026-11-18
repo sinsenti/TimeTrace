@@ -26,7 +26,7 @@ class TimerService:
         upcoming_payload = None
         if not status_data.get("is_running") and self.db is not None:
             now = datetime.now(UTC)
-            # Merged: the earliest real future row or the next projected occurrence of a
+            # Merged: the earliest persisted schedule or the next projected occurrence of a
             # recurring series, whichever is sooner.
             upcoming = SessionService(self.db).next_upcoming_occurrence()
             if upcoming:

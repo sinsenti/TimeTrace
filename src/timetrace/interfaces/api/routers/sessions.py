@@ -5,11 +5,13 @@ from sqlmodel import Session as DBSession
 
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
+    AgendaProjectedPlanRead,
     AgendaRead,
     LegacySessionRead,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
+    ScheduledOccurrenceUpdate,
     ScheduledSessionCreate,
     ScheduledSessionRead,
     ScheduledSessionUpdate,
@@ -32,14 +34,19 @@ def create_scheduled_session(req: ScheduledSessionCreate, db: DBSession = Depend
     return SessionService(db).create_scheduled_session(req)
 
 
-@router.get("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)
+@router.get("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead | AgendaProjectedPlanRead)
 def get_scheduled_session(plan_id: str, db: DBSession = Depends(get_session)):
     return SessionService(db).get_scheduled_session(plan_id)
 
 
 @router.put("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)
-def update_scheduled_session(plan_id: str, req: ScheduledSessionUpdate, db: DBSession = Depends(get_session)):
-    return SessionService(db).update_scheduled_session(plan_id, req)
+def update_scheduled_session(
+    plan_id: str,
+    req: ScheduledSessionUpdate | ScheduledOccurrenceUpdate,
+    scope: SessionEditScope = Query("only_this"),
+    db: DBSession = Depends(get_session),
+):
+    return SessionService(db).update_scheduled_session(plan_id, req, scope=scope)
 
 
 @router.post("/sessions", response_model=LegacySessionRead, status_code=status.HTTP_201_CREATED)

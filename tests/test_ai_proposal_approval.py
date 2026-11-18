@@ -187,3 +187,44 @@ def test_sequential_same_target_accept_reports_later_stale_item_as_failed(client
     audit_transitions = [row.transition for row in AIAuditService(db).list_for_batch(batch_id)]
     assert len(audit_transitions) == 4
     assert set(audit_transitions) == {"proposed", "applied", "failed"}
+
+
+def test_legacy_ai_proposal_cannot_change_a_newly_captured_occurrence(client, db):
+    from datetime import UTC, datetime, timedelta
+
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    end = anchor + timedelta(hours=1)
+    task_response = client.post(
+        "/api/tasks",
+        json={
+            "title": "Protected series",
+            "is_recurring": True,
+            "recurrence_dtstart": anchor.isoformat(),
+            "recurrence_timezone": "UTC",
+            "recurrence_duration_minutes": 30,
+        },
+    )
+    assert task_response.status_code == 201, task_response.text
+    params = {"start": anchor.isoformat(), "end": end.isoformat()}
+    (projection,) = client.get("/agenda", params=params).json()["items"]
+    drafts = AIDraftService(db)
+    batch_id = drafts.create_batch(None, None, "schedule", "Synthetic occurrence draft", None, None).id
+    drafts.add_item(batch_id, "delete", "session", projection["id"], {})
+
+    save = client.put(
+        f"/scheduled-sessions/{projection['id']}",
+        json={
+            "start_time": anchor.isoformat(),
+            "end_time": end.isoformat(),
+            "expected_projection_revision": projection["projection_revision"],
+        },
+    )
+    assert save.status_code == 200, save.text
+    plan = save.json()
+    drafts.add_item(batch_id, "update", "session", plan["id"], {"notes": "Unexpected v1 plan edit"})
+    accepted = client.post(f"/api/ai/drafts/batches/{batch_id}/accept", json={})
+    assert accepted.status_code == 200, accepted.text
+    assert [item["status"] for item in accepted.json()["items"]] == ["failed", "failed"]
+    assert client.get("/agenda", params=params).json()["items"] == [plan]
+    reflected = client.post("/reflections", json={"session_id": plan["id"], "energy_level": 3})
+    assert reflected.status_code == 409, reflected.text

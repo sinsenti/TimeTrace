@@ -317,3 +317,33 @@ def test_concurrent_reads_own_and_release_independent_sessions(tmp_path, monkeyp
         assert {id(conn) for conn in checked_in} == {id(conn) for conn in checked_out}
     finally:
         engine.dispose()
+
+
+def test_ai_planning_reads_include_typed_plan_and_reserve_its_window(client, gateway):
+    start = (datetime.now(UTC) + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
+    end = start + timedelta(hours=2)
+    plan_end = start + timedelta(minutes=30)
+    response = client.post(
+        "/scheduled-sessions",
+        json={
+            "start_time": (start - timedelta(minutes=30)).isoformat(),
+            "end_time": plan_end.isoformat(),
+            "notes": "Reserved writing",
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    (item,) = gateway.list_sessions(start=start, end=end)
+    assert item["id"] == plan["id"]
+    assert item["kind"] == "scheduled_session"
+    assert datetime.fromisoformat(item["original_end"]) == plan_end
+    assert item["revision"] == 1
+    slots = gateway.find_free_slots(start=start, end=end, min_duration_minutes=15, working_hours_only=False)
+    assert datetime.fromisoformat(slots[0]["start"]) == plan_end
+    overlap = {"start_time": start.isoformat(), "end_time": (start + timedelta(minutes=15)).isoformat()}
+    check = gateway.validate_schedule([overlap])
+    assert not check["valid"] and any("Reserved writing" in error and "overlaps" in error for error in check["errors"])
+    work = client.post("/sessions", json=overlap).json()
+    (result,) = gateway.find_conflicts(start=start, end=end)
+    assert {result["session_a_id"], result["session_b_id"]} == {plan["id"], work["id"]}
+    assert result["overlap_minutes"] == 15
