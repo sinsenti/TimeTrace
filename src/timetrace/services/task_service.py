@@ -10,11 +10,13 @@ from timetrace.core.inline_parser import parse_inline_task
 from timetrace.core.timezones import daemon_tzinfo, to_local_naive
 from timetrace.db.models import RatingDefinition, RatingEntry, Task, TaskReview, TaskStatus
 from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.schemas import (
     ClearScheduledSessionsRequest,
     ClearScheduledSessionsResponse,
     CompletionPolicyPrompt,
-    ScheduledSessionInfo,
+    LegacySessionRead,
+    ScheduledSessionCreate,
     TaskCreate,
     TaskReadResponse,
     TaskReviewCreate,
@@ -46,10 +48,13 @@ def parse_title_estimation(title: str) -> tuple[str, int | None]:
     return title, None
 
 
-def apply_quick_task_syntax(task_dict: dict) -> datetime | None:
+def apply_quick_task_syntax(task_dict: dict, *, allow_schedule: bool = True) -> datetime | None:
     quick = parse_inline_task(task_dict.get("title") or "")
     if not quick:
         return None
+
+    if not allow_schedule and quick.get("schedule_session_at") is not None:
+        raise ValidationError("Legacy AI task approvals do not support title scheduling; schedule explicitly instead.")
 
     task_dict["title"] = quick["title"]
     if quick.get("tags"):
@@ -153,7 +158,9 @@ class TaskService:
         if parent and parent.tags:
             task_dict["tags"] = parent.tags
 
-    def create_task(self, req: TaskCreate, parse_title_syntax: bool = True) -> Task:
+    def create_task(
+        self, req: TaskCreate, parse_title_syntax: bool = True, *, allow_title_schedule: bool = True
+    ) -> Task:
         task_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
         # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
@@ -161,7 +168,7 @@ class TaskService:
         # title that happens to contain `#tag`/`!high`/`(desc)`/`due:3d`/`[15m]` syntax must
         # come back exactly as it was, not get silently re-mangled by this parser a second time.
         if parse_title_syntax:
-            schedule_session_at = apply_quick_task_syntax(task_dict)
+            schedule_session_at = apply_quick_task_syntax(task_dict, allow_schedule=allow_title_schedule)
             clean_title, parsed_est = parse_title_estimation(task_dict["title"])
             task_dict["title"] = clean_title
             if parsed_est is not None:
@@ -187,37 +194,40 @@ class TaskService:
         if db_task.due_date:
             db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
-        self.db.add(db_task)
+        try:
+            self.db.add(db_task)
 
-        if schedule_session_at is not None:
-            self._create_scheduled_session(db_task, schedule_session_at)
+            if schedule_session_at is not None:
+                self._create_scheduled_session(db_task, schedule_session_at)
 
-        # Recurring tasks pre-generate nothing: one RRULE is stored and occurrences are
-        # projected on read (RecurrenceService).
-        RecurrenceService(self.db).apply_recurrence_fields(db_task, task_dict)
+            # Recurring tasks pre-generate nothing: one RRULE is stored and occurrences are
+            # projected on read (RecurrenceService).
+            RecurrenceService(self.db).apply_recurrence_fields(db_task, task_dict)
 
-        self.db.commit()
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
 
         return db_task
 
-    def _create_scheduled_session(self, task: Task, start_at: datetime) -> SessionModel:
+    def _create_scheduled_session(self, task: Task, start_at: datetime) -> None:
         est = task.estimated_minutes or 15
         duration_mins = 30 if est > 120 else est
         start_utc = ensure_utc(start_at)
-        end_utc = start_utc + timedelta(minutes=duration_mins)
-        session = SessionModel(
-            task_id=task.id,
-            start_time=start_utc.replace(tzinfo=None),
-            end_time=end_utc.replace(tzinfo=None),
-            duration_seconds=duration_mins * 60,
-            tags=task.tags or "",
-            notes=f"Scheduled: {task.title}",
+        self.db.flush()  # A new task and its plan commit together, never independently.
+        SessionService(self.db).stage_scheduled_session(
+            ScheduledSessionCreate(
+                task_id=task.id,
+                start_time=start_utc,
+                end_time=start_utc + timedelta(minutes=duration_mins),
+                tags=task.tags or "",
+                notes=f"Scheduled: {task.title}",
+            )
         )
-        self.db.add(session)
-        return session
 
     def list_tasks(
         self,
@@ -325,14 +335,21 @@ class TaskService:
             return None
         return to_local_naive(occurrence.start_utc, daemon_tzinfo()).date().strftime("%Y-%m-%d")
 
-    def update_task(self, task_id: str, req: TaskUpdate, parse_title_syntax: bool = True) -> TaskWithPolicyResponse:
+    def update_task(
+        self, task_id: str, req: TaskUpdate, parse_title_syntax: bool = True, *, allow_title_schedule: bool = True
+    ) -> TaskWithPolicyResponse:
+        update_dict = req.model_dump(exclude_unset=True)
+        recurrence = RecurrenceService(self.db)
+        touches_recurrence = recurrence.touches_recurrence(update_dict)
+        if touches_recurrence:
+            lock_sqlite_writer(self.db)
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
 
         old_status_name = db_task.status
+        old_spec = recurrence.spec_for_task(db_task) if touches_recurrence else None
 
-        update_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
 
         # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
@@ -344,51 +361,55 @@ class TaskService:
         # actually there before, exactly the failure mode this feature's whole draft-layer design
         # exists to prevent.
         if parse_title_syntax and "title" in update_dict and update_dict["title"]:
-            schedule_session_at = apply_quick_task_syntax(update_dict)
+            schedule_session_at = apply_quick_task_syntax(update_dict, allow_schedule=allow_title_schedule)
             clean_title, parsed_est = parse_title_estimation(update_dict["title"])
             update_dict["title"] = clean_title
             if parsed_est is not None:
                 update_dict["estimated_minutes"] = parsed_est
 
-        for key, value in update_dict.items():
-            if key == "due_date":
-                setattr(db_task, key, ensure_utc(value).replace(tzinfo=None) if value else None)
-            else:
-                setattr(db_task, key, value)
+        try:
+            for key, value in update_dict.items():
+                if key == "due_date":
+                    setattr(db_task, key, ensure_utc(value).replace(tzinfo=None) if value else None)
+                else:
+                    setattr(db_task, key, value)
 
-        if "status" in update_dict and update_dict["status"]:
-            st = self.db.exec(select(TaskStatus).where(TaskStatus.name == update_dict["status"])).first()
-            if st:
-                db_task.status_id = st.id
-        elif "status_id" in update_dict and update_dict["status_id"]:
-            st = self.db.get(TaskStatus, update_dict["status_id"])
-            if st:
-                db_task.status = st.name
+            if "status" in update_dict and update_dict["status"]:
+                st = self.db.exec(select(TaskStatus).where(TaskStatus.name == update_dict["status"])).first()
+                if st:
+                    db_task.status_id = st.id
+            elif "status_id" in update_dict and update_dict["status_id"]:
+                st = self.db.get(TaskStatus, update_dict["status_id"])
+                if st:
+                    db_task.status = st.name
 
-        recurrence = RecurrenceService(self.db)
-        if db_task.is_recurring:
-            now_completed_status, _ = self._status_flags(db_task.status)
-            if now_completed_status:
-                self._reset_recurring_task_status(db_task)
+            if db_task.is_recurring:
+                now_completed_status, _ = self._status_flags(db_task.status)
+                if now_completed_status:
+                    self._reset_recurring_task_status(db_task)
 
-        if schedule_session_at is not None:
-            self._create_scheduled_session(db_task, schedule_session_at)
+            if schedule_session_at is not None:
+                self._create_scheduled_session(db_task, schedule_session_at)
 
-        recurrence.apply_recurrence_fields(db_task, update_dict)
+            recurrence.apply_recurrence_fields(db_task, update_dict)
 
-        if db_task.created_at:
-            db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
-        if db_task.due_date:
-            db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
+            if db_task.created_at:
+                db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)
+            if db_task.due_date:
+                db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
-        self.db.add(db_task)
-        self.db.commit()
+            self.db.add(db_task)
+            if touches_recurrence:
+                if old_spec != recurrence.spec_for_task(db_task):
+                    recurrence.invalidate_plan_revisions(db_task.id)
+                recurrence.reconcile_series(db_task.id, commit=False)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
         self.db.refresh(db_task)
         db_task.created_at = ensure_utc(db_task.created_at)
         db_task.due_date = ensure_utc(db_task.due_date)
-
-        if RecurrenceService.touches_recurrence(update_dict):
-            recurrence.reconcile_series(db_task.id)
 
         policy = None
         if not db_task.is_recurring:
@@ -429,13 +450,6 @@ class TaskService:
         if st:
             task.status_id = st.id
 
-    def _get_all_descendant_task_ids(self, task_id: str) -> set[str]:
-        ids = {task_id}
-        subtask_ids = self.db.exec(select(Task.id).where(Task.parent_id == task_id)).all()
-        for sub_id in subtask_ids:
-            ids.update(self._get_all_descendant_task_ids(sub_id))
-        return ids
-
     def _status_flags(self, name: str | None) -> tuple[bool, bool]:
         if name is None:
             return (False, False)
@@ -468,23 +482,11 @@ class TaskService:
 
     def _build_completion_policy(self, task: Task, reason: str) -> CompletionPolicyPrompt | None:
         session_service = SessionService(self.db)
-        sessions = session_service.list_future_sessions([task.id])
-        subtask_scheduled_count = len(session_service.list_future_sessions(self._collect_subtree_ids(task.id)))
-        if not sessions and not subtask_scheduled_count:
+        scheduled_sessions = session_service.list_completion_schedules([task.id])
+        subtree = session_service.list_completion_schedules(self._collect_subtree_ids(task.id))
+        if not scheduled_sessions and not subtree:
             return None
-
-        scheduled_sessions = [
-            ScheduledSessionInfo(
-                id=s.id,
-                start_time=ensure_utc(s.start_time),
-                end_time=ensure_utc(s.end_time) if s.end_time else None,
-                duration_seconds=s.duration_seconds,
-                tags=s.tags,
-                notes=s.notes,
-            )
-            for s in sessions
-        ]
-        scheduled_seconds = sum(s.duration_seconds or 0 for s in sessions)
+        scheduled_seconds = sum(s.duration_seconds or 0 for s in scheduled_sessions)
 
         return CompletionPolicyPrompt(
             reason=reason,
@@ -492,59 +494,61 @@ class TaskService:
             task_title=task.title,
             scheduled_sessions=scheduled_sessions,
             scheduled_seconds=scheduled_seconds,
-            subtask_scheduled_count=subtask_scheduled_count,
+            subtask_scheduled_count=len(subtree),
+            subtask_protected_plan_count=sum(s.kind == "scheduled_session" for s in subtree),
         )
 
     def clear_scheduled_sessions(
         self, task_id: str, req: ClearScheduledSessionsRequest
     ) -> ClearScheduledSessionsResponse:
-        task = self.db.get(Task, task_id)
-        if not task:
-            raise EntityNotFoundError("Task", task_id)
+        lock_sqlite_writer(self.db)
+        try:
+            task = self.db.get(Task, task_id)
+            if not task:
+                raise EntityNotFoundError("Task", task_id)
 
-        session_service = SessionService(self.db)
-        deleted_ids: list[str] = []
-
-        deleted_ids.extend(session_service.clear_future_sessions([task_id], req.session_ids))
-
-        if req.include_subtasks:
-            subtree_ids = self._collect_subtree_ids(task_id)
+            session_service = SessionService(self.db)
+            subtree_ids = self._collect_subtree_ids(task_id) if req.include_subtasks else []
+            session_service.require_legacy_clear_scope(task_id, req.session_ids, subtree_ids)
+            deleted_ids = session_service.clear_future_sessions([task_id], req.session_ids, commit=False)
             if subtree_ids:
-                deleted_ids.extend(session_service.clear_future_sessions(subtree_ids))
+                deleted_ids.extend(session_service.clear_future_sessions(subtree_ids, commit=False))
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
-    def delete_task(self, task_id: str) -> None:
+    def _detach_task_history(self, task_ids: set[str], *, allow_plan_detachment: bool = True) -> None:
+        SessionService(self.db).detach_plans_for_deleted_tasks(task_ids, allow=allow_plan_detachment)
+        for row in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))):
+            row.task_id = None
+        # `recurrenceexception` rows have no cascade; their FK would dangle.
+        RecurrenceService(self.db).delete_for_task(list(task_ids))
+
+    def delete_task(self, task_id: str, *, allow_plan_detachment: bool = True) -> None:
+        lock_sqlite_writer(self.db)
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
-
-        all_target_ids = self._get_all_descendant_task_ids(task_id)
-
-        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(all_target_ids))).all()
-        for s in linked_sessions:
-            s.task_id = None
-            self.db.add(s)
-
-        # `recurrenceexception` rows have no cascade; their FK would dangle.
-        RecurrenceService(self.db).delete_for_task(list(all_target_ids))
-
+        self._detach_task_history(
+            {task_id, *self._collect_subtree_ids(task_id)}, allow_plan_detachment=allow_plan_detachment
+        )
         self.db.delete(db_task)
         self.db.commit()
 
     def delete_completed_tasks(self) -> int:
+        lock_sqlite_writer(self.db)
         completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
         if not completed_tasks:
+            self.db.commit()
             return 0
 
-        completed_ids = {t.id for t in completed_tasks}
-
-        linked_sessions = self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(completed_ids))).all()
-        for s in linked_sessions:
-            s.task_id = None
-            self.db.add(s)
-
-        RecurrenceService(self.db).delete_for_task(list(completed_ids))
+        scope = {task.id for task in completed_tasks}
+        for task in completed_tasks:
+            scope.update(self._collect_subtree_ids(task.id))
+        self._detach_task_history(scope)
 
         count = 0
         for task in completed_tasks:
@@ -630,7 +634,7 @@ class TaskService:
 
         session_list = []
         for s in sessions:
-            s_dict = s.model_dump()
+            s_dict = LegacySessionRead.model_validate(s).model_dump()
             s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
             s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
             session_list.append(s_dict)

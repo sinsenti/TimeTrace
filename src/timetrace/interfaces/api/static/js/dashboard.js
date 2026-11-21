@@ -22,6 +22,41 @@ async function resolveCalendarDropTask(taskId, taskTitle) {
     return null;
 }
 
+async function scheduleCalendarDrop(info) {
+    // FullCalendar's external event is provisional, not a saved row.
+    const { title, start, extendedProps = {} } = info.event;
+    info.event.remove();
+    const intent = scheduleCreateIntent();
+    if (intent === null) return;
+    const taskId = extendedProps.taskId || null;
+    const targetTask = await resolveCalendarDropTask(taskId, title);
+    const estimate = Number(extendedProps.estimatedMinutes) || 15;
+    const minutes = estimate > 120 ? 30 : estimate;
+    const payload = {
+        task_id: taskId,
+        start_time: start.toISOString(),
+        end_time: new Date(+start + minutes * 60000).toISOString(),
+        tags: targetTask?.tags || '',
+        notes: ''
+    };
+    let saved;
+    try {
+        saved = await createScheduledSessionFromEditor(payload, intent);
+    } catch (err) {
+        if (!err.scheduleRecovery) alert(`Could not schedule task: ${err.message}`);
+        return;
+    }
+    rememberSavedSession(saved);
+    await refreshSessionDisplay();
+    // Status is best effort and never determines whether the plan was saved.
+    if (taskId && targetTask?.status?.toLowerCase() !== 'ongoing') {
+        try {
+            await api.put(`/api/tasks/${encodeURIComponent(taskId)}`, { status: 'Scheduled' });
+            await taskKnowledge.changed();
+        } catch (_) { /* The schedule remains saved. */ }
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     if (typeof fetchAllTasksRegistry === 'function') {
         await fetchAllTasksRegistry();
@@ -145,7 +180,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 if (typeof suppressModalOnSelect !== 'undefined' && suppressModalOnSelect) return;
                 cursorStart = selectionInfo.start;
                 cursorEnd = selectionInfo.end;
-                openCreateSessionModal(selectionInfo.start, selectionInfo.end);
+                openCreateSessionModal(selectionInfo.start, selectionInfo.end, null, "", "calendar");
             },
 
             eventDrop: async function(info) { await handleCalendarEventUpdate(info.event, 'move', info); },
@@ -158,57 +193,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 openEditSessionModal(info.event.id, info.el);
             },
 
-            eventReceive: async function(info) {
-                try {
-                    const taskTitle = info.event.title;
-                    const taskId = info.event.extendedProps ? info.event.extendedProps.taskId : null;
-                    const targetTask = await resolveCalendarDropTask(taskId, taskTitle);
-                    const estMins = info.event.extendedProps && info.event.extendedProps.estimatedMinutes ? parseInt(info.event.extendedProps.estimatedMinutes) : 15;
-                    const sessionMins = estMins > 120 ? 30 : estMins;
-                    
-                    const startTime = info.event.start;
-                    const endTime = new Date(startTime.getTime() + sessionMins * 60 * 1000);
-
-                    info.event.remove();
-
-                    const defaultTags = (targetTask && targetTask.tags) ? targetTask.tags : "";
-
-                    const payload = {
-                        task_id: taskId ? taskId : null,
-                        start_time: startTime.toISOString(),
-                        end_time: endTime.toISOString(),
-                        tags: defaultTags,
-                        notes: ""
-                    };
-
-                    const createdSession = await api.post('/sessions', payload);
-
-                    if (createdSession) {
-                        if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-                            allSessions.push(createdSession);
-                        }
-                        if (calendar) calendar.refetchEvents();
-                    }
-
-                    if (taskId) {
-                        const isOngoing = targetTask && (targetTask.status || '').toLowerCase() === 'ongoing';
-                        if (!isOngoing) {
-                            try {
-                                await api.put(`/api/tasks/${taskId}`, { status: "Scheduled" });
-                                await taskKnowledge.changed();
-                            } catch(e) {}
-                        }
-                    }
-
-                    if (typeof fetchTasks === 'function') fetchTasks();
-                    if (typeof loadKanbanBoard === 'function') loadKanbanBoard();
-                    if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
-                } catch (err) {
-                    console.error("Failed to create session from dropped task:", err);
-                    alert("Failed to create session from task: " + (err.message || err));
-                    if (calendar) calendar.refetchEvents();
-                }
-            },
+            eventReceive: scheduleCalendarDrop,
 
             datesSet: function(info) {
                 const titleEl = document.getElementById('calendar_range_title');

@@ -12,7 +12,7 @@ function page(api) {
         return {
             tagName: tag.toUpperCase(), value: '', textContent: '', innerHTML: '', children: [], style: {}, dataset: {},
             get childNodes() { return this.children; },
-            classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c) },
+            classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, on) { if (on) classes.add(c); else classes.delete(c); } },
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); return child; },
             setAttribute() {}, addEventListener(name, fn) { this[name] = fn; },
             querySelectorAll() { return []; }, insertBefore(child) { this.children.push(child); },
@@ -333,7 +333,9 @@ for (const kind of ['unknown', 'materialized', 'virtual', 'ordinary']) {
         let confirmations = 0;
         let recover = false;
         const p = sessionPage({
-            get: async () => {
+            get: async url => {
+                if (url.startsWith('/agenda?')) return { items: p.context.allSessions };
+                if (url.startsWith('/sessions?')) return p.context.allSessions;
                 lookups++;
                 if (kind === 'unknown' && !recover) throw Error('metadata offline');
                 return [{ id: 'missing-id', title: 'Task', is_recurring: kind !== 'ordinary' }];
@@ -345,6 +347,8 @@ for (const kind of ['unknown', 'materialized', 'virtual', 'ordinary']) {
         p.elements.get('recurring_delete_modal').classList.add('hidden');
         if (kind === 'materialized') p.context.allSessions[0].series_task_id = 'missing-id';
         if (kind === 'virtual') p.context.allSessions[0].id = 'virt:missing-id:20260101T100000Z';
+        await p.run('fetchCalendarEvents({start:new Date("2026-01-01Z"),end:new Date("2026-01-02Z")}, () => {}, () => {})');
+        lookups = 0;
         p.run('cursorStart = new Date("2026-01-01T10:15Z")');
 
         await p.run('handleDeleteUnderCursor()');
@@ -468,6 +472,7 @@ function workflowPage(title = 'Original', acceptedChanges = {}) {
             if (url === '/api/tasks/task-1/stats') return { task: { ...rows[0] }, total_sessions: 0, logged_hours: 0, scheduled_hours: 0, progress_pct: 0, sessions: [] };
             if (url === '/rating-definitions?target_type=task') return [];
             if (url.startsWith('/api/ai/drafts/')) throw Error('draft cards offline');
+            if (url.startsWith('/agenda?')) return { items: [{ id: 'session-1', kind: 'legacy_uncertain', task_id: 'task-1', start_time: '2026-01-01T09:00:00Z', end_time: '2026-01-01T09:15:00Z' }] };
             if (url.startsWith('/sessions?')) return [{ id: 'session-1', task_id: 'task-1', start_time: '2026-01-01T09:00:00Z', end_time: '2026-01-01T09:15:00Z' }];
             throw Error(`Unexpected GET ${url}`);
         },
@@ -941,9 +946,11 @@ for (const linked of [true, false]) {
         const p = page({
             async get(url) {
                 if (url.startsWith('/api/tasks?')) return [{ id: 'task-1', title: accepted ? title : 'Original', status: 'To Do', color: '#0284c7' }];
-                if (url.startsWith('/sessions?')) return [{ id: 'session-1', task_id: linked ? 'task-1' : null,
+                const sessions = [{ id: 'session-1', kind: 'legacy_uncertain', task_id: linked ? 'task-1' : null,
                     start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:30:00Z',
                     notes: accepted ? notes : '', tags: accepted ? tags : '' }];
+                if (url.startsWith('/agenda?')) return { items: sessions };
+                if (url.startsWith('/sessions?')) return sessions;
                 throw Error('draft cards offline');
             },
             async post() { writes++; accepted = true; return { completion_policies: [] }; }

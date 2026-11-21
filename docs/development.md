@@ -244,6 +244,8 @@ fields; Save is blocked until its review/rating inputs are ready. Late statistic
 responses cannot replace a newer selection or refresh. Timer option refresh retains a selected task
 even when completion, filtering or unavailable metadata excludes it; only an explicit detach clears it.
 Attachment refreshes update labels without reattaching or changing IDs, tags, notes or times.
+Folio refreshes task labels in the ledger, picker and open inspector from this same registry,
+without reopening or reinitializing the selected draft.
 Every successful metadata load also updates local labels, so transient recovery cannot clear a
 warning while leaving old attachment text behind. Task editors fetch current task data rather
 than using stale registry entries or title-only fallbacks as editable snapshots. AI accept/undo/reapply (including undo-all) use this path before
@@ -547,9 +549,107 @@ HTTP response filtering alone does not cover direct service callers. The existin
 `tests/test_widget_stack_collision.cjs` accepts a captured HTTP response through
 `TIMETRACE_COLLISION_API_RESPONSE` to check separate-row baseline rendering and source-row clicks.
 
+## Agenda foundation checkpoint (#2)
+
+`SessionService` owns the additive `POST /scheduled-sessions`, `GET /scheduled-sessions/{id}`
+and `PUT /scheduled-sessions/{id}` interfaces. Create captures immutable original endpoints even
+for a past plan. PUT takes both current endpoints and the last read `expected_revision`; a stale
+write returns `409 revision_stale`. Plan task reassignment, recording/attachment and destructive
+plan actions are not enabled by this checkpoint.
+
+`GET /scheduled-sessions/{id}` also accepts `virt:` recurrence IDs. A live projection returns
+`is_virtual: true`, transient original endpoints and `projection_revision`. PUT to the virtual ID
+with both edited current endpoints and `expected_projection_revision` to capture it as a real
+plan. Adopt the returned UUID and then use its numeric `revision` for later edits. A changed,
+suppressed, skipped, already materialized or elapsed projection cannot be claimed with an old
+token (`409 projection_stale`). A typed GET of a well-formed occurrence in a paused series
+returns `404`; the legacy GET retains its existing error behavior. No legacy override is
+converted into a plan. Use
+`?scope=all_future` only for a resize: it changes the selected occurrence and the series duration
+in one transaction, not the intervals of other captured overrides. Captured originals are never
+rewritten. Skips and typed anchors survive ordinary task rule edits, including reactivation.
+
+`GET /agenda?start=…&end=…` is bounded JSON (not HTML). It merges persisted plans, live virtual
+projections, explicit work and uncertain legacy rows on UTC interval overlap. No reads materialize
+or archive projections. Each planning merge reads plans, recurrence rules, exceptions and applicable legacy
+rows from one SQLite snapshot. It joins any already-open database transaction without flushing
+or committing caller changes; otherwise its read scope ends before returning. The maximum
+requested window is 400 days. Live occurrences starting before the window can carry into it;
+carry-ins and in-window starts share the 500 unique anchors per series limit. A planning read
+that exceeds the occurrence limit is refused instead of reporting a partially empty schedule.
+Legacy bounded `/sessions` still uses its row shape and start-in-window semantics. It is not the
+typed list. Legacy fingerprint reconciliation runs on writes, not reads: a legacy row edit or
+only-this deletion first checks for a known fingerprint at the exact future anchor under the
+writer lock. It cannot claim an anchor with an existing exception or adopt recorded work.
+Typed range and point reads use the same UTC anchors: a spring-gap occurrence is addressable
+at its projected instant, and a fall-fold rule emits only its first instant. Legacy writes
+match the full UTC timestamp, never a rounded or neighboring anchor.
+
+Markdown Agenda shows plans and projected occurrences with explicit schedule labels (30-day
+planning window, plus the existing legacy agenda). It is not importable as Logged Sessions;
+legacy `/markdown/export`, system-wide sessions logs, reviews and performed SQL do not include
+plans. Idle timer status uses the next persisted or projected schedule without changing the old
+wire shape or writing timer state. AI range, conflict and free-slot reads see persisted plans under
+the existing data scope. Legacy proposals/approvals may not modify typed plans, even through a
+former virtual ID, or edit explicit recorded work. Schedule validation rejects these targets
+without removing the existing commitment from conflicts or daily capacity. AI/statistics
+aggregates over the old session cohort retain their old basis.
+
+Task accounting adds only future-starting plans to scheduled time. Completion keeps the separate
+own/subtree choices and refuses a clear affecting a protected plan before changing either scope.
+Completion clear reconciles only selected exact legacy anchors and leaves skips, rather than
+resurrecting projections. Old series-delete scopes refuse a typed target rather than erasing its
+exception or partially truncating its series. Delete following uses canonical UTC membership to
+choose a local rule cutoff, coalescing duplicate ticks. If no single local `UNTIL` can keep all
+prior instants while removing the selected and later ones (or the bounded cutoff check is exceeded),
+the operation refuses with `409 utc_scope_unrepresentable` before changing the rule or exceptions.
+The report-only `timetrace recurrence audit` lists uncertain legacy candidates only. `--delete`
+rechecks the exact confirmed rows under the writer lock before writing its JSON backup and deleting;
+a changed target aborts the full selection. Task deletion still detaches plans and history and removes the deleted
+task's exception links in the locked transaction. This does not introduce destructive plan consent,
+work recording/attachment, reassignment, or version-aware AI restores.
+
+The Folio B page is `/agenda-view` (navbar **Agenda**). Its ledger reads the browser-local day
+from `/agenda`; the task picker uses the shared `/api/tasks?status=all` registry. Original and current
+intervals are always separate; projected originals are provisional until saved. Uncertain legacy
+history and explicit recorded work are labeled separately. Only plan endpoints are editable after
+create. No recording, fill metrics, Start-from-plan, or destructive plan actions are available.
+
+Calendar keeps its existing layout and legacy start-window totals. It requests
+`/agenda?legacy_cohort=start&start=…&end=…` for a single display snapshot: legacy/work rows use
+start-in-window (including zero-length imports), while typed plans overlap, including one projection
+per anchor. Default `/agenda` still uses overlap. The old `/sessions` range read stays separate for
+legacy totals. Calendar ranges default to **Scheduled session** with an
+explicit legacy choice; Tasks/Details **Schedule** and external task drops create plans. Legacy
+history edits still use `/sessions`. A captured plan's typed response includes `series_task_id` and
+`occurrence_start` for Calendar resize scope; ordinary plans omit them. Legacy virtual deletion keeps
+its server-guarded scopes, but saved plan deletion is unavailable. Acknowledgements replace the draft
+or event identity and revision before refresh; retries of failed display reads do not repeat writes.
+A stale Calendar gesture retains the attempted interval separately from the saved event. Read the
+latest state and explicitly discard the attempt before making another gesture. The review follows
+the original series anchor across capture; the read-only `/agenda/occurrences/{virt_id}` resolves
+its exact current occupant, even when moved out of view. An unconfirmed
+Schedule create stays blocked across modal reopenings or task drops on the same page. Check the
+relevant interval with a read, explicitly allow a new plan, then use a new gesture; neither action
+replays the original write. A task drop held on metadata across recovery must start with a new
+gesture. These guards are page-local, not cross-tab receipts.
+
+Hourly quick-add titles on task POST/PUT stage a plan in the task transaction; day offsets remain
+assigned dates. Legacy AI approvals refuse title scheduling before task/plan writes, while snapshot
+restores still bypass title parsing. Completion displays protected plans without trimming the
+requested own/subtree scope and retains the server's atomic refusal. See the
+[shared contract](agenda-contract.md) for downstream capabilities.
+
+Singular timer Start validates its task while holding the SQLite writer lock; Split and Stop hold
+that lock from context consumption through history commit. This orders Timer and legacy AI deletion
+within the daemon. Freeze/toggle and idle resolution also serialize with timer mutations in the
+process; the existing pre-idle and resolution commits retain their historical failure behavior.
+This does not make SQLite and the timer JSON crash-atomic or change ordinary human task-deletion
+behavior for live timer context. Legacy mutations still create uncertain history, not typed work.
+
 ## Migration verification
 
-The source tree currently ends at `0013_ai_data_scope`; inspect revision ids and
+The source tree currently ends at `0015_typed_recurrence`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -563,6 +663,25 @@ review the result, including data movement and SQLite table rebuilds, before app
 4. Confirm the actual URL before each run. `run_migrations()` supplies `settings.database_url`;
    Alembic's `env.py` honors an explicitly configured `sqlalchemy.url` before its settings fallback.
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
+
+Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
+Alembic entrypoints and resolve the required schema revision (`0015_typed_recurrence`) in the
+migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
+complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
+when the application starts depending on a later schema revision.
+
+A non-empty database without a recorded revision is refused rather than stamped or recreated.
+For an unversioned database (including one from an older `create_all` fallback), stop writers and
+keep a consistent backup before seeking schema recovery or restoring a known Alembic-tracked
+backup. Do not stamp head, hand-edit the revision marker, or delete the database to bypass the
+guard. This does not repair databases already incorrectly stamped by an older build.
+
+`tests/test_agenda_migration.py` exercises root startup on both a fresh database and a SQLite
+backups of seeded 0013 and 0014 databases, compares old metadata, relationships, JSON and
+polymorphic references, and exercises HTTP capture and task detachment under SQLite foreign keys.
+It also exercises startup refusal with unversioned data, missing Alembic configuration, and
+missing required revisions or ancestors before SQLite is opened. Revision 0015 refuses downgrade
+when a typed override exists; 0014 refuses downgrade with typed plan/work data.
 
 Use real Python datetime literals for bulk-insert seed data, not `sa.func.now()` (the latter broke
 SQLite's DateTime binder in an earlier migration). Preserve past logged work and polymorphic id

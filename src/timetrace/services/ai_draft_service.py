@@ -19,9 +19,25 @@ from typing import Any
 
 from sqlmodel import Session, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.db.models import AIDraftBatch, AIDraftItem, AISettings, DayReview, Task, utc_now
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
+from timetrace.core.recurrence import is_occurrence_id
+from timetrace.core.timer import timer_manager
+from timetrace.db.models import (
+    AIDraftBatch,
+    AIDraftItem,
+    AISettings,
+    DayReview,
+    RatingEntry,
+    RecurrenceException,
+    Task,
+    TaskReview,
+    TaskStatus,
+    utc_now,
+)
+from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.schemas import (
+    TYPED_SESSION_FIELDS,
     CompletionPolicyPrompt,
     DayReviewCreate,
     SessionCreate,
@@ -306,6 +322,11 @@ class AIDraftService:
 
         live_before: dict[str, Any] | None = None
         if op in ("update", "delete"):
+            if entity_type == "session" and target_id:
+                try:
+                    SessionService(self.db).require_legacy_mutation_target(target_id)
+                except ConflictError as exc:
+                    return self._fail_item(item, f"AI cannot change a typed session: {exc}", actor=actor)
             live_before = self._fetch_live_snapshot(entity_type, target_id)
             if live_before is None:
                 return self._fail_item(item, "target no longer exists", actor=actor)
@@ -317,12 +338,10 @@ class AIDraftService:
 
         proposed = _json_loads(item.proposed_json) or {}
 
-        ref_error = self._check_session_task_ref(entity_type, op, proposed)
-        if ref_error:
-            return self._fail_item(item, ref_error, actor=actor)
-
         try:
-            after, real_id, completion_policy = self._execute(entity_type, op, target_id, proposed)
+            after, real_id, completion_policy = self._execute(
+                entity_type, op, target_id, proposed, expected=live_before
+            )
         except Exception as exc:
             # Confirmed live (adversarial review): a real IntegrityError (e.g. the edit-form
             # NOT-NULL-violation bug, now separately fixed) escaped this narrower catch as a bare
@@ -487,10 +506,12 @@ class AIDraftService:
 
         try:
             if item.op == "create":
-                self._execute(entity_type, "delete", live_id, {})
+                self._execute(entity_type, "delete", live_id, {}, expected=applied_after)
                 new_after = None
             elif item.op == "update":
-                new_after, _, _ = self._execute(entity_type, "update", live_id, before or {}, restore=True)
+                new_after, _, _ = self._execute(
+                    entity_type, "update", live_id, before or {}, restore=True, expected=applied_after
+                )
             elif item.op == "delete":
                 new_after, new_id, _ = self._execute(entity_type, "create", None, before or {}, restore=True)
                 # Recreated with a NEW id -- write it back so the trail stays honest.
@@ -598,15 +619,13 @@ class AIDraftService:
                 return {"item_id": item.id, "status": "conflict", "error": item.error, "completion_policy": None}
 
         proposed = _json_loads(item.proposed_json) or {}
-        ref_error = self._check_session_task_ref(entity_type, item.op, proposed)
-        if ref_error:
-            return self._reapply_fail(item, ref_error, actor, live_id)
-
         op_for_execute = "create" if item.op == "create" else ("delete" if item.op == "delete" else "update")
         target_for_op = None if item.op == "create" else live_id
 
         try:
-            after, real_id, completion_policy = self._execute(entity_type, op_for_execute, target_for_op, proposed)
+            after, real_id, completion_policy = self._execute(
+                entity_type, op_for_execute, target_for_op, proposed, expected=expected_before if live_id else None
+            )
         except Exception as exc:
             self.db.rollback()
             return self._reapply_fail(item, str(exc), actor, live_id)
@@ -660,41 +679,63 @@ class AIDraftService:
 
     # --- dispatch to the real services -----------------------------------------------------
 
-    def _check_session_task_ref(self, entity_type: str, op: str, payload: dict[str, Any]) -> str | None:
-        """Trap #1 (spec 9.1): `SessionService.create_session`/`update_session` silently null
-        an unknown `task_id` instead of failing. A silently task-less session reported as
-        "applied" would be a false audit record, so this is checked BEFORE dispatch and treated
-        as a hard failure."""
-        if entity_type != "session" or op not in ("create", "update"):
-            return None
-        task_ref = payload.get("task_id")
-        if task_ref and not self.db.get(Task, task_ref):
-            return f"referenced task_id '{task_ref}' does not exist"
-        return None
-
     def _execute(
-        self, entity_type: str, op: str, target_id: str | None, payload: dict[str, Any], *, restore: bool = False
+        self,
+        entity_type: str,
+        op: str,
+        target_id: str | None,
+        payload: dict[str, Any],
+        *,
+        restore: bool = False,
+        expected: dict[str, Any] | None = None,
     ) -> tuple[dict[str, Any] | None, str | None, CompletionPolicyPrompt | None]:
         """Runs one CRUD dispatch against the real service and returns
         `(normalized_after, real_entity_id, completion_policy)`. `normalized_after` is None for
-        deletes. `real_entity_id` is what a caller must store as `applied_entity_id` -- for a
-        session update against a synthetic `virt:`-prefixed occurrence id, this is the REAL id
-        `SessionService.update_session` materializes it into.
+        deletes. `real_entity_id` is what a caller must store as `applied_entity_id`.
+        V1 cannot recreate a recurrence override or an identity with unrestorable dependents.
 
         `restore=True` is for `_undo_one` only: it's re-applying an exact prior snapshot
         (`applied_before_json`), not a new semantic edit, so `TaskService`'s quick-add title
         parser must not run a second time on a human-authored title (spec S8's "worst possible
         failure" -- see task_service.py's `parse_title_syntax` docstring)."""
+        session_task_ref = payload.get("task_id") if entity_type == "session" and op in ("create", "update") else None
+        parent_ref = payload.get("parent_id") if restore and entity_type == "task" and op == "create" else None
+        target_check = target_id and (op == "delete" or (op == "update" and entity_type == "session"))
+        if target_check or entity_type == "session" or parent_ref:
+            lock_sqlite_writer(self.db)
+        if session_task_ref and self.db.get(Task, session_task_ref) is None:
+            raise ConflictError("Referenced task_id no longer exists; the session's task link cannot be preserved.")
+        if parent_ref:
+            parent = self.db.get(Task, parent_ref)
+            if parent is None or (parent.tags and not (payload.get("tags") or "").strip()):
+                raise ConflictError("AI v1 cannot restore this task's parent task link or inherited tags exactly.")
+        if target_check:
+            if self._fetch_live_snapshot(entity_type, target_id) != expected:
+                raise ConflictError("Stale: target changed before the write; left alone.")
+            if entity_type == "session":
+                self._require_restorable_session(target_id, deleting=op == "delete")
+            elif entity_type == "task":
+                self._require_restorable_task(target_id)
         if entity_type == "session":
+            if TYPED_SESSION_FIELDS.intersection(payload):
+                raise ValidationError("AI draft snapshots cannot write typed session fields.")
             svc = SessionService(self.db)
             if op == "create":
                 req = SessionCreate(**self._filter_fields(payload, SessionCreate))
+                self._require_prospective_session(svc, svc.legacy_create_candidate(req))
                 result = svc.create_session(req)
                 return self.normalize_session(result), result.id, None
             if op == "update":
                 if not target_id:
                     raise ValidationError("session update requires a target_id")
                 req = SessionUpdate(**self._filter_fields(payload, SessionUpdate))
+                row = self.db.get(SessionModel, target_id)
+                candidate = svc.legacy_update_candidate(row, req)
+                self._require_prospective_session(svc, candidate)
+                before = self.normalize_session(row)
+                inverse = SessionUpdate(**self._filter_fields(before, SessionUpdate))
+                if self.normalize_session(svc.legacy_update_candidate(candidate, inverse)) != before:
+                    raise ConflictError("AI v1 cannot restore this session's interval or metadata after the edit.")
                 result = svc.update_session(target_id, req)
                 return self.normalize_session(result), result.id, None
             if op == "delete":
@@ -726,22 +767,102 @@ class AIDraftService:
             tsvc = TaskService(self.db)
             if op == "create":
                 req = TaskCreate(**self._filter_fields(payload, TaskCreate))
-                result = tsvc.create_task(req, parse_title_syntax=not restore)
+                result = tsvc.create_task(req, parse_title_syntax=not restore, allow_title_schedule=False)
                 return self.normalize_task(result), result.id, None
             if op == "update":
                 if not target_id:
                     raise ValidationError("task update requires a target_id")
                 req = TaskUpdate(**self._filter_fields(payload, TaskUpdate))
-                result = tsvc.update_task(target_id, req, parse_title_syntax=not restore)
+                result = tsvc.update_task(target_id, req, parse_title_syntax=not restore, allow_title_schedule=False)
                 return self.normalize_task(result), result.id, result.completion_policy
             if op == "delete":
                 if not target_id:
                     raise ValidationError("task delete requires a target_id")
-                tsvc.delete_task(target_id)
+                tsvc.delete_task(target_id, allow_plan_detachment=False)
                 return None, target_id, None
             raise ValidationError(f"unsupported op '{op}' for entity_type 'task'")
 
         raise ValidationError(f"unknown entity_type '{entity_type}'")
+
+    def _require_no_ratings(self, target_type: str, target_id: str) -> None:
+        if (
+            self.db.exec(
+                select(RatingEntry.id)
+                .where(
+                    RatingEntry.target_type == target_type,
+                    RatingEntry.target_id == target_id,
+                )
+                .limit(1)
+            ).first()
+            is not None
+        ):
+            raise ConflictError(f"AI cannot delete a {target_type} with ratings; v1 undo cannot restore them.")
+
+    @staticmethod
+    def _require_prospective_session(sessions: SessionService, candidate: SessionModel) -> None:
+        if not sessions.recurrence.exception_for_session(candidate.id) and (
+            sessions.recurrence.unclaimed_legacy_anchor(candidate) is not None
+        ):
+            raise ConflictError("AI v1 cannot undo a change that creates an unclaimed recurrence anchor.")
+        if candidate.notes is None or candidate.tags is None or candidate.review_skipped is None:
+            raise ConflictError("AI v1 cannot restore this session's proposed metadata exactly.")
+
+    def _require_restorable_session(self, session_id: str, *, deleting: bool) -> None:
+        sessions = SessionService(self.db)
+        sessions.require_legacy_mutation_target(session_id, deleting=deleting)
+        if is_occurrence_id(session_id):
+            raise ConflictError("AI v1 cannot restore a recurrence projection after changing it.")
+        row = self.db.get(SessionModel, session_id)
+        if row is None:
+            raise EntityNotFoundError("Session", session_id)
+        linked = sessions.recurrence.exception_for_session(row.id)
+        if deleting and linked:
+            raise ConflictError("AI v1 cannot restore a recurrence override after deletion.")
+        if not linked and sessions.recurrence.unclaimed_legacy_anchor(row) is not None:
+            raise ConflictError("AI v1 cannot restore an unclaimed recurrence anchor after adopting it.")
+        if deleting:
+            self._require_no_ratings("session", session_id)
+            if (row.timezone, row.external_provider, row.external_sync_id, row.extended_properties_json) != (
+                "UTC",
+                None,
+                None,
+                "{}",
+            ):
+                raise ConflictError("AI v1 cannot restore this session's calendar metadata after deletion.")
+        duration = (row.end_time - row.start_time).total_seconds() if row.end_time else 0
+        if (
+            (deleting and duration <= 0)
+            or (row.end_time and row.duration_seconds != int(duration))
+            or row.notes is None
+        ):
+            raise ConflictError("AI v1 cannot restore this session's interval or metadata exactly.")
+        if row.task_id and self.db.get(Task, row.task_id) is None:
+            raise ConflictError("AI v1 cannot restore this session's missing task link.")
+
+    def _require_restorable_task(self, task_id: str) -> None:
+        task = self.db.get(Task, task_id)
+        if task is None:
+            raise EntityNotFoundError("Task", task_id)
+        if self.db.exec(select(Task.id).where(Task.parent_id == task_id).limit(1)).first() is not None:
+            raise ConflictError("AI v1 cannot restore child tasks after deleting their parent.")
+        SessionService(self.db).detach_plans_for_deleted_tasks({task_id}, allow=False)
+        if self.db.exec(select(SessionModel.id).where(SessionModel.task_id == task_id).limit(1)).first() is not None:
+            raise ConflictError("AI v1 cannot restore work or legacy history links after deleting their task.")
+        if self.db.exec(select(TaskReview.id).where(TaskReview.task_id == task_id)).first() is not None:
+            raise ConflictError("AI v1 cannot restore this task's review after deletion.")
+        self._require_no_ratings("task", task_id)
+        if self.db.exec(select(RecurrenceException.id).where(RecurrenceException.task_id == task_id).limit(1)).first():
+            raise ConflictError("AI v1 cannot restore recurrence exceptions after deleting their task.")
+        if timer_manager.task_id == task_id:
+            raise ConflictError("AI cannot delete a task used by the current timer.")
+        parent = self.db.get(Task, task.parent_id) if task.parent_id else None
+        rederived_status = self.db.exec(select(TaskStatus.id).where(TaskStatus.name == task.status)).first()
+        if (
+            rederived_status != task.status_id
+            or not task.color
+            or (task.parent_id and (parent is None or (parent.tags and not task.tags.strip())))
+        ):
+            raise ConflictError("AI v1 cannot restore this task's exact metadata or links after deletion.")
 
     def _fetch_live_snapshot(self, entity_type: str, target_id: str | None) -> dict[str, Any] | None:
         if not target_id:

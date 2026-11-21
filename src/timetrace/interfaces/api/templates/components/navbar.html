@@ -1,7 +1,7 @@
 <div class="app-navigation">
     <a href="/dashboard" class="app-brand">TimeTrace</a>
     <nav aria-label="Main navigation">
-        {% for page, path, label in [('dashboard', '/dashboard', 'Calendar'), ('tasks', '/tasks', 'Tasks'), ('stats', '/stats', 'Statistics'), ('habits', '/habits-view', 'Habits'), ('revision', '/revision', 'Revision'), ('settings_ai', '/settings', 'Settings')] %}
+        {% for page, path, label in [('dashboard', '/dashboard', 'Calendar'), ('agenda', '/agenda-view', 'Agenda'), ('tasks', '/tasks', 'Tasks'), ('stats', '/stats', 'Statistics'), ('habits', '/habits-view', 'Habits'), ('revision', '/revision', 'Revision'), ('settings_ai', '/settings', 'Settings')] %}
         <a href="{{ path }}" {% if page == 'settings_ai' %}onclick="return followSettingsLink(event)"{% endif %} {% if active_page == page %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </nav>

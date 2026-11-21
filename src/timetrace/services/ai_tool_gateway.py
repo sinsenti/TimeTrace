@@ -282,15 +282,13 @@ class DbAIToolGateway:
         task_id: str | None = None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
-        """Lists sessions overlapping `[start, end)`, real rows merged with projected occurrences
-        of recurring tasks (delegates to `SessionService.list_sessions`, the app's single merge
-        funnel for the two)."""
+        """Lists planning context, including persisted and projected scheduled sessions."""
         with self._read_context("sessions") as db:
             limit = max(1, min(limit, 500))
-            rows = SessionService(db).list_overlapping_sessions(start=start, end=end, include_virtual=True)
+            items = SessionService(db).list_agenda(start, end).items
         if task_id:
-            rows = [r for r in rows if r.get("task_id") == task_id]
-        return rows[:limit]
+            items = [item for item in items if item.task_id == task_id]
+        return [item.model_dump(mode="json") for item in items[:limit]]
 
     def find_free_slots(
         self,
@@ -1198,8 +1196,10 @@ class DbAIToolGateway:
         # is a sibling track's file.
         from timetrace.services.ai_draft_service import AIDraftService
 
+        service = SessionService(db)
+        service.require_legacy_mutation_target(session_id)
         try:
-            raw = SessionService(db).get_session_by_id(session_id)
+            raw = service.get_session_by_id(session_id)
         except EntityNotFoundError:
             raise
         except Exception as exc:  # noqa: BLE001 -- recurrence resolution can raise ValidationError etc.

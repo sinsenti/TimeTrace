@@ -8,7 +8,7 @@ from timetrace.core.exceptions import ValidationError
 from timetrace.core.timezones import daemon_tzinfo
 from timetrace.db.models import DayReview, RatingDefinition, RatingEntry, Task
 from timetrace.db.models import Session as SessionModel
-from timetrace.interfaces.api.schemas import DayReviewCreate
+from timetrace.interfaces.api.schemas import DayReviewCreate, LegacySessionRead
 from timetrace.interfaces.api.utils import ensure_utc
 
 
@@ -100,7 +100,7 @@ class RevisionService:
 
         today_str = datetime.now().astimezone().strftime("%Y-%m-%d")
         all_dates = set(day_stats.keys()).union(set(reviews_map.keys()))
-        
+
         # Exclude future days that have not yet passed
         past_or_current_dates = [d for d in all_dates if d <= today_str]
 
@@ -108,16 +108,18 @@ class RevisionService:
         for d_str in sorted(past_or_current_dates, reverse=True):
             stats = day_stats.get(d_str, {"total_seconds": 0, "session_count": 0})
             rev = reviews_map.get(d_str)
-            history.append({
-                "date_str": d_str,
-                "total_hours": round(stats["total_seconds"] / 3600.0, 2),
-                "session_count": stats["session_count"],
-                "has_review": rev is not None and not rev.review_skipped,
-                "review_skipped": rev.review_skipped if rev else False,
-                "rating": rev.rating if rev else None,
-                "highlights": rev.highlights if rev else None,
-                "friction": rev.friction if rev else None,
-            })
+            history.append(
+                {
+                    "date_str": d_str,
+                    "total_hours": round(stats["total_seconds"] / 3600.0, 2),
+                    "session_count": stats["session_count"],
+                    "has_review": rev is not None and not rev.review_skipped,
+                    "review_skipped": rev.review_skipped if rev else False,
+                    "rating": rev.rating if rev else None,
+                    "highlights": rev.highlights if rev else None,
+                    "friction": rev.friction if rev else None,
+                }
+            )
 
         return history
 
@@ -161,7 +163,7 @@ class RevisionService:
 
         session_details = []
         for s in matching_sessions:
-            s_dict = self._json_serializable(s.model_dump())
+            s_dict = self._json_serializable(LegacySessionRead.model_validate(s).model_dump())
             s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
             s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
             s_dict["task"] = (

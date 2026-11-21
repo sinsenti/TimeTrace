@@ -4,6 +4,8 @@ from typing import Any
 
 import frontmatter
 
+from timetrace.core.exceptions import ValidationError
+
 
 def export_sessions_to_markdown(sessions: list[dict[str, Any]], log_date: date) -> str:
     post = frontmatter.Post("")
@@ -15,11 +17,7 @@ def export_sessions_to_markdown(sessions: list[dict[str, Any]], log_date: date) 
 
     content = "# Logged Sessions\n"
     for s in sessions:
-        start_dt = (
-            datetime.fromisoformat(str(s["start_time"]))
-            if isinstance(s["start_time"], str)
-            else s["start_time"]
-        )
+        start_dt = datetime.fromisoformat(str(s["start_time"])) if isinstance(s["start_time"], str) else s["start_time"]
         end_dt = (
             datetime.fromisoformat(str(s.get("end_time")))
             if isinstance(s.get("end_time"), str) and s.get("end_time")
@@ -39,6 +37,8 @@ def export_sessions_to_markdown(sessions: list[dict[str, Any]], log_date: date) 
 
 def parse_markdown_to_sessions(md_content: str) -> list[dict[str, Any]]:
     post = frontmatter.loads(md_content)
+    if post.metadata.get("type") == "session_agenda_briefing":
+        raise ValidationError("The Agenda briefing is not a session import. Use the Logged Sessions export instead.")
     raw_date = post.metadata.get("date", date.today())
     base_date_str = raw_date.isoformat() if isinstance(raw_date, (date, datetime)) else str(raw_date)
 
@@ -62,13 +62,15 @@ def parse_markdown_to_sessions(md_content: str) -> list[dict[str, Any]]:
 
             duration = max(0, int((end_dt - start_dt).total_seconds()))
 
-            sessions.append({
-                "start_time": start_dt,
-                "end_time": end_dt,
-                "duration_seconds": duration,
-                "tags": tags.strip(),
-                "notes": notes.strip(),
-            })
+            sessions.append(
+                {
+                    "start_time": start_dt,
+                    "end_time": end_dt,
+                    "duration_seconds": duration,
+                    "tags": tags.strip(),
+                    "notes": notes.strip(),
+                }
+            )
         elif sessions and sub_bullet_pattern.match(line_str):
             sub_text = sub_bullet_pattern.match(line_str).group(1).strip()
             sessions[-1]["notes"] += f"\n  - {sub_text}"

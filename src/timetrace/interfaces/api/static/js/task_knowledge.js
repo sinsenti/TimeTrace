@@ -46,6 +46,7 @@ const taskKnowledge = (() => {
         const labels = [];
         if (typeof refreshAttachedTaskViews === 'function') labels.push(['attachments', refreshAttachedTaskViews]);
         if (typeof refreshTaskInspectorLabels === 'function') labels.push(['inspector-labels', refreshTaskInspectorLabels]);
+        if (typeof agendaPage !== 'undefined') labels.push(['agenda-labels', agendaPage.refreshTaskLabels]);
         for (const [name, render] of labels) {
             try {
                 render();

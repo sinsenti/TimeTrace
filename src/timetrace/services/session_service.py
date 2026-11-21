@@ -1,14 +1,31 @@
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import or_
+from sqlalchemy import case, insert, literal, or_, update
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, func, select
 
-from timetrace.core.exceptions import EntityNotFoundError, ValidationError
-from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id
+from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
+from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id, parse_occurrence_id
+from timetrace.db.models import RecurrenceException, ScheduledSession, Task, generate_uuid7
 from timetrace.db.models import Session as SessionModel
-from timetrace.db.models import Task
-from timetrace.interfaces.api.schemas import ReflectionCreate, RetroSessionCreate, SessionCreate, SessionUpdate
+from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
+from timetrace.interfaces.api.schemas import (
+    AgendaLegacyRead,
+    AgendaProjectedPlanRead,
+    AgendaRead,
+    AgendaRecordedWorkRead,
+    LegacySessionRead,
+    ReflectionCreate,
+    RetroSessionCreate,
+    ScheduledOccurrenceUpdate,
+    ScheduledSessionCreate,
+    ScheduledSessionInfo,
+    ScheduledSessionRead,
+    ScheduledSessionUpdate,
+    SessionCreate,
+    SessionUpdate,
+)
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.recurrence_service import ProjectedOccurrence, RecurrenceService
 
@@ -35,7 +52,305 @@ class SessionService:
             self._recurrence = RecurrenceService(self.db)
         return self._recurrence
 
-    def create_session(self, req: SessionCreate) -> SessionModel:
+    def create_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
+        response = self.stage_scheduled_session(req)
+        self.db.commit()
+        return response
+
+    def stage_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
+        """Insert in the caller's transaction; an attached new task must already be flushed."""
+        start, end = self._scheduled_interval(req.start_time, req.end_time)
+        columns = ("id", "task_id", "start_time", "end_time", "original_start", "original_end", "tags", "notes")
+        values = (generate_uuid7(), req.task_id, start, end, start, end, req.tags, req.notes)
+        row = select(*(literal(value) for value in values))
+        if req.task_id is not None:
+            # Validate the FK in the INSERT, not in a separate read which could race task deletion.
+            row = row.where(select(Task.id).where(Task.id == req.task_id).exists())
+        statement = insert(ScheduledSession).from_select(columns, row).returning(ScheduledSession)
+        plan = self.db.scalars(statement).one_or_none()
+        if plan is None:
+            raise EntityNotFoundError("Task", req.task_id)
+        return self._read_scheduled_session(plan)
+
+    def get_scheduled_session(self, plan_id: str) -> ScheduledSessionRead | AgendaProjectedPlanRead:
+        if is_occurrence_id(plan_id):
+            return self._read_projected_plan(self.recurrence.projected_occurrence(plan_id, planning=True))
+        result = self.db.exec(self._plans_with_series().where(ScheduledSession.id == plan_id)).one_or_none()
+        if result is None:
+            raise EntityNotFoundError("Scheduled session", plan_id)
+        plan, exception = result
+        return self._read_scheduled_session(plan, exception)
+
+    def update_scheduled_session(
+        self, plan_id: str, req: ScheduledSessionUpdate | ScheduledOccurrenceUpdate, scope: str = "only_this"
+    ) -> ScheduledSessionRead:
+        if scope not in EDIT_SCOPES:
+            raise ValidationError(f"scope '{scope}' is not supported for edits.")
+        if is_occurrence_id(plan_id):
+            if not isinstance(req, ScheduledOccurrenceUpdate):
+                raise ValidationError("A virtual occurrence requires expected_projection_revision.")
+            return self._materialize_scheduled_occurrence(plan_id, req, resize_series=scope == "all_future")
+        if not isinstance(req, ScheduledSessionUpdate):
+            raise ValidationError("A persisted plan requires expected_revision.")
+        start, end = self._scheduled_interval(req.start_time, req.end_time)
+        if scope == "all_future":
+            try:
+                lock_sqlite_writer(self.db)
+                plan = self.db.get(ScheduledSession, plan_id)
+                if plan is None:
+                    raise EntityNotFoundError("Scheduled session", plan_id)
+                if plan.revision != req.expected_revision:
+                    raise self._stale_plan()
+                exception = self.recurrence.exception_for_plan(plan_id)
+                if exception is None or plan.task_id != exception.task_id:
+                    raise ValidationError("scope 'all_future' requires a scheduled occurrence in an active series.")
+                task = self.db.get(Task, exception.task_id)
+                if not self.recurrence.occurrence_exists(task, exception.occurrence_start):
+                    raise ValidationError("This scheduled session is no longer an occurrence of the series.")
+                # A series resize must not move the selected plan, including moving a previously
+                # moved plan back onto its original anchor.
+                if start != plan.start_time:
+                    raise ValidationError("scope 'all_future' only changes the occurrence length.")
+                self.recurrence.set_series_duration(task.id, self._series_minutes(start, end), exclude_plan_id=plan_id)
+                return self._update_plan_interval(plan_id, req.expected_revision, start, end)
+            except Exception:
+                self.db.rollback()
+                raise
+        return self._update_plan_interval(plan_id, req.expected_revision, start, end)
+
+    def _update_plan_interval(
+        self, plan_id: str, revision: int, start: datetime, end: datetime
+    ) -> ScheduledSessionRead:
+        # Compare-and-set in one statement: two concurrent editors cannot both overwrite revision N.
+        plan = self.db.scalars(
+            update(ScheduledSession)
+            .where(ScheduledSession.id == plan_id, ScheduledSession.revision == revision)
+            .values(start_time=start, end_time=end, revision=ScheduledSession.revision + 1)
+            .returning(ScheduledSession)
+            .execution_options(populate_existing=True)
+        ).one_or_none()
+        if plan is None:
+            if self.db.get(ScheduledSession, plan_id) is None:
+                raise EntityNotFoundError("Scheduled session", plan_id)
+            raise self._stale_plan()
+        response = self._read_scheduled_session(plan, self.recurrence.exception_for_plan(plan_id))
+        self.db.commit()
+        return response
+
+    def _materialize_scheduled_occurrence(
+        self, occurrence_id: str, req: ScheduledOccurrenceUpdate, *, resize_series: bool
+    ) -> ScheduledSessionRead:
+        start, end = self._scheduled_interval(req.start_time, req.end_time)
+        try:
+            lock_sqlite_writer(self.db)
+            try:
+                occurrence = self.recurrence.projected_occurrence(occurrence_id, planning=True)
+            except EntityNotFoundError, ValidationError:
+                raise self._stale_projection() from None
+            if occurrence.projection_revision != req.expected_projection_revision:
+                raise self._stale_projection()
+            plan = ScheduledSession(
+                task_id=occurrence.task_id,
+                original_start=occurrence.start_utc,
+                original_end=occurrence.end_utc,
+                start_time=start,
+                end_time=end,
+                tags=occurrence.tags,
+            )
+            self.db.add(plan)
+            self.db.flush()
+            exception = RecurrenceException(
+                task_id=occurrence.task_id,
+                occurrence_start=occurrence.start_utc,
+                kind="override",
+                scheduled_session_id=plan.id,
+            )
+            self.db.add(exception)
+            if resize_series:
+                if start != occurrence.start_utc:
+                    raise ValidationError("scope 'all_future' only changes the occurrence length.")
+                self.recurrence.set_series_duration(
+                    occurrence.task_id, self._series_minutes(start, end), exclude_plan_id=plan.id
+                )
+            response = self._read_scheduled_session(plan, exception)
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            raise self._stale_projection() from None
+        except Exception:
+            self.db.rollback()
+            raise
+        return response
+
+    @staticmethod
+    def _series_minutes(start: datetime, end: datetime) -> int:
+        return max(1, int(round((end - start).total_seconds() / 60)))
+
+    @staticmethod
+    def _stale_plan() -> ConflictError:
+        return ConflictError("The schedule changed. Reload it before editing again.", code="revision_stale")
+
+    @staticmethod
+    def _stale_projection() -> ConflictError:
+        return ConflictError(
+            "The occurrence is no longer available as read. Reload the schedule.", code="projection_stale"
+        )
+
+    @staticmethod
+    def _read_projected_plan(occurrence: ProjectedOccurrence) -> AgendaProjectedPlanRead:
+        row = occurrence.to_dict()
+        return AgendaProjectedPlanRead.model_validate(
+            {
+                **row,
+                "original_start": row["start_time"],
+                "original_end": row["end_time"],
+                "projection_revision": occurrence.projection_revision,
+            }
+        )
+
+    @staticmethod
+    def _scheduled_interval(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+        start = ensure_utc(start).replace(tzinfo=None)
+        end = ensure_utc(end).replace(tzinfo=None)
+        if end <= start:
+            raise ValidationError("end_time must be strictly after start_time", code="invalid_interval")
+        return start, end
+
+    @staticmethod
+    def _read_scheduled_session(
+        plan: ScheduledSession, exception: RecurrenceException | None = None
+    ) -> ScheduledSessionRead:
+        return ScheduledSessionRead(
+            id=plan.id,
+            task_id=plan.task_id,
+            start_time=ensure_utc(plan.start_time),
+            end_time=ensure_utc(plan.end_time),
+            original_start=ensure_utc(plan.original_start),
+            original_end=ensure_utc(plan.original_end),
+            duration_seconds=int((plan.end_time - plan.start_time).total_seconds()),
+            tags=plan.tags,
+            notes=plan.notes,
+            revision=plan.revision,
+            series_task_id=exception.task_id if exception else None,
+            occurrence_start=ensure_utc(exception.occurrence_start) if exception else None,
+        )
+
+    @staticmethod
+    def _planning_bounds(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+        start, end = (ensure_utc(value).replace(tzinfo=None) for value in (start, end))
+        if end <= start:
+            raise ValidationError("end must be strictly after start", code="invalid_interval")
+        if end - start > timedelta(days=MAX_WINDOW_DAYS):
+            raise ValidationError(f"Requested range exceeds the maximum of {MAX_WINDOW_DAYS} days.")
+        return start, end
+
+    def list_planning_plans(
+        self, start: datetime, end: datetime
+    ) -> list[ScheduledSessionRead | AgendaProjectedPlanRead]:
+        """Explicit plans and live projections overlapping [start, end), never work or legacy rows."""
+        start, end = self._planning_bounds(start, end)
+        with sqlite_read_snapshot(self.db) as reader:
+            return SessionService(reader)._planning_plans(start, end)
+
+    @staticmethod
+    def _plans_with_series():
+        return select(ScheduledSession, RecurrenceException).outerjoin(
+            RecurrenceException, RecurrenceException.scheduled_session_id == ScheduledSession.id
+        )
+
+    def _planning_plans(self, start: datetime, end: datetime) -> list[ScheduledSessionRead | AgendaProjectedPlanRead]:
+        items = [
+            self._read_scheduled_session(plan, exception)
+            for plan, exception in self.db.exec(
+                self._plans_with_series().where(ScheduledSession.start_time < end, ScheduledSession.end_time > start)
+            )
+        ]
+        items.extend(
+            self._read_projected_plan(occurrence)
+            for occurrence in self.recurrence.project_range(start, end, overlap=True)
+        )
+        return items
+
+    def list_agenda(self, start: datetime, end: datetime, *, legacy_start_cohort: bool = False) -> AgendaRead:
+        start, end = self._planning_bounds(start, end)
+        measurement_at = datetime.now(UTC)
+        with sqlite_read_snapshot(self.db) as reader:
+            agenda = SessionService(reader)
+            items = agenda._planning_plans(start, end)
+            if legacy_start_cohort:
+                # Calendar uses the legacy start-window predicate, including zero-length imports.
+                rows = reader.exec(
+                    select(SessionModel, RecurrenceException)
+                    .outerjoin(RecurrenceException, RecurrenceException.session_id == SessionModel.id)
+                    .where(SessionModel.start_time >= start, SessionModel.start_time < end)
+                    .order_by(RecurrenceException.id)
+                )
+                seen: set[str] = set()
+                for row, exception in rows:
+                    if row.id not in seen:
+                        items.append(agenda._read_agenda_session(row, exception))
+                        seen.add(row.id)
+            else:
+                items.extend(agenda._read_agenda_session(row) for row in agenda._overlapping_session_rows(start, end))
+        items.sort(key=lambda item: (item.start_time, item.id))
+        return AgendaRead(items=items, measurement_at=measurement_at)
+
+    def get_agenda_occurrence(
+        self, occurrence_id: str
+    ) -> ScheduledSessionRead | AgendaProjectedPlanRead | AgendaLegacyRead:
+        """Find the exact current occupant of a recurrence identity, not a same-time match."""
+        anchor = parse_occurrence_id(occurrence_id)
+        if anchor is None:
+            raise EntityNotFoundError("Occurrence", occurrence_id)
+        with sqlite_read_snapshot(self.db) as reader:
+            agenda = SessionService(reader)
+            exception = agenda.recurrence.get_exception(*anchor)
+            if exception is None:
+                return agenda.get_scheduled_session(occurrence_id)
+            if exception.scheduled_session_id:
+                plan = reader.get(ScheduledSession, exception.scheduled_session_id)
+                if plan is not None:
+                    return agenda._read_scheduled_session(plan, exception)
+            if exception.session_id:
+                row = reader.get(SessionModel, exception.session_id)
+                if row is not None and row.kind == "legacy_uncertain":
+                    return agenda._read_agenda_session(row, exception)
+            raise EntityNotFoundError("Occurrence", occurrence_id)
+
+    @classmethod
+    def _read_agenda_session(cls, row: SessionModel, exception: RecurrenceException | None = None) -> AgendaLegacyRead:
+        read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
+        update = cls._utc_session_times(row)
+        if exception and row.kind == "legacy_uncertain":
+            return read_type.model_validate(row).model_copy(
+                update={
+                    **update,
+                    "series_task_id": exception.task_id,
+                    "occurrence_start": ensure_utc(exception.occurrence_start),
+                }
+            )
+        return read_type.model_validate(row).model_copy(update=update)
+
+    @staticmethod
+    def _utc_session_times(row: SessionModel) -> dict[str, datetime | None]:
+        return {"start_time": ensure_utc(row.start_time), "end_time": ensure_utc(row.end_time)}
+
+    @classmethod
+    def _read_legacy_session(cls, row: SessionModel) -> LegacySessionRead:
+        return LegacySessionRead.model_validate(row).model_copy(update=cls._utc_session_times(row))
+
+    @classmethod
+    def _legacy_session_dict(cls, row: SessionModel, *, list_item: bool = False) -> dict[str, Any]:
+        read = cls._read_legacy_session(row)
+        item = read.model_dump()
+        item["start_time"] = read.start_time.isoformat()
+        item["end_time"] = read.end_time.isoformat() if read.end_time is not None else None
+        if list_item:
+            item["is_virtual"] = False
+        return item
+
+    def legacy_create_candidate(self, req: SessionCreate) -> SessionModel:
+        """Normalize a legacy create without staging any database changes."""
         start_utc = ensure_utc(req.start_time)
         end_utc = ensure_utc(req.end_time)
 
@@ -49,7 +364,7 @@ class SessionService:
                 valid_task_id = None
 
         duration = int((end_utc - start_utc).total_seconds())
-        db_session = SessionModel(
+        return SessionModel(
             task_id=valid_task_id,
             start_time=start_utc.replace(tzinfo=None),
             end_time=end_utc.replace(tzinfo=None),
@@ -58,12 +373,13 @@ class SessionService:
             notes=req.notes or "",
             review_skipped=req.review_skipped,
         )
+
+    def create_session(self, req: SessionCreate) -> LegacySessionRead:
+        db_session = self.legacy_create_candidate(req)
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
 
     def list_sessions(
         self,
@@ -85,16 +401,7 @@ class SessionService:
             naive_end = ensure_utc(end).replace(tzinfo=None)
             query = query.where(SessionModel.start_time < naive_end)
 
-        sessions = self.db.exec(query).all()
-        result = []
-        for s in sessions:
-            s_dict = s.model_dump()
-            if s.start_time:
-                s_dict["start_time"] = ensure_utc(s.start_time).isoformat()
-            if s.end_time:
-                s_dict["end_time"] = ensure_utc(s.end_time).isoformat()
-            s_dict["is_virtual"] = False
-            result.append(s_dict)
+        result = [self._legacy_session_dict(row, list_item=True) for row in self.db.exec(query)]
 
         if start and end and include_virtual:
             if (ensure_utc(end) - ensure_utc(start)) > timedelta(days=MAX_WINDOW_DAYS):
@@ -110,32 +417,20 @@ class SessionService:
         end: datetime,
         include_virtual: bool = True,
     ) -> list[dict[str, Any]]:
-        """Returns sessions whose time window overlaps ``[start, end)``.
+        """Compatibility read: overlapping session rows plus optional start-in-window projections.
 
-        ``list_sessions`` intentionally filters by session start for calendar range reads. AI
-        conflict detection also needs an event that started just before the requested window, so
-        this companion keeps that boundary behavior explicit while still using this service as the
-        real/virtual recurrence merge funnel.
+        This preserves the legacy DTO and shares the overlap query with ``list_agenda``. New
+        planning consumers should use ``list_agenda`` for typed plans and projection carry-ins.
         """
         start_utc = ensure_utc(start)
         end_utc = ensure_utc(end)
         if end_utc <= start_utc:
             raise ValidationError("end must be strictly after start")
 
-        naive_start = start_utc.replace(tzinfo=None)
-        naive_end = end_utc.replace(tzinfo=None)
-        query = select(SessionModel).where(
-            SessionModel.start_time < naive_end,
-            or_(SessionModel.end_time.is_(None), SessionModel.end_time > naive_start),
-        )
-        sessions = self.db.exec(query).all()
-        result: list[dict[str, Any]] = []
-        for s in sessions:
-            s_dict = s.model_dump()
-            s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
-            s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
-            s_dict["is_virtual"] = False
-            result.append(s_dict)
+        result = [
+            self._legacy_session_dict(row, list_item=True)
+            for row in self._overlapping_session_rows(start_utc.replace(tzinfo=None), end_utc.replace(tzinfo=None))
+        ]
 
         if include_virtual:
             if (end_utc - start_utc) > timedelta(days=MAX_WINDOW_DAYS):
@@ -145,43 +440,44 @@ class SessionService:
         result.sort(key=lambda item: item.get("start_time") or "")
         return result
 
-    def list_projected_occurrences(
-        self, start: datetime, end: datetime
-    ) -> list[ProjectedOccurrence]:
-        """Projected occurrences only, for callers that already hold the real rows (the
-        markdown agenda export). Still goes through this funnel so the rules stay in one place."""
-        if (ensure_utc(end) - ensure_utc(start)) > timedelta(days=MAX_WINDOW_DAYS):
-            raise ValidationError(f"Requested range exceeds the maximum of {MAX_WINDOW_DAYS} days.")
-        return self.recurrence.project_range(start, end)
+    def _overlapping_session_rows(self, naive_start: datetime, naive_end: datetime) -> list[SessionModel]:
+        query = select(SessionModel).where(
+            SessionModel.start_time < naive_end,
+            or_(SessionModel.end_time.is_(None), SessionModel.end_time > naive_start),
+        )
+        return list(self.db.exec(query))
 
     def next_upcoming_occurrence(self, within_days: int = 30) -> dict[str, Any] | None:
-        """Whichever comes sooner: the earliest real future session row or the next projected
-        occurrence. Shape matches `TimerService.get_status()['next_session']`'s needs."""
+        """Earliest future plan, legacy commitment or live recurrence projection."""
+        with sqlite_read_snapshot(self.db) as reader:
+            return SessionService(reader)._next_upcoming_occurrence(within_days)
+
+    def _next_upcoming_occurrence(self, within_days: int) -> dict[str, Any] | None:
         now = datetime.now(UTC)
         now_naive = now.replace(tzinfo=None)
-
-        upcoming = self.db.exec(
+        legacy = self.db.exec(
             select(SessionModel)
-            .where(SessionModel.start_time > now_naive)
-            .order_by(SessionModel.start_time)
+            .where(SessionModel.start_time > now_naive, SessionModel.kind == "legacy_uncertain")
+            .order_by(SessionModel.start_time, SessionModel.id)
         ).first()
-
-        real_start = ensure_utc(upcoming.start_time) if upcoming and upcoming.start_time else None
+        plan = self.db.exec(
+            select(ScheduledSession)
+            .where(ScheduledSession.start_time > now_naive)
+            .order_by(ScheduledSession.start_time, ScheduledSession.id)
+        ).first()
+        upcoming = min((row for row in (legacy, plan) if row is not None), key=lambda row: row.start_time, default=None)
         projected = self.recurrence.next_upcoming(within_days=within_days)
-        proj_start = ensure_utc(projected.start_utc) if projected else None
-
-        if real_start and (proj_start is None or real_start <= proj_start):
-            title = upcoming.notes or upcoming.tags or "Scheduled Session"
-            if upcoming.task_id:
-                task = self.db.get(Task, upcoming.task_id)
-                if task:
-                    title = task.title
-            return {"title": title, "start_time": real_start, "id": upcoming.id}
-
+        if upcoming is not None and (projected is None or upcoming.start_time <= projected.start_utc):
+            task = self.db.get(Task, upcoming.task_id) if upcoming.task_id else None
+            return {
+                "title": task.title if task else upcoming.notes or upcoming.tags or "Scheduled Session",
+                "start_time": ensure_utc(upcoming.start_time),
+                "id": upcoming.id,
+            }
         if projected:
             return {
                 "title": projected.task_title or "Scheduled Session",
-                "start_time": proj_start,
+                "start_time": ensure_utc(projected.start_utc),
                 "id": projected.occurrence_id,
             }
         return None
@@ -199,17 +495,13 @@ class SessionService:
         if not s:
             raise EntityNotFoundError("Session", session_id)
 
-        s_dict = s.model_dump()
-        s_dict["start_time"] = ensure_utc(s.start_time).isoformat() if s.start_time else None
-        s_dict["end_time"] = ensure_utc(s.end_time).isoformat() if s.end_time else None
+        s_dict = self._legacy_session_dict(s)
         if s.task:
             s_dict["task"] = s.task.model_dump()
 
         return s_dict
 
-    def update_session(
-        self, session_id: str, req: SessionUpdate, scope: str = "only_this"
-    ) -> SessionModel:
+    def update_session(self, session_id: str, req: SessionUpdate, scope: str = "only_this") -> LegacySessionRead:
         """Apply an edit, materializing a virtual occurrence first if needed.
 
         `scope="only_this"` touches this occurrence alone. `scope="all_future"` additionally
@@ -223,41 +515,62 @@ class SessionService:
                 "use 'only_this' or 'all_future', or edit the recurrence on the task."
             )
 
+        lock_sqlite_writer(self.db)
+        try:
+            return self._update_legacy_session(session_id, req, scope)
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _update_legacy_session(self, session_id: str, req: SessionUpdate, scope: str) -> LegacySessionRead:
+        self.require_legacy_mutation_target(session_id)
+        db_session = None
+        if not is_occurrence_id(session_id):
+            db_session = self.db.get(SessionModel, session_id)
+            if not db_session:
+                raise EntityNotFoundError("Session", session_id)
+            self.recurrence.reconcile_legacy_occurrence(db_session)
+
         if scope == "all_future":
             self._apply_series_duration(session_id, req)
 
-        if is_occurrence_id(session_id):
-            session_id = self.recurrence.materialize(session_id).id
+        if db_session is None:
+            db_session = self.recurrence.materialize(session_id)
 
-        db_session = self.db.get(SessionModel, session_id)
-        if not db_session:
-            raise EntityNotFoundError("Session", session_id)
-
-        update_dict = req.model_dump(exclude_unset=True)
-        for key, val in update_dict.items():
-            if key in ("start_time", "end_time") and val is not None:
-                setattr(db_session, key, ensure_utc(val).replace(tzinfo=None))
-            elif key == "task_id" and val is not None:
-                if self.db.get(Task, val):
-                    db_session.task_id = val
-                else:
-                    db_session.task_id = None
-            else:
-                setattr(db_session, key, val)
-
-        if db_session.start_time and db_session.end_time:
-            st = ensure_utc(db_session.start_time)
-            et = ensure_utc(db_session.end_time)
-            if et <= st:
-                raise ValidationError("end_time must be strictly after start_time")
-            db_session.duration_seconds = max(0, int((et - st).total_seconds()))
+        candidate = self.legacy_update_candidate(db_session, req)
+        for field in (*req.model_fields_set, "duration_seconds"):
+            setattr(db_session, field, getattr(candidate, field))
 
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
+
+    def legacy_update_candidate(self, row: SessionModel, req: SessionUpdate) -> SessionModel:
+        """Normalize an edit on a transient copy; leave the existing row and exception untouched."""
+        candidate = SessionModel(**row.model_dump())
+        update_dict = req.model_dump(exclude_unset=True)
+        for key, val in update_dict.items():
+            if key in ("start_time", "end_time") and val is not None:
+                setattr(candidate, key, ensure_utc(val).replace(tzinfo=None))
+            elif key == "task_id" and val is not None:
+                if self.db.get(Task, val):
+                    candidate.task_id = val
+                else:
+                    candidate.task_id = None
+            else:
+                setattr(candidate, key, val)
+
+        if candidate.start_time and candidate.end_time:
+            st = ensure_utc(candidate.start_time)
+            et = ensure_utc(candidate.end_time)
+            if et <= st:
+                raise ValidationError("end_time must be strictly after start_time")
+            candidate.duration_seconds = max(0, int((et - st).total_seconds()))
+
+        if candidate.start_time is None:
+            raise ValidationError("start_time must not be null")
+        return candidate
 
     def _apply_series_duration(self, session_id: str, req: SessionUpdate) -> None:
         """Write the requested length to the series' `recurrence_duration_minutes`."""
@@ -293,9 +606,7 @@ class SessionService:
             else current_start
         )
         new_end = (
-            ensure_utc(update_dict["end_time"]).replace(tzinfo=None)
-            if update_dict.get("end_time")
-            else current_end
+            ensure_utc(update_dict["end_time"]).replace(tzinfo=None) if update_dict.get("end_time") else current_end
         )
         if new_end <= new_start:
             raise ValidationError("end_time must be strictly after start_time")
@@ -305,8 +616,7 @@ class SessionService:
                 "move a single occurrence with scope 'only_this'."
             )
 
-        minutes = max(1, int(round((new_end - new_start).total_seconds() / 60)))
-        self.recurrence.set_series_duration(task.id, minutes)
+        self.recurrence.set_series_duration(task.id, self._series_minutes(new_start, new_end))
 
     def delete_session(self, session_id: str, scope: str = "only_this") -> None:
         """Delete one occurrence, or truncate/end a series.
@@ -318,21 +628,37 @@ class SessionService:
         if scope not in DELETE_SCOPES:
             raise ValidationError(f"scope '{scope}' is not a valid deletion scope.")
 
+        lock_sqlite_writer(self.db)
+        try:
+            self._delete_legacy_session(session_id, scope)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def _delete_legacy_session(self, session_id: str, scope: str) -> None:
+        self.require_legacy_mutation_target(session_id, deleting=True)
         if is_occurrence_id(session_id):
             task, occurrence_start = self.recurrence.resolve_occurrence(session_id)
             if scope == "only_this":
-                self.recurrence.skip(task.id, occurrence_start)
+                self.recurrence.skip(task.id, occurrence_start, commit=False)
             elif scope == "following":
-                self.recurrence.truncate_series(task.id, occurrence_start)
+                if not self.recurrence.occurrence_exists(task, occurrence_start):
+                    raise EntityNotFoundError("Occurrence", session_id)
+                self.recurrence.truncate_series(task.id, occurrence_start, commit=False)
             else:
-                self.recurrence.end_series(task.id)
+                self.recurrence.end_series(task.id, commit=False)
             return
 
         db_session = self.db.get(SessionModel, session_id)
         if not db_session:
             raise EntityNotFoundError("Session", session_id)
 
-        exception = self.recurrence.exception_for_session(db_session.id)
+        exception = (
+            self.recurrence.reconcile_legacy_occurrence(db_session)
+            if scope == "only_this"
+            else self.recurrence.exception_for_session(db_session.id)
+        )
         task = self.db.get(Task, db_session.task_id) if db_session.task_id else None
         now_naive = datetime.now(UTC).replace(tzinfo=None)
         row_start = ensure_utc(db_session.start_time).replace(tzinfo=None) if db_session.start_time else None
@@ -344,32 +670,26 @@ class SessionService:
                 exception.session_id = None
                 self.db.add(exception)
             self.db.delete(db_session)
-            self.db.commit()
             return
 
         if not task or not task.is_recurring or not task.recurrence_rrule:
             raise ValidationError(f"scope '{scope}' requires a session on a recurring task.")
 
-        anchor = (
-            ensure_utc(exception.occurrence_start).replace(tzinfo=None)
-            if exception
-            else row_start
-        )
+        anchor = ensure_utc(exception.occurrence_start).replace(tzinfo=None) if exception else row_start
         if anchor is None:
             raise ValidationError(f"scope '{scope}' requires a session with a start time.")
 
         if scope == "following":
-            self.recurrence.truncate_series(task.id, anchor)
+            self.recurrence.truncate_series(task.id, anchor, commit=False)
         else:
-            self.recurrence.end_series(task.id)
+            self.recurrence.end_series(task.id, commit=False)
 
         # The picked row itself: only ever deleted when it is still in the future.
         row = self.db.get(SessionModel, session_id)
         if row and row_start and row_start > now_naive:
             self.db.delete(row)
-            self.db.commit()
 
-    def create_retro_session(self, req: RetroSessionCreate) -> SessionModel:
+    def create_retro_session(self, req: RetroSessionCreate) -> LegacySessionRead:
         start_utc = ensure_utc(req.start_time)
         end_utc = ensure_utc(req.end_time)
 
@@ -392,22 +712,54 @@ class SessionService:
         self.db.add(db_session)
         self.db.commit()
         self.db.refresh(db_session)
-        db_session.start_time = ensure_utc(db_session.start_time)
-        db_session.end_time = ensure_utc(db_session.end_time)
-        return db_session
+        return self._read_legacy_session(db_session)
 
-    def list_future_sessions(self, task_ids: list[str]) -> list[SessionModel]:
+    def _future_legacy_sessions(self, task_ids: list[str], now_naive: datetime) -> list[SessionModel]:
         if not task_ids:
             return []
-        now_naive = datetime.now(UTC).replace(tzinfo=None)
         return list(
             self.db.exec(
                 select(SessionModel).where(
                     SessionModel.task_id.in_(task_ids),
+                    SessionModel.kind == "legacy_uncertain",
                     SessionModel.start_time > now_naive,
                 )
             ).all()
         )
+
+    @staticmethod
+    def _future_plan_scope(task_ids: list[str], now: datetime):
+        return ScheduledSession.task_id.in_(task_ids), ScheduledSession.start_time > now
+
+    def list_completion_schedules(self, task_ids: list[str]) -> list[ScheduledSessionInfo]:
+        if not task_ids:
+            return []
+        now = datetime.now(UTC).replace(tzinfo=None)
+        sessions = [
+            ScheduledSessionInfo.model_validate(row, from_attributes=True).model_copy(
+                update=self._utc_session_times(row)
+            )
+            for row in self._future_legacy_sessions(task_ids, now)
+        ]
+        for plan in self.db.exec(select(ScheduledSession).where(*self._future_plan_scope(task_ids, now))):
+            sessions.append(
+                ScheduledSessionInfo.model_validate(self._read_scheduled_session(plan), from_attributes=True)
+            )
+        return sessions
+
+    def require_legacy_clear_scope(
+        self, own_task_id: str, selected_ids: list[str] | None, subtree_ids: list[str]
+    ) -> None:
+        if selected_ids:
+            for plan_id in selected_ids:
+                self.require_legacy_mutation_target(plan_id, deleting=True)
+        all_scope_ids = subtree_ids + ([own_task_id] if selected_ids is None else [])
+        now = datetime.now(UTC).replace(tzinfo=None)
+        plan_exists = select(ScheduledSession.id).where(*self._future_plan_scope(all_scope_ids, now)).exists()
+        if all_scope_ids and self.db.exec(select(plan_exists)).one():
+            raise ConflictError(
+                "Clearing explicit scheduled sessions is not supported yet.", code="plan_delete_unsupported"
+            )
 
     def sum_durations_for_tasks(self, task_ids: list[str]) -> tuple[int, int]:
         if not task_ids:
@@ -431,16 +783,48 @@ class SessionService:
             )
         ).one()
 
-        return (int(logged_seconds), int(scheduled_seconds))
+        # SQLite stores naive UTC datetimes as text. Use integer seconds and adjust for
+        # fractional endpoints to match the per-row truncated duration returned by the API.
+        start, end = ScheduledSession.start_time, ScheduledSession.end_time
+        duration = (
+            func.unixepoch(func.substr(end, 1, 19))
+            - func.unixepoch(func.substr(start, 1, 19))
+            - case((func.substr(end, 20) < func.substr(start, 20), 1), else_=0)
+        )
+        plan_seconds = self.db.exec(
+            select(func.coalesce(func.sum(duration), 0)).where(
+                ScheduledSession.task_id.in_(task_ids), ScheduledSession.start_time > now_naive
+            )
+        ).one()
+        return (int(logged_seconds), int(scheduled_seconds) + int(plan_seconds))
 
-    def clear_future_sessions(self, task_ids: list[str], session_ids: list[str] | None = None) -> list[str]:
-        future_sessions = self.list_future_sessions(task_ids)
+    def detach_plans_for_deleted_tasks(self, task_ids: set[str], *, allow: bool = True) -> None:
+        """Stage detachment in the caller's already locked task-delete transaction."""
+        plans = select(ScheduledSession.id).where(ScheduledSession.task_id.in_(task_ids))
+        if not allow:
+            if self.db.exec(plans.limit(1)).first() is not None:
+                raise ConflictError("AI cannot delete a task with scheduled sessions; use task management.")
+            return
+        self.db.execute(
+            update(SessionModel)
+            .where(SessionModel.scheduled_session_id.in_(plans))
+            .values(scheduled_session_id=None, revision=SessionModel.revision + 1)
+        )
+        self.db.execute(
+            update(ScheduledSession)
+            .where(ScheduledSession.task_id.in_(task_ids))
+            .values(task_id=None, revision=ScheduledSession.revision + 1)
+        )
+
+    def clear_future_sessions(
+        self, task_ids: list[str], session_ids: list[str] | None = None, *, commit: bool = True
+    ) -> list[str]:
+        future_sessions = self._future_legacy_sessions(task_ids, datetime.now(UTC).replace(tzinfo=None))
 
         if session_ids is not None:
             requested_ids = set(session_ids)
             owned_ids = {
-                s.id
-                for s in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))).all()
+                s.id for s in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))).all()
             }
             if not requested_ids.issubset(owned_ids):
                 raise ValidationError("session_ids must belong to the task's scheduled sessions")
@@ -451,13 +835,36 @@ class SessionService:
         deleted_ids = [s.id for s in to_delete]
         # Any occurrence materialized into one of these rows becomes a skip, so clearing the
         # schedule does not let the series re-project the work the user just cleared.
+        for row in to_delete:
+            self.recurrence.reconcile_legacy_occurrence(row)
         self.recurrence.detach_sessions(deleted_ids)
         for s in to_delete:
             self.db.delete(s)
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return deleted_ids
 
+    def require_legacy_mutation_target(self, session_id: str, *, deleting: bool = False) -> None:
+        occurrence = parse_occurrence_id(session_id)
+        if occurrence is not None:
+            exception = self.recurrence.get_exception(*occurrence)
+            if exception is None:
+                return
+            is_plan = exception.scheduled_session_id is not None
+            legacy_id = exception.session_id
+        else:
+            is_plan = self.db.get(ScheduledSession, session_id) is not None
+            legacy_id = session_id
+        if is_plan:
+            if deleting:
+                raise ConflictError("Deleting scheduled sessions is not supported yet.", code="plan_delete_unsupported")
+            raise ConflictError("Use the scheduled-session interface for this plan.", code="typed_session_unsupported")
+        row = self.db.get(SessionModel, legacy_id) if legacy_id is not None else None
+        if row is not None and row.kind != "legacy_uncertain":
+            raise ConflictError("This route cannot change explicit recorded work.", code="typed_session_unsupported")
+
     def record_reflection(self, req: ReflectionCreate) -> dict[str, Any]:
+        self.require_legacy_mutation_target(req.session_id)
         db_session = self.db.get(SessionModel, req.session_id)
         if not db_session:
             raise EntityNotFoundError("Session", req.session_id)

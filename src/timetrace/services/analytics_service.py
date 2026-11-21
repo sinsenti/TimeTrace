@@ -8,6 +8,7 @@ from timetrace.core.parser import export_sessions_to_markdown, parse_markdown_to
 from timetrace.core.query_spec import AnalyticsQuery, Dimension, Measure, QuerySource, SortKey
 from timetrace.db.models import Habit, HabitLog, Task
 from timetrace.db.models import Session as SessionModel
+from timetrace.db.session import sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import QueryContextRequest
 from timetrace.interfaces.api.utils import ensure_utc
 from timetrace.services.query_service import QueryService
@@ -77,10 +78,8 @@ class AnalyticsService:
     ) -> str:
         """Generates clean, scannable Markdown briefings for sessions, tasks, or habits without decorative icons."""
         now = datetime.now(UTC)
-        tasks = self.db.exec(select(Task)).all()
-        tasks_map = {t.id: t for t in tasks}
-
         if mode == "tasks_short":
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: tasks_concise_briefing",
@@ -102,6 +101,7 @@ class AnalyticsService:
             return "\n".join(lines)
 
         elif mode == "tasks_full":
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: tasks_complete_dossier",
@@ -116,17 +116,19 @@ class AnalyticsService:
             root_tasks = [t for t in tasks if not t.parent_id]
             for t in root_tasks:
                 subtasks = [child for child in tasks if child.parent_id == t.id]
-                lines.extend([
-                    f"## Task #{short_id(t.id)}: {t.title}",
-                    f"- Status: {t.status}",
-                    f"- Priority: {t.priority.upper()}",
-                    f"- Category: {t.category}",
-                    f"- Estimated Duration: {t.estimated_minutes or 15} mins",
-                    f"- Target Day: {t.assigned_date or 'Unassigned'}",
-                    f"- Due Day: {t.due_date.strftime('%Y-%m-%d %H:%M') if t.due_date else 'None'}",
-                    f"- Recurrent: {'Yes (' + (t.recurrence_rule or 'daily') + ')' if t.is_recurring else 'No'}",
-                    f"- Tags: {t.tags or 'None'}",
-                ])
+                lines.extend(
+                    [
+                        f"## Task #{short_id(t.id)}: {t.title}",
+                        f"- Status: {t.status}",
+                        f"- Priority: {t.priority.upper()}",
+                        f"- Category: {t.category}",
+                        f"- Estimated Duration: {t.estimated_minutes or 15} mins",
+                        f"- Target Day: {t.assigned_date or 'Unassigned'}",
+                        f"- Due Day: {t.due_date.strftime('%Y-%m-%d %H:%M') if t.due_date else 'None'}",
+                        f"- Recurrent: {'Yes (' + (t.recurrence_rule or 'daily') + ')' if t.is_recurring else 'No'}",
+                        f"- Tags: {t.tags or 'None'}",
+                    ]
+                )
 
                 if t.description and t.description.strip():
                     lines.extend(["", "### Description", t.description.strip()])
@@ -178,6 +180,7 @@ class AnalyticsService:
             return "\n".join(lines)
 
         elif mode in ("all", "all_date_range"):
+            tasks = self.db.exec(select(Task)).all()
             lines = [
                 "---",
                 "type: complete_system_export",
@@ -204,12 +207,14 @@ class AnalyticsService:
                     continue
                 filtered_sessions.append(s)
 
-            lines.extend([
-                f"## 1. Sessions Log ({len(filtered_sessions)} entries)",
-                "",
-                "| ID | Start Time | End Time | Duration (mins) | Task ID | Tags | Notes |",
-                "|---|---|---|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    f"## 1. Sessions Log ({len(filtered_sessions)} entries)",
+                    "",
+                    "| ID | Start Time | End Time | Duration (mins) | Task ID | Tags | Notes |",
+                    "|---|---|---|---|---|---|---|",
+                ]
+            )
             for s in sorted(filtered_sessions, key=lambda x: x.start_time or datetime.min):
                 st = ensure_utc(s.start_time).strftime("%Y-%m-%d %H:%M") if s.start_time else "-"
                 et = ensure_utc(s.end_time).strftime("%Y-%m-%d %H:%M") if s.end_time else "-"
@@ -221,12 +226,14 @@ class AnalyticsService:
             lines.extend(["", "---", ""])
 
             # 2. Tasks Section
-            lines.extend([
-                f"## 2. Tasks ({len(tasks)} entries)",
-                "",
-                "| ID | Title | Status | Priority | Category | Target Day | Due Day | Tags |",
-                "|---|---|---|---|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    f"## 2. Tasks ({len(tasks)} entries)",
+                    "",
+                    "| ID | Title | Status | Priority | Category | Target Day | Due Day | Tags |",
+                    "|---|---|---|---|---|---|---|---|",
+                ]
+            )
             for t in tasks:
                 due_info = t.due_date.strftime("%Y-%m-%d %H:%M") if t.due_date else "-"
                 lines.append(
@@ -238,12 +245,14 @@ class AnalyticsService:
 
             # 3. Habits Section
             habits = self.db.exec(select(Habit)).all()
-            lines.extend([
-                f"## 3. Habits ({len(habits)} entries)",
-                "",
-                "| ID | Name | Type | Target | Frequency | Reminder Time |",
-                "|---|---|---|---|---|---|",
-            ])
+            lines.extend(
+                [
+                    f"## 3. Habits ({len(habits)} entries)",
+                    "",
+                    "| ID | Name | Type | Target | Frequency | Reminder Time |",
+                    "|---|---|---|---|---|---|",
+                ]
+            )
             for h in habits:
                 target_str = f"{h.target_value} {h.unit or ''}".strip() if h.habit_type == "numeric" else "Checkmark"
                 lines.append(
@@ -255,59 +264,64 @@ class AnalyticsService:
 
         else:
             # Default Mode: "sessions" (Chronological Agenda)
-            sessions = self.db.exec(select(SessionModel)).all()
+            # Preserve the legacy briefing horizon as well as the bounded plan window. Both
+            # reads must agree on whether an occurrence is projected or already a real row.
+            with sqlite_read_snapshot(self.db) as reader:
+                sessions = reader.exec(select(SessionModel)).all()
+                tasks_map = {task.id: task for task in reader.exec(select(Task))}
+                plans = SessionService(reader).list_planning_plans(now, now + timedelta(days=30))
             today_date = now.date()
             tomorrow_date = today_date + timedelta(days=1)
-
-            # Settled owner decision Q3: the agenda's forward-looking sections must go through
-            # the same merge funnel as the calendar, or a recurring series (which no longer has
-            # pre-generated rows) silently disappears from "Later Today / Tomorrow / Upcoming".
-            projected = SessionService(self.db).list_projected_occurrences(now, now + timedelta(days=30))
 
             group_now: list[dict] = []
             group_later: list[dict] = []
             group_tomorrow: list[dict] = []
             group_upcoming: list[dict] = []
 
-            agenda_records: list[tuple[str, str | None, datetime, datetime, str, str]] = []
-            for s in sessions:
-                if not s.start_time:
-                    continue
-                st_utc = ensure_utc(s.start_time)
-                et_utc = ensure_utc(s.end_time) if s.end_time else st_utc + timedelta(minutes=15)
-                agenda_records.append((s.id, s.task_id, st_utc, et_utc, s.tags or "", s.notes or ""))
-            for occ in projected:
+            agenda_records: list[tuple[str | None, datetime, datetime, str, str, str, bool]] = []
+            for session in sessions:
+                st_utc = ensure_utc(session.start_time)
+                et_utc = ensure_utc(session.end_time) if session.end_time else st_utc + timedelta(minutes=15)
+                agenda_records.append(
+                    (session.task_id, st_utc, et_utc, session.tags, session.notes or "", session.kind, False)
+                )
+            for plan in plans:
                 agenda_records.append(
                     (
-                        occ.occurrence_id,
-                        occ.task_id,
-                        ensure_utc(occ.start_utc),
-                        ensure_utc(occ.end_utc),
-                        occ.tags or "",
-                        "",
+                        plan.task_id,
+                        plan.start_time,
+                        plan.end_time,
+                        plan.tags,
+                        plan.notes or "",
+                        plan.kind,
+                        plan.is_virtual,
                     )
                 )
 
-            for rec_id, rec_task_id, st_utc, et_utc, rec_tags, rec_notes in agenda_records:
+            for rec_task_id, st_utc, et_utc, rec_tags, rec_notes, kind, is_virtual in agenda_records:
                 st_local = st_utc.astimezone()
                 et_local = et_utc.astimezone()
                 sess_date = st_local.date()
 
                 task_obj = tasks_map.get(rec_task_id)
                 title = task_obj.title if task_obj else (rec_notes or rec_tags or "Session Log")
+                if kind == "scheduled_session":
+                    title = f"{title} ({'PROJECTED OCCURRENCE' if is_virtual else 'SCHEDULED SESSION'})"
+                elif kind == "recorded_work":
+                    title = f"{title} (RECORDED WORK)"
 
                 item = {
-                    "id": rec_id,
                     "title": title,
                     "start_str": st_local.strftime("%H:%M"),
                     "end_str": et_local.strftime("%H:%M"),
                     "date_str": st_local.strftime("%Y-%m-%d"),
                     "tags": rec_tags or "#general",
                     "notes": rec_notes,
-                    "is_running": st_utc <= now <= et_utc,
+                    "in_progress": st_utc <= now < et_utc if kind == "scheduled_session" else st_utc <= now <= et_utc,
+                    "is_plan": kind == "scheduled_session",
                 }
 
-                if item["is_running"]:
+                if item["in_progress"]:
                     group_now.append(item)
                 elif sess_date == today_date and st_utc > now:
                     group_later.append(item)
@@ -330,7 +344,10 @@ class AnalyticsService:
 
             if group_now:
                 for item in group_now:
-                    lines.append(f"- [{item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']} (ACTIVE)")
+                    marker = "" if item["is_plan"] else " (ACTIVE)"
+                    lines.append(
+                        f"- [{item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}{marker}"
+                    )
             else:
                 lines.append("- No active session running.")
 
@@ -351,7 +368,9 @@ class AnalyticsService:
             lines.extend(["", "## Upcoming"])
             if group_upcoming:
                 for item in sorted(group_upcoming, key=lambda x: (x["date_str"], x["start_str"]))[:15]:
-                    lines.append(f"- [{item['date_str']} {item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}")
+                    lines.append(
+                        f"- [{item['date_str']} {item['start_str']} - {item['end_str']}] {item['title']} | {item['tags']}"
+                    )
             else:
                 lines.append("- No future upcoming sessions found.")
 

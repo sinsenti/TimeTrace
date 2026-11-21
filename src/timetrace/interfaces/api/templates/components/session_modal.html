@@ -1,3 +1,10 @@
+<section id="schedule_create_recovery" class="fixed bottom-4 right-4 z-40 max-w-sm bg-[var(--bg-card)] border border-[var(--border-muted)] rounded-lg p-3 text-xs" hidden>
+    <p id="schedule_create_recovery_status" role="status"></p>
+    <div class="flex flex-wrap gap-3 mt-2">
+        <button id="schedule_create_inspect" type="button" class="underline">Check saved schedules</button>
+        <button id="schedule_create_new_intent" type="button" class="underline disabled:opacity-50" disabled>Allow a new plan</button>
+    </div>
+</section>
 <!-- Unified Session Modal Partial -->
 <div id="session_modal" role="dialog" aria-modal="true" aria-labelledby="session_modal_title" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center hidden z-50">
     <div class="bg-[var(--bg-card)] border border-[var(--border-muted)] w-[460px] rounded-xl p-5 shadow-2xl space-y-3 text-white">
@@ -7,6 +14,14 @@
             <button type="button" aria-label="Close Session" onclick="closeSessionModal()" class="text-slate-400 hover:text-white font-bold text-lg">&times;</button>
         </div>
 
+        <label id="session_modal_intent_choice" class="hidden text-xs">
+            Save as
+            <select id="session_modal_intent" class="bg-[var(--bg-card)]" onchange="updateSessionModalIntent()">
+                <option value="schedule">Scheduled session</option>
+                <option value="legacy">Legacy session (uncertain)</option>
+            </select>
+        </label>
+        <div id="session_modal_metadata" class="space-y-3">
         <div class="relative">
             <div class="flex justify-between items-center mb-1">
                 <label for="session_modal_task_search" class="text-xs text-slate-400 block">Attach Task</label>
@@ -32,6 +47,10 @@
             <textarea id="session_modal_notes" rows="3" placeholder="What was done / planned..." class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-3 py-2 rounded-lg text-xs text-white focus:outline-none focus:border-purple-500"></textarea>
         </div>
 
+        </div>
+        <dl id="session_modal_plan_detail" class="hidden text-xs whitespace-pre-wrap"></dl>
+
+        <div id="session_modal_times" class="space-y-3">
         <div>
             <div class="flex justify-between items-center mb-1">
                 <label for="session_modal_start" class="text-xs text-slate-400 block">Start Time</label>
@@ -58,7 +77,10 @@
             <input id="session_modal_end" type="datetime-local" onchange="updateSessionModalDurationBadge()" oninput="updateSessionModalDurationBadge()" class="w-full bg-[#0f1016] border border-[var(--border-muted)] px-2 py-1.5 rounded-lg text-xs text-white">
         </div>
 
+        </div>
+
         <p id="session_modal_feedback" role="status" aria-live="polite" class="text-xs text-slate-300"></p>
+        <button type="button" id="session_modal_use_latest" class="hidden text-xs underline" onclick="useLatestSessionSchedule()">Use saved times</button>
         <div class="flex justify-between items-center pt-2 border-t border-[var(--border-muted)]">
             <button id="session_modal_delete_btn" onclick="deleteSessionFromModal()" class="bg-red-900/40 hover:bg-red-800 text-red-300 border border-red-700/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Delete</button>
             <button id="session_modal_start_now_btn" onclick="startTimerFromModal()" class="bg-emerald-700/50 hover:bg-emerald-600 text-emerald-200 border border-emerald-600/50 px-3 py-1.5 rounded-lg text-xs font-semibold hidden">Start Timer Now</button>

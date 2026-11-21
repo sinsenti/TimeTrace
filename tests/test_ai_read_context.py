@@ -317,3 +317,101 @@ def test_concurrent_reads_own_and_release_independent_sessions(tmp_path, monkeyp
         assert {id(conn) for conn in checked_in} == {id(conn) for conn in checked_out}
     finally:
         engine.dispose()
+
+
+def test_ai_planning_reads_include_typed_plan_and_reserve_its_window(client, gateway):
+    start = (datetime.now(UTC) + timedelta(days=2)).replace(hour=10, minute=0, second=0, microsecond=0)
+    end = start + timedelta(hours=2)
+    plan_end = start + timedelta(minutes=30)
+    response = client.post(
+        "/scheduled-sessions",
+        json={
+            "start_time": (start - timedelta(minutes=30)).isoformat(),
+            "end_time": plan_end.isoformat(),
+            "notes": "Reserved writing",
+        },
+    )
+    assert response.status_code == 201, response.text
+    plan = response.json()
+    (item,) = gateway.list_sessions(start=start, end=end)
+    assert item["id"] == plan["id"]
+    assert item["kind"] == "scheduled_session"
+    assert datetime.fromisoformat(item["original_end"]) == plan_end
+    assert item["revision"] == 1
+    slots = gateway.find_free_slots(start=start, end=end, min_duration_minutes=15, working_hours_only=False)
+    assert datetime.fromisoformat(slots[0]["start"]) == plan_end
+    overlap = {"start_time": start.isoformat(), "end_time": (start + timedelta(minutes=15)).isoformat()}
+    check = gateway.validate_schedule([overlap])
+    assert not check["valid"] and any("Reserved writing" in error and "overlaps" in error for error in check["errors"])
+    work = client.post("/sessions", json=overlap).json()
+    (result,) = gateway.find_conflicts(start=start, end=end)
+    assert {result["session_a_id"], result["session_b_id"]} == {plan["id"], work["id"]}
+    assert result["overlap_minutes"] == 15
+
+
+@pytest.mark.parametrize("target", ["plan", "captured_anchor", "recorded_work", "legacy"])
+def test_validation_reserves_protected_targets_but_replaces_editable_legacy(client, db, gateway, target):
+    from timetrace.core.recurrence import format_occurrence_id
+    from timetrace.core.timezones import daemon_timezone
+
+    tz = daemon_timezone()
+    start = (datetime.now(tz) + timedelta(days=-2 if target == "recorded_work" else 2)).replace(
+        hour=10, minute=0, second=0, microsecond=0
+    )
+    end = start + timedelta(hours=1)
+    settings = client.put(
+        "/api/ai/settings",
+        json={"scheduling_days": [start.strftime("%A").lower()], "maximum_daily_minutes": 90},
+    )
+    assert settings.status_code == 200, settings.text
+    window = {"start_time": start.isoformat(), "end_time": end.isoformat()}
+
+    if target in ("plan", "captured_anchor"):
+        start_utc = start.astimezone(UTC).replace(tzinfo=None)
+        task = Task(
+            title="Reserved commitment",
+            is_recurring=True,
+            recurrence_rrule="FREQ=DAILY;COUNT=1",
+            recurrence_dtstart=start_utc,
+            recurrence_timezone="UTC",
+            recurrence_duration_minutes=60,
+        )
+        db.add(task)
+        db.commit()
+        virtual_id = format_occurrence_id(task.id, start_utc)
+        path = f"/scheduled-sessions/{virtual_id}"
+        projected = client.get(path)
+        assert projected.status_code == 200, projected.text
+        capture = client.put(
+            path, json={**window, "expected_projection_revision": projected.json()["projection_revision"]}
+        )
+        assert capture.status_code == 200, capture.text
+        target_id = capture.json()["id"] if target == "plan" else virtual_id
+    elif target == "recorded_work":
+        # The explicit manual-recording flow is a later ticket; seed a closed work record.
+        row = SessionModel(
+            kind="recorded_work",
+            provenance="manual",
+            start_time=start.astimezone(UTC).replace(tzinfo=None),
+            end_time=end.astimezone(UTC).replace(tzinfo=None),
+            duration_seconds=3600,
+            notes="Reserved commitment",
+        )
+        db.add(row)
+        db.commit()
+        target_id = row.id
+    else:
+        legacy = client.post("/sessions", json={**window, "notes": "Reserved commitment"})
+        assert legacy.status_code == 201, legacy.text
+        target_id = legacy.json()["id"]
+
+    check = gateway.validate_schedule([{**window, "session_id": target_id}])
+    if target == "legacy":
+        assert check["valid"], check
+        assert check["daily_minutes"] == {start.date().isoformat(): 60}
+    else:
+        assert not check["valid"], check
+        assert check["daily_minutes"] == {start.date().isoformat(): 120}
+        assert any("Reserved commitment" in error and "overlaps" in error for error in check["errors"])
+        assert any("exceeds daily limit 90" in error for error in check["errors"])
+        assert any("cannot edit" in error and "Choose another time" in error for error in check["errors"])

@@ -120,3 +120,22 @@ test('completion policy can clear an empty own-session selection and the whole s
 
     assert.deepEqual(JSON.parse(JSON.stringify(b.writes[0].body)), { include_subtasks: true, session_ids: [] });
 });
+
+test('completion refuses a selected protected plan instead of trimming the requested clear', async () => {
+    const b = fixture();
+    b.fields.completion_policy_feedback = element();
+    const sessions = ownSessions(b.sessionId, b.otherSessionId);
+    sessions[1].kind = 'scheduled_session';
+    b.context.handleCompletionPolicy({ completion_policy: {
+        task_id: 'task', reason: 'completed', scheduled_sessions: sessions, subtask_scheduled_count: 0
+    } });
+    await b.context.clearCompletionPolicySessions();
+    assert.equal(b.writes.length, 0);
+    assert.match(b.fields.completion_policy_feedback.textContent, /not available/i);
+    b.context.document.querySelectorAll = () => [
+        { checked: true, getAttribute: () => b.sessionId },
+        { checked: false, getAttribute: () => b.otherSessionId }
+    ];
+    await b.context.clearCompletionPolicySessions();
+    assert.deepEqual(Array.from(b.writes[0].body.session_ids), [b.sessionId]);
+});

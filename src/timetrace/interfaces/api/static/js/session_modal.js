@@ -26,7 +26,7 @@ function setupModalKeyboardListeners() {
             } else if (e.key === 'Escape' || e.key === 'Esc') {
                 e.preventDefault();
                 closeSessionModal();
-            } else if ((e.key === '+' || e.key === '=') && !isTypingText && !sessionModalOwner?.pending) {
+            } else if ((e.key === '+' || e.key === '=') && !isTypingText && !sessionModalOwner?.pending && !sessionModalOwner?.blocked && sessionModalOwner?.session?.kind !== 'scheduled_session') {
                 e.preventDefault();
                 openTaskModalFromSessionModal();
             }
@@ -78,7 +78,7 @@ function setupModalKeyboardListeners() {
             } else if (e.key === 'Backspace' && !taskSearchInput.value && attachedTask) {
                 detachTask();
                 renderTaskSuggestions('');
-            } else if (e.key === '+' && !sessionModalOwner?.pending) {
+            } else if (e.key === '+' && !sessionModalOwner?.pending && !sessionModalOwner?.blocked && sessionModalOwner?.session?.kind !== 'scheduled_session') {
                 e.preventDefault();
                 openTaskModalFromSessionModal();
             }
@@ -166,12 +166,89 @@ let sessionModalOwner = null;
 // The returned row ID is writer identity, not an editable draft field.
 const sessionModalDraftFields = 'input:not(#edit_session_id), select, textarea';
 
+// Shared by explicit Schedule dialogs and Calendar's external task drops, not owned by a popup.
+let scheduleCreatePending = false;
+let scheduleCreateGeneration = 0;
+let unconfirmedScheduleCreate = null;
+
+function renderScheduleCreateRecovery() {
+    const panel = document.getElementById('schedule_create_recovery');
+    const attempt = unconfirmedScheduleCreate;
+    if (!panel) return;
+    panel.hidden = !attempt;
+    if (!attempt) return;
+    const fmt = value => new Date(value).toLocaleString();
+    const status = document.getElementById('schedule_create_recovery_status');
+    const inspect = document.getElementById('schedule_create_inspect');
+    const allow = document.getElementById('schedule_create_new_intent');
+    status.textContent = `Schedule creation not confirmed (${fmt(attempt.payload.start_time)} — ${fmt(attempt.payload.end_time)}). ` +
+        (attempt.result || 'Check saved schedules before starting another plan.');
+    allow.disabled = !attempt.inspected;
+    inspect.onclick = async () => {
+        if (attempt.reading) return;
+        attempt.reading = true;
+        attempt.inspected = false;
+        allow.disabled = true;
+        try {
+            const { start_time, end_time, task_id } = attempt.payload;
+            // A plan can outlast the maximum viewport; its start still fits this read.
+            const inspectEnd = new Date(Math.min(+new Date(end_time), +new Date(start_time) + 60000));
+            const query = `start=${encodeURIComponent(start_time)}&end=${encodeURIComponent(inspectEnd.toISOString())}`;
+            const result = await api.get(`/agenda?${query}`);
+            const matches = result.items.filter(row => row.kind === 'scheduled_session' && !row.is_virtual &&
+                row.task_id === task_id && +new Date(row.start_time) === +new Date(start_time) && +new Date(row.end_time) === +new Date(end_time));
+            attempt.result = matches.length ? `Possible saved plan IDs: ${matches.map(row => row.id).join(', ')}. Do not recreate a plan that already exists.`
+                : 'No matching saved plan is visible in this interval. That does not prove the first request failed.';
+            attempt.inspected = true;
+        } catch {
+            attempt.result = 'Could not check saved schedules. Retry the read; creating another plan is blocked.';
+        } finally {
+            attempt.reading = false;
+        }
+        if (attempt === unconfirmedScheduleCreate) renderScheduleCreateRecovery();
+    };
+    allow.onclick = () => {
+        if (attempt !== unconfirmedScheduleCreate || !attempt.inspected || attempt.reading) return;
+        unconfirmedScheduleCreate = null;
+        scheduleCreateGeneration++;
+        renderScheduleCreateRecovery();
+        const active = document.activeElement;
+        if (panel.contains?.(active) || active === document.body) document.getElementById('session_modal_save_btn')?.focus();
+    };
+}
+
+function scheduleCreateIntent() {
+    return unconfirmedScheduleCreate || scheduleCreatePending ? null : scheduleCreateGeneration;
+}
+
+async function createScheduledSessionFromEditor(payload, intent = scheduleCreateGeneration) {
+    if (unconfirmedScheduleCreate || scheduleCreatePending) {
+        throw Object.assign(new Error(unconfirmedScheduleCreate ? 'Close this editor and check Schedule creation recovery before starting another plan.'
+            : 'Another Schedule creation is still pending.'), { scheduleRecovery: true });
+    }
+    if (intent !== scheduleCreateGeneration) {
+        throw Object.assign(new Error('This drop predates schedule recovery. Start a new gesture.'), { scheduleRecovery: true });
+    }
+    scheduleCreatePending = true;
+    try {
+        return await api.saveScheduledSession(null, payload);
+    } catch (err) {
+        if (err.status && err.status < 500) throw err;
+        scheduleCreateGeneration++;
+        unconfirmedScheduleCreate = { payload };
+        renderScheduleCreateRecovery();
+        throw Object.assign(new Error('Save not confirmed. Close this editor and check Schedule creation recovery before starting another plan.'), { scheduleRecovery: true });
+    } finally {
+        scheduleCreatePending = false;
+    }
+}
+
 function setSessionSavePending(owner, pending) {
     owner.pending = pending;
     if (sessionModalOwner !== owner) return;
     for (const id of ['session_modal_save_btn', 'session_modal_delete_btn', 'session_modal_start_now_btn', 'session_modal_new_task_btn']) {
         const button = document.getElementById(id);
-        if (button) button.disabled = pending;
+        if (button) button.disabled = pending || (id === 'session_modal_save_btn' && Boolean(owner.blocked));
     }
     const modal = document.getElementById('session_modal');
     if (modal) modal.setAttribute('aria-busy', String(pending));
@@ -183,17 +260,22 @@ function beginSessionModal(calendarLauncher = null) {
     const launcher = modal?.contains?.(active) ? sessionModalOwner?.launcher : active;
     if (calendarLauncher && calendarLauncher.tabIndex < 0) calendarLauncher.setAttribute('tabindex', '-1');
     closeSessionModal(false);
+    const metadata = document.getElementById('session_modal_metadata');
+    if (metadata) metadata.inert = false;
+    const choice = document.getElementById('session_modal_intent');
+    if (choice) choice.disabled = false;
     sessionModalOwner = { launcher, calendarLauncher: Boolean(calendarLauncher) };
     setSessionSavePending(sessionModalOwner, false);
     const feedback = document.getElementById('session_modal_feedback');
     if (feedback) feedback.textContent = '';
+    document.getElementById('session_modal_use_latest')?.classList.add('hidden');
 }
 
 function sessionModalSnapshot() {
     return JSON.stringify([
         ...['session_modal_task_id', 'session_modal_start', 'session_modal_end', 'session_modal_notes', 'session_modal_tags_input']
             .map(id => document.getElementById(id).value),
-        currentTagChips
+        currentTagChips, sessionModalOwner?.intent
     ]);
 }
 
@@ -219,19 +301,82 @@ function scheduleSessionModalFocus(inputId) {
     }, 50);
 }
 
+function sessionModalFeedback(message) {
+    const feedback = document.getElementById('session_modal_feedback');
+    if (feedback) feedback.textContent = message;
+}
+
+function showSessionModalPlan(row) {
+    document.getElementById('session_modal_metadata')?.classList.toggle('hidden', Boolean(row));
+    document.getElementById('session_modal_times')?.classList.toggle('hidden', row?.kind === 'recorded_work');
+    const detail = document.getElementById('session_modal_plan_detail');
+    if (!detail) return;
+    detail.classList.toggle('hidden', !row);
+    detail.textContent = '';
+    if (!row) return;
+    const interval = (a, b) => `${new Date(a).toLocaleString()} — ${b ? new Date(b).toLocaleString() : 'No end'}`;
+    const fields = row.kind === 'scheduled_session' ? [
+        [row.is_virtual ? 'Original plan (provisional)' : 'Original plan', interval(row.original_start, row.original_end)],
+        ['Current schedule', interval(row.start_time, row.end_time)],
+    ] : [['Recorded work', interval(row.start_time, row.end_time)]];
+    fields.push(['Task', row.task_id ? taskKnowledge.get(row.task_id)?.title || 'Task unavailable' : 'No task'],
+        ['Tags', row.tags || 'None'], ['Notes', row.notes || 'None']);
+    for (const [label, value] of fields) {
+        const term = document.createElement('dt'), description = document.createElement('dd');
+        term.textContent = label; description.textContent = value;
+        detail.appendChild(term); detail.appendChild(description);
+    }
+    sessionModalFeedback(row.kind === 'recorded_work' ? 'Recorded work is read-only here.' : row.is_virtual
+        ? 'Save captures this occurrence. Deletion uses the existing recurrence choices, where available.'
+        : 'Only the current schedule is editable here. Deletion is not available for saved plans.');
+}
+
+function updateSessionModalIntent() {
+    const owner = sessionModalOwner;
+    if (!owner || owner.session || !owner.chooseIntent || owner.pending || owner.blocked) return;
+    owner.intent = document.getElementById('session_modal_intent').value;
+    document.getElementById('session_modal_start_now_btn')?.classList.toggle('hidden', owner.intent !== 'legacy' || !owner.canStartNow);
+    sessionModalFeedback(owner.intent === 'schedule' ? 'Scheduling time does not record work.' : 'Saved in uncertain legacy history.');
+}
+
+function useLatestSessionSchedule() {
+    const owner = sessionModalOwner;
+    if (!owner?.latest || !window.confirm('Replace your unsaved times with the saved schedule?')) return;
+    openEditSessionModal(owner.latest.id, owner.launcher, owner.latest);
+}
+
+async function reviewSessionModalSchedule(owner, id) {
+    try {
+        const latest = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
+        if (sessionModalOwner !== owner || document.getElementById('session_modal').classList.contains('hidden')) return;
+        owner.latest = latest;
+        sessionModalFeedback(`Latest saved times: ${new Date(latest.start_time).toLocaleString()} — ${new Date(latest.end_time).toLocaleString()}. Your input is unchanged.`);
+        document.getElementById('session_modal_use_latest')?.classList.remove('hidden');
+    } catch (err) {
+        if (sessionModalOwner === owner) sessionModalFeedback(`Could not read the saved schedule: ${err.message}. Refresh Calendar and reopen the entry to review.`);
+    }
+}
+
 function openEditSessionModal(sessionId, launcher = null, recordedSession = null) {
     const session = recordedSession?.id === sessionId ? recordedSession
-        : typeof allSessions !== 'undefined' ? allSessions.find(s => String(s.id) === String(sessionId)) : null;
+        : (typeof calendarSessionRows === 'function' ? calendarSessionRows().find(s => s.id === sessionId) : null)
+            || (typeof allSessions !== 'undefined' ? allSessions.find(s => s.id === sessionId) : null);
     if (!session) return;
     beginSessionModal(launcher);
+    const owner = sessionModalOwner;
+    owner.session = session;
+    owner.intent = session.kind === 'scheduled_session' ? 'schedule' : 'legacy';
+    owner.blocked = session.kind === 'recorded_work';
+    const typed = owner.intent === 'schedule' || owner.blocked;
+    document.getElementById('session_modal_intent_choice')?.classList.add('hidden');
 
     document.getElementById('edit_session_id').value = session.id;
     const titleEl = document.getElementById('session_modal_title');
-    if (titleEl) titleEl.innerText = "Edit Session";
+    if (titleEl) titleEl.innerText = typed ? (owner.blocked ? 'Recorded work' : 'Edit current schedule') : 'Edit Legacy Session';
 
     document.getElementById('session_modal_start_now_btn').classList.add('hidden');
     const deleteBtn = document.getElementById('session_modal_delete_btn');
-    if (deleteBtn) deleteBtn.classList.remove('hidden');
+    if (deleteBtn) deleteBtn.classList.toggle('hidden', typed && !session.is_virtual);
 
     const taskDropdown = document.getElementById('task_suggestions_dropdown');
     if (taskDropdown) taskDropdown.classList.add('hidden');
@@ -245,7 +390,7 @@ function openEditSessionModal(sessionId, launcher = null, recordedSession = null
     document.getElementById('session_modal_end').value = formatIsoLocal(endDate);
 
     if (session.task_id) {
-        attachTaskById(session.task_id, true);
+        attachTaskById(session.task_id, true, "", true);
     } else {
         detachTask();
     }
@@ -257,17 +402,27 @@ function openEditSessionModal(sessionId, launcher = null, recordedSession = null
     document.getElementById('session_modal').classList.remove('hidden');
     if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal', sessionModalDraftFields);
 
-    scheduleSessionModalFocus('session_modal_notes');
+    owner.timeBaseline = [document.getElementById('session_modal_start').value, document.getElementById('session_modal_end').value];
+    showSessionModalPlan(typed ? session : null);
+    setSessionSavePending(owner, false);
+    if (!owner.blocked) scheduleSessionModalFocus(typed ? 'session_modal_start' : 'session_modal_notes');
 }
 
-function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "") {
+function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "", intent = "legacy") {
     try {
         beginSessionModal();
+        const owner = sessionModalOwner;
+        owner.intent = intent === 'calendar' ? 'schedule' : intent;
+        owner.chooseIntent = intent === 'calendar';
+        document.getElementById('session_modal_intent_choice')?.classList.toggle('hidden', !owner.chooseIntent);
+        const choice = document.getElementById('session_modal_intent');
+        if (choice) choice.value = owner.intent;
+        showSessionModalPlan(null);
         const editIdEl = document.getElementById('edit_session_id');
         if (editIdEl) editIdEl.value = "";
 
         const titleEl = document.getElementById('session_modal_title');
-        if (titleEl) titleEl.innerText = "Calendar Session";
+        if (titleEl) titleEl.innerText = owner.chooseIntent ? 'Calendar Session' : owner.intent === 'schedule' ? 'Schedule Session' : 'Legacy Session';
 
         const deleteBtn = document.getElementById('session_modal_delete_btn');
         if (deleteBtn) deleteBtn.classList.add('hidden');
@@ -294,7 +449,8 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         const endInput = document.getElementById('session_modal_end');
         if (endInput) endInput.value = formatIsoLocal(endDate);
 
-        if (startDate <= now && endDate > now) {
+        owner.canStartNow = startDate <= now && endDate > now;
+        if (owner.intent === 'legacy' && owner.canStartNow) {
             if (startNowBtn) startNowBtn.classList.remove('hidden');
         } else {
             if (startNowBtn) startNowBtn.classList.add('hidden');
@@ -321,6 +477,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         if (modal) modal.classList.remove('hidden');
         if (typeof rememberSettingsDraft === 'function') rememberSettingsDraft('session_modal', sessionModalDraftFields);
 
+        if (owner.intent === 'schedule') sessionModalFeedback('Scheduling time does not record work.');
         scheduleSessionModalFocus('session_modal_task_search');
     } catch (err) {
         console.error("Error opening session modal:", err);
@@ -354,7 +511,14 @@ function closeSessionModal(restoreFocus = true) {
 
 async function saveSessionFromModal() {
     const owner = sessionModalOwner;
-    if (!owner || owner.pending || document.getElementById('session_modal').classList.contains('hidden')) return;
+    if (!owner || owner.pending || owner.blocked || document.getElementById('session_modal').classList.contains('hidden')) return;
+    const typed = owner.intent === 'schedule';
+    if (typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(owner.session)) {
+        sessionModalFeedback('Review the previous attempt in Calendar before editing this entry again.');
+        return;
+    }
+    const metadata = document.getElementById('session_modal_metadata');
+    const intent = document.getElementById('session_modal_intent');
     setSessionSavePending(owner, true);
     let savedSession, submittedSnapshot, checkpoint;
     const sessionId = document.getElementById('edit_session_id').value;
@@ -366,29 +530,55 @@ async function saveSessionFromModal() {
         }
         const startVal = document.getElementById('session_modal_start').value;
         const endVal = document.getElementById('session_modal_end').value;
-        const startDt = new Date(startVal);
-        const endDt = new Date(endVal);
+        const previous = owner.session;
+        const savedStart = typed && previous && startVal === owner.timeBaseline?.[0] ? previous.start_time : null;
+        const savedEnd = typed && previous && endVal === owner.timeBaseline?.[1] ? previous.end_time : null;
+        const startDt = new Date(savedStart || startVal);
+        const endDt = new Date(savedEnd || endVal);
         if (!startVal || !endVal || isNaN(startDt.getTime()) || isNaN(endDt.getTime()) || endDt <= startDt) {
             alert('End time must be after a valid Start time.');
             return;
         }
         const payload = {
             task_id: document.getElementById('session_modal_task_id').value || null,
-            start_time: startDt.toISOString(),
-            end_time: endDt.toISOString(),
+            start_time: savedStart || startDt.toISOString(),
+            end_time: savedEnd || endDt.toISOString(),
             tags: currentTagChips.join(' '),
             notes: document.getElementById('session_modal_notes').value || ''
         };
         submittedSnapshot = sessionModalSnapshot();
         checkpoint = typeof settingsDraftCheckpoint === 'function' ? settingsDraftCheckpoint('session_modal', sessionModalDraftFields) : () => {};
-        savedSession = sessionId
+        if (intent) intent.disabled = true;
+        if (typed) {
+            if (metadata && !sessionId) metadata.inert = true;
+            owner.submittedTimes = [startVal, endVal];
+        }
+        savedSession = typed ? (previous ? await api.saveScheduledSession(previous, payload)
+            : await createScheduledSessionFromEditor(payload)) : sessionId
             ? await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload)
             : await api.post('/sessions', payload);
     } catch (err) {
-        console.error('Failed to save session:', err);
-        alert('Failed to save session: ' + (err.message || err));
+        if (typed && err.scheduleRecovery) {
+            if (sessionModalOwner === owner) sessionModalFeedback(err.message);
+        } else if (typed) {
+            const uncertain = !err.status || err.status >= 500;
+            owner.blocked = uncertain || err.status === 409;
+            if (sessionModalOwner === owner) {
+                sessionModalFeedback(uncertain ? 'Save not confirmed. Check Calendar or Agenda before trying again.'
+                    : err.status === 409 ? 'Schedule changed on the server. Your input is retained for review.' : err.message);
+                if (owner.blocked && sessionId) void reviewSessionModalSchedule(owner, sessionId);
+            }
+            if (owner.blocked) void refreshSessionDisplay();
+        } else {
+            console.error('Failed to save session:', err);
+            alert('Failed to save session: ' + (err.message || err));
+        }
         return;
     } finally {
+        if (sessionModalOwner === owner) {
+            if (metadata) metadata.inert = false;
+            if (intent) intent.disabled = false;
+        }
         setSessionSavePending(owner, false);
     }
 
@@ -396,6 +586,13 @@ async function saveSessionFromModal() {
     if (savedSession && sessionModalOwner === owner) {
         document.getElementById('edit_session_id').value = savedSession.id;
         checkpoint();
+        if (typed) {
+            owner.session = savedSession;
+            owner.timeBaseline = owner.submittedTimes;
+            document.getElementById('session_modal_intent_choice')?.classList.add('hidden');
+            document.getElementById('session_modal_delete_btn')?.classList.add('hidden');
+            showSessionModalPlan(savedSession);
+        }
     }
     rememberSavedSession(savedSession, sessionId);
     if (sessionModalOwner === owner && !document.getElementById('session_modal').classList.contains('hidden')) {
@@ -413,13 +610,13 @@ async function saveSessionFromModal() {
 
 function deleteSessionFromModal() {
     const sessionId = document.getElementById('edit_session_id').value;
-    if (!sessionId) return;
+    if (!sessionId || (sessionModalOwner?.session?.kind === 'scheduled_session' && !sessionModalOwner.session.is_virtual) || sessionModalOwner?.session?.kind === 'recorded_work') return;
     promptDeleteSession(sessionId);
 }
 
 async function startTimerFromModal() {
     const owner = sessionModalOwner;
-    if (!owner || owner.pending || document.getElementById('session_modal').classList.contains('hidden')) return;
+    if (!owner || owner.intent === 'schedule' || owner.pending || owner.blocked || document.getElementById('session_modal').classList.contains('hidden')) return;
     if (typeof startTimerFromSession !== 'function') {
         document.getElementById('session_modal_feedback').textContent = 'Timer controller unavailable. Reload before starting a timer.';
         return;

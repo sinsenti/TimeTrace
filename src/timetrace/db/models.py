@@ -17,7 +17,7 @@ from typing import Optional
 # silently breaks the ORM. That is not hypothetical; it happened on 2026-09-02.
 #
 # Plain column annotations (`str | None = Field(...)`) are unaffected and stay PEP 604.
-from sqlalchemy import Index, UniqueConstraint
+from sqlalchemy import CheckConstraint, Index, UniqueConstraint
 from sqlmodel import Field, Relationship, SQLModel
 
 
@@ -88,7 +88,40 @@ class Task(SQLModel, table=True):
     )
 
 
+class ScheduledSession(SQLModel, table=True):
+    """Intent only: never inserted into the legacy/recorded session table."""
+
+    __tablename__ = "scheduled_session"
+    __table_args__ = (
+        CheckConstraint("end_time > start_time", name="ck_scheduled_current_interval"),
+        CheckConstraint("original_end > original_start", name="ck_scheduled_original_interval"),
+        Index("ix_scheduled_session_task_interval", "task_id", "start_time", "end_time"),
+        Index("ix_scheduled_session_start_time", "start_time"),
+    )
+
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    task_id: str | None = Field(default=None, foreign_key="task.id")
+    original_start: datetime
+    original_end: datetime
+    start_time: datetime
+    end_time: datetime
+    tags: str = Field(default="")
+    notes: str | None = None
+    revision: int = Field(default=1)
+
+
 class Session(SQLModel, table=True):
+    __table_args__ = (
+        CheckConstraint(
+            "(kind = 'legacy_uncertain' AND provenance IS NULL AND scheduled_session_id IS NULL) OR "
+            "(kind = 'recorded_work' AND provenance IS NOT NULL AND provenance IN ('manual', 'timer') "
+            "AND end_time IS NOT NULL AND end_time > start_time "
+            "AND (scheduled_session_id IS NULL OR task_id IS NOT NULL))",
+            name="ck_session_kind",
+        ),
+        Index("ix_session_task_interval", "task_id", "start_time", "end_time"),
+    )
+
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     task_id: str | None = Field(default=None, foreign_key="task.id")
     start_time: datetime
@@ -104,6 +137,11 @@ class Session(SQLModel, table=True):
     external_provider: str | None = Field(default=None)
     extended_properties_json: str = Field(default="{}")
 
+    kind: str = Field(default="legacy_uncertain", sa_column_kwargs={"server_default": "legacy_uncertain"})
+    provenance: str | None = None
+    scheduled_session_id: str | None = Field(default=None, foreign_key="scheduled_session.id", index=True)
+    revision: int = Field(default=1, sa_column_kwargs={"server_default": "1"})
+
     task: Optional[Task] = Relationship(back_populates="sessions")  # noqa: UP045
 
 
@@ -115,18 +153,25 @@ class RecurrenceException(SQLModel, table=True):
     row has been dragged to some other time. That is what makes the key stable -- keying off the
     session's current `start_time` would lose the link the moment the user moved it.
 
-    Exactly two kinds exist: `kind="override"` always carries `session_id` (the materialized row
-    holding the deviation), `kind="skip"` never does. "moved"/"resized"/"renoted" are all just
-    `override` -- the deviation lives in the session row, not in the exception's kind.
+    An override has exactly one persisted target (a legacy session or a scheduled session).
+    A skip has neither.
     """
 
-    __table_args__ = (UniqueConstraint("task_id", "occurrence_start", name="uq_recurrence_exception"),)
+    __table_args__ = (
+        UniqueConstraint("task_id", "occurrence_start", name="uq_recurrence_exception"),
+        CheckConstraint(
+            "(kind = 'skip' AND session_id IS NULL AND scheduled_session_id IS NULL) OR "
+            "(kind = 'override' AND ((session_id IS NULL) != (scheduled_session_id IS NULL)))",
+            name="ck_recurrence_exception_target",
+        ),
+    )
 
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     task_id: str = Field(foreign_key="task.id", index=True)
     occurrence_start: datetime = Field(index=True)  # naive UTC, RECURRENCE-ID
     kind: str  # "skip" | "override"
     session_id: str | None = Field(default=None, foreign_key="session.id")
+    scheduled_session_id: str | None = Field(default=None, foreign_key="scheduled_session.id", index=True, unique=True)
     created_at: datetime = Field(default_factory=utc_now)
 
 

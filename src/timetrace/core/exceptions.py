@@ -1,7 +1,9 @@
 class TimeTraceError(Exception):
     """Base exception for all TimeTrace domain errors."""
 
-    pass
+    def __init__(self, message: str, *, code: str | None = None):
+        self.code = code
+        super().__init__(message)
 
 
 class EntityNotFoundError(TimeTraceError):

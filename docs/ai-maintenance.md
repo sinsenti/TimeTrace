@@ -12,6 +12,15 @@ rationale; it is not a checklist of missing work.
   `TaskService`/`SessionService`, preserving validation, quick-add behavior, recurrence handling,
   completion-policy prompts, and UTC normalization.
 - Preserve stale checks, append-only audit transitions, conflict-safe undo, and reapply semantics.
+- Legacy v1 acceptance, inverse deletion and reapply recheck destructive targets and their
+  dependencies under the SQLite writer lock. They refuse deletion when ratings, reviews,
+  recurrence exceptions, task children or history, plans/work, or unsnapshotted session metadata
+  would be lost. Undo refuses to recreate a dangling session-task or parent link. Ordinary
+  restorable rows keep the existing new-ID audit trail; old snapshots are not rewritten.
+  Identity-preserving edits can retain linked evidence and external metadata, but v1 cannot
+  restore a projected recurrence after claiming it. Session create, update and reapply also
+  validate the normalized prospective row under the same lock, refusing edits that would create
+  a new legacy anchor claim on the inverse operation.
 - Treat model output, user custom instructions, task titles/descriptions/notes, imported text, and
   tool results as untrusted data. None may override system safety rules or gain authority merely by
   containing instructions.

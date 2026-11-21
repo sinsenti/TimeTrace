@@ -380,8 +380,15 @@ async function promptDeleteSession(sessionId) {
     if (!sessionId) return;
     closeRecurringDeleteModal();
     const request = deleteSessionRequest;
-    let session = typeof allSessions !== 'undefined' && Array.isArray(allSessions)
-        ? allSessions.find(item => String(item.id) === String(sessionId)) : null;
+    const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows()
+        : typeof allSessions !== 'undefined' && Array.isArray(allSessions) ? allSessions : [];
+    let session = rows.find(item => item.id === sessionId)
+        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null);
+    if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
+    if ((session?.kind === 'scheduled_session' && !session.is_virtual) || session?.kind === 'recorded_work') {
+        alert('Deletion is not available for this entry.');
+        return;
+    }
     let isRecurring = true;
     if (!String(sessionId).startsWith('virt:') && !(session && (session.is_virtual || session.series_task_id))) {
         try {
@@ -408,11 +415,21 @@ async function promptDeleteSession(sessionId) {
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log?");
     if (request !== deleteSessionRequest) return;
+    if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
     if (confirmed) {
         await confirmRecurringDelete('only_this');
     } else {
         closeRecurringDeleteModal();
     }
+}
+
+function calendarDeleteNeedsReview(session) {
+    if (typeof calendarScheduleNeedsReview !== 'function') return false;
+    const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows() : [];
+    const current = rows.find(item => item.id === session?.id) || session;
+    if (!calendarScheduleNeedsReview(current)) return false;
+    alert('Read the latest schedule state and explicitly discard the attempt before deleting this entry.');
+    return true;
 }
 
 function restoreIdleRecoveryFocus(closedModal, ownedFocus) {
@@ -441,6 +458,11 @@ async function confirmRecurringDelete(scope) {
     const sid = pendingDeleteSessionId;
     closeRecurringDeleteModal();
     if (!sid) return;
+    const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows() : [];
+    const session = rows.find(item => item.id === sid)
+        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sid) : null)
+        || { id: sid };
+    if (calendarDeleteNeedsReview(session)) return;
 
     try {
         // Ids may be synthetic (`virt:<task>:<stamp>`), so encode before interpolating.
@@ -452,6 +474,7 @@ async function confirmRecurringDelete(scope) {
     }
 
     // The deletion is committed. Failures below are read/display failures, never retry DELETE.
+    if (typeof forgetCalendarPlanningRow === 'function') forgetCalendarPlanningRow(sid);
     taskKnowledge.invalidate();
     const editingId = document.getElementById('edit_session_id');
     if (editingId && String(editingId.value) === String(sid) && typeof closeSessionModal === 'function') closeSessionModal();

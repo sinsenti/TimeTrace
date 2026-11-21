@@ -20,13 +20,14 @@ Storage conventions this module assumes:
 """
 
 import re
+from collections.abc import Iterator
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from dateutil.rrule import rrulestr
 
-from timetrace.core.exceptions import ValidationError
+from timetrace.core.exceptions import ConflictError, ValidationError
 from timetrace.core.timezones import from_local_naive, resolve_timezone, to_local_naive
 
 MAX_OCCURRENCES_PER_SERIES = 500  # hard cap per expand() call; truncates rather than hanging
@@ -194,11 +195,7 @@ def set_until(rrule: str, until_local_naive: datetime) -> str:
     if until_local_naive.tzinfo is not None:
         raise ValidationError("UNTIL must be a naive local datetime.")
     stamp = until_local_naive.replace(microsecond=0).strftime(_UNTIL_STAMP_FMT)
-    kept = [
-        f"{key}={value}"
-        for key, value in _rrule_parts(rrule).items()
-        if key not in ("UNTIL", "COUNT")
-    ]
+    kept = [f"{key}={value}" for key, value in _rrule_parts(rrule).items() if key not in ("UNTIL", "COUNT")]
     kept.append(f"UNTIL={stamp}")
     return ";".join(kept)
 
@@ -249,6 +246,119 @@ def expand(
         if len(occurrences) >= MAX_OCCURRENCES_PER_SERIES:
             break
     return occurrences
+
+
+def expand_overlapping(
+    spec: RecurrenceSpec,
+    window_start_utc: datetime,
+    window_end_utc: datetime,
+    task_id: str,
+    *,
+    live_after: datetime,
+) -> list[Occurrence]:
+    """Expand a bounded planning viewport plus live carry-ins, with one shared anchor budget."""
+    if any(value.tzinfo is not None for value in (window_start_utc, window_end_utc, live_after)):
+        raise ValidationError("Projection window bounds must be naive UTC datetimes.")
+    if window_end_utc <= window_start_utc:
+        return []
+    if window_end_utc - window_start_utc > timedelta(days=MAX_WINDOW_DAYS):
+        raise ValidationError(f"Projection window exceeds the maximum of {MAX_WINDOW_DAYS} days.")
+    if spec.duration_minutes <= 0:
+        raise ValidationError("Recurrence duration must be a positive number of minutes.")
+
+    duration = timedelta(minutes=spec.duration_minutes)
+    cutoff = max(window_start_utc, live_after)
+    # An earlier anchor cannot end after the cutoff, no matter when the series began.
+    carry_start = cutoff - min(duration, cutoff - datetime.min)
+    if carry_start >= window_end_utc:
+        return []
+
+    anchors: dict[datetime, Occurrence] = {}
+    # One iterator for the carry-in anchors and the viewport's own starts. Do not widen
+    # the public window or loop through day-sized chunks over a long sparse carry-in.
+    for start in _canonical_utc_starts(spec, carry_start, window_end_utc):
+        if not carry_start < start < window_end_utc or start in anchors:
+            continue
+        if len(anchors) == MAX_OCCURRENCES_PER_SERIES:
+            raise ValidationError(
+                f"Planning range overlaps more than {MAX_OCCURRENCES_PER_SERIES} occurrences of a series."
+            )
+        anchors[start] = Occurrence(start, start + duration, format_occurrence_id(task_id, start))
+    return sorted(anchors.values(), key=lambda occurrence: occurrence.start_utc)
+
+
+def _canonical_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[tuple[datetime, datetime]]:
+    """Seek in local wall time, then match the inclusive UTC bounds after conversion."""
+    tz = resolve_timezone(spec.timezone_name)
+    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
+    # UTC offsets are strictly less than a day. A UTC instant need not round-trip to
+    # its original wall time in a DST gap; the second instant in a fold is not emitted.
+    day = timedelta(days=1)
+    local_lower = lower - min(day, lower - datetime.min)
+    local_upper = upper + min(day, datetime.max - upper)
+    for local_start in rule.xafter(local_lower, inc=True):
+        if local_start >= local_upper:
+            break
+        try:
+            start = from_local_naive(local_start, tz)
+        except OverflowError:
+            # Padding can include a wall time whose UTC conversion lies outside datetime's
+            # representable range; it cannot match any representable query anchor.
+            continue
+        if lower <= start <= upper:
+            yield start, local_start
+
+
+def _canonical_utc_starts(spec: RecurrenceSpec, lower: datetime, upper: datetime) -> Iterator[datetime]:
+    return (start for start, _ in _canonical_starts(spec, lower, upper))
+
+
+def following_until(spec: RecurrenceSpec, anchor: datetime) -> datetime | None:
+    """Find a wall UNTIL that separates canonical UTC starts, or None if there are no later starts."""
+    day = timedelta(days=1)
+    lower = anchor - min(day, anchor - datetime.min)
+    upper = anchor + min(day, datetime.max - anchor)
+    tz = resolve_timezone(spec.timezone_name)
+    rule = _build_rule(spec.rrule, to_local_naive(spec.dtstart_utc, tz))
+    earliest_wall: dict[datetime, datetime] = {}
+    later_wall = None
+    for index, wall in enumerate(rule.xafter(lower, inc=True)):
+        if wall > upper:
+            # UTC offsets are less than a day; this tick and all later wall times
+            # cannot precede the cutoff. No need to expand the rest of the series.
+            later_wall = wall
+            break
+        if index == MAX_OCCURRENCES_PER_SERIES:
+            raise ConflictError(
+                "Too many local rule ticks to verify this UTC cutoff.", code="utc_scope_unrepresentable"
+            )
+        try:
+            start = from_local_naive(wall, tz)
+        except OverflowError:
+            continue
+        earliest_wall.setdefault(start, wall)
+    # Duplicate gap ticks share a canonical ID. Keeping any earlier representation is enough.
+    first_removed = min((wall for start, wall in earliest_wall.items() if start >= anchor), default=later_wall)
+    if first_removed is None:
+        return None
+    if any(wall >= first_removed for start, wall in earliest_wall.items() if start < anchor):
+        raise ConflictError(
+            "Delete following cannot preserve earlier UTC occurrences with this local rule. Use Only this instead.",
+            code="utc_scope_unrepresentable",
+        )
+    return first_removed - timedelta(seconds=1)
+
+
+def occurrence_at(spec: RecurrenceSpec, start_utc: datetime, task_id: str) -> Occurrence | None:
+    """The occurrence at exactly this UTC anchor, never a neighboring instant."""
+    if start_utc.tzinfo is not None:
+        raise ValidationError("Occurrence start must be a naive UTC datetime.")
+    if spec.duration_minutes <= 0:
+        raise ValidationError("Recurrence duration must be a positive number of minutes.")
+    start = next(_canonical_utc_starts(spec, start_utc, start_utc), None)
+    if start is None:
+        return None
+    return Occurrence(start, start + timedelta(minutes=spec.duration_minutes), format_occurrence_id(task_id, start))
 
 
 def next_occurrence(spec: RecurrenceSpec, after_utc: datetime, task_id: str) -> Occurrence | None:

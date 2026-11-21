@@ -6,12 +6,13 @@ Pure `core/recurrence.py` logic (RFC 5545 parsing, DST handling, etc.) is tested
 """
 
 from datetime import UTC, datetime, timedelta
+from uuid import UUID
 
 import pytest
 from sqlmodel import Session as DBSession
 from sqlmodel import select
 
-from timetrace.core.exceptions import ValidationError
+from timetrace.core.exceptions import ConflictError, ValidationError
 from timetrace.core.recurrence import format_occurrence_id
 from timetrace.db.models import RecurrenceException, Task
 from timetrace.db.models import Session as SessionModel
@@ -193,9 +194,7 @@ class TestMaterialization:
         occurrence_id = first_virt["id"]
 
         # Materialize it by updating
-        materialized = session_service.update_session(
-            occurrence_id, SessionUpdate(notes="Materialized")
-        )
+        materialized = session_service.update_session(occurrence_id, SessionUpdate(notes="Materialized"))
 
         # Check it's a real Session row now
         assert not materialized.id.startswith("virt:")
@@ -391,9 +390,7 @@ class TestSkip:
         skipped_day_start = first_start.replace(hour=0, minute=0, second=0)
         skipped_day_end = skipped_day_start + timedelta(days=1)
         on_skipped_day = [
-            r
-            for r in result
-            if skipped_day_start <= datetime.fromisoformat(r["start_time"]) < skipped_day_end
+            r for r in result if skipped_day_start <= datetime.fromisoformat(r["start_time"]) < skipped_day_end
         ]
         assert len(on_skipped_day) == 0, "Skipped occurrence must not reappear"
 
@@ -553,9 +550,7 @@ class TestSeriesDuration:
         second_day_start = dtstart + timedelta(days=1)
         second_day_end = second_day_start + timedelta(days=1)
         second_occurrences = [
-            r
-            for r in result
-            if second_day_start <= datetime.fromisoformat(r["start_time"]) < second_day_end
+            r for r in result if second_day_start <= datetime.fromisoformat(r["start_time"]) < second_day_end
         ]
         assert len(second_occurrences) > 0
         second_occ = second_occurrences[0]
@@ -693,9 +688,7 @@ class TestAdoptionOwnership:
         rows = svc.list_sessions(datetime.now(UTC), datetime.now(UTC) + timedelta(days=3))
 
         # The user's row must not have been converted into an `override` exception.
-        adopted = db.exec(
-            select(RecurrenceException).where(RecurrenceException.session_id == own.id)
-        ).first()
+        adopted = db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first()
         assert adopted is None, "user's own session was adopted into the series"
 
         # Deleting a *different* occurrence with scope='all' must not destroy the user's row.
@@ -725,9 +718,9 @@ class TestInProgressOccurrence:
         # Assert the *in-progress* occurrence specifically. A bare `any(is_virtual)` would also
         # be satisfied by a later occurrence of the same daily rule, and would still pass with
         # the carve-out removed entirely.
-        assert any(
-            r["is_virtual"] and _row_start(r) == started for r in rows
-        ), "in-progress occurrence dropped from the calendar"
+        assert any(r["is_virtual"] and _row_start(r) == started for r in rows), (
+            "in-progress occurrence dropped from the calendar"
+        )
 
     def test_fully_elapsed_occurrence_still_does_not_project(self, db: DBSession):
         """The future-only contract otherwise stays intact: an occurrence that has fully ended
@@ -744,9 +737,9 @@ class TestInProgressOccurrence:
         # clock-dependent: a daily rule anchored 2h ago also has an occurrence later in this
         # same UTC-day window whenever `now` is before 02:00 UTC, and that one is legitimately
         # in the future.
-        assert not any(
-            r["is_virtual"] and _row_start(r) == started for r in rows
-        ), "fully elapsed occurrence still projected"
+        assert not any(r["is_virtual"] and _row_start(r) == started for r in rows), (
+            "fully elapsed occurrence still projected"
+        )
 
 
 class TestMaterializePastOccurrence:
@@ -809,9 +802,7 @@ class TestGhostSuppressionOnCoveredOccurrence:
         assert at_anchor[0]["id"] == own.id
 
         # No exception/ownership claim was created by the suppression.
-        assert (
-            db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
-        )
+        assert db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
 
     def test_overlapping_block_suppresses_the_ghost_it_covers(self, db: DBSession):
         """A 09:00-11:00 block plainly covers a 09:00-09:30 occurrence; the ghost must not
@@ -893,6 +884,784 @@ class TestGhostSuppressionOnCoveredOccurrence:
         svc.delete_session(other_ghosts[0]["id"], scope="all")
 
         assert db.get(SessionModel, own.id) is not None, "user's own covering session was destroyed"
-        assert (
-            db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
+        assert db.exec(select(RecurrenceException).where(RecurrenceException.session_id == own.id)).first() is None
+
+
+def test_typed_occurrence_edit_captures_projected_interval_and_returns_real_plan(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = _mk_task(db, dtstart=anchor, dur=30)
+    virtual_id = format_occurrence_id(task.id, anchor.replace(tzinfo=None))
+    path = f"/scheduled-sessions/{virtual_id}"
+    read = client.get(path)
+    assert read.status_code == 200, read.text
+    projected = read.json()
+    assert projected["is_virtual"]
+    moved_start = anchor + timedelta(hours=2)
+    moved_end = moved_start + timedelta(hours=1)
+    saved = client.put(
+        path,
+        json={
+            "start_time": moved_start.isoformat(),
+            "end_time": moved_end.isoformat(),
+            "expected_projection_revision": projected["projection_revision"],
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    plan = saved.json()
+    assert plan["id"] != virtual_id
+    assert not plan["is_virtual"]
+    assert plan["kind"] == "scheduled_session"
+    assert datetime.fromisoformat(plan["original_start"]) == anchor
+    assert datetime.fromisoformat(plan["original_end"]) == anchor + timedelta(minutes=30)
+    assert datetime.fromisoformat(plan["start_time"]) == moved_start
+    assert datetime.fromisoformat(plan["end_time"]) == moved_end
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    agenda = client.get("/agenda", params={"start": anchor.isoformat(), "end": moved_end.isoformat()})
+    assert agenda.json()["items"] == [plan]
+    assert client.get("/sessions").json() == []
+
+
+def test_typed_all_future_resize_captures_before_changing_series_duration(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = _mk_task(db, dtstart=anchor, dur=30)
+    path = "/scheduled-sessions/" + format_occurrence_id(task.id, anchor.replace(tzinfo=None))
+    following = anchor + timedelta(days=1)
+    next_path = "/scheduled-sessions/" + format_occurrence_id(task.id, following.replace(tzinfo=None))
+    old = client.get(path).json()
+    next_old = client.get(next_path).json()
+    resize = {"start_time": anchor.isoformat(), "end_time": (anchor + timedelta(hours=1)).isoformat()}
+    response = client.put(
+        path + "?scope=all_future",
+        json={
+            **resize,
+            "expected_projection_revision": old["projection_revision"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    plan = response.json()
+    assert plan["series_task_id"] == task.id
+    assert datetime.fromisoformat(plan["occurrence_start"]) == anchor
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert plan["original_end"] == old["end_time"]
+    assert plan["duration_seconds"] == 3600
+    assert client.get(next_path).json()["duration_seconds"] == 3600
+    stale = client.put(
+        next_path,
+        json={
+            "start_time": next_old["start_time"],
+            "end_time": next_old["end_time"],
+            "expected_projection_revision": next_old["projection_revision"],
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    path = f"/scheduled-sessions/{plan['id']}"
+    response = client.put(
+        path + "?scope=all_future",
+        json={
+            **resize,
+            "end_time": (anchor + timedelta(minutes=90)).isoformat(),
+            "expected_revision": plan["revision"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["series_task_id"] == task.id
+    assert response.json()["occurrence_start"] == plan["occurrence_start"]
+    assert response.json()["original_end"] == old["end_time"]
+    assert client.get(next_path).json()["duration_seconds"] == 5400
+
+
+def _save_typed_occurrence(client, task_id, anchor, *, move=timedelta(0)):
+    virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    path = f"/scheduled-sessions/{virtual_id}"
+    current = client.get(path).json()
+    response = client.put(
+        path,
+        json={
+            "start_time": (datetime.fromisoformat(current["start_time"]) + move).isoformat(),
+            "end_time": (datetime.fromisoformat(current["end_time"]) + move).isoformat(),
+            "expected_projection_revision": current["projection_revision"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    return virtual_id, response.json()
+
+
+def test_legacy_mutation_scopes_refuse_protected_occurrence_without_partial_series_change(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = _mk_task(db, dtstart=anchor, dur=30)
+    earlier_id = format_occurrence_id(task.id, anchor.replace(tzinfo=None))
+    virtual_id, plan = _save_typed_occurrence(client, task.id, anchor + timedelta(days=1), move=timedelta(hours=1))
+    protected = f"/sessions/{virtual_id}"
+    attempts = [
+        client.put(
+            protected + "?scope=all_future", json={"end_time": (anchor + timedelta(days=1, hours=2)).isoformat()}
+        ),
+        client.delete(protected),
+        client.delete(f"/sessions/{earlier_id}?scope=following"),
+        client.delete(f"/sessions/{earlier_id}?scope=all"),
+    ]
+    assert [r.status_code for r in attempts] == [409, 409, 409, 409], [r.text for r in attempts]
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert client.get(f"/scheduled-sessions/{earlier_id}").json()["duration_seconds"] == 1800
+    assert client.get(f"/scheduled-sessions/{virtual_id}").status_code == 404
+    assert client.get("/sessions").json() == []
+
+
+def test_task_rule_edits_keep_captured_plan_and_skipped_anchor(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    skipped = format_occurrence_id(task_id, (anchor + timedelta(days=1)).replace(tzinfo=None))
+    assert client.delete(f"/sessions/{skipped}").status_code == 204
+    virtual_id, captured = _save_typed_occurrence(client, task_id, anchor, move=timedelta(hours=2))
+    task_path = f"/api/tasks/{task_id}"
+    for edit in (
+        {"is_recurring": False},
+        {"is_recurring": True, "recurrence_duration_minutes": 75},
+    ):
+        assert client.put(task_path, json=edit).status_code == 200
+    agenda = client.get(
+        "/agenda", params={"start": anchor.isoformat(), "end": (anchor + timedelta(days=2)).isoformat()}
+    )
+    (plan,) = agenda.json()["items"]  # neither the moved anchor nor the skipped anchor came back
+    assert plan["id"] == captured["id"]
+    for field in ("start_time", "end_time", "original_start", "original_end"):
+        assert plan[field] == captured[field]
+    assert plan["revision"] > captured["revision"]
+    stale = client.put(
+        f"/scheduled-sessions/{plan['id']}?scope=all_future",
+        json={
+            "start_time": plan["start_time"],
+            "end_time": plan["end_time"],
+            "expected_revision": captured["revision"],
+        },
+    )
+    assert stale.status_code == 409, stale.text
+    assert client.get(f"/sessions/{virtual_id}").status_code == 404
+
+
+def test_recorded_work_does_not_claim_or_hide_live_projection(client, db):
+    anchor = (datetime.now(UTC) - timedelta(minutes=5)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=60).id
+    work = SessionModel(
+        task_id=task_id,
+        start_time=anchor.replace(tzinfo=None),
+        end_time=(anchor + timedelta(minutes=3)).replace(tzinfo=None),
+        duration_seconds=180,
+        kind="recorded_work",
+        provenance="manual",
+        notes="Recurring: looks like legacy but is explicitly work",
+    )
+    db.add(work)
+    db.commit()
+    log_id = work.id
+    params = {"start": (anchor + timedelta(minutes=1)).isoformat(), "end": (anchor + timedelta(minutes=4)).isoformat()}
+    agenda = client.get("/agenda", params=params).json()["items"]
+    assert {item["kind"] for item in agenda} == {"scheduled_session", "recorded_work"}
+    assert next(item for item in agenda if item.get("provenance"))["scheduled_session_id"] is None
+    _, plan = _save_typed_occurrence(client, task_id, anchor)
+    agenda = client.get("/agenda", params=params).json()["items"]
+    assert {item["id"] for item in agenda} == {plan["id"], log_id}
+    assert not any(item["is_virtual"] for item in agenda)
+    assert [row["id"] for row in client.get("/sessions").json()] == [log_id]
+
+
+def test_typed_occurrence_writes_refuse_legacy_override_and_elapsed_anchor(client, db):
+    anchor = (datetime.now(UTC) - timedelta(days=1)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    elapsed = f"/scheduled-sessions/{format_occurrence_id(task_id, anchor.replace(tzinfo=None))}"
+    assert client.get(elapsed).status_code == 404
+    body = {"start_time": anchor.isoformat(), "end_time": (anchor + timedelta(hours=1)).isoformat()}
+    assert client.put(elapsed, json={**body, "expected_projection_revision": "0" * 64}).status_code == 409
+
+    upcoming = anchor + timedelta(days=2)
+    virtual_id = format_occurrence_id(task_id, upcoming.replace(tzinfo=None))
+    path = f"/scheduled-sessions/{virtual_id}"
+    revision = client.get(path).json()["projection_revision"]
+    legacy = client.put(f"/sessions/{virtual_id}", json={"notes": "Old adapter works"})
+    assert legacy.status_code == 200 and "kind" not in legacy.json()
+    assert client.get(path).status_code == 404
+    stale = client.put(path, json={**body, "expected_projection_revision": revision})
+    assert stale.status_code == 409 and stale.json()["code"] == "projection_stale"
+    assert client.get("/sessions").json()[0]["id"] == legacy.json()["id"]
+
+
+def test_concurrent_occurrence_edits_save_exactly_one_plan(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from fastapi.testclient import TestClient
+    from sqlmodel import SQLModel, create_engine
+
+    from timetrace.db.session import get_session
+    from timetrace.main import create_daemon_app
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'occurrence-race.db'}")
+    SQLModel.metadata.create_all(engine)
+
+    def request_db():
+        with DBSession(engine) as db:
+            yield db
+
+    app = create_daemon_app()
+    app.dependency_overrides[get_session] = request_db
+    client = TestClient(app)
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    try:
+        with DBSession(engine) as db:
+            task_id = _mk_task(db, dtstart=anchor, dur=25).id
+        path = "/scheduled-sessions/" + format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+        revision = client.get(path).json()["projection_revision"]
+        ready = Barrier(2, timeout=10)
+
+        def edit_at(minutes):
+            start = anchor + timedelta(minutes=minutes)
+            ready.wait()
+            return client.put(
+                path,
+                json={
+                    "start_time": start.isoformat(),
+                    "end_time": (start + timedelta(hours=1)).isoformat(),
+                    "expected_projection_revision": revision,
+                },
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            success, stale = sorted(pool.map(edit_at, (15, 30)), key=lambda response: response.status_code)
+        assert (success.status_code, stale.status_code) == (200, 409)
+        assert stale.json()["code"] == "projection_stale"
+        plan = success.json()
+        params = {"start": anchor.isoformat(), "end": (anchor + timedelta(hours=2)).isoformat()}
+        assert client.get("/agenda", params=params).json()["items"] == [plan]
+        assert client.get("/sessions").json() == []
+    finally:
+        client.close()
+        engine.dispose()
+
+
+@pytest.mark.parametrize("action", ["move", "delete"])
+def test_editing_fingerprinted_legacy_row_does_not_resurrect_its_anchor(client, db, action):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task = _mk_task(db, dtstart=anchor, dur=30)
+
+    def create_legacy(start):
+        response = client.post(
+            "/sessions",
+            json={
+                "task_id": task.id,
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(minutes=30)).isoformat(),
+                "notes": f"Recurring: {task.title}",
+            },
         )
+        assert response.status_code == 201, response.text
+        return response.json()["id"]
+
+    row_id = create_legacy(anchor)
+    history_path = f"/sessions/{create_legacy(anchor - timedelta(days=3))}"
+    history = client.get(history_path).json()
+    params = {"start": anchor.isoformat(), "end": (anchor + timedelta(hours=3)).isoformat()}
+    assert [row["id"] for row in client.get("/sessions", params=params).json()] == [row_id]
+    assert [row["id"] for row in client.get("/agenda", params=params).json()["items"]] == [row_id]
+    assert RecurrenceService(db).get_exception(task.id, anchor) is None  # reads never acquire ownership
+
+    if action == "move":
+        moved = anchor + timedelta(hours=2)
+        response = client.put(
+            f"/sessions/{row_id}",
+            json={"start_time": moved.isoformat(), "end_time": (moved + timedelta(minutes=30)).isoformat()},
+        )
+        assert response.status_code == 200, response.text
+        assert datetime.fromisoformat(response.json()["start_time"]) == moved
+        expected_ids = [row_id]
+    else:
+        response = client.delete(f"/sessions/{row_id}?scope=only_this")
+        assert response.status_code == 204, response.text
+        expected_ids = []
+
+    assert [row["id"] for row in client.get("/sessions", params=params).json()] == expected_ids
+    assert [row["id"] for row in client.get("/agenda", params=params).json()["items"]] == expected_ids
+    assert client.get(history_path).json() == history
+
+
+def test_agenda_keeps_slot_busy_when_capture_commits_mid_read(tmp_path):
+    from contextlib import closing
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import event
+    from sqlmodel import SQLModel, create_engine
+
+    from timetrace.db.session import get_session
+    from timetrace.main import create_daemon_app
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'agenda-snapshot.db'}")
+    with engine.connect() as conn:
+        # WAL makes a real writer commit possible while the reader's snapshot is open.
+        assert conn.exec_driver_sql("PRAGMA journal_mode=WAL").scalar_one() == "wal"
+    SQLModel.metadata.create_all(engine)
+
+    def request_db():
+        with DBSession(engine) as db:
+            yield db
+
+    app = create_daemon_app()
+    app.dependency_overrides[get_session] = request_db
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    try:
+        with closing(TestClient(app)) as client, closing(TestClient(app)) as writer:
+            with DBSession(engine) as db:
+                task_id = _mk_task(db, dtstart=anchor, dur=30).id
+            virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+            path = f"/scheduled-sessions/{virtual_id}"
+            before = client.get(path).json()
+            capture = None
+            legacy = None
+
+            def capture_after_plan_select(conn, cursor, statement, parameters, context, executemany):
+                nonlocal capture, legacy
+                if not statement.lstrip().upper().startswith("SELECT") or "FROM scheduled_session" not in statement:
+                    return
+                # The capture cannot reuse this still checked-out connection. Its PUT does
+                # not select scheduled_session; only this read's first plan SELECT triggers it.
+                if capture is None:
+                    capture = writer.put(
+                        path,
+                        json={
+                            "start_time": before["start_time"],
+                            "end_time": before["end_time"],
+                            "expected_projection_revision": before["projection_revision"],
+                        },
+                    )
+                    legacy = writer.post(
+                        "/sessions", json={"start_time": before["start_time"], "end_time": before["end_time"]}
+                    )
+
+            params = {"start": before["start_time"], "end": before["end_time"]}
+            event.listen(engine, "after_cursor_execute", capture_after_plan_select)
+            try:
+                during = client.get("/agenda", params=params)
+            finally:
+                event.remove(engine, "after_cursor_execute", capture_after_plan_select)
+            assert capture is not None and capture.status_code == 200
+            assert legacy is not None and legacy.status_code == 201
+            assert during.status_code == 200, during.text
+            assert during.json()["items"] == [before]
+            after = client.get("/agenda", params=params).json()["items"]
+            assert len(after) == 2
+            assert next(item for item in after if item["kind"] == "scheduled_session") == capture.json()
+            assert next(item for item in after if item["kind"] == "legacy_uncertain")["id"] == legacy.json()["id"]
+    finally:
+        engine.dispose()
+
+
+def test_agenda_accepts_exactly_400_days_including_one_carry_in(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    start = anchor + timedelta(minutes=15)
+    end = start + timedelta(days=400)
+    response = client.get("/agenda", params={"start": start.isoformat(), "end": end.isoformat()})
+    assert response.status_code == 200, response.text
+    entries = response.json()["items"]
+    assert [datetime.fromisoformat(entry["start_time"]) for entry in entries] == [
+        anchor + timedelta(days=day) for day in range(401)
+    ]
+    assert len({entry["id"] for entry in entries}) == 401
+    assert all(entry["task_id"] == task_id and entry["is_virtual"] for entry in entries)
+
+    too_wide = client.get(
+        "/agenda", params={"start": start.isoformat(), "end": (end + timedelta(seconds=1)).isoformat()}
+    )
+    assert too_wide.status_code == 400
+
+
+def test_agenda_finds_long_carry_in_without_widening_the_public_window(client, db):
+    anchor = (datetime.now(UTC) - timedelta(days=800)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=900 * 24 * 60, rrule="FREQ=YEARLY;COUNT=1").id
+    start = anchor + timedelta(days=801)
+    path = f"/scheduled-sessions/{format_occurrence_id(task_id, anchor.replace(tzinfo=None))}"
+    response = client.get(
+        "/agenda", params={"start": start.isoformat(), "end": (start + timedelta(days=1)).isoformat()}
+    )
+    assert response.status_code == 200, response.text
+    (item,) = response.json()["items"]
+    assert item == client.get(path).json()
+    assert datetime.fromisoformat(item["end_time"]) == anchor + timedelta(days=900)
+
+
+def test_paused_series_typed_occurrence_is_missing_but_old_edit_token_is_stale(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor).id
+    virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    path = f"/scheduled-sessions/{virtual_id}"
+    active = client.get(path)
+    assert active.status_code == 200, active.text
+    projection = active.json()
+    assert client.put(f"/api/tasks/{task_id}", json={"is_recurring": False}).status_code == 200
+    stale = client.put(
+        path,
+        json={
+            "start_time": projection["start_time"],
+            "end_time": projection["end_time"],
+            "expected_projection_revision": projection["projection_revision"],
+        },
+    )
+    assert stale.status_code == 409 and stale.json()["code"] == "projection_stale"
+    assert client.get(f"/sessions/{virtual_id}").status_code == 400
+    missing = client.get(path)
+    assert missing.status_code == 404, missing.text
+    assert client.get(f"/scheduled-sessions/virt:{task_id}:bad-stamp").status_code == 404
+    assert client.get("/scheduled-sessions/00000000-0000-0000-0000-000000000000").status_code == 404
+    assert client.get("/agenda", params={"start": anchor.isoformat(), "end": anchor.isoformat()}).status_code == 400
+    assert client.get("/agenda", params={"start": "bad-date", "end": anchor.isoformat()}).status_code == 422
+
+
+def test_planning_reads_leave_flush_commit_and_rollback_to_the_caller(tmp_path):
+    from sqlmodel import SQLModel, create_engine
+
+    from timetrace.db.models import ScheduledSession
+
+    engine = create_engine(f"sqlite:///{tmp_path / 'agenda-caller.db'}", connect_args={"timeout": 1})
+    SQLModel.metadata.create_all(engine)
+    start = (datetime.now(UTC) + timedelta(days=2)).replace(tzinfo=None)
+    end = start + timedelta(hours=1)
+    try:
+        with DBSession(engine) as caller, DBSession(engine) as observer:
+            service = SessionService(caller)
+            # A read-only snapshot must release its lock before the caller closes its session.
+            assert service.list_agenda(start, end).items == []
+            committed = ScheduledSession(
+                start_time=start, end_time=end, original_start=start, original_end=end, notes="saved notes"
+            )
+            observer.add(committed)
+            observer.commit()
+            committed_id = committed.id
+            assert [item.id for item in service.list_planning_plans(start, end)] == [committed_id]
+
+            flushed = ScheduledSession(start_time=start, end_time=end, original_start=start, original_end=end)
+            caller.add(flushed)
+            caller.flush()
+            saved = caller.get(ScheduledSession, committed_id)
+            pending = ScheduledSession(start_time=start, end_time=end, original_start=start, original_end=end)
+            caller.add(pending)
+            saved.notes = "unflushed edit"
+            snapshot = {item.id: item for item in service.list_agenda(start, end).items}
+            assert set(snapshot) == {committed_id, flushed.id}
+            assert snapshot[committed_id].notes == "saved notes"
+            assert saved.notes == "unflushed edit"
+            assert [item.id for item in SessionService(observer).list_planning_plans(start, end)] == [committed_id]
+
+            # The caller can still roll back both its flushed and its pending work.
+            caller.rollback()
+            assert [item.id for item in service.list_agenda(start, end).items] == [committed_id]
+
+            # Even a refused read must release its own SQLite snapshot, not leave a reader
+            # blocking commits until the caller's session eventually closes or rolls back.
+            dense = _mk_task(observer, dtstart=start - timedelta(days=501), dur=502 * 24 * 60)
+            with pytest.raises(ValidationError, match="more than 500 occurrences"):
+                service.list_agenda(start, end)
+            dense.is_recurring = False
+            observer.commit()
+    finally:
+        engine.dispose()
+
+
+def test_legacy_write_does_not_steal_captured_anchor_or_claim_plain_row(client, db):
+    anchor = (datetime.now(UTC) + timedelta(days=2)).replace(microsecond=0)
+    task_id = _mk_task(db, dtstart=anchor, dur=30).id
+    virtual_id, plan = _save_typed_occurrence(client, task_id, anchor, move=timedelta(hours=1))
+    later = anchor + timedelta(days=1)
+    for start, notes in ((anchor, "Recurring: Standup"), (later, "Ordinary legacy block")):
+        seed = client.post(
+            "/sessions",
+            json={
+                "task_id": task_id,
+                "start_time": start.isoformat(),
+                "end_time": (start + timedelta(minutes=30)).isoformat(),
+                "notes": notes,
+            },
+        )
+        assert seed.status_code == 201, seed.text
+        deleted = client.delete(f"/sessions/{seed.json()['id']}")
+        assert deleted.status_code == 204, deleted.text
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert client.get(f"/scheduled-sessions/{virtual_id}").status_code == 404
+    params = {"start": later.isoformat(), "end": (later + timedelta(hours=1)).isoformat()}
+    (item,) = client.get("/agenda", params=params).json()["items"]
+    assert item["is_virtual"] and datetime.fromisoformat(item["start_time"]) == later
+
+
+@pytest.fixture
+def fixed_recurrence_clock(monkeypatch):
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            instant = datetime(2027, 1, 1, tzinfo=UTC)
+            return instant.astimezone(tz) if tz is not None else instant.astimezone().replace(tzinfo=None)
+
+    # Replace only the wall-clock source; recurrence, persistence and HTTP behavior stay real.
+    monkeypatch.setattr("timetrace.services.recurrence_service.datetime", FixedDateTime)
+    monkeypatch.setattr("timetrace.services.session_service.datetime", FixedDateTime)
+
+
+def test_spring_gap_agenda_anchor_can_be_read_and_captured(client, db, fixed_recurrence_clock):
+    # New York's nonexistent 02:30 maps to 07:30Z, which converts back to 03:30 local.
+    anchor = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
+    task_id = _mk_task(db, dtstart=datetime(2027, 3, 13, 7, 30), tz="America/New_York").id
+    params = {"start": "2027-03-14T07:45Z", "end": "2027-03-14T07:55Z"}
+    agenda = client.get("/agenda", params=params)
+    assert agenda.status_code == 200, agenda.text
+    (projection,) = agenda.json()["items"]
+    assert projection["id"] == format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    assert projection["is_virtual"]
+    assert datetime.fromisoformat(projection["start_time"]) == anchor
+    assert datetime.fromisoformat(projection["end_time"]) == datetime(2027, 3, 14, 8, tzinfo=UTC)
+
+    path = f"/scheduled-sessions/{projection['id']}"
+    single = client.get(path)
+    moved = {"start_time": "2027-03-14T09:00Z", "end_time": "2027-03-14T10:00Z"}
+    saved = client.put(path, json={**moved, "expected_projection_revision": projection["projection_revision"]})
+    assert (single.status_code, saved.status_code) == (200, 200), (single.text, saved.text)
+    assert single.json() == projection
+    plan = saved.json()
+    assert UUID(plan["id"]).version == 7 and not plan["is_virtual"]
+    assert plan["original_start"] == projection["start_time"]
+    assert plan["original_end"] == projection["end_time"]
+    assert datetime.fromisoformat(plan["start_time"]) == datetime.fromisoformat(moved["start_time"])
+    assert datetime.fromisoformat(plan["end_time"]) == datetime.fromisoformat(moved["end_time"])
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    assert client.get("/agenda", params=params).json()["items"] == []
+    assert client.get("/sessions").json() == []
+
+
+@pytest.mark.parametrize(
+    "case,action",
+    [("spring_gap", "delete"), ("spring_gap", "move"), ("second_fold", "delete"), ("fractional", "move")],
+)
+def test_legacy_fingerprint_ownership_requires_the_exact_utc_anchor(client, db, case, action, fixed_recurrence_clock):
+    captured = None
+    if case == "spring_gap":
+        canonical = datetime(2027, 3, 14, 7, 30, tzinfo=UTC)
+        start = canonical
+        task_id = _mk_task(db, dtstart=datetime(2027, 3, 13, 7, 30), tz="America/New_York").id
+    elif case == "second_fold":
+        canonical = datetime(2027, 11, 7, 5, 30, tzinfo=UTC)
+        start = datetime(2027, 11, 7, 6, 30, tzinfo=UTC)
+        task_id = _mk_task(db, dtstart=datetime(2027, 11, 6, 5, 30), tz="America/New_York").id
+        _, captured = _save_typed_occurrence(client, task_id, canonical, move=timedelta(hours=3))
+    else:
+        canonical = datetime(2027, 2, 1, 9, tzinfo=UTC)
+        start = datetime(2027, 2, 1, 8, 59, 59, 500000, tzinfo=UTC)
+        task_id = _mk_task(db, dtstart=canonical.replace(tzinfo=None)).id
+
+    seed = client.post(
+        "/sessions",
+        json={
+            "task_id": task_id,
+            "start_time": start.isoformat(),
+            "end_time": (start + timedelta(minutes=30)).isoformat(),
+            "notes": "Recurring: Standup",
+        },
+    )
+    assert seed.status_code == 201, seed.text
+    row_id = seed.json()["id"]
+    params = {"start": canonical.isoformat(), "end": (canonical + timedelta(hours=4)).isoformat()}
+    before = client.get("/agenda", params=params).json()["items"]
+    assert {item["id"] for item in before} == ({row_id, captured["id"]} if captured else {row_id})
+
+    if action == "delete":
+        removed = client.delete(f"/sessions/{row_id}?scope=only_this")
+        assert removed.status_code == 204, removed.text
+        expected_ids = set()
+    else:
+        moved = canonical + timedelta(hours=2)
+        saved = client.put(
+            f"/sessions/{row_id}",
+            json={"start_time": moved.isoformat(), "end_time": (moved + timedelta(minutes=30)).isoformat()},
+        )
+        assert saved.status_code == 200, saved.text
+        assert datetime.fromisoformat(saved.json()["start_time"]) == moved
+        expected_ids = {row_id}
+
+    if captured:
+        expected_ids.add(captured["id"])
+        assert client.get(f"/scheduled-sessions/{captured['id']}").json() == captured
+    if case == "fractional":
+        expected_ids.add(format_occurrence_id(task_id, canonical.replace(tzinfo=None)))
+    after = client.get("/agenda", params=params).json()["items"]
+    assert {item["id"] for item in after} == expected_ids
+    # Fractional anchors are not encodable as virt IDs. Observe ownership through the
+    # public recurrence service rather than inspecting its storage representation.
+    recurrence = RecurrenceService(db)
+    if start != canonical:
+        assert recurrence.get_exception(task_id, start.replace(tzinfo=None)) is None
+    exception = recurrence.get_exception(task_id, canonical.replace(tzinfo=None))
+    if case == "fractional":
+        assert exception is None
+    else:
+        assert exception is not None
+        assert exception.kind == ("skip" if case == "spring_gap" and action == "delete" else "override")
+        assert exception.session_id == (row_id if case == "spring_gap" and action == "move" else None)
+        assert exception.scheduled_session_id == (captured["id"] if captured else None)
+
+
+def test_fall_fold_legacy_window_does_not_leak_an_ended_first_fold(client, db, fixed_recurrence_clock):
+    task_id = _mk_task(db, dtstart=datetime(2027, 11, 6, 5, 30), tz="America/New_York").id
+    anchor = datetime(2027, 11, 7, 5, 30, tzinfo=UTC)
+    virtual_id = format_occurrence_id(task_id, anchor.replace(tzinfo=None))
+    first_fold = {"start": "2027-11-07T05:30Z", "end": "2027-11-07T05:55Z"}
+    second_fold = {"start": "2027-11-07T06:30Z", "end": "2027-11-07T07:00Z"}
+    before = client.get("/sessions", params=first_fold)
+    assert before.status_code == 200, before.text
+    (first,) = before.json()
+    assert first["id"] == virtual_id
+    assert datetime.fromisoformat(first["start_time"]) == anchor
+    assert datetime.fromisoformat(first["end_time"]) == datetime(2027, 11, 7, 6, tzinfo=UTC)
+
+    after = client.get("/sessions", params=second_fold)
+    assert after.status_code == 200, after.text
+    assert after.json() == []
+    assert client.get("/agenda", params=second_fold).json()["items"] == []
+    projected = client.get("/agenda", params=first_fold).json()["items"]
+    assert projected == [client.get(f"/scheduled-sessions/{virtual_id}").json()]
+    second_id = format_occurrence_id(task_id, datetime(2027, 11, 7, 6, 30))
+    assert client.get(f"/scheduled-sessions/{second_id}").status_code == 404
+
+
+def test_delete_following_excludes_spring_gap_anchor_and_retains_prior_occurrence(client, db, fixed_recurrence_clock):
+    prior = datetime(2027, 3, 13, 7, 30)
+    anchor = datetime(2027, 3, 14, 7, 30)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York").id
+    current_id = format_occurrence_id(task_id, anchor)
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    assert current_id in [row["id"] for row in client.get(route).json()["items"]]
+    response = client.delete(f"/sessions/{current_id}?scope=following")
+    assert response.status_code == 204, response.text
+    assert [row["id"] for row in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]
+
+
+def test_subtree_clear_skips_only_selected_exact_fingerprinted_anchors(client, db):
+    parent = client.post("/api/tasks", json={"title": "Parent"}).json()["id"]
+    anchor = (datetime.now(UTC) + timedelta(days=3)).replace(microsecond=0)
+    child = client.post(
+        "/api/tasks",
+        json={
+            "title": "Recurring child",
+            "parent_id": parent,
+            "is_recurring": True,
+            "recurrence_rule": "daily",
+            "recurrence_dtstart": anchor.isoformat(),
+            "recurrence_timezone": "UTC",
+            "recurrence_duration_minutes": 30,
+        },
+    ).json()["id"]
+    response = client.post(
+        "/sessions",
+        json={
+            "task_id": child,
+            "notes": "Recurring: Recurring child",
+            "start_time": anchor.isoformat(),
+            "end_time": (anchor + timedelta(minutes=30)).isoformat(),
+        },
+    )
+    assert response.status_code == 201
+    assert RecurrenceService(db).get_exception(child, anchor) is None
+    cleared = client.post(
+        f"/api/tasks/{parent}/clear-scheduled-sessions", json={"include_subtasks": True, "session_ids": []}
+    )
+    assert cleared.json()["deleted_session_ids"] == [response.json()["id"]]
+    exception = RecurrenceService(db).get_exception(child, anchor)
+    assert exception and exception.kind == "skip" and exception.session_id is None
+    params = {"start": anchor.isoformat(), "end": (anchor + timedelta(days=2)).isoformat()}
+    assert [item["id"] for item in client.get("/agenda", params=params).json()["items"]] == [
+        format_occurrence_id(child, (anchor + timedelta(days=1)).replace(tzinfo=None))
+    ]
+
+
+def test_elapsed_placeholder_audit_preserves_typed_work_and_rechecks_confirmation(db):
+    created = datetime(2000, 1, 1, 9)
+    task = Task(title="Audit fixture", created_at=created, estimated_minutes=15)
+    db.add(task)
+    db.flush()
+
+    def seed(day, kind):
+        start = created + timedelta(days=day)
+        row = SessionModel(
+            task_id=task.id,
+            start_time=start,
+            end_time=start + timedelta(minutes=15),
+            duration_seconds=900,
+            notes="Recurring: Audit fixture",
+            kind=kind,
+            provenance="manual" if kind == "recorded_work" else None,
+        )
+        db.add(row)
+        return row
+
+    work = seed(1, "recorded_work")
+    legacy = seed(2, "legacy_uncertain")
+    convertible = seed(3, "legacy_uncertain")
+    db.commit()
+    legacy_id, work_id, converted_id = legacy.id, work.id, convertible.id
+    service = RecurrenceService(db)
+    preview = service.preview_legacy_placeholder_audit()
+    assert [row["session_id"] for row in preview] == [legacy_id, converted_id]
+    convertible.kind, convertible.provenance = "recorded_work", "manual"
+    db.commit()
+    with pytest.raises(ConflictError, match="changed.*no rows"):
+        service.delete_audited_placeholders(preview, lambda _: pytest.fail("stale audit must not back up or delete"))
+    assert {row["id"] for row in SessionService(db).list_sessions()} == {legacy_id, work_id, converted_id}
+    backed_up = []
+    assert service.delete_audited_placeholders(service.preview_legacy_placeholder_audit(), backed_up.extend) == 1
+    assert [row["session_id"] for row in backed_up] == [legacy_id]
+    assert {row["id"] for row in SessionService(db).list_sessions()} == {work_id, converted_id}
+
+
+def test_delete_following_targets_first_fold_occurrence_only(client, db, fixed_recurrence_clock):
+    prior = datetime(2027, 11, 6, 5, 30)
+    first_fold = datetime(2027, 11, 7, 5, 30)
+    second_fold = first_fold + timedelta(hours=1)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York").id
+    route = "/agenda?start=2027-11-06T00:00Z&end=2027-11-10T00:00Z"
+    before = client.get(route).json()["items"]
+    wrong_id = format_occurrence_id(task_id, second_fold)
+    assert client.delete(f"/sessions/{wrong_id}?scope=following").status_code == 404
+    assert client.get(route).json()["items"] == before
+    correct_id = format_occurrence_id(task_id, first_fold)
+    assert client.delete(f"/sessions/{correct_id}?scope=following").status_code == 204
+    assert [row["id"] for row in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]
+
+
+@pytest.mark.parametrize("minute", [30, 45])
+@pytest.mark.parametrize("select_later", [False, True])
+def test_following_refuses_unrepresentable_utc_cut_without_changing_series(
+    client, db, fixed_recurrence_clock, minute, select_later
+):
+    first = datetime(2027, 3, 13, 7)
+    cut = datetime(2027, 3, 14, 7, minute if select_later else 0)
+    task_id = _mk_task(
+        db, dtstart=first, tz="America/New_York", rrule=f"FREQ=DAILY;BYHOUR=2,3;BYMINUTE=0,{minute};BYSETPOS=2,3"
+    ).id
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    before = client.get(route).json()["items"]
+    cut_id = format_occurrence_id(task_id, cut)
+    assert cut_id in [item["id"] for item in before]
+    response = client.delete(f"/sessions/{cut_id}?scope=following")
+    if select_later:
+        assert response.status_code == 409 and response.json()["code"] == "utc_scope_unrepresentable"
+        assert client.get(route).json()["items"] == before
+        assert RecurrenceService(db).get_exception(task_id, cut) is None
+    else:
+        assert response.status_code == 204, response.text
+        assert [item["id"] for item in client.get(route).json()["items"]] == [
+            item["id"] for item in before if datetime.fromisoformat(item["start_time"]).replace(tzinfo=None) < cut
+        ]
+
+
+def test_delete_following_coalesces_duplicate_gap_ticks(client, db, fixed_recurrence_clock):
+    prior, cut = datetime(2027, 3, 13, 8, 30), datetime(2027, 3, 14, 7, 30)
+    task_id = _mk_task(db, dtstart=prior, tz="America/New_York", rrule="FREQ=DAILY;BYHOUR=2,3;BYMINUTE=30").id
+    route = "/agenda?start=2027-03-13T00:00Z&end=2027-03-17T00:00Z"
+    cut_id = format_occurrence_id(task_id, cut)
+    before = client.get(route).json()["items"]
+    assert [r["id"] for r in before].count(cut_id) == 1
+    assert client.delete(f"/sessions/{cut_id}?scope=following").status_code == 204
+    assert [r["id"] for r in client.get(route).json()["items"]] == [format_occurrence_id(task_id, prior)]

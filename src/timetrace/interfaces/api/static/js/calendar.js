@@ -47,7 +47,7 @@ function createPlanningSession(taskId = null) {
     const date = new Date(calendar.getDate());
     const now = new Date();
     date.setHours(now.getHours(), Math.floor(now.getMinutes() / 15) * 15, 0, 0);
-    openCreateSessionModal(date, null, taskId);
+    openCreateSessionModal(date, null, taskId, "", "schedule");
 }
 
 function filterPlanningTasks(query) {
@@ -153,8 +153,14 @@ function formatCalEventFromSession(s, idx = 0) {
         backgroundColor: color,
         borderColor: 'transparent',
         classNames: isVirtual ? ['tt-virtual-occurrence'] : [],
-        editable: true,
+        editable: s.kind !== 'recorded_work',
         extendedProps: {
+            kind: s.kind || 'legacy_uncertain',
+            revision: s.revision ?? null,
+            projectionRevision: s.projection_revision ?? null,
+            originalStart: s.original_start ?? null,
+            originalEnd: s.original_end ?? null,
+            occurrenceStart: s.occurrence_start ?? null,
             taskId: s.task_id || null,
             taskTitle: matchedTask ? matchedTask.title : '',
             notes: s.notes || '',
@@ -168,6 +174,7 @@ function formatCalEventFromSession(s, idx = 0) {
 async function isRecurringCalendarEvent(event) {
     const props = event.extendedProps || {};
     if (props.isVirtual || props.seriesTaskId || String(event.id).startsWith('virt:')) return true;
+    if (props.kind === 'scheduled_session') return false;
     return taskKnowledge.recurrenceFor(props.taskId);
 }
 
@@ -182,52 +189,141 @@ async function isRecurringCalendarEvent(event) {
  * `estimated_minutes` -- that side effect used to re-trigger session generation and refill the
  * slot the user had just vacated.
  */
+let calendarDisplayRows = [];
+let calendarReadVersion = 0;
+const calendarWrites = new Set();
+const calendarNeedsReview = new Map();
+
+function calendarOccurrenceId(id, seriesTaskId, occurrenceStart) {
+    if (id?.startsWith('virt:')) return id;
+    // Date rounds to milliseconds; reject fractional anchor text before converting.
+    if (!seriesTaskId || !occurrenceStart || /\.\d*[1-9]\d*(?:Z|[+-]\d\d:\d\d)$/.test(occurrenceStart)) return null;
+    const stamp = new Date(occurrenceStart).toISOString();
+    return `virt:${seriesTaskId}:${stamp.replace(/[-:]/g, '').replace('.000Z', 'Z')}`;
+}
+
+function calendarScheduleNeedsReview(row) {
+    if (!row) return false;
+    const occurrence = calendarOccurrenceId(row.id, row.series_task_id, row.occurrence_start);
+    return calendarNeedsReview.has(occurrence || row.id) ||
+        [...calendarNeedsReview.values()].some(attempt => attempt.latest?.id === row.id);
+}
+
+function renderCalendarScheduleReviews() {
+    const root = document.getElementById('calendar_schedule_reviews');
+    if (!root) return;
+    const focused = document.activeElement?.dataset?.reviewKey;
+    root.textContent = '';
+    const interval = row => `${new Date(row.start_time).toLocaleString()} — ${new Date(row.end_time).toLocaleString()}`;
+    for (const [key, attempt] of calendarNeedsReview) {
+        const panel = document.createElement('section');
+        const notice = document.createElement('p');
+        notice.setAttribute('role', 'status');
+        notice.textContent = `${attempt.title}: ${attempt.uncertain ? 'Save not confirmed.' : 'Schedule changed.'} ` +
+            `Attempted ${interval(attempt.payload)}. ` + (attempt.latest ? `Latest saved: ${interval(attempt.latest)}.`
+                : attempt.latest === null ? 'This entry is no longer available. Check Calendar for its replacement.' : attempt.error || 'Read the saved state before editing again.');
+        panel.appendChild(notice);
+        const button = (key, label, click) => {
+            const control = document.createElement('button');
+            control.type = 'button';
+            control.className = 'underline mr-3';
+            control.textContent = label;
+            control.dataset.reviewKey = `${attempt.id}:${key}`;
+            control.addEventListener('click', click);
+            panel.appendChild(control);
+            return control;
+        };
+        const read = button('read', 'Read latest schedule', async () => {
+            if (attempt.reading) return;
+            attempt.reading = true;
+            try {
+                const path = attempt.occurrence ? `/agenda/occurrences/${encodeURIComponent(attempt.occurrence)}`
+                    : `/scheduled-sessions/${encodeURIComponent(attempt.id)}`;
+                const latest = await api.get(path);
+                const latestKey = attempt.occurrence
+                    ? calendarOccurrenceId(latest?.id, latest?.series_task_id, latest?.occurrence_start) : latest?.id;
+                if (latestKey !== key) throw Error('Schedule identity mismatch');
+                attempt.latest = latest;
+            } catch (err) {
+                attempt.latest = err.status === 404 ? null : undefined;
+                attempt.error = 'Could not read saved schedule. Retry the read.';
+            } finally {
+                attempt.reading = false;
+            }
+            if (calendarNeedsReview.get(key) === attempt) renderCalendarScheduleReviews();
+        });
+        const done = attempt.latest !== undefined && button('done', 'Reviewed — discard attempt', () => {
+            if (attempt.reading || calendarNeedsReview.get(key) !== attempt) return;
+            calendarNeedsReview.delete(key);
+            renderCalendarScheduleReviews();
+            const region = document.getElementById('calendar');
+            if (document.activeElement === document.body && region) {
+                region.setAttribute('tabindex', '-1');
+                region.focus({ preventScroll: true });
+            }
+            void refreshSessionDisplay();
+        });
+        root.appendChild(panel);
+        for (const control of [read, done]) if (control && control.dataset.reviewKey === focused) control.focus();
+    }
+    root.hidden = !calendarNeedsReview.size;
+}
+
+function calendarSessionRows() {
+    return calendarDisplayRows;
+}
+
 async function handleCalendarEventUpdate(event, changeType = 'move', info = null) {
-    const startIso = event.start.toISOString();
-    const endIso = event.end ? event.end.toISOString() : event.start.toISOString();
-
-    const payload = {
-        start_time: startIso,
-        end_time: endIso
-    };
-
-    const wasVirtual = Boolean(event.extendedProps && event.extendedProps.isVirtual) || String(event.id).startsWith('virt:');
-    let scope = 'only_this';
-
-    const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
-    if (recurring === null) {
-        if (info && typeof info.revert === 'function') info.revert();
-        alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
+    const id = event.id;
+    const props = event.extendedProps || {};
+    const typed = props.kind === 'scheduled_session';
+    const occurrence = calendarOccurrenceId(id, props.seriesTaskId, props.occurrenceStart);
+    const key = occurrence || id;
+    if (calendarWrites.has(key) || calendarScheduleNeedsReview({ id, series_task_id: props.seriesTaskId,
+        occurrence_start: props.occurrenceStart }) || props.kind === 'recorded_work') {
+        info?.revert?.();
         return;
     }
-    if (recurring) {
-        const choice = typeof showRecurringResizeScopePrompt === 'function'
-            ? await showRecurringResizeScopePrompt()
-            : 'only_this';
-        if (!choice) {
-            if (info && typeof info.revert === 'function') info.revert();
+    const payload = { start_time: event.start.toISOString(), end_time: (event.end || event.start).toISOString() };
+    const wasVirtual = Boolean(props.isVirtual) || String(id).startsWith('virt:');
+    const target = { id, is_virtual: wasVirtual, revision: props.revision, projection_revision: props.projectionRevision };
+    let scope = 'only_this';
+    let reconcile = false;
+    let updatedSession;
+    calendarWrites.add(key);
+    try {
+        const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
+        if (recurring === null) {
+            info?.revert?.();
+            alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
             return;
         }
-        scope = choice;
-    }
-
-    let updatedSession = null;
-    try {
-        updatedSession = await api.put(
-            `/sessions/${encodeURIComponent(event.id)}?scope=${encodeURIComponent(scope)}`,
-            payload
-        );
+        if (recurring) {
+            scope = typeof showRecurringResizeScopePrompt === 'function' ? await showRecurringResizeScopePrompt() : 'only_this';
+            if (!scope) { info?.revert?.(); return; }
+        }
+        updatedSession = typed ? await api.saveScheduledSession(target, payload, scope)
+            : await api.put(`/sessions/${encodeURIComponent(id)}?scope=${encodeURIComponent(scope)}`, payload);
     } catch (err) {
-        console.error("Failed to update session:", err);
-        if (info && typeof info.revert === 'function') info.revert();
+        info?.revert?.();
+        if (typed) {
+            const uncertain = !err.status || err.status >= 500;
+            reconcile = uncertain || err.status === 409;
+            if (reconcile) {
+                calendarNeedsReview.set(key, { id, occurrence, title: event.title || 'Scheduled session', payload, uncertain });
+                renderCalendarScheduleReviews();
+            } else alert(err.message);
+        } else console.error('Failed to update session:', err);
+    } finally {
+        calendarWrites.delete(key);
+    }
+    if (!updatedSession) {
+        if (reconcile) await refreshSessionDisplay();
         return;
     }
-
-    // Commit the returned identity before fallible range reads or a second user gesture.
-    rememberSavedSession(updatedSession, event.id, event);
-    if (wasVirtual || scope === 'all_future') {
-        await refreshSessionDisplay();
-    } else {
+    rememberSavedSession(updatedSession, id, event);
+    if (typed || wasVirtual || scope === 'all_future') await refreshSessionDisplay();
+    else {
         try {
             if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         } catch (err) {
@@ -238,44 +334,59 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
 
 async function fetchCalendarEvents(fetchInfo, successCallback, failureCallback) {
     const generation = taskKnowledge.state().generation;
+    const version = ++calendarReadVersion;
+    const current = () => generation === taskKnowledge.state().generation && version === calendarReadVersion;
+    const query = `start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`;
     try {
         if (typeof fetchAllTasksRegistry === 'function') await fetchAllTasksRegistry();
-        const res = await api.get(`/sessions?start=${fetchInfo.start.toISOString()}&end=${fetchInfo.end.toISOString()}`);
-        const current = generation === taskKnowledge.state().generation;
-        if (current) allSessions = res || [];
-        // Settle superseded FullCalendar requests with the last-known display, not old rows.
-
-        const visibleForCalendar = typeof sessionMatchesBreakdownFilter === 'function'
-            ? allSessions.filter(sessionMatchesBreakdownFilter)
-            : allSessions;
-
-        const events = visibleForCalendar.map((s, idx) => formatCalEventFromSession(s, idx));
-        successCallback(events);
-        if (!current) return;
+        const [legacy, planning] = await Promise.allSettled([api.get(`/sessions?${query}`), api.get(`/agenda?${query}&legacy_cohort=start`)]);
+        if (current() && Array.isArray(legacy.value)) allSessions = legacy.value;
+        if (!Array.isArray(planning.value?.items)) throw planning.reason || new Error('Invalid calendar range response');
+        if (current()) {
+            // The display must never mix two database snapshots of the same occurrence.
+            calendarDisplayRows = planning.value.items.filter(row => row.kind === 'scheduled_session' ||
+                (Date.parse(row.start_time) >= +fetchInfo.start && Date.parse(row.start_time) < +fetchInfo.end));
+        }
+        const rows = calendarSessionRows();
+        const visible = typeof sessionMatchesBreakdownFilter === 'function' ? rows.filter(sessionMatchesBreakdownFilter) : rows;
+        successCallback(visible.map(formatCalEventFromSession));
+        if (!current()) return;
         if (typeof fetchRangeTotals === 'function') fetchRangeTotals();
         if (typeof updateDocumentTitle === 'function') updateDocumentTitle();
-        taskKnowledge.viewResult('calendar', true);
+        taskKnowledge.viewResult('calendar', Array.isArray(legacy.value));
     } catch (err) {
-        if (generation === taskKnowledge.state().generation) taskKnowledge.viewResult('calendar', false);
+        if (current()) taskKnowledge.viewResult('calendar', false);
         failureCallback(err);
     }
 }
 
+function forgetCalendarPlanningRow(id) {
+    calendarDisplayRows = calendarDisplayRows.filter(row => row.id !== id);
+}
+
 function rememberSavedSession(savedSession, previousId, event = null) {
     if (!savedSession) return;
+    const typed = savedSession.kind === 'scheduled_session';
     if (typeof allSessions !== 'undefined' && Array.isArray(allSessions)) {
-        const idx = allSessions.findIndex(s => String(s.id) === String(previousId));
-        if (idx !== -1) allSessions[idx] = savedSession;
-        else allSessions.push(savedSession);
+        if (typed && String(previousId).startsWith('virt:')) {
+            allSessions = allSessions.filter(row => row.id !== previousId);
+        }
+        if (!typed) {
+            const index = allSessions.findIndex(row => row.id === previousId);
+            if (index !== -1) allSessions[index] = savedSession;
+            else allSessions.push(savedSession);
+        }
     }
+    calendarDisplayRows = calendarDisplayRows.filter(row => row.id !== previousId && row.id !== savedSession.id);
+    calendarDisplayRows.push(savedSession);
     taskKnowledge.invalidate();
-    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) {
-        event = calendar.getEventById(String(previousId));
-    }
-    if (event && String(event.id) !== String(savedSession.id)) {
-        event.setProp?.('id', String(savedSession.id));
-        event.setExtendedProp?.('isVirtual', false);
-        event.setProp?.('classNames', []);
+    if (!event && typeof calendar !== 'undefined' && calendar?.getEventById) event = calendar.getEventById(String(previousId));
+    if (event) {
+        const formatted = formatCalEventFromSession(savedSession, 0);
+        if (String(event.id) !== formatted.id) event.setProp?.('id', formatted.id);
+        for (const [key, value] of Object.entries(formatted.extendedProps)) event.setExtendedProp?.(key, value);
+        event.setProp?.('classNames', formatted.classNames);
+        if (typed && savedSession.start_time && savedSession.end_time) event.setDates?.(savedSession.start_time, savedSession.end_time);
     }
 }
 

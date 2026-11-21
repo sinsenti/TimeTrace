@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TimeTrace Agenda</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/ai.css">
+    <link rel="stylesheet" href="/static/css/agenda.css">
+</head>
+<body class="agenda-page">
+    <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2">
+        {% include "components/navbar.html" %}
+    </header>
+    <main class="folio" id="agenda-workspace">
+        <header class="folio-masthead">
+            <span class="folio-eyebrow">Agenda · The daily edition</span>
+            <h1>Make space for <em>meaningful work.</em></h1>
+            <p class="folio-deck">Your plan and your recorded work, side by side. One does not replace the other.</p>
+        </header>
+        <div class="folio-strip">
+            <label>Local date <input id="agenda-date" type="date" required></label>
+            <button id="agenda-new" type="button">+ Plan session</button>
+        </div>
+        <p id="agenda-status" role="status"></p>
+        <button id="agenda-retry" type="button" hidden>Refresh agenda</button>
+        <div class="folio-columns">
+            <section aria-labelledby="agenda-ledger-title">
+                <div class="folio-section-title"><h2 id="agenda-ledger-title">The shape of the day</h2><span>LOCAL TIME</span></div>
+                <div id="agenda-ledger"></div>
+            </section>
+            <aside class="folio-inspector" aria-labelledby="agenda-inspector-title">
+                <span class="folio-eyebrow" id="agenda-kind">Inspector</span>
+                <h2 id="agenda-inspector-title" tabindex="-1">Select a ledger entry</h2>
+                <dl id="agenda-detail"></dl>
+                <p id="agenda-edit-status" role="status"></p>
+                <button id="agenda-review" type="button" hidden>Review saved schedule</button>
+                <div id="agenda-latest"></div>
+                <button id="agenda-use-latest" type="button" hidden>Use saved times</button>
+                <form id="agenda-form" hidden>
+                    <fieldset id="agenda-metadata">
+                        <label>Task <select id="agenda-task"><option value="">No task</option></select></label>
+                        <label>Tags <input id="agenda-tags" type="text"></label>
+                        <label>Notes <textarea id="agenda-notes"></textarea></label>
+                    </fieldset>
+                    <label>Start <input id="agenda-start" type="datetime-local" step="0.001" required></label>
+                    <label>End <input id="agenda-end" type="datetime-local" step="0.001" required></label>
+                    <div class="folio-actions">
+                        <button id="agenda-save" type="submit">Add to schedule</button>
+                        <button id="agenda-cancel" type="button">Cancel</button>
+                    </div>
+                </form>
+            </aside>
+        </div>
+    </main>
+    {% include "components/settings_modal.html" %}
+    {% include "components/ai_drawer.html" %}
+    <script src="/static/js/api_client.js"></script>
+    <script src="/static/js/task_knowledge.js"></script>
+    <script src="/static/js/utils.js"></script>
+    <script src="/static/js/timer_control.js"></script>
+    <script src="/static/js/settings.js"></script>
+    <script src="/static/js/agenda.js"></script>
+    <script src="/static/js/ai_assistant.js"></script>
+    <script src="/static/js/ai_insights.js"></script>
+    <script src="/static/js/ai_drafts.js"></script>
+</body>
+</html>

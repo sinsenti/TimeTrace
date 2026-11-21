@@ -52,7 +52,7 @@ function openGroupedTaskSchedule(taskId) {
     const task = kanbanTasks.find(row => row.id === taskId) || taskKnowledge.get(taskId);
     if (!task) return;
     taskKnowledge.rememberFallback(task);
-    openCreateSessionModal(new Date(), null, task.id, task.title);
+    openCreateSessionModal(new Date(), null, task.id, task.title, "schedule");
 }
 
 // Calendar-independent adapters required by the shared Session modal.

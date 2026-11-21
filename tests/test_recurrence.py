@@ -17,9 +17,11 @@ from timetrace.core.recurrence import (
     PRESET_TO_RRULE,
     RecurrenceSpec,
     expand,
+    expand_overlapping,
     format_occurrence_id,
     is_occurrence_id,
     next_occurrence,
+    occurrence_at,
     parse_occurrence_id,
     preset_to_rrule,
     rrule_to_preset,
@@ -153,8 +155,9 @@ def test_expand_truncates_at_max_occurrences_per_series():
 
 
 def test_expand_rejects_non_positive_duration():
-    spec = RecurrenceSpec(rrule="FREQ=DAILY", dtstart_utc=datetime(2026, 9, 7, 9, 0), duration_minutes=0,
-                          timezone_name="UTC")
+    spec = RecurrenceSpec(
+        rrule="FREQ=DAILY", dtstart_utc=datetime(2026, 9, 7, 9, 0), duration_minutes=0, timezone_name="UTC"
+    )
     with pytest.raises(ValidationError):
         expand(spec, datetime(2026, 9, 7), datetime(2026, 9, 8), TASK_ID)
 
@@ -305,3 +308,43 @@ def test_next_occurrence_is_strictly_after():
 def test_next_occurrence_returns_none_past_the_end_of_the_series():
     spec = spec_at_local("UTC", datetime(2026, 9, 7, 9, 0), "FREQ=DAILY;COUNT=3", duration_minutes=15)
     assert next_occurrence(spec, datetime(2026, 9, 9, 9, 0), TASK_ID) is None
+
+
+def test_planning_overlap_deduplicates_utc_anchors_shifted_by_dst():
+    # New York's spring-forward gap maps local 02:30 and 03:30 to the same 07:30Z.
+    spec = spec_at_local("America/New_York", datetime(2026, 3, 8, 1, 30), "FREQ=DAILY;BYHOUR=2,3")
+    start = datetime(2026, 3, 8, 7, 45)
+    end = datetime(2026, 3, 9, 7, 45)
+    result = expand_overlapping(spec, start, end, TASK_ID, live_after=start)
+    assert [item.start_utc for item in result] == [
+        datetime(2026, 3, 8, 7, 30),
+        datetime(2026, 3, 9, 6, 30),
+        datetime(2026, 3, 9, 7, 30),
+    ]
+    assert len({item.occurrence_id for item in result}) == 3
+
+
+def test_planning_overlap_counts_carry_in_and_in_window_anchors_against_one_cap():
+    anchor = datetime(2026, 9, 1, 9)
+    spec = spec_at_local("UTC", anchor, "FREQ=DAILY", duration_minutes=401 * 24 * 60)
+    start = anchor + timedelta(days=400)
+    # 400 carry-ins and 100 starts in [start, end). Neither boundary may appear twice.
+    result = expand_overlapping(spec, start, start + timedelta(days=100), TASK_ID, live_after=start)
+    assert len(result) == 500
+    assert result[0].start_utc == anchor
+    assert result[-1].start_utc == anchor + timedelta(days=499)
+    with pytest.raises(ValidationError, match="more than 500 occurrences"):
+        expand_overlapping(spec, start, start + timedelta(days=101), TASK_ID, live_after=start)
+
+
+def test_exact_occurrence_miss_skips_candidates_outside_the_utc_datetime_range():
+    spec = RecurrenceSpec(
+        rrule="FREQ=DAILY;COUNT=2",
+        dtstart_utc=datetime(9999, 12, 31, 1),
+        duration_minutes=30,
+        timezone_name="Etc/GMT+5",
+    )
+    first = occurrence_at(spec, datetime(9999, 12, 31, 1), TASK_ID)
+    assert first is not None
+    assert first.end_utc == datetime(9999, 12, 31, 1, 30)
+    assert occurrence_at(spec, datetime(9999, 12, 31, 20), TASK_ID) is None
