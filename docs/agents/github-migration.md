@@ -2,7 +2,10 @@
 
 GitHub Issues in [sinsenti/TimeTrace](https://github.com/sinsenti/TimeTrace/issues) is the live tracker.
 This file is an immutable migration cross-reference, not a second lifecycle store: the states below
-are the verified import dispositions; read GitHub for later changes.
+are the verified import dispositions; read GitHub for later changes. For reconciled delivery and
+post-import evidence (including the completed comparison fix), use the
+[shared delivery summary](../../specs/README.md#delivery-status-and-evidence). The import table below
+intentionally retains its original states and counts.
 
 ## Scope and reconciliation
 

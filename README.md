@@ -11,14 +11,14 @@
 - **Dynamic Calendar Dashboard**: Drag-and-drop schedule management with view-switching (**Day**, **3-Day**, **Week**, **Month**), auto-scrolling, and range totals.
 - **Revision & Retrospective Engine**: Review past days with structured **Highlights** and **Daily Friction** reflections, task post-mortems, and session timeline inspections.
 - **Per-Item & Per-Rating Dismissal**: Option to dismiss entire day/session reviews or individually dismiss custom rating metrics.
-- **Habit Tracker Matrix**: 14-day interactive grid for tracking daily habits (Boolean checkmarks or numeric metrics) with consistency doughnut charts.
+- **Habit Tracker**: Compact cards with independent day strips, explicit Save/Cancel, Done/Failed/Skipped choices or numeric amounts, and history/charts.
 - **Custom Rating Scales**: Define custom evaluation metrics (1–5 or 1–10 ranges, essential/optional) for sessions, tasks, and days.
 - **AFK / Idle Detection**: Automatically freezes running timers during 10 minutes of inactivity and provides an AFK resolution modal (Discard, Log as Break, Claim Work, or Re-tag).
 - **Vim Navigation & Clean UI**: Navigation shortcuts (`h`/`j`/`k`/`l`, `v`, `i`, `o`, `x`), compact single-line modal controls with micro shortcut badges (`Ctrl+↵`, `Esc`), and toggleable UI sidebars.
 - **Markdown Sync Engine**: Bidirectional import and export of structured `.md` log files with YAML frontmatter.
 - **Recurring Schedules**: RRULE-based virtual calendar occurrences with per-occurrence edits and skips, without bulk pre-generation.
-- **Custom Statistics**: Structured-query Overview and a widget builder; custom widget specs currently persist in browser localStorage.
-- **AI Assistant**: Global chat drawer for scheduling proposals, with explicit draft approval, conflict-aware undo/reapply, and configurable providers at `/settings/ai`.
+- **Custom Statistics**: Persisted named dashboards and editable widgets, structured-query comparisons, and optional read-only SQL; legacy browser widget specs have a guarded import handoff.
+- **AI Assistant**: Chat-first global drawer with explicit scheduling-draft and remembered-instruction approvals, conflict-aware undo/reapply, and configurable providers at `/settings/ai`.
 
 ---
 
@@ -105,6 +105,7 @@ total_sessions: 2
 
 ## Development documentation
 
+- [Delivery status and evidence](specs/README.md#delivery-status-and-evidence): completed UI/modules/AI hardening, current checks, and separate verification gaps.
 - [AGENTS.md](AGENTS.md): shared instructions for coding assistants.
 - [Development reference](docs/development.md): code map, safe scratch setup, tests, and migrations.
 - [CLAUDE.md](CLAUDE.md): detailed project decisions and history.

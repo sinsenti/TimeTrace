@@ -1,7 +1,30 @@
 # AI remembered-instructions release hardening plan
 
-Status: implemented in this working tree after `3677c1b feat(ai): add conversational remembered instructions`;
-interactive drawer smoke remains a manual follow-up because this repository has no browser test harness.
+Status: Delivered fake-first; original manual acceptance is only partially evidenced.
+
+## Current status and evidence
+
+[Remembered-instruction hardening](https://github.com/sinsenti/TimeTrace/issues/53) is delivered,
+not an open implementation plan. The [shared delivery summary](../specs/README.md#delivery-status-and-evidence)
+separates its evidence from later accepted UI and current integrated checks. Current
+[chat tests](../tests/test_ai_instruction_chat.py),
+[service tests](../tests/test_ai_instruction_proposals.py),
+[API tests](../tests/test_ai_instruction_api.py) and
+[native approval probe](../tests/browser_instruction_approval.js) cover bounded slices; later real-HTTP
+Save/Dismiss/conflict/ACK-read-retry/inert-text evidence does not establish every original smoke item.
+The repository now has browser probes, but no installed browser framework or automatic browser suite.
+
+Use [bounded acceptance reconciliation](https://github.com/sinsenti/TimeTrace/issues/55) for itemized
+proof and remaining UNKNOWN/UNRUN cells, including request → card → later-conversation prompt.
+Do not infer that Save alone proves later prompt use. No provider or personal-data testing is implied.
+The [AI maintenance guide](ai-maintenance.md) is the current operational contract.
+
+## Historical execution plan
+
+The phases, `todo.md` references, counts and next-feature direction below preserve the original plan
+after `3677c1b`; they are not live tracker entries or a new request to execute the next feature.
+Original manual requirements/failures remain intact. Follow the current
+[skill workflow](agents/workflow.md#default-skill-workflow) for procedure and GitHub for new work.
 
 ## Goal
 
