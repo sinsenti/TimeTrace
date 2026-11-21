@@ -194,6 +194,23 @@ test('Escape reaches the active recurring resize confirmation instead of canceli
     assert.equal(p.elements.get('session_modal').classList.contains('hidden'), false);
 });
 
+test('uncached legacy deletion without Calendar review support still fetches its metadata', async () => {
+    const reads = [];
+    const p = sessionPage(async (url, options) => {
+        if (options.method === 'GET') {
+            reads.push(url);
+            if (url === '/sessions/uncached') return { id: 'uncached', task_id: null };
+            return [];
+        }
+        return {};
+    });
+    p.context.calendarScheduleNeedsReview = undefined;
+    p.context.showCustomConfirm = async () => true;
+    await p.run('promptDeleteSession("uncached")');
+    assert.ok(reads.includes('/sessions/uncached'));
+    assert.equal(p.writes.filter(write => write.method === 'DELETE').length, 1);
+});
+
 test('successful delete with failed display refresh stays deleted and retry performs no second DELETE', async () => {
     let fails = true;
     const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : null);
@@ -605,6 +622,7 @@ for (const kind of ['scheduled_session', 'legacy_uncertain']) {
         assert.equal(p.writes.length, 1);
         p.context.showCustomConfirm = async () => true;
         await p.run('promptDeleteSession("successor")');
+        await p.run('confirmRecurringDelete("only_this")');
         assert.equal(p.writes.length, 1, 'review latch blocks deletion of the legacy successor');
         assert.match(p.alerts.at(-1), /explicitly discard/);
         p.context.allSessions = [];
@@ -618,6 +636,12 @@ for (const kind of ['scheduled_session', 'legacy_uncertain']) {
         assert.equal(p.writes.length, 1, 'review is not another write');
         await p.run('handleCalendarEventUpdate(event)');
         assert.match(p.writes[1].url, /\/(scheduled-sessions|sessions)\/successor\?/);
+        if (kind === 'legacy_uncertain') {
+            await p.run('promptDeleteSession("successor")');
+            await p.run('confirmRecurringDelete("only_this")');
+            assert.equal(p.writes.filter(write => write.method === 'DELETE').length, 1,
+                'explicit review restores ordinary legacy deletion');
+        }
     });
 }
 

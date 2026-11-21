@@ -1,29 +1,36 @@
-# Agenda #2 — user STOP checkpoint
+# Agenda #2 — resumed delivery checkpoint
 
-Branch `agenda-02-contract`. Repairs saved at `aa79dfd7b573da30923a691109fd4e5dfa9b5949`
-(timer) and `a8abbd6bd4cdddb4f9c7bb4d93b4d0fac95a1e18` (Agenda), after `f9ddee4`.
-No new implementation after the stop request. Independent review and acceptance remain open.
+Branch `agenda-02-contract`; original stop checkpoint `0400541` is superseded.
+The six saved repairs (`aa79dfd`, `a8abbd6`) were independently reviewed after resumption.
+Standards reported zero findings. Spec cleared five repairs and identified one remaining P1:
+legacy-successor deletion could bypass the Calendar conflict-review latch.
 
-1. AI: prospective legacy create/update/reapply checks normalized candidates and the inverse under
-   the writer lock. Notes, move, create and reapply refusal regressions pass.
-2. Recurrence: bounded UTC following cutoff handles 30/45-minute gap rules and duplicate anchors;
-   impossible local UNTIL refuses atomically. Daily gap and first-fold regressions pass.
-3. Calendar conflict: original anchor guards virtual, typed UUID and legacy UUID successors;
-   read-only lookup resolves the actual linked row. Native typed successor guard passed.
-4. Delayed drops: entry guard and recovery generation reject old gestures; held-metadata Node proof passed.
-5. Calendar boundary: explicit one-snapshot legacy start cohort preserves an imported zero-length boundary
-   row, without changing default overlap or legacy totals. HTTP and native verified.
-6. Timer race: Start checks the task under lock; Split/Stop hold it through history commit; singleton
-   timer mutations serialized. FK-on competing approval/Stop tests passed both orderings. Ordinary
-   human task-delete behavior and non-atomic SQLite/timer-file crash behavior remain unchanged.
+That residual was repaired in `12328e8`, `6f23933` and the subsequent parent follow-up.
+Shared deletion checks the existing explicit anchor-aware review guard at entry and immediately
+before DELETE, including known IDs absent from the current feed. Unknown ordinary legacy rows
+still fetch their metadata; a fallback ID does not masquerade as a fetched row. Pages without
+Calendar review support retain their ordinary deletion behavior. No ownership is inferred from
+Task/time and no backend/API/schema changes were needed.
 
-Verification before STOP: focused Python 131 passed; pre-final full Python 722 passed (331 warnings);
-Node 817 passed; migration 8 passed; changed-file lint/format and JS syntax/whitespace passed;
-full Ruff matches all 17 inherited findings byte-for-byte. Final Python replay was already running at STOP; do not wait or restart now. Check its .code/log before any rerun.
-Private evidence directory: `/tmp/tt02-finalfix.VLqSuP6I` (final-python.log/.code, full-node.log,
-migrations.log, native-review.json, native-boundary.json). Owned Orca tab/profile already removed;
-scratch daemon port 18604 stopped with PID and health verified, FK check clean. Synthetic files retained.
+Parent verification drives the actual stale HTTP write (409), refresh to the legacy successor,
+shared deletion confirmation, and explicit review/discard. It verifies no DELETE while blocked,
+then ordinary legacy deletion after discard. Running that regression against archived `0400541`
+reproduced the unwanted second write (actual 2 vs expected 1); current code passes. This is
+retrospective baseline regression proof, not a claim that the worker followed chronological TDD.
+The initial worker missed the requested red-first process and its private-map tests were replaced.
 
-Next after explicit resume: read final Python status and perform independent targeted review of the
-six changes (then parent acceptance). No known unfinished code in the six, but no review signoff.
-No push/merge, provider calls, schema change, or #55/#57 acceptance.
+Final parent checks: 722 Python passed (331 warnings), 818 Node passed, changed JS/CJS syntax and
+whitespace passed. Full Ruff has 17 inherited findings; both output streams match archived
+`0400541` byte-for-byte. Python ran with a fresh absolute DB path and private HOME/TMPDIR before
+imports. Eight migration tests are included in the full suite; schema remains 0015. No new browser
+run is claimed for this final guard. Earlier isolated browser/CLI evidence remains bounded.
+
+Review disposition: independent Standards zero; independent Spec's residual P1 resolved and
+verified by the parent, not represented as a fresh independent zero-finding verdict. The earlier
+analytics tuple heuristic remains nonblocking. Implementation is ready for integration consideration;
+no merge, push, issue closure or downstream ticket implementation has been performed.
+
+No worker remains active. Prior owned daemons/browser profiles were cleaned up. Do not resume old
+implementation runs or repeat completed repairs. #55 physical input, screen-reader, real 200% zoom
+and other-engine checks remain unknown; #56/#57 remain separate unmerged branches. SQLite/timer-file
+crash atomicity, receipts, new work recording, timer v2 and union statistics are not claimed.

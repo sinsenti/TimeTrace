@@ -383,9 +383,8 @@ async function promptDeleteSession(sessionId) {
     const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows()
         : typeof allSessions !== 'undefined' && Array.isArray(allSessions) ? allSessions : [];
     let session = rows.find(item => item.id === sessionId)
-        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null)
-        || { id: sessionId };
-    if (calendarDeleteNeedsReview(session)) return;
+        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null);
+    if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
     if ((session?.kind === 'scheduled_session' && !session.is_virtual) || session?.kind === 'recorded_work') {
         alert('Deletion is not available for this entry.');
         return;
@@ -416,7 +415,7 @@ async function promptDeleteSession(sessionId) {
 
     const confirmed = await showCustomConfirm("Delete Session Log", "Are you sure you want to delete this session log?");
     if (request !== deleteSessionRequest) return;
-    if (calendarDeleteNeedsReview(session)) return;
+    if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
     if (confirmed) {
         await confirmRecurringDelete('only_this');
     } else {
