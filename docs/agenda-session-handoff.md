@@ -1,5 +1,19 @@
 # Agenda session checkpoint — resume here
 
+## Current resumed state
+
+Agenda branch `agenda-02-contract` is clean at `c8974221382aab0579cdef903cd77e4780ea01a8`.
+Read that worktree's `docs/agenda-resume.md` for the current disposition. No workers remain active.
+The six saved repairs were independently checked: Standards had zero findings; Spec had one
+residual Delete-path P1, subsequently fixed and verified by the parent with an actual old-baseline
+failure and current public-controller regression. Do not describe this as a fresh independent
+zero-finding Spec review. Fresh final parent checks: 722 Python (331 warnings), 818 Node passed;
+17 inherited Ruff findings match the baseline byte-for-byte. No merge, push or issue closure.
+The branch is ready for integration consideration, not integrated. #56/#57 remain separate.
+Preserve the existing main owner edits. Do not restart old completed workers or redo repairs.
+
+## Historical stop record (superseded)
+
 The owner requested an immediate stop and save. **Do not restart implementation automatically.** No push, merge, deployment or issue closure is authorized by this checkpoint.
 
 ## Saved locations
