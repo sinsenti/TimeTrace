@@ -383,7 +383,8 @@ async function promptDeleteSession(sessionId) {
     const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows()
         : typeof allSessions !== 'undefined' && Array.isArray(allSessions) ? allSessions : [];
     let session = rows.find(item => item.id === sessionId)
-        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null);
+        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null)
+        || { id: sessionId };
     if (calendarDeleteNeedsReview(session)) return;
     if ((session?.kind === 'scheduled_session' && !session.is_virtual) || session?.kind === 'recorded_work') {
         alert('Deletion is not available for this entry.');
@@ -460,7 +461,8 @@ async function confirmRecurringDelete(scope) {
     if (!sid) return;
     const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows() : [];
     const session = rows.find(item => item.id === sid)
-        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sid) : null);
+        || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sid) : null)
+        || { id: sid };
     if (calendarDeleteNeedsReview(session)) return;
 
     try {

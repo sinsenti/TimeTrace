@@ -194,31 +194,6 @@ test('Escape reaches the active recurring resize confirmation instead of canceli
     assert.equal(p.elements.get('session_modal').classList.contains('hidden'), false);
 });
 
-test('delete preserves a legacy successor while its schedule attempt needs review', async () => {
-    const p = sessionPage();
-    const row = { id: 'legacy-successor', kind: 'scheduled_session', series_task_id: 'task',
-        occurrence_start: '2026-11-10T09:00:00Z' };
-    p.context.allSessions = [row];
-    p.run('calendarNeedsReview.set("virt:task:20261110T090000Z", { latest: { id: "legacy-successor" } })');
-    await p.run('promptDeleteSession("legacy-successor")');
-    assert.equal(p.writes.length, 0);
-    assert.match(p.alerts.at(-1), /explicitly discard/);
-    assert.equal(p.context.allSessions.length, 1);
-});
-
-test('delete checks review again after confirmation is pending', async () => {
-    const confirmation = deferred();
-    const p = sessionPage();
-    p.context.allSessions = [{ id: 'legacy-successor' }];
-    p.context.showCustomConfirm = () => confirmation.promise;
-    const deleting = p.run('promptDeleteSession("legacy-successor")');
-    p.run('calendarNeedsReview.set("legacy-successor", { latest: { id: "legacy-successor" } })');
-    confirmation.resolve(true);
-    await deleting;
-    assert.equal(p.writes.length, 0);
-    assert.match(p.alerts.at(-1), /explicitly discard/);
-});
-
 test('successful delete with failed display refresh stays deleted and retry performs no second DELETE', async () => {
     let fails = true;
     const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : null);
@@ -628,6 +603,14 @@ for (const kind of ['scheduled_session', 'legacy_uncertain']) {
         await p.run('fetchCalendarEvents({start:new Date("2099-01-04Z"),end:new Date("2099-01-05Z")}, onEvents, () => {})');
         await p.run('handleCalendarEventUpdate(event)');
         assert.equal(p.writes.length, 1);
+        p.context.showCustomConfirm = async () => true;
+        await p.run('promptDeleteSession("successor")');
+        assert.equal(p.writes.length, 1, 'review latch blocks deletion of the legacy successor');
+        assert.match(p.alerts.at(-1), /explicitly discard/);
+        p.context.allSessions = [];
+        p.run('pendingDeleteSessionId = ' + JSON.stringify(virtual));
+        await p.run('confirmRecurringDelete("only_this")');
+        assert.equal(p.writes.length, 1, 'known virtual ID remains blocked when no current row is cached');
         await panel.children.at(-1).children[1].click();
         const review = panel.children.at(-1);
         assert.match(review.children[0].textContent, /Latest saved/);
