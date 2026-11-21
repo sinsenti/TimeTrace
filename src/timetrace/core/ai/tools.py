@@ -569,7 +569,10 @@ def propose_remembered_instruction(
     user's custom instructions. Never claim it was remembered or saved.
     """
     _log_call("propose_remembered_instruction", instruction=instruction)
-    return _log_result(runtime.context.gateway.propose_remembered_instruction(instruction))
+    return _log_result(
+        "propose_remembered_instruction",
+        runtime.context.gateway.propose_remembered_instruction(instruction),
+    )
 
 
 # ---------------------------------------------------------------------------------------------
