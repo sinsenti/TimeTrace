@@ -389,9 +389,13 @@ function wbOnMeasureChange() {
         option.disabled = !!(caps && !caps.tag_attributions.includes(option.value));
     });
     const comparison = document.getElementById('wb_comparison');
-    if (comparison) comparison.disabled = recorded;
+    if (comparison?.options) {
+        comparison.disabled = false;
+        Array.from(comparison.options).forEach(option => { option.disabled = recorded && option.value !== 'none'; });
+    }
+    // Keep incompatible saved/source-switched drafts correctable rather than trapping a checked control.
     const fill = document.getElementById('wb_fill_gaps');
-    if (fill) fill.disabled = recorded;
+    if (fill) fill.disabled = false;
 }
 
 function wbOnGroupByChange() {

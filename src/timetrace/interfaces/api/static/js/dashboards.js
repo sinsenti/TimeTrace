@@ -542,6 +542,7 @@ function renderWidget(widget, data, index) {
         if (result.meta.basis) {
             const basis = result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
             card.appendChild(_el('p', 'text-xs text-slate-400', `${basis}. ${result.meta.cohort}`));
+            if (result.meta.totals_overlap) card.appendChild(_el('p', 'text-xs text-slate-400', 'Non-additive grouped/day/plan totals may overlap; the full-range scalar is independent. Plan fills have no additive scalar.'));
             if (result.meta.physical_cohort_seconds !== undefined) {
                 card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; physical cohort ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. Taskless/unassigned work is not task credit.`));
             }
