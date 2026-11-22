@@ -21,7 +21,7 @@
             <div id="wb_pane_structured">
                 <fieldset><legend>Query</legend><div class="wb-grid">
                     <div><label for="wb_source">Source</label><select id="wb_source" onchange="_onWidgetBuilderSourceChange()"></select></div>
-                    <div><label for="wb_measure">Measure</label><select id="wb_measure"></select></div>
+                    <div><label for="wb_measure">Measure</label><select id="wb_measure" onchange="wbOnMeasureChange()"></select></div>
                     <div><label for="wb_group_by_1">Group by</label><select id="wb_group_by_1" onchange="wbOnGroupByChange()"></select></div>
                     <div><label for="wb_group_by_2">Then by (optional)</label><select id="wb_group_by_2" onchange="wbOnGroupByChange()"></select></div>
                     <div><label for="wb_chart">Chart</label><select id="wb_chart">
@@ -45,6 +45,15 @@
                         <div><label for="wb_range_start">Range start (local date)</label><input id="wb_range_start" type="date"></div>
                         <div><label for="wb_range_end">Range end (inclusive)</label><input id="wb_range_end" type="date"></div>
                     </div>
+                    <div id="wb_plan_options" class="hidden">
+                        <label for="wb_plan_basis">Plan comparison basis</label>
+                        <select id="wb_plan_basis"><option value="">Select a basis</option><option value="original">Original plan</option><option value="current">Current schedule</option></select>
+                        <label for="wb_plan_ids">Matching plan IDs (comma-separated, independent of work range)</label>
+                        <input id="wb_plan_ids" type="text">
+                        <p class="wb-hint">Only same-task intersections fill plans; work need not be associated. Overlapping fills are non-additive. Work range selects whole intervals by local record start, not plan start.</p>
+                    </div>
+                    <p id="wb_recorded_basis" class="wb-hint hidden">Closed explicit recorded work only; legacy history, scheduled time and live timers excluded. Bounded local start-date range (up to 400 days); whole intervals, no clipping. Group totals may overlap; the full-range total is independently unioned. Remaining/unscheduled balances retain their separate legacy accounting basis.</p>
+                    <p id="wb_recorded_capabilities" class="wb-hint"></p>
                     <label for="wb_comparison">Compare against</label><select id="wb_comparison" onchange="wbOnComparisonChange()">
                         <option value="none">None</option><option value="previous_period">Previous period</option><option value="same_period_last_year">Same period last year</option><option value="custom">Custom range</option>
                     </select>
@@ -57,7 +66,7 @@
                 <fieldset><legend>Attribution</legend>
                     <label for="wb_tag_attribution">Tag attribution</label><select id="wb_tag_attribution">
                         <option value="fan_out">Fan-out (full duration credited to each tag)</option><option value="split_evenly">Split evenly (reconciles pie totals)</option>
-                    </select><p class="wb-hint">Fan-out is the default: totals overlap across tags. Split evenly shares each session's duration between its tags.</p>
+                    </select><p class="wb-hint">Fan-out is the default: totals overlap across tags. For sessions, split evenly shares each session's duration between its tags. For recorded unions, split evenly shares atomic elapsed segments among distinct active tags before filtering, without renormalization; physical cohort time is shown separately.</p>
                 </fieldset>
                 <fieldset><legend>Filters · all must match</legend>
                     <div id="wb_filters" oninput="wbSyncFilters()" onchange="wbSyncFilters()">

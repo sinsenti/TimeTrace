@@ -220,6 +220,36 @@ in these retained adoption notes; implementation details and original evidence l
 - **Deferred:** external integrations, multi-user scoping, Tauri/mobile clients, and native tray/
   hotkey services are not implemented. Existing external-sync columns are not a sync feature.
 
+## Explicit recorded-work widgets
+
+The existing Statistics widget editor offers the `recorded_work` source and six union measures.
+Capabilities publish per-measure dimensions, predicate operators, units and plan-basis choices.
+Use a bounded local **record-start** range (at most 400 days); selected intervals remain whole.
+The daemon timezone and explicit week-start context follow the existing query conventions.
+The independent full-range scalar is not a sum of overlapping day/category/task/tag groups.
+
+- Recorded task time unions within each assigned task, then credits tasks independently.
+  Elapsed time unions across tasks, including taskless work; unassigned time unions taskless work
+  separately. Unassigned and task-credit totals are not additive elapsed time.
+- Fan-out tags select distinct matching records and label overlapping group totals. Split-evenly
+  allocates atomic interval segments among distinct active tags **before** filtering, independently
+  per task (task credit), across tasks (elapsed), or taskless-only (unassigned). Hidden shares are
+  not redistributed. Responses distinguish attributed seconds from physical cohort seconds and
+  expose record counts, predicates, measurement instant and basis for inspection.
+- Inside/outside measures require **Original plan** or **Current schedule**. Optional comma-separated
+  plan IDs select plans independently of work dates; leaving IDs empty uses all same-task matching
+  windows, unioned before aggregation. Plan fill requires explicit plan IDs and groups only by plan;
+  overlapping fills have no additive scalar. Matching never changes a work record's association.
+- Unsupported negative tag predicates, comparison tags, period baselines and gap filling fail
+  capability validation rather than approximating results. Existing saved `sessions` queries,
+  stored-duration accounting, SQL widgets and AI allowlists retain their meanings and restrictions.
+  Scheduled/remaining/live values are not completed union credit; legacy history remains excluded.
+
+No schema change is required for these widgets; the existing typed-record interval index and
+minimum schema revision `0016_recorded_work_index` remain in place.
+Regression coverage: `tests/test_recorded_work_widgets.py`, `tests/test_recorded_work.py`, and
+`tests/test_performed_time_widget.cjs` (owned DOM adapter, not physical browser input).
+
 ## Task post-mortems
 
 Dedicated task details (`/task-inspector/{id}` and `/tasks-detail/{id}`) and Revision’s Task
