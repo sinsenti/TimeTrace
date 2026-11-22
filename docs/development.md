@@ -690,7 +690,7 @@ behavior for live timer context. Legacy mutations still create uncertain history
 
 ## Migration verification
 
-The source tree currently ends at `0015_typed_recurrence`; inspect revision ids and
+The source tree currently ends at `0016_recorded_work_index`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -706,7 +706,7 @@ review the result, including data movement and SQLite table rebuilds, before app
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
 Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
-Alembic entrypoints and resolve the required schema revision (`0015_typed_recurrence`) in the
+Alembic entrypoints and resolve the required schema revision (`0016_recorded_work_index`) in the
 migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
 complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
 when the application starts depending on a later schema revision.
