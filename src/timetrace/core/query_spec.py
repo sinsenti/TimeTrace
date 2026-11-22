@@ -84,6 +84,7 @@ class FilterField(StrEnum):
     HAS_TASK = "has_task"
     DURATION_SECONDS = "duration_seconds"
     SESSION_TIME_RELATIVE = "session_time_relative"
+    PROVENANCE = "provenance"
     RATING_SCORE = "rating_score"
 
 

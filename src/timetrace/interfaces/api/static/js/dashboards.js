@@ -538,6 +538,18 @@ function renderWidget(widget, data, index) {
         card = renderChartWidget(widget, result, seed);
     }
 
+    if (result && !error && !data.loading?.[widget.id]) {
+        if (result.meta.basis) {
+            const basis = result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
+            card.appendChild(_el('p', 'text-xs text-slate-400', `${basis}. Values in hours. ${result.meta.cohort}`));
+            if (result.meta.totals_overlap) card.appendChild(_el('p', 'text-xs text-slate-400', 'Non-additive grouped/day/plan totals may overlap; the full-range scalar is independent. Plan fills have no additive scalar.'));
+            if (result.meta.physical_cohort_seconds !== undefined) {
+                card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; physical cohort ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. Taskless/unassigned work is not task credit.`));
+            }
+        } else if (widget.spec?.query?.source === 'sessions') {
+            card.appendChild(_el('p', 'text-xs text-slate-400', 'Legacy-inclusive session accounting; additive stored durations/counts, not explicit recorded-work unions.'));
+        }
+    }
     card.tabIndex = -1;
     card.dataset.widgetId = widget.id;
     card.setAttribute('aria-busy', String(!!data.loading[widget.id]));
@@ -766,10 +778,11 @@ function renderChartWidget(widget, result, seed) {
 
     if (result.meta.totals_overlap) {
         const note = _el('span', 'text-[10px] text-amber-400 font-semibold', 'Totals overlap');
-        note.title = 'A session tagged with multiple tags is counted in full under each tag; totals across slices will exceed 100%.';
+        note.title = result.meta.basis ? 'Whole-interval union groups and per-plan fills can overlap. The full-range scalar is calculated independently, not by summing groups.' : 'A session tagged with multiple tags is counted in full under each tag; totals across slices will exceed 100%.';
         header.appendChild(note);
     }
     card.appendChild(header);
+
 
     const stackRequested = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
     const seenCells = new Map();

@@ -429,6 +429,8 @@ class ColumnSpec(BaseModel):
 
 
 class QueryRow(BaseModel):
+    value_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    physical_cohort_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
     keys: list[str]
     labels: list[str]
     value: float | None
@@ -454,6 +456,11 @@ class ComparisonMeta(BaseModel):
 
 
 class QueryMeta(BaseModel):
+    attributed_total_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    physical_cohort_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort_count: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort_predicate: list[dict] | None = Field(default=None, exclude_if=lambda value: value is None)
+    non_additive: bool | None = Field(default=None, exclude_if=lambda value: value is None)
     measurement_at: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
     basis: str | None = Field(default=None, exclude_if=lambda value: value is None)
     cohort: str | None = Field(default=None, exclude_if=lambda value: value is None)
@@ -484,6 +491,7 @@ class AnalyticsQueryBatchResponse(BaseModel):
 
 
 class CapabilityMeasure(BaseModel):
+    capabilities: dict | None = Field(default=None, exclude_if=lambda value: value is None)
     value: Measure
     label: str
     unit: str

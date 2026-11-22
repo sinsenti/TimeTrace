@@ -20,7 +20,7 @@ from sqlmodel import Session, select, text
 from timetrace.config import settings
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_compiler import CompiledQuery, QueryContext, compile_query
-from timetrace.core.query_registry import SOURCES
+from timetrace.core.query_registry import SOURCES, recorded_measure_capability
 from timetrace.core.query_spec import (
     AnalyticsQuery,
     ComparisonMode,
@@ -29,6 +29,7 @@ from timetrace.core.query_spec import (
     Dimension,
     RangePreset,
     SortKey,
+    TagAttribution,
 )
 from timetrace.core.timezones import daemon_timezone_name
 from timetrace.db.models import Habit, Task
@@ -312,7 +313,14 @@ class QueryService:
                 SourceCapabilities(
                     source=source_spec.source,
                     measures=[
-                        CapabilityMeasure(value=m.measure, label=m.label, unit=m.unit)
+                        CapabilityMeasure(
+                            value=m.measure,
+                            label=m.label,
+                            unit=m.unit,
+                            capabilities=recorded_measure_capability(m.measure)
+                            if source_spec.source.value == "recorded_work"
+                            else None,
+                        )
                         for m in source_spec.measures.values()
                     ],
                     dimensions=[
@@ -382,6 +390,15 @@ class QueryService:
             meta.measurement_at = compiled.params["measurement"].replace(tzinfo=UTC)
             meta.basis = query.plan_basis or "recorded_work_union"
             meta.cohort = "Whole typed intervals by local record-start range; legacy/live/future-ended rows excluded"
+            meta.non_additive = bool(query.group_by)
+            meta.cohort_predicate = [f.model_dump(mode="json") for f in query.filters]
+            if query.measure.value != "plan_fill":
+                physical_query = query.model_copy(update={"group_by": [], "tag_attribution": TagAttribution.FAN_OUT})
+                physical = compile_query(physical_query, compiled.context)
+                physical_result = self.db.exec(text(physical.sql), params=physical.params).first()
+                meta.physical_cohort_seconds = physical_result[0] * 3600
+                meta.cohort_count = physical_result[1]
+                meta.attributed_total_seconds = total * 3600
 
         return AnalyticsQueryResponse(
             columns=columns,
@@ -462,7 +479,7 @@ class QueryService:
         elif query.group_by and query.group_by[0] == Dimension.WEEKDAY and query.sort.value.startswith("dimension"):
             rows = self._reorder_weekday(rows, first_day_of_week, query.sort.value.endswith("desc"))
 
-        if query.source.value == "recorded_work" and query.group_by and query.measure.value != "plan_fill":
+        if query.source.value == "recorded_work":
             compiled.context = ctx
         return rows, resolved_range, compiled, truncated
 
@@ -646,7 +663,11 @@ class QueryService:
                 if dim == Dimension.TASK:
                     raw_key = keys[i]
                     if not raw_key or raw_key == "__none__":
-                        labels.append("Direct Session Log")
+                        labels.append(
+                            "Unassigned recorded work"
+                            if query.source.value == "recorded_work"
+                            else "Direct Session Log"
+                        )
                     else:
                         labels.append(task_titles.get(raw_key, raw_key))
                 elif dim == Dimension.HABIT:
@@ -655,6 +676,9 @@ class QueryService:
                     labels.append(_label_for(dim, keys[i]))
 
             row = _QueryRow(keys=keys, labels=labels, value=float(value) if value is not None else None, count=count)
+            if query.source.value == "recorded_work":
+                row.value_seconds = row.value * 3600 if row.value is not None else None
+                row.physical_cohort_seconds = float(r[n_dims + 2]) if len(r) > n_dims + 2 else row.value_seconds
             row._source_identity = tuple(r[i] for i in range(n_dims))
             rows.append(row)
         return rows

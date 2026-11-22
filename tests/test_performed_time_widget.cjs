@@ -177,6 +177,26 @@ const preset = { title: 'Performed time by day', width: 'half', query: {
     tag_attribution: 'fan_out', comparison: { mode: 'previous_period', start_date: null, end_date: null },
     filters: [{ field: 'session_time_relative', op: 'eq', values: ['past'] }]
 } };
+test('recorded widget original/current controls preserve saved query through edit and save', async () => {
+    const query = { source: 'recorded_work', measure: 'plan_fill', group_by: ['plan_id'],
+        plan_basis: 'original', plan_ids: ['plan-one', 'plan-two'], chart: 'table', sort: 'value_desc',
+        limit: 200, fill_gaps: false, date_range: { preset: 'last_7_days' }, tag_attribution: 'fan_out', filters: [] };
+    const caps = { sql_enabled: false, sources: [{ source: 'recorded_work',
+        measures: [{ value: 'plan_fill', label: 'Plan fill', unit: 'hours', capabilities: {
+            dimensions: ['plan_id'], tag_attributions: ['fan_out'], plan_selection: true } }],
+        dimensions: [{ value: 'plan_id', label: 'Plan' }], filter_fields: [] }] };
+    const b = browser(async () => b.responseA, () => true, async () => caps);
+    b.setSaved({ spec: { mode: 'structured', query } }); await b.load(); await b.open();
+    assert.equal(b.el('wb_plan_basis').value, 'original');
+    assert.equal(b.el('wb_plan_ids').value, 'plan-one, plan-two');
+    assert.equal(b.el('wb_plan_options').classList.contains('hidden'), false);
+    b.change('wb_plan_basis', 'current', 'change');
+    await b.run('submitWidgetBuilder()'); await tick();
+    assert.equal(b.writes()[0].body.spec.query.plan_basis, 'current');
+    assert.deepEqual(b.writes()[0].body.spec.query.plan_ids, ['plan-one', 'plan-two']);
+    await b.open(); assert.equal(b.el('wb_plan_basis').value, 'current');
+});
+
 function setPreset(b) {
     const el = b.document.createElement('script'); el.id = 'performed_time_preset';
     el.textContent = JSON.stringify(preset); b.document.body.appendChild(el);
