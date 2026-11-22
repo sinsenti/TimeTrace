@@ -13,7 +13,8 @@ parameter. A lookup miss (an enum member with no fragment for this source) raise
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_registry import SOURCES, TimeAnchorKind
@@ -47,6 +48,7 @@ class QueryContext:
     range_end_utc: datetime | None = None  # naive UTC, exclusive
     range_start_local: str | None = None  # YYYY-MM-DD, inclusive (LOCAL_DATE_STRING sources)
     range_end_local: str | None = None  # YYYY-MM-DD, inclusive (LOCAL_DATE_STRING sources)
+    plan_windows: list[tuple[str, str | None, datetime, datetime]] = field(default_factory=list)
     now_utc: datetime | None = None  # naive UTC, used by relative session-time filters
 
 
@@ -59,6 +61,7 @@ class CompiledQuery:
     source: QuerySource = QuerySource.SESSIONS
     has_rows_limit: bool = False  # False for a tile (no GROUP BY, exactly one row)
     totals_overlap: bool = False
+    context: QueryContext | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -492,9 +495,7 @@ attributed AS (
 # tasks
 # ---------------------------------------------------------------------------
 
-_IS_DONE_SQL = (
-    "(COALESCE(ts.is_completed, 0) = 1 OR LOWER(COALESCE(t.status, '')) IN ('done', 'completed'))"
-)
+_IS_DONE_SQL = "(COALESCE(ts.is_completed, 0) = 1 OR LOWER(COALESCE(t.status, '')) IN ('done', 'completed'))"
 
 _EST_MINUTES_SQL = "COALESCE(t.estimated_minutes, 15)"
 
@@ -849,7 +850,147 @@ def _compile_rating_entries(query: AnalyticsQuery, ctx: QueryContext) -> Compile
 # entry point
 # ---------------------------------------------------------------------------
 
+
+def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> CompiledQuery:
+    if ctx.range_start_utc is None or ctx.range_end_utc is None:
+        raise ValidationError("Recorded-work queries require a bounded local start-date range.")
+    zone = ZoneInfo(ctx.timezone)
+    start_day = (
+        date.fromisoformat(ctx.range_start_local)
+        if ctx.range_start_local
+        else ctx.range_start_utc.replace(tzinfo=UTC).astimezone(zone).date()
+    )
+    end_day = (
+        date.fromisoformat(ctx.range_end_local)
+        if ctx.range_end_local
+        else (ctx.range_end_utc.replace(tzinfo=UTC) - timedelta(microseconds=1)).astimezone(zone).date()
+    )
+    if (end_day - start_day).days >= 400:
+        raise ValidationError("Recorded-work ranges cannot exceed 400 local days.")
+    if query.fill_gaps or query.comparison or query.tag_attribution.value != "fan_out":
+        raise ValidationError("Recorded work does not support gap filling, baselines or tag attribution.")
+    comparison = query.measure in (
+        Measure.INSIDE_SCHEDULED_TASK_TIME,
+        Measure.OUTSIDE_SCHEDULED_TASK_TIME,
+        Measure.PLAN_FILL,
+    )
+    fill = query.measure == Measure.PLAN_FILL
+    if comparison and (query.plan_basis not in ("original", "current") or not query.plan_ids):
+        raise ValidationError("Plan comparisons require explicit plan_ids and plan_basis original/current.")
+    if not comparison and (query.plan_ids or query.plan_basis):
+        raise ValidationError("Plan selection is only supported for plan comparison measures.")
+    if query.group_by not in ([], [Dimension.TASK]) and not (fill and query.group_by == [Dimension.PLAN_ID]):
+        raise ValidationError("Only task grouping or plan_fill by plan_id is supported.")
+    if fill and query.group_by != [Dimension.PLAN_ID]:
+        raise ValidationError("plan_fill requires plan_id grouping; overlapping fills cannot be summed.")
+    if query.measure == Measure.UNASSIGNED_RECORDED_TIME and query.group_by:
+        raise ValidationError("Unassigned work does not support task grouping.")
+    params = {"start": ctx.range_start_utc, "end": ctx.range_end_utc, "measurement": ctx.now_utc}
+    predicate = ""
+    for i, f in enumerate(query.filters):
+        if f.field != FilterField.TASK or f.op.value not in ("eq", "in") or not f.values:
+            raise ValidationError("Recorded work supports task eq/in filters only.")
+        names = []
+        for j, value in enumerate(f.values):
+            name = f"work_task_{i}_{j}"
+            params[name] = value
+            names.append(":" + name)
+        predicate += " AND task_id IN (" + ",".join(names) + ")"
+    task = query.measure in (
+        Measure.RECORDED_TASK_TIME,
+        Measure.INSIDE_SCHEDULED_TASK_TIME,
+        Measure.OUTSIDE_SCHEDULED_TASK_TIME,
+    )
+    if task:
+        predicate += " AND task_id IS NOT NULL"
+    elif query.measure == Measure.UNASSIGNED_RECORDED_TIME:
+        predicate += " AND task_id IS NULL"
+    partition = "task_id" if task or query.group_by else "'all'"
+
+    def microseconds(expression: str) -> str:
+        # Storage is naive UTC with six fractional digits. Integer arithmetic preserves
+        # microsecond intervals that SQLite's millisecond-resolution julianday would lose.
+        return f"(unixepoch(substr({expression},1,19))*1000000 + CAST(substr({expression},21,6) AS INTEGER))"
+
+    windows = []
+    for i, (plan_id, task_id, start, end) in enumerate(ctx.plan_windows):
+        for key, value in (("id", plan_id), ("task", task_id), ("a", start), ("b", end)):
+            params[f"p{i}_{key}"] = value
+        windows.append(
+            f"SELECT :p{i}_id AS plan_id, :p{i}_task AS task_id, "
+            f"{microseconds(f':p{i}_a')} AS a, {microseconds(f':p{i}_b')} AS b"
+        )
+    plans = " UNION ALL ".join(windows) or "SELECT NULL AS plan_id, NULL AS task_id, NULL AS a, NULL AS b WHERE 0"
+    # Union clipped pieces as well as work: overlapping plan windows must not duplicate fill.
+    pieces = "SELECT task_id, a, b, id AS identity FROM selected"
+    if comparison:
+        pieces = """SELECT s.task_id, MAX(s.a,p.a) AS a, MIN(s.b,p.b) AS b, p.plan_id AS identity
+            FROM selected s JOIN plans p ON s.task_id=p.task_id AND s.a<p.b AND s.b>p.a"""
+    key = "identity" if fill else partition
+
+    def merged_ctes(prefix, source, domain):
+        return f"""{prefix}_prior AS (
+          SELECT *, MAX(b) OVER (PARTITION BY {domain} ORDER BY a,b,identity
+            ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prior_end FROM ({source})
+        ), {prefix}_islands AS (
+          SELECT *, SUM(CASE WHEN prior_end IS NULL OR a>prior_end THEN 1 ELSE 0 END)
+            OVER (PARTITION BY {domain} ORDER BY a,b,identity) AS island FROM {prefix}_prior
+        ), {prefix}_merged AS (
+          SELECT {domain} AS domain, MIN(a) AS a,MAX(b) AS b FROM {prefix}_islands GROUP BY {domain},island
+        )"""
+
+    ctes = merged_ctes("credit", pieces, key)
+    expression = "ROUND(COALESCE(SUM(b-a)/1000000.0,0),6)/3600"
+    if query.measure == Measure.OUTSIDE_SCHEDULED_TASK_TIME:
+        ctes += "," + merged_ctes("whole", "SELECT task_id,a,b,id AS identity FROM selected", partition)
+        ctes += """, whole_totals AS (SELECT domain, SUM(b-a)/1000000.0 AS seconds FROM whole_merged GROUP BY domain),
+            credit_totals AS (SELECT domain, SUM(b-a)/1000000.0 AS seconds FROM credit_merged GROUP BY domain)"""
+        columns = "w.domain," if query.group_by else ""
+        expression = (
+            "ROUND(w.seconds-COALESCE(c.seconds,0),6)/3600"
+            if query.group_by
+            else "ROUND(COALESCE(SUM(w.seconds-COALESCE(c.seconds,0)),0),6)/3600"
+        )
+        sql = f"""WITH selected AS (
+          SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
+          WHERE kind='recorded_work' AND end_time<=:measurement AND start_time>=:start AND start_time<:end {predicate}
+        ), plans AS ({plans}), {ctes}
+        SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected)
+        FROM whole_totals w LEFT JOIN credit_totals c ON w.domain=c.domain
+        """
+        return CompiledQuery(
+            sql=sql,
+            params=params,
+            source=query.source,
+            measure=query.measure,
+            group_by=query.group_by,
+            totals_overlap=True,
+        )
+    columns = "domain," if query.group_by else ""
+    group = " GROUP BY domain" if query.group_by else ""
+    sql = f"""WITH selected AS (
+        SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
+        WHERE kind='recorded_work' AND end_time<=:measurement AND start_time>=:start AND start_time<:end {predicate}
+    ), plans AS ({plans}), {ctes}
+    SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected) FROM credit_merged{group}
+    """
+    if fill:
+        sql = f"""WITH selected AS (
+            SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
+            WHERE kind='recorded_work' AND end_time<=:measurement
+              AND start_time>=:start AND start_time<:end {predicate}
+        ), plans AS ({plans}), {ctes}
+        SELECT p.plan_id, ROUND(COALESCE(SUM(c.b-c.a)/1000000.0,0),6)/3600 AS value,
+            (SELECT COUNT(*) FROM selected)
+        FROM plans p LEFT JOIN credit_merged c ON p.plan_id=c.domain GROUP BY p.plan_id
+        """
+    return CompiledQuery(
+        sql=sql, params=params, source=query.source, measure=query.measure, group_by=query.group_by, totals_overlap=True
+    )
+
+
 _COMPILERS = {
+    QuerySource.RECORDED_WORK: _compile_recorded_work,
     QuerySource.SESSIONS: _compile_sessions,
     QuerySource.TASKS: _compile_tasks,
     QuerySource.HABIT_LOGS: _compile_habit_logs,
@@ -860,6 +1001,8 @@ _COMPILERS = {
 
 def validate_query(query: AnalyticsQuery) -> None:
     """Structural validation against the capability registry, independent of compilation."""
+    if query.source != QuerySource.RECORDED_WORK and (query.plan_ids or query.plan_basis):
+        raise ValidationError("Plan comparison options require the recorded_work source.")
     source_spec = SOURCES.get(query.source)
     if source_spec is None:
         raise ValidationError(f"Unknown source: {query.source}")
@@ -888,5 +1031,8 @@ def compile_query(query: AnalyticsQuery, ctx: QueryContext) -> CompiledQuery:
     if compiler is None:
         raise ValidationError(f"Unsupported source: {query.source}")
     compiled = compiler(query, ctx)
+    if query.source == QuerySource.RECORDED_WORK and query.group_by:
+        compiled.sql += " " + _order_by_sql(query.sort, True) + ", 1 ASC LIMIT :__limit"
+        compiled.has_rows_limit = True
     compiled.params["__limit"] = query.limit + 1
     return compiled

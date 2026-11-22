@@ -214,3 +214,22 @@ SOURCES: dict[QuerySource, SourceSpec] = {
         ),
     ),
 }
+
+
+SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
+    source=QuerySource.RECORDED_WORK,
+    table="session",
+    alias="s",
+    anchor_column="s.start_time",
+    anchor_kind=TimeAnchorKind.UTC_DATETIME,
+    measures=_measures(
+        MeasureSpec(Measure.INSIDE_SCHEDULED_TASK_TIME, "hours", "Inside matching plans (union; selected basis)"),
+        MeasureSpec(Measure.OUTSIDE_SCHEDULED_TASK_TIME, "hours", "Outside matching plans (union; selected basis)"),
+        MeasureSpec(Measure.PLAN_FILL, "hours", "Plan fill (non-additive; selected basis)"),
+        MeasureSpec(Measure.RECORDED_TASK_TIME, "hours", "Recorded task time (union; typed work only)"),
+        MeasureSpec(Measure.ELAPSED_RECORDED_TIME, "hours", "Elapsed recorded time (union; typed work only)"),
+        MeasureSpec(Measure.UNASSIGNED_RECORDED_TIME, "hours", "Unassigned recorded time (union; non-additive)"),
+    ),
+    dimensions=_dimensions(DimensionSpec(Dimension.PLAN_ID, "Plan"), DimensionSpec(Dimension.TASK, "Task")),
+    filter_fields=_filters(FilterSpec(FilterField.TASK, "Work task")),
+)

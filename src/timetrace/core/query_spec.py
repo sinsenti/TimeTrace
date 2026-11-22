@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class QuerySource(StrEnum):
+    RECORDED_WORK = "recorded_work"
     SESSIONS = "sessions"
     TASKS = "tasks"
     HABIT_LOGS = "habit_logs"
@@ -21,6 +22,12 @@ class QuerySource(StrEnum):
 
 
 class Measure(StrEnum):
+    INSIDE_SCHEDULED_TASK_TIME = "inside_scheduled_task_time"
+    OUTSIDE_SCHEDULED_TASK_TIME = "outside_scheduled_task_time"
+    PLAN_FILL = "plan_fill"
+    RECORDED_TASK_TIME = "recorded_task_time"
+    ELAPSED_RECORDED_TIME = "elapsed_recorded_time"
+    UNASSIGNED_RECORDED_TIME = "unassigned_recorded_time"
     SUM_DURATION = "sum_duration"  # hours
     SESSION_COUNT = "session_count"  # count
     AVG_SESSION_LENGTH = "avg_session_length"  # minutes
@@ -36,6 +43,7 @@ class Measure(StrEnum):
 
 
 class Dimension(StrEnum):
+    PLAN_ID = "plan_id"
     DAY = "day"
     WEEK = "week"
     MONTH = "month"
@@ -170,6 +178,8 @@ class AnalyticsQuery(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     source: QuerySource
+    plan_ids: list[str] = Field(default_factory=list, max_length=500)
+    plan_basis: str | None = None
     measure: Measure
     group_by: list[Dimension] = Field(default_factory=list, max_length=2)
     filters: list[QueryFilter] = Field(default_factory=list, max_length=20)

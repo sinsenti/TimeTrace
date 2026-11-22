@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 OLD = "0013_ai_data_scope"
 FOUNDATION = "0014_agenda_foundation"
-HEAD = "0015_typed_recurrence"
+HEAD = "0016_recorded_work_index"
 TASK = "00000000-0000-7000-8000-000000000001"
 LOG = "00000000-0000-7000-8000-000000000002"
 WHEN = "2000-01-04 14:00:00.000000"
@@ -266,7 +266,7 @@ try:
         health = client.get('/health')
         raise AssertionError(f'daemon started with truncated migrations: /health {health.status_code}')
 except RuntimeError as exc:
-    assert '0015_typed_recurrence' in str(exc), str(exc)
+    assert '0016_recorded_work_index' in str(exc), str(exc)
     assert 'complete TimeTrace' in str(exc), str(exc)
 assert opened_databases == [], opened_databases
 """
@@ -474,3 +474,42 @@ assert client.get(log_path).json() == dict(log_before, task_id=None)
         )
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
         assert conn.execute("SELECT target_type, target_id FROM ratingentry").fetchone() == ("session", LOG)
+
+
+@pytest.mark.parametrize("copied", [False, True])
+def test_recorded_work_range_index_fresh_and_consistent_synthetic_copy(tmp_path, copied):
+    source = tmp_path / "source.sqlite"
+    target = tmp_path / "target.sqlite"
+    before = None
+    if copied:
+        run_on(source, "-m", "alembic", "upgrade", "0015_typed_recurrence")
+        with closing(sqlite3.connect(source)) as conn:
+            seed_old(conn)
+            conn.commit()
+            before = {
+                table: conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall()
+                for table in (
+                    "session",
+                    "task",
+                    "recurrenceexception",
+                    "ratingentry",
+                    "aiaudit",
+                    "aidraftitem",
+                    "dashboardwidget",
+                )
+            }
+            with closing(sqlite3.connect(target)) as backup:
+                conn.backup(backup)
+    run_on(target, "-m", "alembic", "upgrade", "head")
+    with closing(sqlite3.connect(target)) as conn:
+        assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0016_recorded_work_index",)
+        plan = conn.execute(
+            "EXPLAIN QUERY PLAN SELECT id FROM session WHERE kind='recorded_work' "
+            "AND start_time>=? AND start_time<? AND end_time<=?",
+            (WHEN, END, END),
+        ).fetchall()
+        assert "SEARCH session USING INDEX ix_session_kind_interval" in str(plan)
+        if before:
+            for table, rows in before.items():
+                assert conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall() == rows

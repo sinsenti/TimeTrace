@@ -887,3 +887,13 @@ shared native workflows, explicit owner acceptance and whole25 gates remain open
 Candidate15completed/10open adds18 only; authoritative integratione0c6989 remains14/11 pending
 TWO fresh closure metadata axes, parent disposition and integration. Historical checkpoints remain;
 spec stays Approved, not Built. No new tests/runtime/Git writes/provider/personalDB/cleanup operations.
+
+
+### Manual recorded work (Agenda #3)
+
+The Folio Agenda at `/agenda-view` supports explicit manual work separately from plans, including
+past plans. See [the capability contract](agenda-contract.md#3-implemented-query-capability-boundary)
+for typed routes, validation/warnings, explicit association and bounded union progress. Existing
+Timer v1 and legacy session callers remain uncertain; the new source excludes them. Task accounting
+is unchanged alongside the new labels. Work edits/reassignment and custom union widgets are not
+implemented. Query cohorts are whole intervals selected by local start day, never midnight clipping.

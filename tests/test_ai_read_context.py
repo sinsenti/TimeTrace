@@ -415,3 +415,8 @@ def test_validation_reserves_protected_targets_but_replaces_editable_legacy(clie
         assert any("Reserved commitment" in error and "overlaps" in error for error in check["errors"])
         assert any("exceeds daily limit 90" in error for error in check["errors"])
         assert any("cannot edit" in error and "Choose another time" in error for error in check["errors"])
+
+
+def test_new_human_recorded_work_query_source_remains_outside_ai_allowlist(gateway):
+    with pytest.raises(ValidationError, match="unsupported source"):
+        gateway.get_time_stats({"source": "recorded_work", "measure": "recorded_task_time"})
