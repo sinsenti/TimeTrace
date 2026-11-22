@@ -246,7 +246,7 @@ The independent full-range scalar is not a sum of overlapping day/category/task/
   Scheduled/remaining/live values are not completed union credit; legacy history remains excluded.
 
 No schema change is required for these widgets; the existing typed-record interval index and
-minimum schema revision `0016_recorded_work_interval_index` remain in place.
+minimum schema revision `0016_recorded_work_index` remain in place.
 Regression coverage: `tests/test_recorded_work_widgets.py`, `tests/test_recorded_work.py`, and
 `tests/test_performed_time_widget.cjs` (owned DOM adapter, not physical browser input).
 

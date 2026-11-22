@@ -3,6 +3,65 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def restore_daemon_zone(monkeypatch):
+    yield
+    import time
+
+    import timetrace.core.timezones as zones
+
+    monkeypatch.undo()
+    time.tzset()
+    zones._reset_caches()
+
+
+def test_recorded_week_start_and_daemon_timezone_fallback_are_explicit(client, monkeypatch):
+    import time
+
+    import timetrace.core.timezones as zones
+
+    with monkeypatch.context() as patch:
+        patch.setenv("TZ", "UTC")
+        time.tzset()
+        zones._reset_caches()
+        try:
+            assert (
+                client.post(
+                    "/recorded-work",
+                    json={
+                        "start_time": "2000-01-04T23:30:00Z",
+                        "end_time": "2000-01-05T00:30:00Z",
+                    },
+                ).status_code
+                == 201
+            )
+            for week_start, expected in [(1, "2000-01-03"), (0, "2000-01-02")]:
+                response = client.post(
+                    "/analytics/query",
+                    json={
+                        "timezone": "America/New_York",
+                        "first_day_of_week": week_start,
+                        "query": {
+                            "source": "recorded_work",
+                            "measure": "elapsed_recorded_time",
+                            "group_by": ["week"],
+                            "date_range": {"preset": "custom", "start_date": "2000-01-04", "end_date": "2000-01-04"},
+                        },
+                    },
+                )
+                assert response.status_code == 200, response.text
+                result = response.json()
+                assert result["total"] == 1
+                assert result["rows"][0]["keys"] == [expected]
+                assert result["meta"]["timezone"] == "UTC"
+                assert result["meta"]["first_day_of_week"] == week_start
+                assert result["meta"]["warnings"]
+        finally:
+            patch.undo()
+            time.tzset()
+            zones._reset_caches()
+
+
 def test_advertised_measure_dimension_matrix_executes_through_public_query(client):
     from itertools import combinations
 
