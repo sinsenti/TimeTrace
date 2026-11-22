@@ -11,6 +11,7 @@ from timetrace.interfaces.api.routers.tasks import router as tasks_router
 from timetrace.interfaces.api.routers.tasks import task_reviews_router
 from timetrace.interfaces.api.routers.timer import idle_router
 from timetrace.interfaces.api.routers.timer import router as timer_router
+from timetrace.interfaces.api.routers.timers import router as timers_router
 
 api_router = APIRouter()
 
@@ -19,6 +20,7 @@ api_router.include_router(tasks_router)
 api_router.include_router(task_reviews_router)
 api_router.include_router(sessions_router)
 api_router.include_router(timer_router)
+api_router.include_router(timers_router)
 api_router.include_router(idle_router)
 api_router.include_router(revision_router)
 api_router.include_router(ratings_router)
