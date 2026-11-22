@@ -1,5 +1,6 @@
 """Singular compatibility adapters; all mutations use the targeted durability funnel."""
 
+from datetime import UTC, datetime
 from uuid import uuid7
 
 from timetrace.core.exceptions import ConflictError
@@ -39,7 +40,14 @@ class TimerService:
         if not timer:
             upcoming = SessionService(self.db).next_upcoming_occurrence()
             if upcoming:
-                upcoming = {"title": upcoming["title"], "start_time": upcoming["start_time"].isoformat()}
+                start = upcoming["start_time"]
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=UTC)
+                upcoming = {
+                    "title": upcoming["title"],
+                    "start_time": start.isoformat(),
+                    "starts_in_minutes": max(1, int((start - datetime.now(UTC)).total_seconds() / 60)),
+                }
         return {
             **timer,
             "is_running": timer.get("state") == "running",

@@ -46,6 +46,10 @@ def observe_timer_activity(idle_seconds):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    with Session(engine) as db:
+        MultipleTimerService(db).reconcile()
     # init_db() -> run_migrations() -> alembic's env.py calls logging.config.fileConfig() against
     # alembic.ini, which sets the ROOT logger to level=WARN with its own handler+formatter
     # (alembic.ini's [logger_root]/[handler_console] sections) -- silently overriding the INFO

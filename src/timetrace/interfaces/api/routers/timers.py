@@ -1,7 +1,7 @@
 """Additive targeted timer HTTP interface."""
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 from sqlmodel import Session
 
 from timetrace.db.session import get_session
@@ -11,7 +11,8 @@ router = APIRouter(tags=["Timers"])
 
 
 class StartTimer(BaseModel):
-    operation_id: str
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(min_length=1, max_length=128)
     task_id: str | None = None
     tags: str = ""
     notes: str = ""
@@ -24,7 +25,8 @@ class StartTimer(BaseModel):
 
 
 class TimerMutation(BaseModel):
-    operation_id: str
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(min_length=1, max_length=128)
     expected_revision: int | None = None
     new_tags: str = ""
     new_notes: str = ""
@@ -35,6 +37,11 @@ class TimerMutation(BaseModel):
 @router.post("/timers/{timer_id}/{action}")
 def mutate_timer(timer_id: str, action: str, req: TimerMutation, db: Session = Depends(get_session)):
     return MultipleTimerService(db).mutate(action, timer_id, req.model_dump())
+
+
+@router.get("/timers/{timer_id}")
+def get_timer(timer_id: str, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).get_timer(timer_id)
 
 
 @router.get("/operations/{operation_id}")

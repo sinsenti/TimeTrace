@@ -259,15 +259,9 @@ def summary_stats():
 
 @cli_app.command("tasks")
 def list_tasks_cli(
-    status_filter: str = typer.Option(
-        "all", "--status", "-s", help="Filter status: all, To Do, Ongoing, Scheduled, Done, Backlog"
-    ),
-    category_filter: str = typer.Option(
-        "all", "--category", "-c", help="Filter category: all, work, family, personal, study"
-    ),
-    sort_by: str = typer.Option(
-        "smart_gap_filler", "--sort", "-o", help="Sort by: smart_gap_filler, priority, created_at, title"
-    ),
+    status_filter: str = typer.Option("all", "--status", "-s", help="Filter status: all, To Do, Ongoing, Scheduled, Done, Backlog"),
+    category_filter: str = typer.Option("all", "--category", "-c", help="Filter category: all, work, family, personal, study"),
+    sort_by: str = typer.Option("smart_gap_filler", "--sort", "-o", help="Sort by: smart_gap_filler, priority, created_at, title"),
 ):
     """List tasks with filtering and sorting."""
     ensure_daemon_running()
@@ -338,9 +332,7 @@ def add_task(
         if res.status_code == 201:
             task = res.json()
             parent_msg = f" (Subtask of #{short_id(parent_id)})" if parent_id else ""
-            print(
-                f"Created Task #{short_id(task['id'])}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]"
-            )
+            print(f"Created Task #{short_id(task['id'])}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]")
         else:
             print("Failed to create task.")
 

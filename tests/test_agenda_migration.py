@@ -512,4 +512,6 @@ def test_recorded_work_range_index_fresh_and_consistent_synthetic_copy(tmp_path,
         assert "SEARCH session USING INDEX ix_session_kind_interval" in str(plan)
         if before:
             for table, rows in before.items():
-                assert conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall() == rows
+                expected = [(*row, None, None, None) for row in rows] if table == "session" else rows
+                assert conn.execute(f"SELECT * FROM {table} ORDER BY id").fetchall() == expected
+        assert conn.execute("SELECT count(*) FROM mutation_operation").fetchone() == (0,)

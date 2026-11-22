@@ -4,9 +4,21 @@ import fcntl
 import json
 import os
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from uuid import uuid7
+
+from timetrace.core.exceptions import ConflictError
+
+
+def utc_iso(value):
+    if value is None:
+        return None
+    instant = datetime.fromisoformat(value)
+    if instant.tzinfo is None:
+        instant = instant.replace(tzinfo=UTC)
+    return instant.astimezone(UTC).isoformat()
 
 
 class TimerStore:
@@ -26,11 +38,34 @@ class TimerStore:
     def read(self):
         if not self.path.exists():
             return {"version": 2, "revision": 0, "timers": {}, "pending_operation": None}
-        state = json.loads(self.path.read_text(encoding="utf-8"))
+        try:
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+        except (ValueError, TypeError) as exc:
+            raise ConflictError(
+                "Timer JSON is corrupt; preserve it for recovery.", code="reconciliation_required"
+            ) from exc
+        if not isinstance(state, dict):
+            raise ConflictError("Timer state is not an object.", code="reconciliation_required")
         if state.get("version") == 2:
+            if (
+                not isinstance(state.get("revision"), int)
+                or state["revision"] < 0
+                or not isinstance(state.get("timers"), dict)
+                or "pending_operation" not in state
+            ):
+                raise ConflictError("Timer generation/state is invalid.", code="reconciliation_required")
+            for timer_id, timer in state["timers"].items():
+                if (
+                    not isinstance(timer, dict)
+                    or timer.get("id") != timer_id
+                    or timer.get("state") not in {"running", "paused", "frozen", "stopped"}
+                    or not isinstance(timer.get("segments"), list)
+                    or not isinstance(timer.get("idle_gaps"), list)
+                ):
+                    raise ConflictError("Timer identity/state is invalid.", code="reconciliation_required")
             return state
         if "is_running" not in state:
-            raise ValueError("Unknown timer state format; refusing to overwrite.")
+            raise ConflictError("Unknown timer format; refusing to overwrite.", code="reconciliation_required")
         backup = TimerStore(self.path.with_suffix(".v1.backup"))
         if not backup.path.exists():
             backup.write(state)
@@ -55,7 +90,9 @@ class TimerStore:
                 "mode": state.get("mode", "flowtime"),
                 "target_minutes": state.get("target_minutes"),
                 "pause_when_idle": True,
-                "running_start": state.get("start_time") if state.get("is_running") else None,
+                "running_start": utc_iso(state.get("start_time"))
+                if state.get("is_running") and not state.get("is_frozen_idle")
+                else None,
                 "segments": [],
                 "idle_gaps": [],
                 "legacy_payload": state,
@@ -69,8 +106,8 @@ class TimerStore:
                     timer["segments"].append(
                         {
                             "id": str(uuid7()),
-                            "start_time": saved["start_time"],
-                            "end_time": saved["end_time"],
+                            "start_time": utc_iso(saved["start_time"]),
+                            "end_time": utc_iso(saved["end_time"]),
                             "task_id": timer["task_id"],
                             "scheduled_session_id": None,
                             "tags": saved.get("tags", timer["tags"]),
@@ -80,7 +117,7 @@ class TimerStore:
                 timer["idle_gaps"].append(
                     {
                         "id": str(uuid7()),
-                        "onset": gap.get("idle_start"),
+                        "onset": utc_iso(gap.get("idle_start")),
                         "return_at": None,
                         "decision": None,
                         "boundary_source": "legacy_uncertain",

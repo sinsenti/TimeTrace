@@ -150,6 +150,31 @@ const agendaPage = (() => {
         if (row.kind === 'scheduled_session') {
             add(row.is_virtual ? 'Original plan (provisional)' : 'Original plan', interval(row.original_start, row.original_end));
             add('Current schedule', interval(row.start_time, row.end_time));
+            const start = make('button', 'Start working');
+            start.type = 'button';
+            start.disabled = !row.task_id;
+            if (!row.task_id) start.title = 'Assign a task before linking a plan timer. Unassigned timers are available above.';
+            start.addEventListener('click', async () => {
+                const capturedOwner = owner;
+                if (!window.multipleTimers || capturedOwner?.pending) return;
+                start.disabled = true;
+                const payload = {task_id:row.task_id, tags:row.tags || '', notes:row.notes || '', scheduled_session_id:row.id};
+                if (row.is_virtual) payload.expected_projection_revision = row.projection_revision;
+                else payload.expected_plan_revision = row.revision;
+                try {
+                    const acknowledged = await window.multipleTimers.start(payload);
+                    const result = window.multipleTimers.snapshot().lastResult;
+                    if (acknowledged && result?.captured_plan_id && owner === capturedOwner) {
+                        // Adopt the committed UUID before any refresh; preserve newer form inputs.
+                        owner.row = {...row, id:result.captured_plan_id, is_virtual:false};
+                        try { owner.row = await api.get(`/scheduled-sessions/${encodeURIComponent(result.captured_plan_id)}`); }
+                        catch (_) { get('edit-status').textContent = 'Timer started; plan refresh failed. Refresh reads only.'; }
+                        details(owner.row);
+                    }
+                    if (acknowledged) await refresh();
+                } finally { if (start.isConnected) start.disabled = false; }
+            });
+            root.appendChild(start);
         } else {
             add('Interval', interval(row.start_time, row.end_time));
             if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');

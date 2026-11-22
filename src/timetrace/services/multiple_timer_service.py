@@ -13,8 +13,9 @@ from sqlmodel import select
 
 from timetrace.config import settings
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
+from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
-from timetrace.db.models import MutationOperation, ScheduledSession, Task
+from timetrace.db.models import MutationOperation, RecurrenceException, ScheduledSession, Task
 from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.schemas import RecordedWorkCreate
 from timetrace.services.session_service import SessionService
@@ -29,6 +30,38 @@ class MultipleTimerService:
             Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "active_timer.json"))
         )
 
+    def unfinished_for_plan(self, plan_id):
+        """Read while holding SQLite's writer lock for a destructive/extension manifest.
+
+        Includes current context, uncommitted segment contexts and unresolved gap contexts.
+        Pending intent's after-state is included conservatively; this method never reconciles
+        or writes while a caller holds SQLite, avoiding lock inversion.
+        """
+        if not self.store.path.exists():
+            return []
+        try:
+            state = json.loads(self.store.path.read_text(encoding="utf-8"))
+            if state.get("version") != 2:
+                return []  # V1 has no scheduled-plan associations.
+            states = [state]
+            if state.get("pending_operation"):
+                states.append(json.loads(state["pending_operation"]["after_state_json"]))
+            found = {}
+            for snapshot in states:
+                for timer in snapshot["timers"].values():
+                    if timer["state"] == "stopped":
+                        continue
+                    contexts = [
+                        timer,
+                        *[s for s in timer["segments"] if not s.get("recorded_work_id")],
+                        *[g for g in timer["idle_gaps"] if g.get("decision") is None],
+                    ]
+                    if any(c.get("scheduled_session_id") == plan_id for c in contexts):
+                        found[timer["id"]] = deepcopy(timer)
+            return list(found.values())
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ConflictError("Timer association state cannot be verified.", code="reconciliation_required") from exc
+
     def has_task_context(self, task_ids):
         """Conservative read for a caller already holding the SQLite writer lock.
 
@@ -41,16 +74,20 @@ class MultipleTimerService:
             state = json.loads(self.store.path.read_text(encoding="utf-8"))
             if state.get("version") != 2:
                 return state.get("task_id") in task_ids and (state.get("is_running") or state.get("is_frozen_idle"))
-            for timer in state["timers"].values():
-                if timer["state"] == "stopped":
-                    continue
-                contexts = [
-                    timer,
-                    *[s for s in timer["segments"] if not s.get("recorded_work_id")],
-                    *[g for g in timer["idle_gaps"] if g.get("decision") is None],
-                ]
-                if any(c.get("task_id") in task_ids for c in contexts):
-                    return True
+            snapshots = [state]
+            if state.get("pending_operation"):
+                snapshots.append(json.loads(state["pending_operation"]["after_state_json"]))
+            for snapshot in snapshots:
+                for timer in snapshot["timers"].values():
+                    if timer["state"] == "stopped":
+                        continue
+                    contexts = [
+                        timer,
+                        *[s for s in timer["segments"] if not s.get("recorded_work_id")],
+                        *[g for g in timer["idle_gaps"] if g.get("decision") is None],
+                    ]
+                    if any(c.get("task_id") in task_ids for c in contexts):
+                        return True
             return False
         except (ValueError, KeyError, TypeError) as exc:
             raise ConflictError("Timer state cannot be verified.", code="reconciliation_required") from exc
@@ -78,6 +115,17 @@ class MultipleTimerService:
                 "idle_detection_enabled": state.get("idle_detection_enabled", settings.idle_detection_enabled),
             }
 
+    def get_timer(self, timer_id):
+        status = self.list_timers()
+        found = next((t for t in status["timers"] if t["id"] == timer_id), None)
+        if found:
+            return found
+        with _writes, self.store.locked():
+            timer = self.store.read()["timers"].get(timer_id)
+            if timer is None:
+                raise EntityNotFoundError("Timer", timer_id)
+            return deepcopy(timer)
+
     @staticmethod
     def select_one(timers):
         if len(timers) > 1:
@@ -88,6 +136,15 @@ class MultipleTimerService:
         if not timers:
             raise TimerError("No timer is currently active.")
         return timers[0]
+
+    def reconcile(self):
+        """Startup barrier: recover fixed transitions without inventing activity or cutoffs."""
+        with _writes, self.store.locked():
+            try:
+                return self._reconcile()["revision"]
+            except Exception:
+                self.db.rollback()
+                raise
 
     def operation(self, operation_id):
         with _writes, self.store.locked():
@@ -117,7 +174,7 @@ class MultipleTimerService:
         return self.mutate("activity", None, {"operation_id": str(uuid7()), "idle_seconds": idle_seconds})
 
     def mutate(self, action, timer_id, payload):
-        payload = {"action": action, "timer_id": timer_id, **payload}
+        payload = {**payload, "action": action, "timer_id": timer_id}
         operation_id = payload["operation_id"]
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         with _writes, self.store.locked():
@@ -132,8 +189,9 @@ class MultipleTimerService:
                 cutoff = datetime.now(UTC).isoformat()
                 after = deepcopy(state)
                 task_deletion = None
+                plan_capture = None
                 if action == "start":
-                    timer, selected = self._start(after, payload, cutoff)
+                    timer, selected, plan_capture = self._start(after, payload, cutoff)
                 elif action == "delete_tasks":
                     task_deletion = self._prepare_task_deletion(after, payload)
                     timer, selected = None, False
@@ -165,6 +223,7 @@ class MultipleTimerService:
                         raise TimerError("Timer is stopped.")
                     if action != "resolve" and any(g.get("decision") is None for g in timer["idle_gaps"]):
                         raise ConflictError("Resolve idle gaps first.", code="idle_gap_unresolved")
+                    continue_running = timer["state"] == "running"
                     if action in ("pause", "stop", "split"):
                         self._close_segment(timer, cutoff)
                         timer["state"] = "paused"
@@ -190,8 +249,8 @@ class MultipleTimerService:
                     else:
                         timer["tags"] = payload.get("new_tags", "")
                         timer["notes"] = payload.get("new_notes", "")
-                        timer["state"] = "running"
-                        timer["running_start"] = cutoff
+                        timer["state"] = "running" if continue_running else "paused"
+                        timer["running_start"] = cutoff if continue_running else None
                 after["revision"] += 1
                 information = []
                 if action == "start":
@@ -225,7 +284,12 @@ class MultipleTimerService:
                     "result_json": json.dumps(result),
                     "work": work,
                     "task_deletion": task_deletion,
+                    "plan_capture": plan_capture,
                 }
+                if plan_capture:
+                    result["captured_plan_id"] = plan_capture["id"]
+                    result["requested_scheduled_session_id"] = payload["scheduled_session_id"]
+                    intent["result_json"] = json.dumps(result)
                 if task_deletion:
                     result["deleted_count"] = len(task_deletion["root_ids"])
                     intent["result_json"] = json.dumps(result)
@@ -272,9 +336,28 @@ class MultipleTimerService:
             None,
         )
         if existing:
-            return existing, True
+            return existing, True, None
+        capture = None
         plan_id = payload.get("scheduled_session_id")
-        if plan_id:
+        if plan_id and is_occurrence_id(plan_id):
+            occurrence = SessionService(self.db).recurrence.projected_occurrence(plan_id, planning=True)
+            if occurrence.projection_revision != payload.get("expected_projection_revision"):
+                raise ConflictError("Projection changed.", code="projection_stale")
+            if task_id is None or task_id != occurrence.task_id:
+                raise ConflictError("Association requires equal non-null tasks.", code="association_task_conflict")
+            plan_id = str(uuid7())
+            capture = {
+                "id": plan_id,
+                "task_id": task_id,
+                "original_start": occurrence.start_utc.isoformat(),
+                "original_end": occurrence.end_utc.isoformat(),
+                "start_time": occurrence.start_utc.isoformat(),
+                "end_time": occurrence.end_utc.isoformat(),
+                "tags": occurrence.tags,
+                "projection_id": payload["scheduled_session_id"],
+                "projection_revision": occurrence.projection_revision,
+            }
+        elif plan_id:
             plan = self.db.get(ScheduledSession, plan_id)
             if plan is None:
                 raise EntityNotFoundError("Scheduled session", plan_id)
@@ -299,7 +382,7 @@ class MultipleTimerService:
             "idle_gaps": [],
         }
         after["timers"][timer["id"]] = timer
-        return timer, False
+        return timer, False, capture
 
     def _activity(self, after, idle_seconds, cutoff):
         now = datetime.fromisoformat(cutoff)
@@ -385,6 +468,27 @@ class MultipleTimerService:
         lock_sqlite_writer(self.db)
         receipt = self.db.get(MutationOperation, intent["id"])
         if receipt is None:
+            capture = intent.get("plan_capture")
+            if capture:
+                occurrence = SessionService(self.db).recurrence.projected_occurrence(
+                    capture["projection_id"], planning=True
+                )
+                if occurrence.projection_revision != capture["projection_revision"]:
+                    raise ConflictError("Pending projection capture changed.", code="reconciliation_required")
+                self.db.add(
+                    ScheduledSession.model_validate(
+                        {k: v for k, v in capture.items() if k not in {"projection_id", "projection_revision"}}
+                    )
+                )
+                self.db.flush()
+                self.db.add(
+                    RecurrenceException(
+                        task_id=capture["task_id"],
+                        occurrence_start=occurrence.start_utc,
+                        kind="override",
+                        scheduled_session_id=capture["id"],
+                    )
+                )
             deletion = intent.get("task_deletion")
             if deletion:
                 from timetrace.services.task_service import TaskService
@@ -416,7 +520,9 @@ class MultipleTimerService:
                         "timer_segment_id": segment["id"],
                     },
                 )
-            receipt = MutationOperation(**{k: v for k, v in intent.items() if k not in {"work", "task_deletion"}})
+            receipt = MutationOperation(
+                **{k: v for k, v in intent.items() if k not in {"work", "task_deletion", "plan_capture"}}
+            )
             self.db.add(receipt)
             self.db.commit()
         current = self.store.read()

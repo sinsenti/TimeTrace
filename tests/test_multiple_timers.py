@@ -238,6 +238,215 @@ def test_task_delete_detaches_unfinished_timer_and_preserves_recorded_history(cl
         assert client.get(f"/recorded-work/{work_id}").json()["task_id"] is None
 
 
+def test_start_projected_plan_captures_originals_with_stable_timer_association(client, tmp_path, monkeypatch):
+    from datetime import UTC, datetime, timedelta
+
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    start = (datetime.now(UTC) + timedelta(days=1)).replace(hour=9, minute=0, second=0, microsecond=0)
+    task_response = client.post(
+        "/api/tasks",
+        json={
+            "title": "Recurring writing",
+            "is_recurring": True,
+            "recurrence_rrule": "FREQ=DAILY",
+            "recurrence_dtstart": start.isoformat(),
+            "recurrence_duration_minutes": 30,
+            "recurrence_timezone": "UTC",
+        },
+    )
+    assert task_response.status_code == 201, task_response.text
+    task = task_response.json()
+    agenda = client.get("/agenda", params={"start": start.isoformat(), "end": (start + timedelta(hours=1)).isoformat()})
+    assert agenda.status_code == 200, agenda.text
+    plan = next(p for p in agenda.json()["items"] if p["task_id"] == task["id"])
+    assert plan["is_virtual"] is True
+    payload = {
+        "operation_id": str(uuid4()),
+        "task_id": task["id"],
+        "scheduled_session_id": plan["id"],
+        "expected_projection_revision": plan["projection_revision"],
+    }
+    response = client.post("/timers", json=payload)
+    assert response.status_code == 200, response.text
+    result = response.json()
+    real_id = result["timer"]["scheduled_session_id"]
+    assert not real_id.startswith("virt:")
+    assert client.post("/timers", json=payload).json() == result
+    real = client.get(f"/scheduled-sessions/{real_id}").json()
+    assert real["original_start"] == plan["original_start"]
+    assert real["original_end"] == plan["original_end"]
+
+
+@pytest.mark.parametrize(
+    "boundary", ["intent_directory_fsync", "database_commit", "post_state_directory_fsync", "finalization_commit"]
+)
+def test_fixed_stop_reconciles_every_persistence_boundary(client, db, tmp_path, monkeypatch, boundary):
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    timer = client.post("/timers", json={"operation_id": str(uuid4())}).json()["timer"]
+    commit, fsync = db.commit, os.fsync
+    commits = syncs = 0
+
+    def commit_fault():
+        nonlocal commits
+        commits += 1
+        if (boundary == "database_commit" and commits == 1) or (boundary == "finalization_commit" and commits == 2):
+            raise OSError("injected durable boundary")
+        commit()
+
+    def fsync_fault(fd):
+        nonlocal syncs
+        syncs += 1
+        if (boundary == "intent_directory_fsync" and syncs == 2) or (
+            boundary == "post_state_directory_fsync" and syncs == 4
+        ):
+            raise OSError("injected durable boundary")
+        fsync(fd)
+
+    monkeypatch.setattr(db, "commit", commit_fault)
+    monkeypatch.setattr(os, "fsync", fsync_fault)
+    operation = {"operation_id": str(uuid4())}
+    with pytest.raises(OSError, match="injected durable boundary"):
+        client.post(f"/timers/{timer['id']}/stop", json=operation)
+    assert client.get(f"/operations/{operation['operation_id']}").json()["status"] == "pending_reconciliation"
+    monkeypatch.setattr(db, "commit", commit)
+    monkeypatch.setattr(os, "fsync", fsync)
+    # Startup's public barrier must recover without recalculating the stop cutoff.
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    MultipleTimerService(db).reconcile()
+    result = client.post(f"/timers/{timer['id']}/stop", json=operation)
+    assert result.status_code == 200, result.text
+    assert len(result.json()["recorded_work_ids"]) == 1
+    assert len(client.get("/sessions").json()) == 1
+    assert client.post(f"/timers/{timer['id']}/stop", json=operation).json() == result.json()
+    assert client.get(f"/operations/{operation['operation_id']}").json()["status"] == "finalized"
+
+
+def test_concurrent_process_starts_select_one_assigned_timer(tmp_path):
+    env = {
+        **os.environ,
+        "TIMETRACE_DB_FILE": str(tmp_path / "concurrent.db"),
+        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "timers.json"),
+        "HOME": str(tmp_path / "home"),
+        "TMPDIR": str(tmp_path),
+    }
+    setup = """
+from fastapi.testclient import TestClient
+from timetrace.db.session import init_db
+from timetrace.main import create_daemon_app
+init_db()
+c = TestClient(create_daemon_app())
+r = c.post("/api/tasks", json={"title":"Concurrent task"})
+assert r.status_code == 201, r.text
+print(r.json()["id"])
+"""
+    task = subprocess.run(
+        [sys.executable, "-P", "-c", setup], env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    worker = """
+import json, sys
+from uuid import uuid4
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+c = TestClient(create_daemon_app())
+r = c.post("/timers", json={"operation_id":str(uuid4()),"task_id":sys.argv[1]})
+assert r.status_code == 200, r.text
+print(json.dumps(r.json()))
+"""
+    children = [
+        subprocess.Popen(
+            [sys.executable, "-P", "-c", worker, task],
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        for _ in range(2)
+    ]
+    results = []
+    for child in children:
+        stdout, stderr = child.communicate(timeout=60)
+        assert child.returncode == 0, stderr
+        results.append(json.loads(stdout))
+    assert results[0]["timer"]["id"] == results[1]["timer"]["id"]
+    assert sorted(r["selected_existing"] for r in results) == [False, True]
+
+
+@pytest.mark.parametrize("boundary", ["before_db", "after_db", "after_replace", "after_finalization"])
+def test_process_crash_stop_replays_fixed_transaction_once(tmp_path, boundary):
+    env = {
+        **os.environ,
+        "TIMETRACE_DB_FILE": str(tmp_path / "crash.db"),
+        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "timers.json"),
+        "HOME": str(tmp_path / "home"),
+        "TMPDIR": str(tmp_path),
+        "TIMETRACE_IDLE_DETECTION_ENABLED": "false",
+    }
+    setup = """
+from fastapi.testclient import TestClient
+from timetrace.db.session import init_db
+from timetrace.main import create_daemon_app
+from uuid import uuid4
+init_db()
+c = TestClient(create_daemon_app())
+r = c.post("/timers",json={"operation_id":str(uuid4())})
+assert r.status_code == 200, r.text
+print(r.json()["timer"]["id"])
+"""
+    timer_id = subprocess.run(
+        [sys.executable, "-P", "-c", setup], env=env, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    operation = str(uuid4())
+    crash = """
+import os,sys
+from fastapi.testclient import TestClient
+from sqlmodel import Session
+from timetrace.main import create_daemon_app
+boundary, timer_id, operation = sys.argv[1:]
+commit, replace = Session.commit, os.replace
+commits = replacements = 0
+def crash_commit(self):
+    global commits
+    commits += 1
+    if boundary == "before_db" and commits == 1: os._exit(91)
+    result = commit(self)
+    if (boundary == "after_db" and commits == 1) or (boundary == "after_finalization" and commits == 2): os._exit(91)
+    return result
+def crash_replace(source,destination):
+    global replacements
+    replacements += 1
+    result = replace(source,destination)
+    if boundary == "after_replace" and replacements == 2: os._exit(91)
+    return result
+Session.commit, os.replace = crash_commit, crash_replace
+c = TestClient(create_daemon_app())
+c.post(f"/timers/{timer_id}/stop",json={"operation_id":operation})
+raise AssertionError("crash boundary not reached")
+"""
+    failed = subprocess.run(
+        [sys.executable, "-P", "-c", crash, boundary, timer_id, operation], env=env, capture_output=True, text=True
+    )
+    assert failed.returncode == 91, failed.stderr
+    recovery = """
+import json,sys
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+with TestClient(create_daemon_app()) as c:
+    timer_id, operation = sys.argv[1:]
+    receipt = c.get(f"/operations/{operation}").json()
+    assert receipt["status"] == "finalized", receipt
+    r = c.post(f"/timers/{timer_id}/stop", json={"operation_id":operation})
+    assert r.status_code == 200, r.text
+    assert len(c.get("/sessions").json()) == 1
+    assert c.get("/timers").json()["timers"] == []
+    print(json.dumps(r.json()))
+"""
+    result = subprocess.run(
+        [sys.executable, "-P", "-c", recovery, timer_id, operation], env=env, capture_output=True, text=True, check=True
+    )
+    assert len(json.loads(result.stdout)["recorded_work_ids"]) == 1
+
+
 def test_independent_timers_survive_process_restart(tmp_path):
     env = {
         **os.environ,

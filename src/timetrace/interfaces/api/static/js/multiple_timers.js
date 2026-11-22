@@ -1,10 +1,10 @@
 /** Targeted shared timers. Receipted writes are journaled before HTTP; refresh retries are reads. */
 function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID()}) {
     const key = 'timetrace_timer_v2_operation';
-    let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '';
+    let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '', lastResult = null;
     try { receipt = JSON.parse(storage.getItem(key) || 'null'); }
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message});
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult});
     const publish = () => onState(snapshot());
     async function refresh() {
         try {
@@ -31,6 +31,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             catch (_) { message = 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false; }
             if (!result?.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
             receipt.outcome = 'acknowledged';
+            lastResult = result;
             try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* The original fixed request remains retry-safe. */ }
             if (result.timer) timers = [...timers.filter(t => t.id !== result.timer.id), result.timer].filter(t => t.state !== 'stopped');
             message = (result.information || []).map(i => i.code === 'association_not_changed'
@@ -107,7 +108,7 @@ if (typeof window !== 'undefined') {
         window.multipleTimers = control;
         control.perform = async (operation, payload, stillCurrent = () => true) => {
             await control.refresh();
-            if (!stillCurrent()) return false;
+            if (!control.snapshot().fresh || !stillCurrent()) return false;
             const state = control.snapshot();
             if (operation === 'start' || (operation === 'toggle' && state.timers.length !== 1)) return control.start(payload || {});
             if (state.timers.length !== 1) { notice.textContent = 'Choose an explicit timer below; no action sent.'; return false; }
@@ -121,6 +122,10 @@ if (typeof window !== 'undefined') {
         api.get('/api/tasks').then(rows => {
             for (const task of rows) { const option = document.createElement('option'); option.value = task.id; option.textContent = task.title; tasks.append(option); }
         }).catch(() => { notice.textContent = 'Task list unavailable. Taskless timers remain available.'; });
+        window.addEventListener('timetrace:timer-mutated', () => {
+            if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
+            if (typeof agendaPage !== 'undefined') void agendaPage.refresh();
+        });
         control.refresh();
         control.recover();
         setInterval(() => { if (!control.snapshot().pending) control.refresh(); }, 3000);

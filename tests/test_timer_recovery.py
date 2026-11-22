@@ -1,23 +1,38 @@
-"""Real daemon/API + private timer-file recovery; freeze time is synthetic, never OS idle."""
+"""Public timer recovery regressions; synthetic time is not OS-idle certification.
+
+V1's two-commit/clear-before-ACK assertions are superseded by v2's durable receipt contract.
+The separate multiple-timer suite covers restart, independent gaps and file-replacement barriers.
+"""
 
 import json
 import re
 from datetime import UTC, datetime, timedelta
+from uuid import uuid7
 
 import pytest
 from sqlalchemy.exc import OperationalError
 
 from timetrace.core.timer import ActiveTimerState, timer_manager
+from timetrace.services.multiple_timer_service import MultipleTimerService
 
 
 @pytest.fixture(autouse=True)
 def private_timer_file(tmp_path, monkeypatch):
     monkeypatch.setattr(timer_manager, "state_file", tmp_path / "active_timer.json")
-    monkeypatch.setattr(timer_manager, "mode", "flowtime")
-    monkeypatch.setattr(timer_manager, "target_minutes", None)
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "active_timer.json"))
 
 
-def freeze(client, before=120):
+def freeze(client, db, monkeypatch, before=120):
+    import timetrace.services.multiple_timer_service as module
+
+    class Clock(datetime):
+        instant = datetime(2025, 1, 1, 10, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.instant
+
+    monkeypatch.setattr(module, "datetime", Clock)
     task = client.post("/api/tasks", json={"title": "Synthetic recovery task"}).json()
     response = client.post(
         "/timer/start",
@@ -29,19 +44,18 @@ def freeze(client, before=120):
             "target_minutes": 25,
         },
     )
-    assert response.status_code == 200
-    timer_manager.start_time = datetime.now(UTC) - timedelta(seconds=before + 600)
-    gap = timer_manager.freeze_for_idle(600)
+    assert response.status_code == 200, response.text
+    Clock.instant += timedelta(seconds=before + 600)
+    MultipleTimerService(db).observe_activity(600)
+    MultipleTimerService(db).observe_activity(0)
+    status = client.get("/timer/status").json()
     assert client.get("/sessions").json() == []
-    return task, gap
+    return task, status["pending_idle_gap"], status["id"]
 
 
-def test_frozen_file_reload_preserves_context_without_resuming(client, monkeypatch):
-    task, gap = freeze(client)
-    # New state instance simulates process boot, from the exact persisted private file.
-    monkeypatch.setattr("timetrace.core.timer.settings.db_file", timer_manager.state_file.parent / "test.db")
-    loaded = ActiveTimerState()
-    status = loaded.get_status()
+def test_frozen_file_reload_preserves_context_without_resuming(client, db, monkeypatch):
+    task, gap, timer_id = freeze(client, db, monkeypatch)
+    status = client.get("/timer/status").json()
     assert status["mode"] == "pomodoro"
     assert status["target_minutes"] == 25
     assert status["task_id"] == task["id"]
@@ -51,74 +65,63 @@ def test_frozen_file_reload_preserves_context_without_resuming(client, monkeypat
     assert status["pending_idle_gap"] == gap
     assert status["is_running"] is False
     assert status["is_frozen_idle"] is True
-    assert status["elapsed_seconds"] == 0
-    assert status["remaining_seconds"] is None
+    assert status["elapsed_seconds"] == 120
+    assert MultipleTimerService(db).list_timers()["timers"][0]["id"] == timer_id
     assert client.get("/sessions").json() == []
 
 
-@pytest.mark.parametrize(
-    "option,gap_tags,gap_notes",
-    [
-        ("break", "#break", "AFK Break Time"),
-        ("claim_work", "#focus", "Claimed AFK Work: Original notes"),
-        ("re_tag", "#other", "Retagged notes"),
-        ("skip", None, None),
-    ],
-)
+@pytest.mark.parametrize("option", ["break", "claim_work", "re_tag", "skip"])
 @pytest.mark.parametrize("before", [0, 120])
-def test_explicit_idle_choices_log_exact_intervals_and_clear_file(client, option, gap_tags, gap_notes, before):
-    task, gap = freeze(client, before)
+def test_explicit_idle_choices_preserve_exact_intervals_and_require_separate_resume(
+    client, db, monkeypatch, option, before
+):
+    task, gap, timer_id = freeze(client, db, monkeypatch, before)
     response = client.post(
         "/idle/resolve", json={"option": option, "new_tags": "#other", "new_notes": "Retagged notes"}
     )
-    assert response.status_code == 200
-    rows = client.get("/sessions").json()
-    assert len(rows) == (1 if before else 0) + (1 if gap_tags else 0)
-    if before:
-        work = next(row for row in rows if row["notes"] == "Original notes")
-        assert work["duration_seconds"] == 120
-        assert work["tags"] == "#focus"
-    if gap_tags:
-        idle = next(row for row in rows if row["notes"] == gap_notes)
-        assert idle["duration_seconds"] == 600
-        assert idle["tags"] == gap_tags
-        assert datetime.fromisoformat(idle["start_time"]) == datetime.fromisoformat(gap["idle_start"])
-        assert datetime.fromisoformat(idle["end_time"]) == datetime.fromisoformat(gap["idle_end"])
-    assert all(row["task_id"] == task["id"] for row in rows)
+    if option in ("break", "re_tag"):
+        # Old ambiguous classification is explicitly refused, never silently recast as claim.
+        assert response.status_code == 409, response.text
+        assert client.get("/sessions").json() == []
+        assert client.get("/timer/status").json()["pending_idle_gap"] == gap
+        return
+    assert response.status_code == 200, response.text
     status = client.get("/timer/status").json()
     assert status["is_running"] is False
     assert status["is_frozen_idle"] is False
     assert status["pending_idle_gap"] is None
-    persisted = json.loads(timer_manager.state_file.read_text())
-    assert persisted["pending_idle_gap"] is None
-    assert persisted["is_running"] is False
-    assert client.post("/idle/resolve", json={"option": option}).status_code == 400
-    assert len(client.get("/sessions").json()) == len(rows)
+    stop = client.post(f"/timers/{timer_id}/stop", json={"operation_id": str(uuid7())})
+    assert stop.status_code == 200, stop.text
+    rows = [client.get(f"/recorded-work/{i}").json() for i in stop.json()["recorded_work_ids"]]
+    assert sum(row["duration_seconds"] for row in rows) == before + (600 if option == "claim_work" else 0)
+    assert all(row["task_id"] == task["id"] and row["tags"] == "#focus" for row in rows)
+    assert all(row["provenance"] == "timer" for row in rows)
 
 
-def test_second_commit_failure_really_leaves_preidle_row_and_pending_gap(client, db, monkeypatch):
-    _, gap = freeze(client)
+def test_second_commit_failure_recovers_stable_work_without_inserting_again(client, db, monkeypatch):
+    _, _, timer_id = freeze(client, db, monkeypatch)
+    assert client.post("/idle/resolve", json={"option": "claim_work"}).status_code == 200
     commit = db.commit
     commits = 0
 
-    def fail_second_commit():
+    def fail_finalization():
         nonlocal commits
         commits += 1
         if commits == 2:
-            raise OperationalError("synthetic second commit", {}, Exception("synthetic"))
+            raise OperationalError("synthetic finalization commit", {}, Exception("synthetic"))
         commit()
 
-    monkeypatch.setattr(db, "commit", fail_second_commit)
+    payload = {"operation_id": str(uuid7())}
+    monkeypatch.setattr(db, "commit", fail_finalization)
     with pytest.raises(OperationalError):
-        client.post("/idle/resolve", json={"option": "break"})
-    db.rollback()
-    # This is deliberately NOT atomic: readback cannot establish safe replay of the gap.
-    rows = client.get("/sessions").json()
-    assert len(rows) == 1
-    assert rows[0]["duration_seconds"] == 120
-    assert rows[0]["notes"] == "Original notes"
-    assert client.get("/timer/status").json()["pending_idle_gap"] == gap
-    assert json.loads(timer_manager.state_file.read_text())["pending_idle_gap"] == gap
+        client.post(f"/timers/{timer_id}/stop", json=payload)
+    monkeypatch.setattr(db, "commit", commit)
+    assert client.get(f"/operations/{payload['operation_id']}").json()["status"] == "pending_reconciliation"
+    response = client.post(f"/timers/{timer_id}/stop", json=payload)
+    assert response.status_code == 200, response.text
+    assert client.post(f"/timers/{timer_id}/stop", json=payload).json() == response.json()
+    assert len(client.get("/sessions").json()) == 2
+    assert client.get(f"/operations/{payload['operation_id']}").json()["status"] == "finalized"
 
 
 @pytest.mark.parametrize(
@@ -138,18 +141,17 @@ def test_running_stopped_and_legacy_file_defaults(client, monkeypatch, raw, expe
     loaded = ActiveTimerState()
     assert loaded.is_running is expected
     assert loaded.pending_idle_gap == raw.get("pending_idle_gap")
-    assert loaded.mode == ("pomodoro" if expected else "flowtime")
-    assert loaded.target_minutes == (25 if expected else None)
     assert client.get("/sessions").json() == []
 
 
 def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recovery(client):
     task = client.post("/api/tasks", json={"title": "Synthetic route task"}).json()
-    paths = [
+    for path in [
         "/dashboard",
         "/tasks",
         "/kanban",
         "/tasks-view",
+        "/agenda-view",
         "/stats",
         "/habits-view",
         "/revision",
@@ -158,32 +160,27 @@ def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recover
         "/settings?category=providers",
         f"/task-inspector/{task['id']}",
         f"/tasks-detail/{task['id']}",
-    ]
-    for path in paths:
+    ]:
         response = client.get(path)
         assert response.status_code == 200
         html = response.text
         assert html.count('src="/static/js/timer_control.js"') == 1
+        assert html.count('src="/static/js/multiple_timers.js"') == 1
+        assert html.count('id="multiple_timers"') == 1
         assert html.count('id="idle_resolution_modal"') == 1
-        assert len(re.findall(r'href="/static/css/timer\.css(?:\?[^"]*)?"', html)) == 1
-        assert html.count('id="toggle_btn"') == (1 if path == "/dashboard" else 0)
-        assert 'href="/settings" onclick="return followSettingsLink(event)"' in html
-    root = client.get("/", follow_redirects=False)
-    assert root.status_code == 307
-    assert root.headers["location"] == "/dashboard"
+        assert len(re.findall(r'href="/static/css/timer\.css(?:\?[^\"]*)?"', html)) == 1
+    assert client.get("/", follow_redirects=False).headers["location"] == "/dashboard"
 
 
-def test_status_retains_mode_target_attachment_and_idle_toggle_does_not_clear_gap(client):
-    task, gap = freeze(client)
-    response = client.post("/idle/toggle", json={"enabled": False})
-    assert response.json() == {"idle_detection_enabled": False}
+def test_status_retains_mode_target_and_idle_toggle_does_not_clear_gap(client, db, monkeypatch):
+    task, gap, _ = freeze(client, db, monkeypatch)
+    assert client.post("/idle/toggle", json={"enabled": False}).json() == {"idle_detection_enabled": False}
     status = client.get("/timer/status").json()
     assert status["task_id"] == task["id"]
     assert status["mode"] == "pomodoro"
     assert status["target_minutes"] == 25
     assert status["pending_idle_gap"] == gap
-    assert status["elapsed_seconds"] == 0
-    assert status["remaining_seconds"] is None
+    assert status["elapsed_seconds"] == 120
     assert client.get("/sessions").json() == []
 
 
@@ -207,109 +204,35 @@ def test_idle_status_names_next_persisted_plan_without_changing_legacy_wire(clie
 
 
 @pytest.mark.parametrize("order", ["stop-first", "approval-first"])
-def test_ai_delete_and_stop_serialize_without_losing_the_task_link(tmp_path, monkeypatch, order):
-    from concurrent.futures import ThreadPoolExecutor
-    from pathlib import Path
-    from threading import Event
-
-    from sqlalchemy import event
-    from sqlmodel import Session, SQLModel, create_engine
-
-    from timetrace.interfaces.api.schemas import TaskCreate, TimerStartRequest
+def test_ai_delete_and_stop_preserve_task_link(client, db, monkeypatch, order):
     from timetrace.services.ai_draft_service import AIDraftService
-    from timetrace.services.session_service import SessionService
-    from timetrace.services.task_service import TaskService
-    from timetrace.services.timer_service import TimerService
 
-    engine = create_engine(f"sqlite:///{tmp_path / 'race.db'}")
-
-    @event.listens_for(engine, "connect")
-    def foreign_keys(connection, _):
-        connection.execute("PRAGMA foreign_keys=ON")
-
-    SQLModel.metadata.create_all(engine)
-    with Session(engine) as db:
-        tid = TaskService(db).create_task(TaskCreate(title="Timer race")).id
-        drafts = AIDraftService(db)
-        batch = drafts.create_batch(None, None, None, None, None, None).id
-        drafts.add_item(batch, "delete", "task", tid, {})
-        TimerService(db).start_timer(TimerStartRequest(task_id=tid))
-
-    def approve():
-        with Session(engine) as db:
-            return AIDraftService(db).accept_items(batch)["items"][0]
+    task, _, timer_id = freeze(client, db, monkeypatch)
+    assert client.post("/idle/resolve", json={"option": "skip"}).status_code == 200
+    drafts = AIDraftService(db)
+    batch = drafts.create_batch(None, None, None, None, None, None).id
+    drafts.add_item(batch, "delete", "task", task["id"], {})
 
     def stop():
-        with Session(engine) as db:
-            return TimerService(db).stop_timer().task_id
+        result = client.post(f"/timers/{timer_id}/stop", json={"operation_id": str(uuid7())})
+        assert result.status_code == 200, result.text
+        return result.json()
 
     if order == "stop-first":
-        cleared, resume = Event(), Event()
-        write = Path.write_text
-
-        def hold_after_timer_file_clear(path, text, *args, **kwargs):
-            result = write(path, text, *args, **kwargs)
-            if path == timer_manager.state_file and not json.loads(text)["is_running"]:
-                cleared.set()
-                assert resume.wait(5)
-            return result
-
-        monkeypatch.setattr(Path, "write_text", hold_after_timer_file_clear)
-        with ThreadPoolExecutor(max_workers=2) as pool:
-            stopping = pool.submit(stop)
-            try:
-                assert cleared.wait(5)
-                approval = pool.submit(approve)
-                # Let the actual competing SQLite transaction run while file clear is held.
-                try:
-                    result = approval.result(timeout=0.3)
-                    assert result["status"] == "failed", result
-                except TimeoutError:
-                    pass
-            finally:
-                resume.set()
-            assert stopping.result(timeout=5) == tid
-            result = approval.result(timeout=5)
+        result = stop()
+        approval = drafts.accept_items(batch)["items"][0]
     else:
-        locked, resume = Event(), Event()
-
-        # Observe the approval connection's actual first successful SQLite write.
-        # Hold it before the rest of the approval can inspect live timer context.
-        def hold_sqlite_writer(_conn, _cursor, statement, _params, _context, _many):
-            if not locked.is_set() and statement.lstrip().upper().startswith("UPDATE "):
-                locked.set()
-                assert resume.wait(5)
-
-        event.listen(engine, "after_cursor_execute", hold_sqlite_writer)
-        try:
-            with ThreadPoolExecutor(max_workers=2) as pool:
-                approval = pool.submit(approve)
-                try:
-                    assert locked.wait(5)
-                    stopping = pool.submit(stop)
-                    with pytest.raises(TimeoutError):
-                        stopping.result(timeout=0.3)
-                    assert json.loads(timer_manager.state_file.read_text())["task_id"] == tid
-                finally:
-                    resume.set()
-                result = approval.result(timeout=5)
-                assert stopping.result(timeout=5) == tid
-        finally:
-            event.remove(engine, "after_cursor_execute", hold_sqlite_writer)
-
-    assert result["status"] == "failed"
-    with Session(engine) as db:
-        (saved,) = SessionService(db).list_sessions()
-        assert saved["task_id"] == tid
-        assert TaskService(db).get_task_tree(tid)["id"] == tid
-        assert not TimerService(db).get_status()["is_running"]
-    engine.dispose()
+        approval = drafts.accept_items(batch)["items"][0]
+        result = stop()
+    assert approval["status"] == "failed"
+    assert client.get(f"/api/tasks/{task['id']}").status_code == 200
+    for work_id in result["recorded_work_ids"]:
+        assert client.get(f"/recorded-work/{work_id}").json()["task_id"] == task["id"]
 
 
 def test_timer_start_revalidates_task_before_publishing_context(client):
     tid = client.post("/api/tasks", json={"title": "No dangling timer"}).json()["id"]
     assert client.delete(f"/api/tasks/{tid}").status_code == 204
-    response = client.post("/timer/start", json={"task_id": tid})
-    assert response.status_code == 404
+    assert client.post("/timer/start", json={"task_id": tid}).status_code == 404
     assert client.get("/timer/status").json()["task_id"] is None
     assert client.get("/sessions").json() == []

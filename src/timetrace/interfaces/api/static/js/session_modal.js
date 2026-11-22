@@ -643,7 +643,12 @@ async function startTimerFromModal() {
         started = await startTimerFromSession({
             task_id: taskIdVal ? taskIdVal : null,
             tags: tagsVal,
-            notes: notesVal || ""
+            notes: notesVal || "",
+            ...(owner.session?.kind === 'scheduled_session' && taskIdVal && taskIdVal === owner.session.task_id ? {
+                scheduled_session_id:owner.session.id,
+                ...(owner.session.is_virtual ? {expected_projection_revision:owner.session.projection_revision}
+                    : {expected_plan_revision:owner.session.revision})
+            } : {})
         }, () => sessionModalOwner === owner && sessionModalSnapshot() === snapshot &&
             !document.getElementById('session_modal').classList.contains('hidden'), recoveryFocus);
     } finally {
