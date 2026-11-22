@@ -22,8 +22,10 @@
         <div class="folio-strip">
             <label>Local date <input id="agenda-date" type="date" required></label>
             <button id="agenda-new" type="button">+ Plan session</button>
+            <button id="agenda-record" type="button">Add recorded work</button>
         </div>
         <p id="agenda-status" role="status"></p>
+        <div id="agenda-progress" aria-live="polite"></div>
         <button id="agenda-retry" type="button" hidden>Refresh agenda</button>
         <div class="folio-columns">
             <section aria-labelledby="agenda-ledger-title">
@@ -44,6 +46,7 @@
                         <label>Tags <input id="agenda-tags" type="text"></label>
                         <label>Notes <textarea id="agenda-notes"></textarea></label>
                     </fieldset>
+                    <label id="agenda-attachment" hidden><input id="agenda-attach" type="checkbox"> Explicitly attach this whole work record to the selected plan (same assigned task required)</label>
                     <label>Start <input id="agenda-start" type="datetime-local" step="0.001" required></label>
                     <label>End <input id="agenda-end" type="datetime-local" step="0.001" required></label>
                     <div class="folio-actions">

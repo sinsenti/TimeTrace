@@ -293,7 +293,7 @@ test('details opens its own recorded session without publishing task history as 
 function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
-        'notes', 'start', 'end', 'save', 'cancel']) p.element(`agenda-${suffix}`);
+        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress']) p.element(`agenda-${suffix}`);
     p.context.URLSearchParams = URLSearchParams;
     p.context.confirm = () => true;
     p.load('agenda.js');
@@ -680,4 +680,71 @@ test('Calendar invalidates a held drop across create recovery and rejects latche
     assert.equal(p.writes.filter(w => w.method === 'POST').length, 1);
     await p.run('scheduleCalendarDrop(drop)');
     assert.equal(p.writes.filter(w => w.method === 'POST').length, 2);
+});
+
+test('Folio explicit manual work ACK retains later typing and never replays after refresh failure', async () => {
+    const held = deferred(); let fail = false;
+    const p = sessionPage(async (url, options) => {
+        if (options.method === 'GET') {
+            if (fail) throw Error('read unavailable');
+            return url === '/api/tasks?status=all' ? [] : { items: [] };
+        }
+        await held.promise;
+        return { id: 'work-id', kind: 'recorded_work', provenance: 'manual', revision: 1,
+            ...JSON.parse(options.body), warnings: [{code:'same_task_overlap',record_ids:['other'],overlap_seconds:1800}] };
+    });
+    await loadFolio(p);
+    p.elements.get('agenda-record').click();
+    p.elements.get('agenda-start').value = '2000-01-04T09:00';
+    p.elements.get('agenda-end').value = '2000-01-04T10:00';
+    const saving = p.elements.get('agenda-form').submit({preventDefault(){}});
+    p.elements.get('agenda-end').value = '2000-01-04T10:30';
+    held.resolve(); fail = true; await saving;
+    assert.equal(p.writes[0].url, '/recorded-work');
+    assert.equal(p.elements.get('agenda-end').value, '2000-01-04T10:30');
+    assert.equal(p.elements.get('agenda-form').hidden, false, 'later draft must remain visible');
+    assert.match(p.elements.get('agenda-edit-status').textContent, /1800.*other/);
+    await p.elements.get('agenda-form').submit({preventDefault(){}});
+    fail = false; await p.elements.get('agenda-retry').click();
+    assert.equal(p.writes.length, 1, 'ACK never permits an implicit new write');
+});
+
+test('Folio shows union-based progress with explicit local-start and non-additive labels', async () => {
+    const p = sessionPage(async (url) => {
+        if (url.startsWith('/recorded-work-progress?')) return {
+            measurement_at:'2000-01-05T00:00:00Z',cohort:'Whole intervals by local record-start; non-additive',
+            recorded_task_time:{total:1.5},elapsed_recorded_time:{total:1.5},unassigned_recorded_time:{total:0},
+            tasks:{rows:[]},
+        };
+        return url === '/api/tasks?status=all' ? [] : {items:[]};
+    });
+    await loadFolio(p);
+    assert.match(p.elements.get('agenda-progress').children.map(el => el.textContent).join(' '), /Recorded task time.*1.5.*local record-start.*non-additive/);
+});
+
+test('Folio plan context prefills task but attachment is explicit; 409 keeps work input and review is read-only', async () => {
+    const plan = {id:'plan-id',kind:'scheduled_session',task_id:'task-id',revision:3,start_time:'2000-01-04T09:00Z',end_time:'2000-01-04T10:00Z'};
+    const p = sessionPage(async (url, options) => {
+        if (url.startsWith('/agenda?')) return {items:[plan]};
+        if (url === '/api/tasks?status=all') return [{id:'task-id',title:'Task'}];
+        if (url === '/scheduled-sessions/plan-id') return {...plan,revision:4};
+        if (options.method === 'GET') return [];
+        return new Response(JSON.stringify({detail:'Plan changed',code:'revision_stale'}),{status:409});
+    });
+    await loadFolio(p);
+    p.elements.get('agenda-ledger').children.find(el => el.dataset.agendaRow === plan.id).click();
+    p.elements.get('agenda-record').click();
+    assert.equal(p.elements.get('agenda-task').value,'task-id');
+    assert.equal(p.elements.get('agenda-attach').checked,false);
+    p.elements.get('agenda-attach').checked=true;
+    p.elements.get('agenda-start').value='2000-01-04T09:15';
+    p.elements.get('agenda-end').value='2000-01-04T10:15';
+    await p.elements.get('agenda-form').submit({preventDefault(){}});
+    assert.equal(p.writes[0].payload.scheduled_session_id,'plan-id');
+    assert.equal(p.writes[0].payload.expected_plan_revision,3);
+    await p.elements.get('agenda-review').click();
+    assert.equal(p.elements.get('agenda-start').value,'2000-01-04T09:15');
+    assert.equal(p.elements.get('agenda-use-latest').hidden,true);
+    await p.elements.get('agenda-form').submit({preventDefault(){}});
+    assert.equal(p.writes.length,1);
 });

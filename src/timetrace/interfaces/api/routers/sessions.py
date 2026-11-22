@@ -9,7 +9,10 @@ from timetrace.interfaces.api.schemas import (
     AgendaLegacyRead,
     AgendaProjectedPlanRead,
     AgendaRead,
+    AgendaRecordedWorkRead,
     LegacySessionRead,
+    RecordedWorkCreate,
+    RecordedWorkCreated,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
@@ -21,9 +24,29 @@ from timetrace.interfaces.api.schemas import (
     SessionEditScope,
     SessionUpdate,
 )
-from timetrace.services import SessionService
+from timetrace.services import QueryService, SessionService
 
 router = APIRouter(prefix="", tags=["Sessions"])
+
+
+@router.get("/recorded-work-progress")
+def recorded_work_progress(
+    start_date: str,
+    end_date: str,
+    plan_ids: list[str] = Query(default=[], max_length=500),
+    db: DBSession = Depends(get_session),
+):
+    return QueryService(db).recorded_progress(start_date, end_date, plan_ids)
+
+
+@router.post("/recorded-work", response_model=RecordedWorkCreated, status_code=status.HTTP_201_CREATED)
+def create_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
+    return SessionService(db).create_recorded_work(req)
+
+
+@router.get("/recorded-work/{work_id}", response_model=AgendaRecordedWorkRead)
+def get_recorded_work(work_id: str, db: DBSession = Depends(get_session)):
+    return SessionService(db).get_recorded_work(work_id)
 
 
 @router.get("/agenda", response_model=AgendaRead)

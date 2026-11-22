@@ -381,3 +381,53 @@ bounded verification found the repairs addressed all concrete technical findings
 and test-seam agreement. The owner has now accepted Q14 and confirmed all six seam groups; the
 first test-first #2 foundation slice is authorized in its isolated worktree. No downstream ticket
 completion, push or merge is implied. AI wrapper bug #57 is separate.
+
+## #3 implemented query capability boundary
+
+`recorded_work` queries require a finite local start-date range (maximum 400 days).
+Initial measures: recorded_task_time, elapsed_recorded_time, unassigned_recorded_time,
+inside_scheduled_task_time, outside_scheduled_task_time and plan_fill. Values are hours.
+Only scalar and task grouping are enabled initially; plan_fill uses plan_id only.
+Only task eq/in filters and independent explicit plan_ids selection (up to 500 persisted or virtual IDs)
+are enabled. Plan lookup is independent of work-start dates. Comparisons require
+`plan_basis: original|current`. Tags, tag attribution, time grouping, other filters, baseline
+comparisons and gap filling are rejected, not approximated. Existing sources are unchanged.
+Work is whole closed typed intervals selected by local start day at one captured instant.
+SQL interval arithmetic uses integer UTC microseconds; fractional endpoints are not rounded away.
+Plan matching does not establish association. Task/plan groups are non-additive; totals are
+independently calculated. This bounded interface is not the downstream custom-widget UI.
+
+
+The real Folio `/agenda-view` has distinct **Plan session** and **Add recorded work** actions.
+The latter creates via strict `POST /recorded-work`, with manual provenance, and can be reread at
+`GET /recorded-work/{id}`. Same-task warnings list each intersecting raw record and seconds;
+touching endpoints and different tasks are silent. Work is read-only after creation. A selected
+plan prefills task context, but its explicit attachment checkbox starts unchecked. Attached
+creates require `expected_plan_revision` or `expected_projection_revision`, invalidate the plan
+revision and capture virtual originals in the same locked transaction. Unattached work never
+captures projections. No task reassignment, timer protocol change or destructive work control is offered.
+
+`GET /recorded-work-progress?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&plan_ids=ID` provides
+Folio's shared-snapshot, shared-measurement read. Folio selects plans visible in that day's ledger;
+its comparison label explicitly describes this plan cohort, not all plans for all dates. The
+query interface can explicitly select other plan IDs regardless of their start day. Plans with
+no matching work report zero fill. Original/current comparisons do not imply ownership. Raw
+legacy-inclusive task accounting and old saved queries remain unchanged. Tags and full custom
+union widgets remain downstream; unsupported query combinations return validation errors.
+
+Schema `0016_recorded_work_index` adds only the `(kind,start_time,end_time,task_id)` index for
+bounded cross-task work reads. It transforms no rows or JSON; fresh-chain and synthetic copied
+0015 data tests check index use, FKs and retained IDs, recurrence, ratings, audit/draft JSON and widgets.
+
+
+### Shared recording producer interface
+
+`SessionService.stage_recorded_work(RecordedWorkCreate(...), provenance="manual"|"timer")`
+stages a closed positive past interval, explicit association/revision validation, overlap warnings,
+and any projected-plan capture under the shared SQLite writer transaction. It flushes and returns
+stable work UUID/revision/kind/provenance, but **does not commit or roll back**. The caller must
+commit once or roll back the entire transaction on any failure; until commit the returned identity
+is staged, not an ACK. The HTTP manual adapter wraps it with commit/rollback and always supplies
+`manual`; the strict request DTO refuses a user-supplied provenance. Timer producers may pass
+`timer` only server-internally. Timer v1 is intentionally not switched. This primitive provides no
+operation receipts, file durability, replay or multi-timer policy; those remain #4 responsibilities.

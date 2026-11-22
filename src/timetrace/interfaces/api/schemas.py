@@ -246,6 +246,24 @@ class AgendaRecordedWorkRead(AgendaLegacyRead):
     scheduled_session_id: str | None
 
 
+class RecordedWorkCreate(ScheduledSessionCreate):
+    """Explicit manual work; legacy session input deliberately stays separate."""
+
+    scheduled_session_id: str | None = None
+    expected_plan_revision: StrictInt | None = Field(default=None, ge=1)
+    expected_projection_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+class RecordedWorkWarning(BaseModel):
+    code: Literal["same_task_overlap"] = "same_task_overlap"
+    record_ids: list[str]
+    overlap_seconds: float
+
+
+class RecordedWorkCreated(AgendaRecordedWorkRead):
+    warnings: list[RecordedWorkWarning] = []
+
+
 class AgendaRead(BaseModel):
     items: list[ScheduledSessionRead | AgendaProjectedPlanRead | AgendaLegacyRead | AgendaRecordedWorkRead]
     measurement_at: datetime
@@ -434,6 +452,9 @@ class ComparisonMeta(BaseModel):
 
 
 class QueryMeta(BaseModel):
+    measurement_at: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
+    basis: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort: str | None = Field(default=None, exclude_if=lambda value: value is None)
     timezone: str
     first_day_of_week: int
     range_start_utc: datetime | None

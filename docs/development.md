@@ -690,7 +690,7 @@ behavior for live timer context. Legacy mutations still create uncertain history
 
 ## Migration verification
 
-The source tree currently ends at `0015_typed_recurrence`; inspect revision ids and
+The source tree currently ends at `0016_recorded_work_index`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -706,7 +706,7 @@ review the result, including data movement and SQLite table rebuilds, before app
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
 Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
-Alembic entrypoints and resolve the required schema revision (`0015_typed_recurrence`) in the
+Alembic entrypoints and resolve the required schema revision (`0016_recorded_work_index`) in the
 migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
 complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
 when the application starts depending on a later schema revision.
@@ -887,3 +887,13 @@ shared native workflows, explicit owner acceptance and whole25 gates remain open
 Candidate15completed/10open adds18 only; authoritative integratione0c6989 remains14/11 pending
 TWO fresh closure metadata axes, parent disposition and integration. Historical checkpoints remain;
 spec stays Approved, not Built. No new tests/runtime/Git writes/provider/personalDB/cleanup operations.
+
+
+### Manual recorded work (Agenda #3)
+
+The Folio Agenda at `/agenda-view` supports explicit manual work separately from plans, including
+past plans. See [the capability contract](agenda-contract.md#3-implemented-query-capability-boundary)
+for typed routes, validation/warnings, explicit association and bounded union progress. Existing
+Timer v1 and legacy session callers remain uncertain; the new source excludes them. Task accounting
+is unchanged alongside the new labels. Work edits/reassignment and custom union widgets are not
+implemented. Query cohorts are whole intervals selected by local start day, never midnight clipping.

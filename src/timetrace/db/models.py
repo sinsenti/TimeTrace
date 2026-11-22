@@ -120,6 +120,7 @@ class Session(SQLModel, table=True):
             name="ck_session_kind",
         ),
         Index("ix_session_task_interval", "task_id", "start_time", "end_time"),
+        Index("ix_session_kind_interval", "kind", "start_time", "end_time", "task_id"),
     )
 
     id: str = Field(default_factory=generate_uuid7, primary_key=True)

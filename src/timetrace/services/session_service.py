@@ -1,5 +1,5 @@
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, Literal
 
 from sqlalchemy import case, insert, literal, or_, update
 from sqlalchemy.exc import IntegrityError
@@ -16,6 +16,8 @@ from timetrace.interfaces.api.schemas import (
     AgendaRead,
     AgendaRecordedWorkRead,
     LegacySessionRead,
+    RecordedWorkCreate,
+    RecordedWorkCreated,
     ReflectionCreate,
     RetroSessionCreate,
     ScheduledOccurrenceUpdate,
@@ -51,6 +53,129 @@ class SessionService:
         if self._recurrence is None:
             self._recurrence = RecurrenceService(self.db)
         return self._recurrence
+
+    def create_recorded_work(self, req: RecordedWorkCreate) -> RecordedWorkCreated:
+        try:
+            result = self.stage_recorded_work(req, provenance="manual")
+            self.db.commit()
+            return result
+        except Exception:
+            self.db.rollback()
+            raise
+
+    def stage_recorded_work(
+        self, req: RecordedWorkCreate, *, provenance: Literal["manual", "timer"]
+    ) -> RecordedWorkCreated:
+        """Stage validated work under the SQLite writer lock; never commit or roll back.
+
+        The returned UUID is stable for this staged row. The caller owns durability and must
+        roll back the entire transaction on failure, including captured projection/plan revisions.
+        Provenance is server-internal: the HTTP manual adapter always supplies ``manual``.
+        """
+        measurement_at = datetime.now(UTC).replace(tzinfo=None)
+        start, end = self._scheduled_interval(req.start_time, req.end_time)
+        if provenance not in ("manual", "timer"):
+            raise ValidationError("Unsupported recording provenance.")
+        if end > measurement_at:
+            raise ValidationError("Recorded work cannot end in the future.", code="future_recorded_end")
+        lock_sqlite_writer(self.db)
+        if req.task_id is not None and self.db.get(Task, req.task_id) is None:
+            raise EntityNotFoundError("Task", req.task_id)
+        plan = None
+        if req.scheduled_session_id is not None:
+            if is_occurrence_id(req.scheduled_session_id):
+                if req.expected_plan_revision is not None:
+                    raise ValidationError("A projection requires only its projection revision.")
+                try:
+                    occurrence = self.recurrence.projected_occurrence(req.scheduled_session_id, planning=True)
+                except EntityNotFoundError, ValidationError:
+                    raise self._stale_projection() from None
+                if occurrence.projection_revision != req.expected_projection_revision:
+                    raise self._stale_projection()
+                if req.task_id is None or req.task_id != occurrence.task_id:
+                    raise ConflictError(
+                        "Association requires the same non-null task.", code="association_task_conflict"
+                    )
+                plan = ScheduledSession(
+                    task_id=occurrence.task_id,
+                    original_start=occurrence.start_utc,
+                    original_end=occurrence.end_utc,
+                    start_time=occurrence.start_utc,
+                    end_time=occurrence.end_utc,
+                    tags=occurrence.tags,
+                )
+                self.db.add(plan)
+                self.db.flush()
+                self.db.add(
+                    RecurrenceException(
+                        task_id=occurrence.task_id,
+                        occurrence_start=occurrence.start_utc,
+                        kind="override",
+                        scheduled_session_id=plan.id,
+                    )
+                )
+            else:
+                if req.expected_projection_revision is not None:
+                    raise ValidationError("A persisted plan requires only its plan revision.")
+                plan = self.db.get(ScheduledSession, req.scheduled_session_id)
+                if plan is None:
+                    raise EntityNotFoundError("Scheduled session", req.scheduled_session_id)
+                if req.task_id is None or req.task_id != plan.task_id:
+                    raise ConflictError(
+                        "Association requires the same non-null task.", code="association_task_conflict"
+                    )
+                if plan.revision != req.expected_plan_revision:
+                    raise self._stale_plan()
+            plan.revision += 1
+            self.db.add(plan)
+        elif req.expected_plan_revision is not None or req.expected_projection_revision is not None:
+            raise ValidationError("A plan revision requires an explicit association.")
+        row = SessionModel(
+            task_id=req.task_id,
+            start_time=start,
+            end_time=end,
+            scheduled_session_id=plan.id if plan else None,
+            duration_seconds=int((end - start).total_seconds()),
+            tags=req.tags,
+            notes=req.notes,
+            kind="recorded_work",
+            provenance=provenance,
+        )
+        warnings = []
+        if req.task_id is not None:
+            overlaps = self.db.exec(
+                select(SessionModel)
+                .where(
+                    SessionModel.kind == "recorded_work",
+                    SessionModel.task_id == req.task_id,
+                    SessionModel.start_time < end,
+                    SessionModel.end_time > start,
+                    SessionModel.end_time <= measurement_at,
+                )
+                .order_by(SessionModel.start_time, SessionModel.id)
+            ).all()
+            warnings = [
+                {
+                    "record_ids": [other.id],
+                    "overlap_seconds": (min(end, other.end_time) - max(start, other.start_time)).total_seconds(),
+                }
+                for other in overlaps
+            ]
+        self.db.add(row)
+        self.db.flush()
+        result = RecordedWorkCreated.model_validate(
+            {
+                **self._read_agenda_session(row).model_dump(),
+                "warnings": warnings,
+            }
+        )
+        return result
+
+    def get_recorded_work(self, work_id: str) -> AgendaRecordedWorkRead:
+        row = self.db.get(SessionModel, work_id)
+        if row is None or row.kind != "recorded_work":
+            raise EntityNotFoundError("Recorded work", work_id)
+        return self._read_agenda_session(row)
 
     def create_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
         response = self.stage_scheduled_session(req)
