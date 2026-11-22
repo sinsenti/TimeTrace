@@ -663,7 +663,11 @@ class QueryService:
                 if dim == Dimension.TASK:
                     raw_key = keys[i]
                     if not raw_key or raw_key == "__none__":
-                        labels.append("Direct Session Log")
+                        labels.append(
+                            "Unassigned recorded work"
+                            if query.source.value == "recorded_work"
+                            else "Direct Session Log"
+                        )
                     else:
                         labels.append(task_titles.get(raw_key, raw_key))
                 elif dim == Dimension.HABIT:
@@ -672,6 +676,9 @@ class QueryService:
                     labels.append(_label_for(dim, keys[i]))
 
             row = _QueryRow(keys=keys, labels=labels, value=float(value) if value is not None else None, count=count)
+            if query.source.value == "recorded_work":
+                row.value_seconds = row.value * 3600 if row.value is not None else None
+                row.physical_cohort_seconds = float(r[n_dims + 2]) if len(r) > n_dims + 2 else row.value_seconds
             row._source_identity = tuple(r[i] for i in range(n_dims))
             rows.append(row)
         return rows

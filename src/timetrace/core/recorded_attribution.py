@@ -43,7 +43,7 @@ def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicat
           SELECT credit{tagged_keys} FROM allocated WHERE {tag_predicate}
         )
         SELECT {columns}COALESCE(SUM(credit),0)/1000000.0/3600 AS value,
-          (SELECT COUNT(DISTINCT id) FROM tagged WHERE {tag_predicate}) FROM retained{group}
+          (SELECT COUNT(DISTINCT id) FROM tagged WHERE {tag_predicate}) AS n FROM retained{group}
         """
     else:
         group_keys = "".join(", " + key for key in output_groups)
@@ -60,6 +60,16 @@ def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicat
           FROM islands GROUP BY {domain}{group_keys},island
         )
         SELECT {columns}COALESCE(SUM(b-a),0)/1000000.0/3600 AS value,
-          (SELECT COUNT(DISTINCT id) FROM selected) FROM merged{group}
+          (SELECT COUNT(DISTINCT id) FROM selected r
+            WHERE {" AND ".join(f"r.{key} IS merged.{key}" for key in output_groups) or "1"}) AS n
+          FROM merged{group}
         """
+    if split:
+        physical = tag_union_sql(selected_sql, groups, tag_index, per_task, False, tag_predicate)
+        joins = " AND ".join(f"a.{key} IS p.{key}" for key in output_groups) or "1"
+        columns = "".join(f"a.{key}," for key in output_groups)
+        return (
+            f"SELECT {columns}a.value AS value,p.n AS n,p.value*3600 AS physical_seconds "
+            f"FROM ({ctes}) a JOIN ({physical}) p ON {joins}"
+        )
     return ctes

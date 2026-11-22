@@ -53,6 +53,7 @@
                         <p class="wb-hint">Only same-task intersections fill plans; work need not be associated. Overlapping fills are non-additive. Work range selects whole intervals by local record start, not plan start.</p>
                     </div>
                     <p id="wb_recorded_basis" class="wb-hint hidden">Closed explicit recorded work only; legacy history, scheduled time and live timers excluded. Bounded local start-date range (up to 400 days); whole intervals, no clipping. Group totals may overlap; the full-range total is independently unioned. Remaining/unscheduled balances retain their separate legacy accounting basis.</p>
+                    <p id="wb_recorded_capabilities" class="wb-hint"></p>
                     <label for="wb_comparison">Compare against</label><select id="wb_comparison" onchange="wbOnComparisonChange()">
                         <option value="none">None</option><option value="previous_period">Previous period</option><option value="same_period_last_year">Same period last year</option><option value="custom">Custom range</option>
                     </select>

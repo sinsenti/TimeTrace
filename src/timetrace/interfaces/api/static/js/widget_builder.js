@@ -125,6 +125,8 @@ function _wbResetForm() {
     _wbSetValue('wb_comparison', 'none');
     _wbSetValue('wb_comparison_start', '');
     _wbSetValue('wb_comparison_end', '');
+    if (document.getElementById('wb_plan_basis')) _wbSetValue('wb_plan_basis', '');
+    if (document.getElementById('wb_plan_ids')) _wbSetValue('wb_plan_ids', '');
     _wbSetValue('wb_filter_op', 'eq');
     _wbSetValue('wb_filter_value', '');
     _wbSetValue('wb_sql', '');
@@ -372,6 +374,8 @@ function wbOnMeasureChange() {
     const recorded = _wbValue('wb_source') === 'recorded_work';
     const measure = capabilitiesBySource?.[_wbValue('wb_source')]?.measures.find(m => m.value === _wbValue('wb_measure'));
     const caps = measure?.capabilities;
+    const hint = document.getElementById('wb_recorded_capabilities');
+    if (hint) hint.textContent = caps ? `Supported dimensions: ${caps.dimensions.join(', ')}. Filters: ${Object.entries(caps.filter_operators || {}).map(([field, ops]) => `${field} (${ops.join('/')})`).join('; ')}. Unassigned accepts has_task=false only. Plan fill requires explicit plan IDs; aggregate inside/outside may leave IDs empty to use all matching windows.` : '';
     document.getElementById('wb_recorded_basis')?.classList.toggle('hidden', !recorded);
     document.getElementById('wb_plan_options')?.classList.toggle('hidden', !caps?.plan_selection);
     ['wb_group_by_1', 'wb_group_by_2'].forEach(id => {

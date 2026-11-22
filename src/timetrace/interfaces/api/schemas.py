@@ -427,6 +427,8 @@ class ColumnSpec(BaseModel):
 
 
 class QueryRow(BaseModel):
+    value_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    physical_cohort_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
     keys: list[str]
     labels: list[str]
     value: float | None

@@ -538,6 +538,17 @@ function renderWidget(widget, data, index) {
         card = renderChartWidget(widget, result, seed);
     }
 
+    if (result && !error && !data.loading?.[widget.id]) {
+        if (result.meta.basis) {
+            const basis = result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
+            card.appendChild(_el('p', 'text-xs text-slate-400', `${basis}. ${result.meta.cohort}`));
+            if (result.meta.physical_cohort_seconds !== undefined) {
+                card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; physical cohort ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. Taskless/unassigned work is not task credit.`));
+            }
+        } else if (widget.spec?.query?.source === 'sessions') {
+            card.appendChild(_el('p', 'text-xs text-slate-400', 'Legacy-inclusive session accounting; additive stored durations/counts, not explicit recorded-work unions.'));
+        }
+    }
     card.tabIndex = -1;
     card.dataset.widgetId = widget.id;
     card.setAttribute('aria-busy', String(!!data.loading[widget.id]));
@@ -770,15 +781,7 @@ function renderChartWidget(widget, result, seed) {
         header.appendChild(note);
     }
     card.appendChild(header);
-    if (result.meta.basis) {
-        const basis = result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
-        card.appendChild(_el('p', 'text-xs text-slate-400', `${basis}. ${result.meta.cohort}`));
-        if (result.meta.physical_cohort_seconds !== undefined) {
-            card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; physical cohort ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. Taskless/unassigned work is not task credit.`));
-        }
-    } else if (widget.spec?.query?.source === 'sessions') {
-        card.appendChild(_el('p', 'text-xs text-slate-400', 'Legacy-inclusive session accounting; additive stored durations/counts, not explicit recorded-work unions.'));
-    }
+
 
     const stackRequested = kind === 'stacked_bar' && result.columns.filter(c => c.kind === 'dimension').length === 2;
     const seenCells = new Map();

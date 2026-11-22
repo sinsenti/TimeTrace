@@ -878,8 +878,10 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
     if comparison and tagged:
         raise ValidationError("Tag-based plan comparisons are not supported.")
     fill = query.measure == Measure.PLAN_FILL
-    if comparison and (query.plan_basis not in ("original", "current") or not query.plan_ids):
-        raise ValidationError("Plan comparisons require explicit plan_ids and plan_basis original/current.")
+    if comparison and query.plan_basis not in ("original", "current"):
+        raise ValidationError("Plan comparisons require explicit plan_basis original/current.")
+    if fill and not query.plan_ids:
+        raise ValidationError("plan_fill requires explicit plan_ids for bounded per-plan output.")
     if not comparison and (query.plan_ids or query.plan_basis):
         raise ValidationError("Plan selection is only supported for plan comparison measures.")
     if Dimension.PLAN_ID in query.group_by and not fill:
@@ -901,8 +903,12 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             allowed = (FilterOp.EQ, FilterOp.GTE, FilterOp.LTE)
         elif f.field == FilterField.HAS_TASK:
             allowed = (FilterOp.EQ,)
-        if f.op not in allowed or not f.values:
+        if f.op not in allowed or not f.values or (f.op != FilterOp.IN and len(f.values) != 1):
             raise ValidationError(f"Unsupported recorded-work predicate: {f.field} {f.op}")
+        if f.field == FilterField.HAS_TASK and not isinstance(f.values[0], bool):
+            raise ValidationError("has_task requires a boolean value.")
+        if f.field == FilterField.PROVENANCE and any(v not in ("manual", "timer") for v in f.values):
+            raise ValidationError("provenance must be manual or timer.")
         if query.measure == Measure.UNASSIGNED_RECORDED_TIME:
             if f.field in (
                 FilterField.TASK,
@@ -1005,6 +1011,14 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             f"{microseconds(f':p{i}_a')} AS a, {microseconds(f':p{i}_b')} AS b"
         )
     plans = " UNION ALL ".join(windows) or "SELECT NULL AS plan_id, NULL AS task_id, NULL AS a, NULL AS b WHERE 0"
+    if comparison and not query.plan_ids:
+        start_column = "original_start" if query.plan_basis == "original" else "start_time"
+        end_column = "original_end" if query.plan_basis == "original" else "end_time"
+        plans = f"""SELECT p.id AS plan_id,p.task_id,{microseconds("p." + start_column)} AS a,
+            {microseconds("p." + end_column)} AS b FROM scheduled_session p
+            WHERE p.task_id IN (SELECT DISTINCT task_id FROM selected)
+              AND EXISTS (SELECT 1 FROM selected w WHERE w.task_id=p.task_id
+                AND w.a<{microseconds("p." + end_column)} AND w.b>{microseconds("p." + start_column)})"""
     # Union clipped pieces as well as work: overlapping plan windows must not duplicate fill.
     pieces = f"SELECT task_id, a, b, id AS identity{group_keys} FROM selected"
     if comparison:
@@ -1045,7 +1059,8 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             AND s.start_time>=:start AND s.start_time<:end {predicate}
         ), plans AS ({plans}), {ctes}
         SELECT {columns}ROUND(COALESCE(SUM(w.seconds-COALESCE(c.seconds,0)),0),6)/3600 AS value,
-            (SELECT COUNT(*) FROM selected)
+            (SELECT COUNT(*) FROM selected r WHERE
+                {" AND ".join(f"r.{name} IS w.{name}" for name in group_names) or "1"})
         FROM whole_totals w LEFT JOIN credit_totals c ON w.domain=c.domain{joins}{group}
         """
         return CompiledQuery(
@@ -1064,7 +1079,10 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         WHERE s.kind='recorded_work' AND s.end_time<=:measurement
           AND s.start_time>=:start AND s.start_time<:end {predicate}
     ), plans AS ({plans}), {ctes}
-    SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected) FROM credit_merged{group}
+    SELECT {columns}{expression} AS value,
+      (SELECT COUNT(*) FROM selected r WHERE
+        {" AND ".join(f"r.{name} IS credit_merged.{name}" for name in group_names) or "1"})
+    FROM credit_merged{group}
     """
     if fill:
         sql = f"""WITH selected AS (
@@ -1074,7 +1092,7 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
               AND s.start_time>=:start AND s.start_time<:end {predicate}
         ), plans AS ({plans}), {ctes}
         SELECT p.plan_id, ROUND(COALESCE(SUM(c.b-c.a)/1000000.0,0),6)/3600 AS value,
-            (SELECT COUNT(*) FROM selected)
+            (SELECT COUNT(*) FROM selected r WHERE r.task_id=p.task_id AND r.a<p.b AND r.b>p.a)
         FROM plans p LEFT JOIN credit_merged c ON p.plan_id=c.domain GROUP BY p.plan_id
         """
     params["__limit"] = query.limit + 1
