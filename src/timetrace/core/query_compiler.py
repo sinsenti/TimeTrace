@@ -879,11 +879,11 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         raise ValidationError("Plan comparisons require explicit plan_ids and plan_basis original/current.")
     if not comparison and (query.plan_ids or query.plan_basis):
         raise ValidationError("Plan selection is only supported for plan comparison measures.")
-    if query.group_by not in ([], [Dimension.TASK]) and not (fill and query.group_by == [Dimension.PLAN_ID]):
-        raise ValidationError("Only task grouping or plan_fill by plan_id is supported.")
+    if Dimension.PLAN_ID in query.group_by and not fill:
+        raise ValidationError("plan_id grouping is only supported for plan_fill.")
     if fill and query.group_by != [Dimension.PLAN_ID]:
         raise ValidationError("plan_fill requires plan_id grouping; overlapping fills cannot be summed.")
-    if query.measure == Measure.UNASSIGNED_RECORDED_TIME and query.group_by:
+    if query.measure == Measure.UNASSIGNED_RECORDED_TIME and any(d not in _TIME_DIMENSIONS for d in query.group_by):
         raise ValidationError("Unassigned work does not support task grouping.")
     params = {"start": ctx.range_start_utc, "end": ctx.range_end_utc, "measurement": ctx.now_utc}
     predicate = ""
@@ -905,7 +905,14 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         predicate += " AND task_id IS NOT NULL"
     elif query.measure == Measure.UNASSIGNED_RECORDED_TIME:
         predicate += " AND task_id IS NULL"
-    partition = "task_id" if task or query.group_by else "'all'"
+    group_exprs = (
+        [] if fill else _select_group_columns(query, QuerySource.SESSIONS, "s.start_time", TimeAnchorKind.UTC_DATETIME)
+    )
+    group_names = [f"g{i}" for i in range(len(group_exprs))]
+    group_select = "".join(f", {expr} AS {name}" for expr, name in zip(group_exprs, group_names))
+    group_keys = "".join(f", {name}" for name in group_names)
+    params["__week_start"] = f"weekday {ctx.first_day_of_week}"
+    partition = "task_id" if task else "'all'"
 
     def microseconds(expression: str) -> str:
         # Storage is naive UTC with six fractional digits. Integer arithmetic preserves
@@ -922,41 +929,45 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         )
     plans = " UNION ALL ".join(windows) or "SELECT NULL AS plan_id, NULL AS task_id, NULL AS a, NULL AS b WHERE 0"
     # Union clipped pieces as well as work: overlapping plan windows must not duplicate fill.
-    pieces = "SELECT task_id, a, b, id AS identity FROM selected"
+    pieces = f"SELECT task_id, a, b, id AS identity{group_keys} FROM selected"
     if comparison:
-        pieces = """SELECT s.task_id, MAX(s.a,p.a) AS a, MIN(s.b,p.b) AS b, p.plan_id AS identity
+        pieces = f"""SELECT s.task_id, MAX(s.a,p.a) AS a, MIN(s.b,p.b) AS b, p.plan_id AS identity{"".join(", s." + name for name in group_names)}
             FROM selected s JOIN plans p ON s.task_id=p.task_id AND s.a<p.b AND s.b>p.a"""
     key = "identity" if fill else partition
 
     def merged_ctes(prefix, source, domain):
         return f"""{prefix}_prior AS (
-          SELECT *, MAX(b) OVER (PARTITION BY {domain} ORDER BY a,b,identity
+          SELECT *, MAX(b) OVER (PARTITION BY {domain}{group_keys} ORDER BY a,b,identity
             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING) AS prior_end FROM ({source})
         ), {prefix}_islands AS (
           SELECT *, SUM(CASE WHEN prior_end IS NULL OR a>prior_end THEN 1 ELSE 0 END)
-            OVER (PARTITION BY {domain} ORDER BY a,b,identity) AS island FROM {prefix}_prior
+            OVER (PARTITION BY {domain}{group_keys} ORDER BY a,b,identity) AS island FROM {prefix}_prior
         ), {prefix}_merged AS (
-          SELECT {domain} AS domain, MIN(a) AS a,MAX(b) AS b FROM {prefix}_islands GROUP BY {domain},island
+          SELECT {domain} AS domain{group_keys}, MIN(a) AS a,MAX(b) AS b FROM {prefix}_islands GROUP BY {domain}{group_keys},island
         )"""
 
     ctes = merged_ctes("credit", pieces, key)
     expression = "ROUND(COALESCE(SUM(b-a)/1000000.0,0),6)/3600"
     if query.measure == Measure.OUTSIDE_SCHEDULED_TASK_TIME:
-        ctes += "," + merged_ctes("whole", "SELECT task_id,a,b,id AS identity FROM selected", partition)
-        ctes += """, whole_totals AS (SELECT domain, SUM(b-a)/1000000.0 AS seconds FROM whole_merged GROUP BY domain),
-            credit_totals AS (SELECT domain, SUM(b-a)/1000000.0 AS seconds FROM credit_merged GROUP BY domain)"""
-        columns = "w.domain," if query.group_by else ""
-        expression = (
-            "ROUND(w.seconds-COALESCE(c.seconds,0),6)/3600"
-            if query.group_by
-            else "ROUND(COALESCE(SUM(w.seconds-COALESCE(c.seconds,0)),0),6)/3600"
-        )
+        ctes += "," + merged_ctes("whole", f"SELECT task_id,a,b,id AS identity{group_keys} FROM selected", partition)
+        ctes += f""", whole_totals AS (
+            SELECT domain{group_keys}, SUM(b-a)/1000000.0 AS seconds
+            FROM whole_merged GROUP BY domain{group_keys}),
+            credit_totals AS (
+            SELECT domain{group_keys}, SUM(b-a)/1000000.0 AS seconds
+            FROM credit_merged GROUP BY domain{group_keys})"""
+        columns = "".join(f"w.{name}," for name in group_names)
+        group = " GROUP BY " + ", ".join("w." + name for name in group_names) if group_names else ""
+        joins = "".join(f" AND w.{name} IS c.{name}" for name in group_names)
         sql = f"""WITH selected AS (
-          SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
-          WHERE kind='recorded_work' AND end_time<=:measurement AND start_time>=:start AND start_time<:end {predicate}
+          SELECT s.id,s.task_id,{microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b
+          {group_select} FROM session s LEFT JOIN task t ON t.id=s.task_id
+          WHERE s.kind='recorded_work' AND s.end_time<=:measurement
+            AND s.start_time>=:start AND s.start_time<:end {predicate}
         ), plans AS ({plans}), {ctes}
-        SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected)
-        FROM whole_totals w LEFT JOIN credit_totals c ON w.domain=c.domain
+        SELECT {columns}ROUND(COALESCE(SUM(w.seconds-COALESCE(c.seconds,0)),0),6)/3600 AS value,
+            (SELECT COUNT(*) FROM selected)
+        FROM whole_totals w LEFT JOIN credit_totals c ON w.domain=c.domain{joins}{group}
         """
         return CompiledQuery(
             sql=sql,
@@ -966,11 +977,12 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             group_by=query.group_by,
             totals_overlap=True,
         )
-    columns = "domain," if query.group_by else ""
-    group = " GROUP BY domain" if query.group_by else ""
+    columns = ", ".join(group_names) + "," if group_names else ""
+    group = " GROUP BY " + ", ".join(group_names) if group_names else ""
     sql = f"""WITH selected AS (
-        SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
-        WHERE kind='recorded_work' AND end_time<=:measurement AND start_time>=:start AND start_time<:end {predicate}
+        SELECT s.id,s.task_id,{microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b
+        {group_select} FROM session s LEFT JOIN task t ON t.id=s.task_id
+        WHERE s.kind='recorded_work' AND s.end_time<=:measurement AND s.start_time>=:start AND s.start_time<:end {predicate}
     ), plans AS ({plans}), {ctes}
     SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected) FROM credit_merged{group}
     """
@@ -984,8 +996,15 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             (SELECT COUNT(*) FROM selected)
         FROM plans p LEFT JOIN credit_merged c ON p.plan_id=c.domain GROUP BY p.plan_id
         """
+    params["__limit"] = query.limit + 1
     return CompiledQuery(
-        sql=sql, params=params, source=query.source, measure=query.measure, group_by=query.group_by, totals_overlap=True
+        sql=sql,
+        params=params,
+        source=query.source,
+        measure=query.measure,
+        group_by=query.group_by,
+        has_rows_limit=bool(group_names),
+        totals_overlap=True,
     )
 
 

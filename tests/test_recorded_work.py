@@ -251,7 +251,7 @@ def test_query_rejects_unsupported_capabilities_instead_of_approximating_tags(cl
         {"filters": [{"field": "tag", "op": "eq", "values": ["a"]}]},
         {"date_range": {"preset": "all_time"}},
         {"plan_basis": "original"},
-        {"group_by": ["day"]},
+        {"group_by": ["plan_id"]},
     ):
         response = client.post("/analytics/query", json={"query": {**base, **extra}})
         assert response.status_code == 400, response.text

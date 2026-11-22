@@ -230,6 +230,13 @@ SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
         MeasureSpec(Measure.ELAPSED_RECORDED_TIME, "hours", "Elapsed recorded time (union; typed work only)"),
         MeasureSpec(Measure.UNASSIGNED_RECORDED_TIME, "hours", "Unassigned recorded time (union; non-additive)"),
     ),
-    dimensions=_dimensions(DimensionSpec(Dimension.PLAN_ID, "Plan"), DimensionSpec(Dimension.TASK, "Task")),
+    dimensions=_dimensions(
+        *_UTC_TIME_DIMS,
+        DimensionSpec(Dimension.PLAN_ID, "Plan"),
+        DimensionSpec(Dimension.TASK, "Task"),
+        DimensionSpec(Dimension.CATEGORY, "Category"),
+        DimensionSpec(Dimension.STATUS, "Status"),
+        DimensionSpec(Dimension.PRIORITY, "Priority"),
+    ),
     filter_fields=_filters(FilterSpec(FilterField.TASK, "Work task")),
 )
