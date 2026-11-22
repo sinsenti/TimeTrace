@@ -984,9 +984,9 @@ class AIInsightsService:
 
         timer = None
         if include_timer:
-            from timetrace.services.timer_service import TimerService
+            from timetrace.services.multiple_timer_service import MultipleTimerService
 
-            timer = TimerService(self.db).get_status()
+            timer = MultipleTimerService(self.db).assistant_status()
 
         return {
             "range": {

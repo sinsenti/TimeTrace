@@ -21,8 +21,19 @@
     <span id="vim_mode_indicator" class="vim-mode-indicator" role="status" aria-live="polite" aria-label="Vim keyboard mode">-- NORMAL --</span>
     {% endif %}
 </div>
+<section id="multiple_timers" aria-label="Independent timers" class="multiple-timers">
+    <div class="multiple-timer-row">
+        <label>Task <select data-timer-task aria-label="Timer task"><option value="">Unassigned</option></select></label>
+        <label><input type="checkbox" data-timer-idle checked> Pause when idle</label>
+        <button type="button" data-timer-start disabled>Start timer</button>
+        <button type="button" data-timer-refresh>Refresh timers</button>
+    </div>
+    <p data-timer-message role="status" aria-live="polite"></p>
+    <div data-timer-list></div>
+</section>
+<script defer src="/static/js/multiple_timers.js?v=timers4d"></script>
 <link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
 {% include "components/idle_resolution_modal.html" %}
 {% if active_page == 'settings_ai' or (active_page == 'tasks' and task_id is not defined) %}
-<script defer src="/static/js/timer_control.js"></script>
+<script defer src="/static/js/timer_control.js?v=timers4"></script>
 {% endif %}

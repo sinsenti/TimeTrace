@@ -65,7 +65,7 @@ async (page, baseURL) => {
                 await p.goto(baseURL + path); await ready(p);
                 const initial = await snapshot(p); profiles.at(-1).initial = initial;
                 check(initial.storage === null && initial.intent === true && initial.live === false && initial.status.idle_detection_enabled === false && !initial.idleLabelPresent && !initial.idleControlPresent && initial.label === null && initial.disabled === null, `fresh default true is not coerced to actual OFF: ${path}`, initial);
-                check(await p.locator('script[src="/static/js/timer_control.js"]').count() === 1, `one actual controller: ${path}`);
+                check(await p.locator('script[src^="/static/js/timer_control.js"]').count() === 1, `one actual controller: ${path}`);
                 await p.evaluate(async () => { await applyUserSettings(); await retryTimerRead(); });
                 const afterRead = await snapshot(p);
                 check(afterRead.storage === null && afterRead.live === false, `read/application leaves fresh storage absent: ${path}`, afterRead);

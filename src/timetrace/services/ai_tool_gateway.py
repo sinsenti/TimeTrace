@@ -620,10 +620,10 @@ class DbAIToolGateway:
             )
 
     def get_timer_status(self) -> dict[str, Any]:
-        from timetrace.services.timer_service import TimerService
+        from timetrace.services.multiple_timer_service import MultipleTimerService
 
         with self._read_context("timer") as db:
-            return TimerService(db).get_status()
+            return MultipleTimerService(db).assistant_status()
 
     def get_reflection_context(
         self,

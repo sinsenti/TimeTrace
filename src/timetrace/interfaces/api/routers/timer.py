@@ -5,7 +5,6 @@ from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
     IdleResolveRequest,
     IdleToggleRequest,
-    LegacySessionRead,
     TimerSplitRequest,
     TimerStartRequest,
 )
@@ -24,12 +23,12 @@ def start_timer(req: TimerStartRequest, db: DBSession = Depends(get_session)):
     return TimerService(db).start_timer(req)
 
 
-@router.post("/split", response_model=LegacySessionRead)
+@router.post("/split")
 def split_timer(req: TimerSplitRequest, db: DBSession = Depends(get_session)):
     return TimerService(db).split_timer(req)
 
 
-@router.post("/stop", response_model=LegacySessionRead)
+@router.post("/stop")
 def stop_timer(db: DBSession = Depends(get_session)):
     return TimerService(db).stop_timer()
 

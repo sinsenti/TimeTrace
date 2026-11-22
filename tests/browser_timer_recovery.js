@@ -25,7 +25,7 @@ async (page, baseURL) => {
     for (const path of paths) {
         await page.goto(baseURL + path);
         await page.waitForFunction(() => typeof lastTimerData !== 'undefined' && lastTimerData !== null);
-        check(await page.locator('script[src="/static/js/timer_control.js"]').count() === 1, `one controller ${path}`);
+        check(await page.locator('script[src^="/static/js/timer_control.js"]').count() === 1, `one controller ${path}`);
         check(await page.locator('#idle_resolution_modal').count() === 1, `one recovery partial ${path}`);
         const state = await page.evaluate(() => ({ running: lastTimerData.is_running, gap: lastTimerData.pending_idle_gap, mode: lastTimerData.mode, target: lastTimerData.target_minutes }));
         check(state.running === !frozen, `real state retained ${path}`);

@@ -244,6 +244,8 @@ class AgendaRecordedWorkRead(AgendaLegacyRead):
     kind: Literal["recorded_work"] = "recorded_work"
     provenance: Literal["manual", "timer"]
     scheduled_session_id: str | None
+    timer_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    timer_segment_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class RecordedWorkCreate(ScheduledSessionCreate):

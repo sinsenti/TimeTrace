@@ -64,7 +64,8 @@ class SessionService:
             raise
 
     def stage_recorded_work(
-        self, req: RecordedWorkCreate, *, provenance: Literal["manual", "timer"]
+        self, req: RecordedWorkCreate, *, provenance: Literal["manual", "timer"],
+        timer_identity: dict[str, str] | None = None,
     ) -> RecordedWorkCreated:
         """Stage validated work under the SQLite writer lock; never commit or roll back.
 
@@ -130,7 +131,10 @@ class SessionService:
             self.db.add(plan)
         elif req.expected_plan_revision is not None or req.expected_projection_revision is not None:
             raise ValidationError("A plan revision requires an explicit association.")
+        if timer_identity is not None and provenance != "timer":
+            raise ValidationError("Timer identity requires internal timer provenance.")
         row = SessionModel(
+            **(timer_identity or {}),
             task_id=req.task_id,
             start_time=start,
             end_time=end,
