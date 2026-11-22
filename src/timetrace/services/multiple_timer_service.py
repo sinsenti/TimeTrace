@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 from copy import deepcopy
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
 from uuid import uuid7
@@ -48,8 +48,25 @@ class MultipleTimerService:
                 timers.append(timer)
             return {"revision": state["revision"], "timers": timers}
 
+    def operation(self, operation_id):
+        with _writes, self.store.locked():
+            receipt = self.db.get(MutationOperation, operation_id)
+            pending = self.store.read().get("pending_operation")
+            if receipt:
+                return {
+                    "operation_id": operation_id,
+                    "status": "finalized" if receipt.file_finalized else "pending_reconciliation",
+                    "result": json.loads(receipt.result_json) if receipt.file_finalized else None,
+                }
+            if pending and pending["id"] == operation_id:
+                return {"operation_id": operation_id, "status": "pending_reconciliation", "result": None}
+            raise EntityNotFoundError("Operation", operation_id)
+
     def start(self, payload):
         return self.mutate("start", None, payload)
+
+    def observe_activity(self, idle_seconds):
+        return self.mutate("activity", None, {"operation_id": str(uuid7()), "idle_seconds": idle_seconds})
 
     def mutate(self, action, timer_id, payload):
         payload = {"action": action, "timer_id": timer_id, **payload}
@@ -68,6 +85,9 @@ class MultipleTimerService:
                 after = deepcopy(state)
                 if action == "start":
                     timer, selected = self._start(after, payload, cutoff)
+                elif action == "activity":
+                    self._activity(after, payload["idle_seconds"], cutoff)
+                    timer, selected = None, False
                 else:
                     selected = False
                     timer = after["timers"].get(timer_id)
@@ -77,11 +97,13 @@ class MultipleTimerService:
                         raise ConflictError("Timer changed.", code="revision_stale")
                     if timer["state"] == "stopped":
                         raise TimerError("Timer is stopped.")
-                    if any(g.get("decision") is None for g in timer["idle_gaps"]):
+                    if action != "resolve" and any(g.get("decision") is None for g in timer["idle_gaps"]):
                         raise ConflictError("Resolve idle gaps first.", code="idle_gap_unresolved")
                     if action in ("pause", "stop", "split"):
                         self._close_segment(timer, cutoff)
                         timer["state"] = "paused"
+                    elif action == "resolve":
+                        self._resolve(timer, payload)
                     elif action == "resume":
                         if timer["state"] != "paused":
                             raise TimerError("Timer is not paused.")
@@ -105,10 +127,25 @@ class MultipleTimerService:
                         timer["state"] = "running"
                         timer["running_start"] = cutoff
                 after["revision"] += 1
+                information = []
+                if action == "start":
+                    requested = payload.get("scheduled_session_id")
+                    if selected and requested != timer["scheduled_session_id"]:
+                        information.append(
+                            {
+                                "code": "association_not_changed",
+                                "requested": requested,
+                                "current": timer["scheduled_session_id"],
+                            }
+                        )
+                    plan_id = timer["scheduled_session_id"]
+                    plan = self.db.get(ScheduledSession, plan_id) if plan_id else None
+                    if plan and plan.end_time.replace(tzinfo=UTC) <= datetime.fromisoformat(cutoff):
+                        information.append({"code": "scheduled_session_ended"})
                 result = {
                     "timer": timer,
                     "selected_existing": selected,
-                    "information": [],
+                    "information": information,
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
@@ -141,24 +178,90 @@ class MultipleTimerService:
         )
         if existing:
             return existing, True
+        plan_id = payload.get("scheduled_session_id")
+        if plan_id:
+            plan = self.db.get(ScheduledSession, plan_id)
+            if plan is None:
+                raise EntityNotFoundError("Scheduled session", plan_id)
+            if task_id is None or plan.task_id != task_id:
+                raise ConflictError("Association requires equal non-null tasks.", code="association_task_conflict")
+            if plan.revision != payload.get("expected_plan_revision"):
+                raise ConflictError("Plan changed.", code="revision_stale")
         timer = {
             "id": str(uuid7()),
             "state": "running",
             "revision": 1,
             "task_id": task_id,
             "task_title": task.title if task else None,
-            "scheduled_session_id": None,
+            "scheduled_session_id": plan_id,
             "tags": payload.get("tags", ""),
             "notes": payload.get("notes", ""),
             "mode": payload.get("mode", "flowtime"),
             "target_minutes": payload.get("target_minutes"),
-            "pause_when_idle": True,
+            "pause_when_idle": payload.get("pause_when_idle", True),
             "segments": [],
             "running_start": cutoff,
             "idle_gaps": [],
         }
         after["timers"][timer["id"]] = timer
         return timer, False
+
+    def _activity(self, after, idle_seconds, cutoff):
+        now = datetime.fromisoformat(cutoff)
+        last_activity = (now - timedelta(seconds=max(0, idle_seconds))).isoformat()
+        for timer in after["timers"].values():
+            if (
+                timer["state"] == "running"
+                and timer["pause_when_idle"]
+                and idle_seconds >= settings.idle_threshold_seconds
+            ):
+                onset = max(last_activity, timer["running_start"])
+                self._close_segment(timer, onset)
+                timer["idle_gaps"].append(
+                    {
+                        "id": str(uuid7()),
+                        "onset": onset,
+                        "return_at": None,
+                        "decision": None,
+                        "boundary_source": "observed_idle",
+                        "task_id": timer["task_id"],
+                        "scheduled_session_id": timer["scheduled_session_id"],
+                        "tags": timer["tags"],
+                        "notes": timer["notes"],
+                    }
+                )
+                timer["state"] = "frozen"
+                timer["revision"] += 1
+            elif timer["state"] == "frozen" and idle_seconds < settings.idle_threshold_seconds:
+                for gap in timer["idle_gaps"]:
+                    if gap["return_at"] is None and last_activity >= gap["onset"]:
+                        gap["return_at"] = last_activity
+                        timer["revision"] += 1
+
+    @staticmethod
+    def _resolve(timer, payload):
+        gap = next((g for g in timer["idle_gaps"] if g["id"] == payload.get("gap_id")), None)
+        if gap is None:
+            raise EntityNotFoundError("Idle gap", payload.get("gap_id"))
+        if gap["decision"] is not None or gap["return_at"] is None:
+            raise ConflictError("Gap is unresolved or has no proven return.", code="idle_gap_unresolved")
+        decision = payload.get("decision")
+        if decision not in ("claim", "discard"):
+            raise TimerError("Choose claim or discard.")
+        if decision == "claim" and gap["return_at"] > gap["onset"]:
+            timer["segments"].append(
+                {
+                    "id": str(uuid7()),
+                    "start_time": gap["onset"],
+                    "end_time": gap["return_at"],
+                    "task_id": gap["task_id"],
+                    "scheduled_session_id": gap["scheduled_session_id"],
+                    "tags": gap["tags"],
+                    "notes": gap["notes"],
+                }
+            )
+        gap["decision"] = decision
+        timer["state"] = "paused"
 
     @staticmethod
     def _close_segment(timer, cutoff):

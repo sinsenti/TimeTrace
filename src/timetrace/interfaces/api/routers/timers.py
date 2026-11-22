@@ -17,6 +17,10 @@ class StartTimer(BaseModel):
     notes: str = ""
     mode: str = "flowtime"
     target_minutes: int | None = None
+    pause_when_idle: bool = True
+    scheduled_session_id: str | None = None
+    expected_plan_revision: int | None = None
+    expected_projection_revision: str | None = None
 
 
 class TimerMutation(BaseModel):
@@ -24,11 +28,18 @@ class TimerMutation(BaseModel):
     expected_revision: int | None = None
     new_tags: str = ""
     new_notes: str = ""
+    gap_id: str | None = None
+    decision: str | None = None
 
 
 @router.post("/timers/{timer_id}/{action}")
 def mutate_timer(timer_id: str, action: str, req: TimerMutation, db: Session = Depends(get_session)):
     return MultipleTimerService(db).mutate(action, timer_id, req.model_dump())
+
+
+@router.get("/operations/{operation_id}")
+def get_operation(operation_id: str, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).operation(operation_id)
 
 
 @router.get("/timers")
