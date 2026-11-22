@@ -528,35 +528,37 @@ class TaskService:
         RecurrenceService(self.db).delete_for_task(list(task_ids))
 
     def delete_task(self, task_id: str, *, allow_plan_detachment: bool = True) -> None:
-        lock_sqlite_writer(self.db)
-        db_task = self.db.get(Task, task_id)
-        if not db_task:
-            raise EntityNotFoundError("Task", task_id)
-        self._detach_task_history(
-            {task_id, *self._collect_subtree_ids(task_id)}, allow_plan_detachment=allow_plan_detachment
-        )
-        self.db.delete(db_task)
-        self.db.commit()
+        from timetrace.services.multiple_timer_service import MultipleTimerService
+
+        if not allow_plan_detachment:
+            # AI v1 may delete only exactly restorable tasks with no timer context. It already
+            # holds SQLite's writer lock; never invert that lock with the timer advisory lock.
+            from timetrace.core.exceptions import ConflictError
+
+            lock_sqlite_writer(self.db)
+            scope = {task_id, *self._collect_subtree_ids(task_id)}
+            if MultipleTimerService(self.db).has_task_context(scope):
+                raise ConflictError("Unfinished timer context cannot be restored by AI v1.")
+            self.stage_task_deletion([task_id], scope, allow_plan_detachment=False)
+            self.db.commit()
+            return
+        MultipleTimerService(self.db).delete_tasks([task_id], allow_plan_detachment=True)
 
     def delete_completed_tasks(self) -> int:
-        lock_sqlite_writer(self.db)
-        completed_tasks = self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
-        if not completed_tasks:
-            self.db.commit()
-            return 0
+        from timetrace.services.multiple_timer_service import MultipleTimerService
 
-        scope = {task.id for task in completed_tasks}
-        for task in completed_tasks:
-            scope.update(self._collect_subtree_ids(task.id))
-        self._detach_task_history(scope)
+        return MultipleTimerService(self.db).delete_tasks(None)["deleted_count"]
 
+    def stage_task_deletion(self, root_ids: list[str], scope: set[str], *, allow_plan_detachment: bool = True) -> int:
+        """Stage history-preserving deletion; durability/commit belongs to the timer receipt funnel."""
+        self._detach_task_history(scope, allow_plan_detachment=allow_plan_detachment)
         count = 0
-        for task in completed_tasks:
-            if task in self.db and not sa.inspect(task).deleted:
+        for task_id in root_ids:
+            task = self.db.get(Task, task_id)
+            if task is not None and task in self.db and not sa.inspect(task).deleted:
                 self.db.delete(task)
                 count += 1
-
-        self.db.commit()
+        self.db.flush()
         return count
 
     def get_task_tree(self, task_id: str) -> dict[str, Any]:

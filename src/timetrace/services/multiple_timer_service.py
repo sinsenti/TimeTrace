@@ -26,8 +26,34 @@ class MultipleTimerService:
     def __init__(self, db):
         self.db = db
         self.store = TimerStore(
-            Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "timers.json"))
+            Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "active_timer.json"))
         )
+
+    def has_task_context(self, task_ids):
+        """Conservative read for a caller already holding the SQLite writer lock.
+
+        Atomic replacement makes this read coherent without inverting DB/advisory lock order.
+        Unfinished before-state during reconciliation is deliberately still protected.
+        """
+        if not self.store.path.exists():
+            return False
+        try:
+            state = json.loads(self.store.path.read_text(encoding="utf-8"))
+            if state.get("version") != 2:
+                return state.get("task_id") in task_ids and (state.get("is_running") or state.get("is_frozen_idle"))
+            for timer in state["timers"].values():
+                if timer["state"] == "stopped":
+                    continue
+                contexts = [
+                    timer,
+                    *[s for s in timer["segments"] if not s.get("recorded_work_id")],
+                    *[g for g in timer["idle_gaps"] if g.get("decision") is None],
+                ]
+                if any(c.get("task_id") in task_ids for c in contexts):
+                    return True
+            return False
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ConflictError("Timer state cannot be verified.", code="reconciliation_required") from exc
 
     def list_timers(self):
         with _writes, self.store.locked():
@@ -46,7 +72,22 @@ class MultipleTimerService:
                     elapsed += (now - datetime.fromisoformat(timer["running_start"])).total_seconds()
                 timer["elapsed_seconds"] = elapsed
                 timers.append(timer)
-            return {"revision": state["revision"], "timers": timers}
+            return {
+                "revision": state["revision"],
+                "timers": timers,
+                "idle_detection_enabled": state.get("idle_detection_enabled", settings.idle_detection_enabled),
+            }
+
+    @staticmethod
+    def select_one(timers):
+        if len(timers) > 1:
+            raise ConflictError(
+                "Explicit timer target required; candidates: " + ", ".join(t["id"] for t in timers),
+                code="ambiguous_timer_target",
+            )
+        if not timers:
+            raise TimerError("No timer is currently active.")
+        return timers[0]
 
     def operation(self, operation_id):
         with _writes, self.store.locked():
@@ -64,6 +105,13 @@ class MultipleTimerService:
 
     def start(self, payload):
         return self.mutate("start", None, payload)
+
+    def delete_tasks(self, root_ids, *, allow_plan_detachment=True):
+        return self.mutate(
+            "delete_tasks",
+            None,
+            {"operation_id": str(uuid7()), "root_ids": root_ids, "allow_plan_detachment": allow_plan_detachment},
+        )
 
     def observe_activity(self, idle_seconds):
         return self.mutate("activity", None, {"operation_id": str(uuid7()), "idle_seconds": idle_seconds})
@@ -83,13 +131,31 @@ class MultipleTimerService:
                     return json.loads(receipt.result_json)
                 cutoff = datetime.now(UTC).isoformat()
                 after = deepcopy(state)
+                task_deletion = None
                 if action == "start":
                     timer, selected = self._start(after, payload, cutoff)
+                elif action == "delete_tasks":
+                    task_deletion = self._prepare_task_deletion(after, payload)
+                    timer, selected = None, False
                 elif action == "activity":
-                    self._activity(after, payload["idle_seconds"], cutoff)
+                    if after.get("idle_detection_enabled", settings.idle_detection_enabled):
+                        self._activity(after, payload["idle_seconds"], cutoff)
+                    timer, selected = None, False
+                    if after == state:
+                        self.db.rollback()
+                        return {"timer": None, "operation_id": operation_id}
+                elif action == "idle_toggle":
+                    current = after.get("idle_detection_enabled", settings.idle_detection_enabled)
+                    after["idle_detection_enabled"] = (
+                        not current if payload.get("enabled") is None else payload["enabled"]
+                    )
                     timer, selected = None, False
                 else:
                     selected = False
+                    if timer_id is None:
+                        timer_id = self.select_one([t for t in after["timers"].values() if t["state"] != "stopped"])[
+                            "id"
+                        ]
                     timer = after["timers"].get(timer_id)
                     if timer is None:
                         raise EntityNotFoundError("Timer", timer_id)
@@ -158,7 +224,11 @@ class MultipleTimerService:
                     "after_state_json": json.dumps(after),
                     "result_json": json.dumps(result),
                     "work": work,
+                    "task_deletion": task_deletion,
                 }
+                if task_deletion:
+                    result["deleted_count"] = len(task_deletion["root_ids"])
+                    intent["result_json"] = json.dumps(result)
                 state["pending_operation"] = intent
                 self.store.write(state)
                 self._complete(intent)
@@ -166,6 +236,31 @@ class MultipleTimerService:
             except Exception:
                 self.db.rollback()
                 raise
+
+    def _prepare_task_deletion(self, after, payload):
+        from timetrace.services.task_service import TaskService
+
+        root_ids = payload["root_ids"]
+        if root_ids is None:
+            root_ids = [
+                t.id for t in self.db.exec(select(Task).where(Task.status.in_(["Done", "completed", "done"]))).all()
+            ]
+        scope = set(root_ids)
+        for task_id in root_ids:
+            if self.db.get(Task, task_id) is None:
+                raise EntityNotFoundError("Task", task_id)
+            scope.update(TaskService(self.db)._collect_subtree_ids(task_id))
+        for timer in after["timers"].values():
+            if timer["state"] == "stopped":
+                continue
+            for context in [timer, *timer["segments"], *timer["idle_gaps"]]:
+                if context.get("task_id") in scope:
+                    context["task_id"] = None
+                    context["scheduled_session_id"] = None
+                    timer["revision"] += 1
+            if timer["task_id"] is None:
+                timer["task_title"] = None
+        return {"root_ids": root_ids, "scope": sorted(scope), "allow_plan_detachment": payload["allow_plan_detachment"]}
 
     def _start(self, after, payload, cutoff):
         task_id = payload.get("task_id")
@@ -281,9 +376,24 @@ class MultipleTimerService:
         timer["running_start"] = None
 
     def _complete(self, intent):
+        current = self.store.read()
+        expected = json.loads(intent["after_state_json"])
+        if current["revision"] not in (intent["before_revision"], intent["after_revision"]):
+            raise ConflictError("Timer generation conflicts with intent.", code="reconciliation_required")
+        if current["revision"] == intent["after_revision"] and current != expected:
+            raise ConflictError("Timer state conflicts with intent.", code="reconciliation_required")
         lock_sqlite_writer(self.db)
         receipt = self.db.get(MutationOperation, intent["id"])
         if receipt is None:
+            deletion = intent.get("task_deletion")
+            if deletion:
+                from timetrace.services.task_service import TaskService
+
+                TaskService(self.db).stage_task_deletion(
+                    deletion["root_ids"],
+                    set(deletion["scope"]),
+                    allow_plan_detachment=deletion["allow_plan_detachment"],
+                )
             for segment in intent.get("work", []):
                 plan_id = segment.get("scheduled_session_id")
                 plan = self.db.get(ScheduledSession, plan_id) if plan_id else None
@@ -306,7 +416,7 @@ class MultipleTimerService:
                         "timer_segment_id": segment["id"],
                     },
                 )
-            receipt = MutationOperation(**{k: v for k, v in intent.items() if k != "work"})
+            receipt = MutationOperation(**{k: v for k, v in intent.items() if k not in {"work", "task_deletion"}})
             self.db.add(receipt)
             self.db.commit()
         current = self.store.read()

@@ -209,6 +209,35 @@ def test_start_ended_plan_is_information_only_and_paused_selection_does_not_resu
     assert "association_not_changed" in [i["code"] for i in selected.json()["information"]]
 
 
+def test_singular_mutations_refuse_ambiguity_without_mutating_timers(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    for _ in range(2):
+        assert client.post("/timers", json={"operation_id": str(uuid4())}).status_code == 200
+    before = client.get("/timers").json()
+    response = client.post("/timer/stop")
+    assert response.status_code == 409, response.text
+    assert response.json()["code"] == "ambiguous_timer_target"
+    after = client.get("/timers").json()
+    assert after["revision"] == before["revision"]
+    assert {t["id"] for t in after["timers"]} == {t["id"] for t in before["timers"]}
+
+
+def test_task_delete_detaches_unfinished_timer_and_preserves_recorded_history(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    task = client.post("/api/tasks", json={"title": "Protected"}).json()
+    timer = client.post("/timers", json={"operation_id": str(uuid4()), "task_id": task["id"]}).json()["timer"]
+    response = client.delete(f"/api/tasks/{task['id']}")
+    assert response.status_code == 204, response.text
+    current = client.get("/timers").json()["timers"][0]
+    assert current["id"] == timer["id"]
+    assert current["task_id"] is None
+    stop = client.post(f"/timers/{timer['id']}/stop", json={"operation_id": str(uuid4())})
+    assert stop.status_code == 200, stop.text
+    stopped = stop.json()
+    for work_id in stopped["recorded_work_ids"]:
+        assert client.get(f"/recorded-work/{work_id}").json()["task_id"] is None
+
+
 def test_independent_timers_survive_process_restart(tmp_path):
     env = {
         **os.environ,

@@ -1,6 +1,7 @@
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import uuid7
 
 import typer
 import uvicorn
@@ -101,6 +102,7 @@ def start_timer(
     notes: str = typer.Option("", "--notes", "-n", help="Notes for session"),
     task_id: str | None = typer.Option(None, "--task", "-k", help="Task ID to attach"),
     pomo: int | None = typer.Option(None, "--pomo", "-p", help="Pomodoro duration in minutes"),
+    operation: str | None = typer.Option(None, "--operation", help="Stable retry operation ID"),
 ):
     """Start active session timer."""
     ensure_daemon_running()
@@ -109,8 +111,9 @@ def start_timer(
         task_id = resolve_task_id(task_id)
     with get_client() as client:
         res = client.post(
-            "/timer/start",
+            "/timers",
             json={
+                "operation_id": operation or str(uuid7()),
                 "task_id": task_id,
                 "tags": tags,
                 "notes": notes,
@@ -119,38 +122,74 @@ def start_timer(
             },
         )
         if res.status_code == 200:
-            print(f"Timer started ({mode}).")
+            data = res.json()
+            selected = "selected" if data.get("selected_existing") else "started"
+            print(
+                f"Timer {short_id(data['timer']['id'])} {selected} ({data['timer']['state']}); operation {data['operation_id']}."
+            )
         else:
             print(f"Error: {res.json().get('detail')}")
+
+
+def _targeted_timer_action(action, timer, operation, **payload):
+    ensure_daemon_running()
+    with get_client() as client:
+        if timer and len(timer) == 36:
+            target = timer
+        else:
+            response = client.get("/timers")
+            if response.status_code != 200:
+                print("Timer status unavailable; no mutation sent.")
+                raise typer.Exit(1)
+            candidates = [t for t in response.json()["timers"] if not timer or t["id"].endswith(timer)]
+            if len(candidates) != 1:
+                print("Choose --timer; candidates: " + ", ".join(t["id"] for t in candidates))
+                raise typer.Exit(1)
+            target = candidates[0]["id"]
+        key = operation or str(uuid7())
+        print(f"Operation {key}; target {target}")
+        res = client.post(f"/timers/{target}/{action}", json={"operation_id": key, **payload})
+        if res.status_code != 200:
+            print(f"Error: {res.json().get('detail')}")
+            raise typer.Exit(1)
+        print(
+            f"Timer {short_id(target)}: {res.json()['timer']['state']}; recorded work {res.json().get('recorded_work_ids', [])}"
+        )
 
 
 @cli_app.command("split")
 def split_timer(
-    tags: str = typer.Option("", "--tags", "-t", help="New tags for switched activity"),
-    notes: str = typer.Option("", "--notes", "-n", help="New notes for switched activity"),
+    tags: str = typer.Option("", "--tags", "-t"),
+    notes: str = typer.Option("", "--notes", "-n"),
+    timer: str | None = typer.Option(None, "--timer"),
+    operation: str | None = typer.Option(None, "--operation"),
 ):
-    """Split active timer and start a new session immediately."""
-    ensure_daemon_running()
-    with get_client() as client:
-        res = client.post("/timer/split", json={"new_tags": tags, "new_notes": notes})
-        if res.status_code == 200:
-            print("Timer split successfully. New session started.")
-        else:
-            print(f"Error: {res.json().get('detail')}")
+    """Record buffered work and continue the selected timer with new metadata."""
+    _targeted_timer_action("split", timer, operation, new_tags=tags, new_notes=notes)
 
 
 @cli_app.command("stop")
-def stop_timer():
-    """Stop active timer and save session."""
-    ensure_daemon_running()
-    with get_client() as client:
-        res = client.post("/timer/stop")
-        if res.status_code == 200:
-            data = res.json()
-            duration_min = round(data.get("duration_seconds", 0) / 60, 1)
-            print(f"Timer stopped. Saved Session #{short_id(data['id'])} ({duration_min} mins).")
-        else:
-            print(f"Error: {res.json().get('detail')}")
+def stop_timer(
+    timer: str | None = typer.Option(None, "--timer"), operation: str | None = typer.Option(None, "--operation")
+):
+    """Stop exactly one timer and record its work."""
+    _targeted_timer_action("stop", timer, operation)
+
+
+@cli_app.command("pause")
+def pause_timer(
+    timer: str | None = typer.Option(None, "--timer"), operation: str | None = typer.Option(None, "--operation")
+):
+    """Pause exactly one timer."""
+    _targeted_timer_action("pause", timer, operation)
+
+
+@cli_app.command("resume")
+def resume_timer(
+    timer: str | None = typer.Option(None, "--timer"), operation: str | None = typer.Option(None, "--operation")
+):
+    """Explicitly resume exactly one paused timer."""
+    _targeted_timer_action("resume", timer, operation)
 
 
 @cli_app.command("retro")
@@ -187,26 +226,18 @@ def timer_status(tmux: bool = typer.Option(False, "--tmux", help="Output minimal
     """Check active timer status."""
     try:
         with get_client() as client:
-            res = client.get("/timer/status")
-            if res.status_code == 200:
-                data = res.json()
-                if not data["is_running"]:
-                    if data.get("is_frozen_idle"):
-                        msg = "AFK Frozen" if tmux else "Timer frozen due to AFK inactivity."
-                    else:
-                        msg = "Idle" if tmux else "No timer currently running."
-                    print(msg)
-                    return
-
-                elapsed_min = data["elapsed_seconds"] // 60
-                elapsed_sec = data["elapsed_seconds"] % 60
-                time_str = f"{elapsed_min:02d}:{elapsed_sec:02d}"
-                tags = data.get("tags", "")
-
-                if tmux:
-                    print(f"{time_str} [{tags}]")
-                else:
-                    print(f"Active Timer: {time_str} | Tags: {tags} | Notes: {data.get('notes', '')}")
+            res = client.get("/timers")
+            if res.status_code != 200:
+                print("Timer status unavailable")
+                return
+            timers = res.json()["timers"]
+            if not timers:
+                print("Idle" if tmux else "No unfinished timers.")
+            for timer in timers:
+                seconds = int(timer["elapsed_seconds"])
+                elapsed = f"{seconds // 60:02d}:{seconds % 60:02d}"
+                context = timer.get("task_title") or timer.get("notes") or timer.get("tags") or "Unassigned"
+                print(f"{short_id(timer['id'])} {timer['state']} {elapsed} live | {context}")
     except Exception:
         print("Daemon Offline")
 
@@ -228,9 +259,15 @@ def summary_stats():
 
 @cli_app.command("tasks")
 def list_tasks_cli(
-    status_filter: str = typer.Option("all", "--status", "-s", help="Filter status: all, To Do, Ongoing, Scheduled, Done, Backlog"),
-    category_filter: str = typer.Option("all", "--category", "-c", help="Filter category: all, work, family, personal, study"),
-    sort_by: str = typer.Option("smart_gap_filler", "--sort", "-o", help="Sort by: smart_gap_filler, priority, created_at, title"),
+    status_filter: str = typer.Option(
+        "all", "--status", "-s", help="Filter status: all, To Do, Ongoing, Scheduled, Done, Backlog"
+    ),
+    category_filter: str = typer.Option(
+        "all", "--category", "-c", help="Filter category: all, work, family, personal, study"
+    ),
+    sort_by: str = typer.Option(
+        "smart_gap_filler", "--sort", "-o", help="Sort by: smart_gap_filler, priority, created_at, title"
+    ),
 ):
     """List tasks with filtering and sorting."""
     ensure_daemon_running()
@@ -301,7 +338,9 @@ def add_task(
         if res.status_code == 201:
             task = res.json()
             parent_msg = f" (Subtask of #{short_id(parent_id)})" if parent_id else ""
-            print(f"Created Task #{short_id(task['id'])}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]")
+            print(
+                f"Created Task #{short_id(task['id'])}{parent_msg}: '{task['title']}' [Category: {task['category']}, Est: {task['estimated_minutes']}m]"
+            )
         else:
             print("Failed to create task.")
 

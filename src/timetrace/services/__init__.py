@@ -8,6 +8,7 @@ from timetrace.services.ai_tool_gateway import DbAIToolGateway
 from timetrace.services.analytics_service import AnalyticsService
 from timetrace.services.dashboard_service import DashboardService
 from timetrace.services.habit_service import HabitService
+from timetrace.services.multiple_timer_service import MultipleTimerService
 from timetrace.services.query_service import QueryService
 from timetrace.services.rating_service import RatingService
 from timetrace.services.recurrence_service import RecurrenceService
@@ -21,6 +22,7 @@ __all__ = [
     "TaskService",
     "SessionService",
     "TimerService",
+    "MultipleTimerService",
     "RevisionService",
     "RatingService",
     "HabitService",

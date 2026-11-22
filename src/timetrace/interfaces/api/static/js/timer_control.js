@@ -31,7 +31,8 @@ function renderTimerState() {
     const gap = data?.pending_idle_gap;
     const blocked = timerActionPending || Boolean(timerReceipt) || !timerStatusFresh;
     let text = 'Loading timer status…';
-    if (data?.is_running) {
+    if (data?.multiple_count > 1) text = `${data.multiple_count} independent timers · use targeted controls`;
+    else if (data?.is_running) {
         const seconds = data.elapsed_seconds || 0;
         const remaining = data.remaining_seconds == null ? '' : ` (${Math.ceil(data.remaining_seconds / 60)}m left)`;
         text = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}${remaining} | ${data.task_title || data.notes || data.tags || 'Active timer'}`;
@@ -96,7 +97,16 @@ async function readTimerStatus(actionRead = false) {
     if (timerActionPending && !actionRead) return null;
     const version = ++timerReadVersion;
     try {
-        const data = await api.get('/timer/status');
+        let data;
+        if (window.multipleTimers) {
+            const status = await window.multipleTimers.refresh();
+            if (!status) throw new Error('Timer status unavailable');
+            const timer = status.timers.length === 1 ? status.timers[0] : {};
+            data = {...timer, is_running:timer.state === 'running', is_frozen_idle:timer.state === 'frozen',
+                idle_detection_enabled:status.idle_detection_enabled, pending_idle_gap:null,
+                elapsed_seconds:Math.floor(timer.elapsed_seconds || 0), multiple_count:status.timers.length,
+                start_time:timer.running_start, remaining_seconds:null};
+        } else data = await api.get('/timer/status');
         if (version !== timerReadVersion) return null;
         if (!data || typeof data.is_running !== 'boolean' || typeof data.is_frozen_idle !== 'boolean') throw new Error('Unknown timer status');
         lastTimerData = data;
@@ -203,6 +213,7 @@ function updateDocumentTitle() {
 
 // Shared by Calendar and Session Timer Now; status preflight is not a cross-client lock.
 async function performTimerAction(operation, payload, stillCurrent = () => true, recoveryLauncher = null) {
+    if (window.multipleTimers) return window.multipleTimers.perform(operation, payload, stillCurrent);
     if (timerActionPending || timerReceipt) { renderTimerState(); return false; }
     const checkpoint = operation === 'resolve' && payload?.option === 're_tag' && typeof settingsDraftCheckpoint === 'function'
         ? settingsDraftCheckpoint('idle_resolution_modal') : null;

@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 OLD = "0013_ai_data_scope"
 FOUNDATION = "0014_agenda_foundation"
-HEAD = "0016_recorded_work_index"
+HEAD = "0017_timer_receipts"
 TASK = "00000000-0000-7000-8000-000000000001"
 LOG = "00000000-0000-7000-8000-000000000002"
 WHEN = "2000-01-04 14:00:00.000000"
@@ -266,7 +266,7 @@ try:
         health = client.get('/health')
         raise AssertionError(f'daemon started with truncated migrations: /health {health.status_code}')
 except RuntimeError as exc:
-    assert '0016_recorded_work_index' in str(exc), str(exc)
+    assert '0017_timer_receipts' in str(exc), str(exc)
     assert 'complete TimeTrace' in str(exc), str(exc)
 assert opened_databases == [], opened_databases
 """
@@ -503,7 +503,7 @@ def test_recorded_work_range_index_fresh_and_consistent_synthetic_copy(tmp_path,
     run_on(target, "-m", "alembic", "upgrade", "head")
     with closing(sqlite3.connect(target)) as conn:
         assert conn.execute("PRAGMA foreign_key_check").fetchall() == []
-        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0016_recorded_work_index",)
+        assert conn.execute("SELECT version_num FROM alembic_version").fetchone() == ("0017_timer_receipts",)
         plan = conn.execute(
             "EXPLAIN QUERY PLAN SELECT id FROM session WHERE kind='recorded_work' "
             "AND start_time>=? AND start_time<? AND end_time<=?",

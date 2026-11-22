@@ -1,4 +1,9 @@
 /* Timer-only surfaces; no shared page/dialog overrides. */
+.multiple-timers { padding: 8px 16px; background: var(--bg-card); color: var(--text-main); border-bottom: 1px solid var(--border-muted); font-size: 13px; max-height: 32vh; overflow: auto; }
+.multiple-timer-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0; overflow-wrap: anywhere; }
+.multiple-timer-row button, .multiple-timers > button, .multiple-timers select { min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-muted); border-radius: 5px; background: var(--bg-card); color: var(--text-main); }
+.multiple-timers button:disabled { opacity: .55; cursor: not-allowed; }
+.multiple-timers [data-timer-message]:empty { display: none; }
 .calendar-page #active_timer_pill {
     height: 32px; min-height: 32px; flex-wrap: nowrap; gap: 6px; padding: 2px 6px;
 }

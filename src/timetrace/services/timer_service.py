@@ -1,194 +1,102 @@
-from collections.abc import Iterator
-from contextlib import contextmanager
-from datetime import UTC, datetime
-from threading import RLock
-from typing import Any
+"""Singular compatibility adapters; all mutations use the targeted durability funnel."""
 
-from sqlmodel import Session
+from uuid import uuid7
 
-from timetrace.core.exceptions import EntityNotFoundError, TimerError, ValidationError
-from timetrace.core.timer import timer_manager
-from timetrace.db.models import Session as SessionModel
-from timetrace.db.models import Task
-from timetrace.db.session import lock_sqlite_writer
-from timetrace.interfaces.api.schemas import IdleResolveRequest, IdleToggleRequest, TimerSplitRequest, TimerStartRequest
-from timetrace.interfaces.api.utils import ensure_utc
+from timetrace.core.exceptions import ConflictError
+from timetrace.services.multiple_timer_service import MultipleTimerService
 from timetrace.services.session_service import SessionService
-
-_timer_writes = RLock()
 
 
 class TimerService:
-    def __init__(self, db: Session | None):
+    def __init__(self, db):
         self.db = db
+        self.multiple = MultipleTimerService(db)
 
-    @contextmanager
-    def _write(self, *, commit_on_exit: bool = True) -> Iterator[None]:
-        # The singleton stays serialized across idle resolution's legacy split commits.
-        # SQLite also orders timer context changes against task mutations in other sessions.
-        with _timer_writes:
-            try:
-                lock_sqlite_writer(self.db)
-                yield
-                if commit_on_exit:
-                    self.db.commit()
-            except Exception:
-                self.db.rollback()
-                raise
-
-    def get_status(self) -> dict[str, Any]:
-        status_data = timer_manager.get_status()
-        if status_data.get("task_id") and not status_data.get("task_title") and self.db is not None:
-            task_obj = self.db.get(Task, status_data["task_id"])
-            if task_obj:
-                status_data["task_title"] = task_obj.title
-
-        upcoming_payload = None
-        if not status_data.get("is_running") and self.db is not None:
-            now = datetime.now(UTC)
-            # Merged: the earliest persisted schedule or the next projected occurrence of a
-            # recurring series, whichever is sooner.
+    def get_status(self, timer_id=None):
+        status = self.multiple.list_timers()
+        timers = status["timers"]
+        timer = (
+            next(t for t in timers if t["id"] == timer_id)
+            if timer_id
+            else self.multiple.select_one(timers)
+            if timers
+            else {}
+        )
+        gap = next((g for g in timer.get("idle_gaps", []) if g["decision"] is None), None)
+        legacy_gap = None
+        if gap:
+            legacy_gap = {
+                **gap,
+                "idle_start": gap["onset"],
+                "idle_end": gap["return_at"],
+                "task_id": timer["task_id"],
+                "task_title": timer["task_title"],
+                "saved_session": None,
+            }
+        elapsed = int(timer.get("elapsed_seconds", 0))
+        target = timer.get("target_minutes")
+        upcoming = None
+        if not timer:
             upcoming = SessionService(self.db).next_upcoming_occurrence()
             if upcoming:
-                up_start = ensure_utc(upcoming["start_time"])
-                upcoming_payload = {
-                    "title": upcoming["title"],
-                    "start_time": up_start.isoformat(),
-                    "starts_in_minutes": max(1, int((up_start - now).total_seconds() / 60)),
-                }
-        # Keep the existing next_session key for the UI and provide an explicit name for AI
-        # consumers. A running timer still reports the next item as null: the active timer is
-        # not logged work and must not be presented as a scheduled session.
-        status_data["next_session"] = upcoming_payload
-        status_data["next_scheduled_session"] = upcoming_payload
-        status_data["timer_mode"] = status_data.get("mode")
-        status_data["remaining_pomodoro_seconds"] = status_data.get("remaining_seconds")
-        return status_data
+                upcoming = {"title": upcoming["title"], "start_time": upcoming["start_time"].isoformat()}
+        return {
+            **timer,
+            "is_running": timer.get("state") == "running",
+            "is_frozen_idle": timer.get("state") == "frozen",
+            "pending_idle_gap": legacy_gap,
+            "elapsed_seconds": elapsed,
+            "start_time": timer.get("running_start"),
+            "mode": timer.get("mode", "flowtime"),
+            "remaining_seconds": max(0, target * 60 - elapsed) if target else None,
+            "target_minutes": target,
+            "task_id": timer.get("task_id"),
+            "task_title": timer.get("task_title"),
+            "tags": timer.get("tags", ""),
+            "notes": timer.get("notes", ""),
+            "idle_detection_enabled": status["idle_detection_enabled"],
+            "next_session": upcoming,
+            "next_scheduled_session": upcoming,
+            "timer_mode": timer.get("mode", "flowtime"),
+            "remaining_pomodoro_seconds": max(0, target * 60 - elapsed) if target else None,
+        }
 
-    def start_timer(self, req: TimerStartRequest) -> dict[str, Any]:
-        with self._write():
-            task = self.db.get(Task, req.task_id) if req.task_id else None
-            if req.task_id and task is None:
-                raise EntityNotFoundError("Task", req.task_id)
-            try:
-                return timer_manager.start(
-                    task_id=req.task_id,
-                    task_title=task.title if task else None,
-                    tags=req.tags,
-                    notes=req.notes,
-                    mode=req.mode,
-                    target_minutes=req.target_minutes,
-                )
-            except ValueError as exc:
-                raise TimerError(str(exc)) from exc
+    def start_timer(self, req):
+        result = self.multiple.start({**req.model_dump(), "operation_id": str(uuid7())})
+        return self.get_status(result["timer"]["id"])
 
-    def split_timer(self, req: TimerSplitRequest) -> SessionModel:
-        with self._write():
-            try:
-                data = timer_manager.split(new_tags=req.new_tags, new_notes=req.new_notes)
-            except ValueError as exc:
-                raise TimerError(str(exc)) from exc
-            row = self._stage_timer_history(data)
-        return self._read_timer_history(row)
+    def _record(self, action, payload):
+        result = self.multiple.mutate(action, None, {**payload, "operation_id": str(uuid7())})
+        ids = result["recorded_work_ids"]
+        if ids:
+            row = SessionService(self.db).get_recorded_work(ids[-1]).model_dump()
+            return {**row, "recorded_work_ids": ids, "operation_id": result["operation_id"]}
+        return {"id": None, "duration_seconds": 0, **result}
 
-    def stop_timer(self) -> SessionModel:
-        with self._write():
-            try:
-                data = timer_manager.stop()
-            except ValueError as exc:
-                raise TimerError(str(exc)) from exc
-            row = self._stage_timer_history(data)
-        return self._read_timer_history(row)
+    def stop_timer(self):
+        return self._record("stop", {})
 
-    def _stage_timer_history(self, data: dict[str, Any]) -> SessionModel:
-        row = SessionModel(
-            task_id=data["task_id"],
-            start_time=ensure_utc(data["start_time"]).replace(tzinfo=None),
-            end_time=ensure_utc(data["end_time"]).replace(tzinfo=None),
-            duration_seconds=data["duration_seconds"],
-            tags=data["tags"],
-            notes=data["notes"],
+    def split_timer(self, req):
+        return self._record("split", req.model_dump())
+
+    def toggle_idle_detection(self, req):
+        self.multiple.mutate("idle_toggle", None, {"operation_id": str(uuid7()), "enabled": req.enabled})
+        return self.multiple.list_timers()["idle_detection_enabled"]
+
+    def freeze_for_idle(self, idle_seconds):
+        return self.multiple.observe_activity(idle_seconds)
+
+    def resolve_idle_gap(self, req):
+        timer = self.multiple.select_one(self.multiple.list_timers()["timers"])
+        gaps = [g for g in timer["idle_gaps"] if g["decision"] is None]
+        if len(gaps) != 1 or req.option not in ("skip", "claim_work"):
+            raise ConflictError("Use explicit targeted claim/discard for idle gaps.", code="idle_gap_unresolved")
+        return self.multiple.mutate(
+            "resolve",
+            timer["id"],
+            {
+                "operation_id": str(uuid7()),
+                "gap_id": gaps[0]["id"],
+                "decision": "claim" if req.option == "claim_work" else "discard",
+            },
         )
-        self.db.add(row)
-        return row
-
-    def _read_timer_history(self, row: SessionModel) -> SessionModel:
-        self.db.refresh(row)
-        row.start_time = ensure_utc(row.start_time)
-        row.end_time = ensure_utc(row.end_time)
-        return row
-
-    def toggle_idle_detection(self, req: IdleToggleRequest) -> bool:
-        with _timer_writes:
-            return timer_manager.toggle_idle_detection(req.enabled)
-
-    def freeze_for_idle(self, idle_seconds: float) -> None:
-        with _timer_writes:
-            if timer_manager.idle_detection_enabled and idle_seconds >= timer_manager.idle_threshold_seconds:
-                timer_manager.freeze_for_idle(idle_seconds)
-
-    def resolve_idle_gap(self, req: IdleResolveRequest) -> dict[str, Any]:
-        # Preserve this legacy path's existing two commits and commit-before-clear ordering.
-        with self._write(commit_on_exit=False):
-            return self._resolve_idle_gap(req)
-
-    def _resolve_idle_gap(self, req: IdleResolveRequest) -> dict[str, Any]:
-        gap = timer_manager.pending_idle_gap
-        if not gap:
-            raise ValidationError("No pending idle gap to resolve.")
-
-        saved_data = gap.get("saved_session")
-        if saved_data and saved_data.get("duration_seconds", 0) > 0:
-            db_work = SessionModel(
-                task_id=saved_data.get("task_id"),
-                start_time=ensure_utc(datetime.fromisoformat(saved_data["start_time"])).replace(tzinfo=None),
-                end_time=ensure_utc(datetime.fromisoformat(saved_data["end_time"])).replace(tzinfo=None),
-                duration_seconds=saved_data["duration_seconds"],
-                tags=saved_data.get("tags") or "",
-                notes=saved_data.get("notes") or "",
-            )
-            self.db.add(db_work)
-            self.db.commit()
-            # Frozen task context remains visible until both legacy writes complete.
-            lock_sqlite_writer(self.db)
-
-        idle_start = ensure_utc(datetime.fromisoformat(gap["idle_start"])).replace(tzinfo=None)
-        idle_end = ensure_utc(datetime.fromisoformat(gap["idle_end"])).replace(tzinfo=None)
-        idle_duration = int((idle_end - idle_start).total_seconds())
-
-        if req.option == "break":
-            db_break = SessionModel(
-                task_id=gap.get("task_id"),
-                start_time=idle_start,
-                end_time=idle_end,
-                duration_seconds=idle_duration,
-                tags="#break",
-                notes="AFK Break Time",
-            )
-            self.db.add(db_break)
-
-        elif req.option == "claim_work":
-            db_claimed = SessionModel(
-                task_id=gap.get("task_id"),
-                start_time=idle_start,
-                end_time=idle_end,
-                duration_seconds=idle_duration,
-                tags=gap.get("tags") or "",
-                notes=f"Claimed AFK Work: {gap.get('notes', '')}".strip(),
-            )
-            self.db.add(db_claimed)
-
-        elif req.option == "re_tag":
-            db_retag = SessionModel(
-                task_id=gap.get("task_id"),
-                start_time=idle_start,
-                end_time=idle_end,
-                duration_seconds=idle_duration,
-                tags=req.new_tags or "",
-                notes=req.new_notes or "Re-tagged AFK time",
-            )
-            self.db.add(db_retag)
-
-        self.db.commit()
-        timer_manager.resolve_idle_gap()
-        return {"status": "success", "option_applied": req.option}
