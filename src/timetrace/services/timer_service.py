@@ -63,6 +63,7 @@ class TimerService:
             "tags": timer.get("tags", ""),
             "notes": timer.get("notes", ""),
             "idle_detection_enabled": status["idle_detection_enabled"],
+            "idle_threshold_seconds": status["idle_threshold_seconds"],
             "next_session": upcoming,
             "next_scheduled_session": upcoming,
             "timer_mode": timer.get("mode", "flowtime"),

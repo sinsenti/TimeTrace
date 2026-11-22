@@ -76,4 +76,45 @@ Subsequent public timer/restart tests cover these fixed expected outcomes:
 
 Use the six already-approved seams in Agenda §8. Migration evidence must include fresh chain and a
 consistent synthetic old-copy upgrade with FK, JSON, polymorphic and existing saved-query checks.
-This document specifies intended implementation, not a claim of completed validation.
+The preceding interface is the checkpoint design, not a claim that every proposed adapter is enabled.
+
+## Implemented #4 interface and recovery runbook
+
+The additive root `/timers`, `/timers/{id}` and targeted pause/resume/stop/split/resolve routes
+are implemented by `MultipleTimerService`; `TimerService` is the singular compatibility adapter.
+All real timer writers, background activity, CLI and shared page controls use this funnel.
+`GET /operations/{id}` exposes status/result, never recovery payloads. Timer recording stamps
+`timer_id` and `timer_segment_id` on explicit work and commits through the #3 staging interface.
+The private receipt table and unique operation/segment constraint are migration `0017_timer_receipts`.
+Startup reconciles without inventing input activity; every subsequent timer mutation repeats the barrier.
+
+Human task/subtree deletion stages history detachment, timer/buffer/gap detachment and its receipt
+in one DB transaction, then finalizes the fixed file transition. AI v1 refuses unfinished timer
+contexts; it cannot infer restoration or consent. Assistant reads list timers but omit opaque legacy
+payloads and segment buffers. `unfinished_for_plan(plan_id)` is a read-only manifest seam for later
+#6/#7 consumers holding SQLite's writer lock: it includes before/pending-after state and all
+uncommitted segment/unresolved-gap associations without acquiring the advisory lock.
+
+Timer reassociation/retarget preview/commit is **not enabled** by #4; there is no silent context
+change through Start or Split. Later callers must not invent success for that proposed interface.
+The independent minimal Claim/Discard controls are not #5's richer review screen. Legacy `break`
+and `re_tag` adapters explicitly refuse unsupported classification instead of guessing. A legacy
+uncertain first-return boundary cannot be claimed even after later activity is observed; retain it
+for explicit review or discard once a return is observed. Known pre-idle segments remain intact.
+An unavailable OS activity source returns unknown, never zero/proof of return. Polling observes
+last input, not every physical event; exact first-input/reboot boundaries are not certified.
+
+After a failed stop/split/resolve, keep the original operation ID **and payload**. Read its operation
+status; `pending_reconciliation` is not success. Startup or the next mutation completes the fixed
+intent/receipt transition before doing anything else; an explicit retry with the same key returns
+the stable original work IDs only after finalization. Browser journals survive reload; Refresh is
+read-only, Check saved operation reads the receipt, and Retry same operation uses the saved request.
+Definite 4xx refusals are released only after serialized operation-not-found, never from a lost
+response alone. Do not remove intent/receipt files or manually lower their generation to clear a
+failure. Corruption/generation conflicts require preserving the DB, JSON, v1 backup and receipts
+for diagnosis, not stamping or recreating schema. Back up DB and timer state consistently with
+writers stopped. A receipt-bearing schema downgrade is refused; restore a matching backup instead.
+
+File fsync/atomic replacement/directory fsync and advisory locking are exercised on this Linux host.
+Other operating systems/filesystems and physical OS-idle inputs are not certified by the synthetic
+fault/restart tests. See the task delivery evidence for actual suite/browser/migration results.

@@ -109,11 +109,13 @@ def start_timer(
     mode = "pomodoro" if pomo and pomo > 0 else "flowtime"
     if task_id:
         task_id = resolve_task_id(task_id)
+    key = operation or str(uuid7())
+    print(f"Operation {key}; retain this key and payload if the response is uncertain.")
     with get_client() as client:
         res = client.post(
             "/timers",
             json={
-                "operation_id": operation or str(uuid7()),
+                "operation_id": key,
                 "task_id": task_id,
                 "tags": tags,
                 "notes": notes,
@@ -125,10 +127,12 @@ def start_timer(
             data = res.json()
             selected = "selected" if data.get("selected_existing") else "started"
             print(
-                f"Timer {short_id(data['timer']['id'])} {selected} ({data['timer']['state']}); operation {data['operation_id']}."
+                f"Timer {short_id(data['timer']['id'])} {selected} ({data['timer']['state']}); "
+                f"operation {data['operation_id']}."
             )
         else:
             print(f"Error: {res.json().get('detail')}")
+            raise typer.Exit(1)
 
 
 def _targeted_timer_action(action, timer, operation, **payload):
@@ -153,7 +157,8 @@ def _targeted_timer_action(action, timer, operation, **payload):
             print(f"Error: {res.json().get('detail')}")
             raise typer.Exit(1)
         print(
-            f"Timer {short_id(target)}: {res.json()['timer']['state']}; recorded work {res.json().get('recorded_work_ids', [])}"
+            f"Timer {short_id(target)}: {res.json()['timer']['state']}; "
+            f"recorded work {res.json().get('recorded_work_ids', [])}"
         )
 
 

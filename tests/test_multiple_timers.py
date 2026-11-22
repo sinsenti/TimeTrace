@@ -55,6 +55,8 @@ def test_targeted_pause_resume_stop_and_retry_preserve_other_timer(client, tmp_p
         row = client.get(f"/recorded-work/{work_id}")
         assert row.status_code == 200, row.text
         assert row.json()["provenance"] == "timer"
+        assert row.json()["timer_id"] == a["id"]
+        assert row.json()["timer_segment_id"]
     assert {t["id"] for t in client.get("/timers").json()["timers"]} == {b["id"]}
 
 
@@ -120,14 +122,18 @@ def test_failed_replacement_blocks_different_keys_and_idle_until_reconciled(clie
         return replace(source, destination)
 
     monkeypatch.setattr(os, "replace", fail_after_intent)
-    with pytest.raises(OSError, match="injected"):
-        client.post(f"/timers/{timer['id']}/stop", json=stop)
+    failed = client.post(f"/timers/{timer['id']}/stop", json=stop)
+    assert failed.status_code == 409, failed.text
+    assert failed.json()["code"] == "reconciliation_required"
     pending = client.get(f"/operations/{stop['operation_id']}")
     assert pending.status_code == 200, pending.text
     assert pending.json()["status"] == "pending_reconciliation"
-    with pytest.raises(OSError, match="injected"):
-        client.post("/timers", json={"operation_id": str(uuid4())})
-    with pytest.raises(OSError, match="injected"):
+    other = client.post("/timers", json={"operation_id": str(uuid4())})
+    assert other.status_code == 409
+    assert other.json()["code"] == "reconciliation_required"
+    from timetrace.core.exceptions import ConflictError
+
+    with pytest.raises(ConflictError, match="reconciliation"):
         MultipleTimerService(db).observe_activity(600)
     monkeypatch.setattr(os, "replace", replace)
     recovered = client.post(f"/timers/{timer['id']}/stop", json=stop)
@@ -305,8 +311,9 @@ def test_fixed_stop_reconciles_every_persistence_boundary(client, db, tmp_path, 
     monkeypatch.setattr(db, "commit", commit_fault)
     monkeypatch.setattr(os, "fsync", fsync_fault)
     operation = {"operation_id": str(uuid4())}
-    with pytest.raises(OSError, match="injected durable boundary"):
-        client.post(f"/timers/{timer['id']}/stop", json=operation)
+    failure = client.post(f"/timers/{timer['id']}/stop", json=operation)
+    assert failure.status_code == 409, failure.text
+    assert failure.json()["code"] == "reconciliation_required"
     assert client.get(f"/operations/{operation['operation_id']}").json()["status"] == "pending_reconciliation"
     monkeypatch.setattr(db, "commit", commit)
     monkeypatch.setattr(os, "fsync", fsync)
@@ -427,24 +434,207 @@ raise AssertionError("crash boundary not reached")
         [sys.executable, "-P", "-c", crash, boundary, timer_id, operation], env=env, capture_output=True, text=True
     )
     assert failed.returncode == 91, failed.stderr
+    from datetime import UTC, datetime
+
+    latest_end = datetime.now(UTC).isoformat()
     recovery = """
 import json,sys
+from datetime import datetime
 from fastapi.testclient import TestClient
 from timetrace.main import create_daemon_app
 with TestClient(create_daemon_app()) as c:
-    timer_id, operation = sys.argv[1:]
+    timer_id, operation, latest_end = sys.argv[1:]
     receipt = c.get(f"/operations/{operation}").json()
     assert receipt["status"] == "finalized", receipt
     r = c.post(f"/timers/{timer_id}/stop", json={"operation_id":operation})
     assert r.status_code == 200, r.text
     assert len(c.get("/sessions").json()) == 1
+    work = c.get('/recorded-work/' + r.json()['recorded_work_ids'][0]).json()
+    assert datetime.fromisoformat(work['end_time']) <= datetime.fromisoformat(latest_end)
     assert c.get("/timers").json()["timers"] == []
     print(json.dumps(r.json()))
 """
     result = subprocess.run(
-        [sys.executable, "-P", "-c", recovery, timer_id, operation], env=env, capture_output=True, text=True, check=True
+        [sys.executable, "-P", "-c", recovery, timer_id, operation, latest_end],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert len(json.loads(result.stdout)["recorded_work_ids"]) == 1
+
+
+def test_unavailable_activity_source_never_proves_legacy_return(client, db, tmp_path, monkeypatch):
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    path = tmp_path / "timers.json"
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(path))
+    path.write_text(
+        json.dumps(
+            {
+                "is_running": False,
+                "is_frozen_idle": True,
+                "start_time": "2025-01-01T10:00:00+00:00",
+                "pending_idle_gap": {
+                    "idle_start": "2025-01-01T10:10:00+00:00",
+                    "idle_end": "2025-01-01T10:20:00+00:00",
+                    "saved_session": {
+                        "start_time": "2025-01-01T10:00:00+00:00",
+                        "end_time": "2025-01-01T10:10:00+00:00",
+                    },
+                },
+            }
+        )
+    )
+    timer = client.get("/timers").json()["timers"][0]
+    MultipleTimerService(db).observe_activity(None)
+    after = client.get(f"/timers/{timer['id']}").json()
+    assert after["state"] == "frozen"
+    assert after["idle_gaps"][0]["return_at"] is None
+    assert after["elapsed_seconds"] == 600
+    # Later observed input is not proof of the first return during a legacy outage.
+    MultipleTimerService(db).observe_activity(0)
+    claim = client.post(
+        f"/timers/{timer['id']}/resolve",
+        json={"operation_id": str(uuid4()), "gap_id": timer["idle_gaps"][0]["id"], "decision": "claim"},
+    )
+    assert claim.status_code == 409, claim.text
+    assert claim.json()["code"] == "idle_boundary_uncertain"
+    assert client.get("/sessions").json() == []
+
+
+def test_unavailable_os_detector_returns_unknown_not_zero(monkeypatch):
+    import timetrace.core.idle_detector as detector
+    from timetrace.core.idle_detector import get_idle_seconds
+
+    monkeypatch.setattr(detector.sys, "platform", "linux")
+
+    def unavailable(*args, **kwargs):
+        raise FileNotFoundError("No supported idle source")
+
+    monkeypatch.setattr(detector.subprocess, "check_output", unavailable)
+    assert get_idle_seconds() is None
+
+
+def test_timer_outside_ended_plan_counts_task_work_without_filling_or_extending_plan(client, tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    import timetrace.services.multiple_timer_service as module
+
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+
+    class Clock(datetime):
+        instant = datetime(2025, 1, 1, 10, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.instant
+
+    monkeypatch.setattr(module, "datetime", Clock)
+    task = client.post("/api/tasks", json={"title": "Outside plan"}).json()
+    plan = client.post(
+        "/scheduled-sessions",
+        json={"task_id": task["id"], "start_time": "2025-01-01T09:00:00Z", "end_time": "2025-01-01T09:30:00Z"},
+    ).json()
+    timer = client.post(
+        "/timers",
+        json={
+            "operation_id": str(uuid4()),
+            "task_id": task["id"],
+            "scheduled_session_id": plan["id"],
+            "expected_plan_revision": plan["revision"],
+        },
+    ).json()["timer"]
+    Clock.instant = datetime(2025, 1, 1, 10, 30, tzinfo=UTC)
+    params = {"start_date": "2025-01-01", "end_date": "2025-01-01", "plan_ids": plan["id"]}
+    assert client.get("/recorded-work-progress", params=params).json()["recorded_task_time"]["total"] == 0
+    response = client.post(f"/timers/{timer['id']}/stop", json={"operation_id": str(uuid4())})
+    assert response.status_code == 200, response.text
+    data = client.get("/recorded-work-progress", params=params).json()
+    assert data["recorded_task_time"]["total"] == 0.5
+    assert data["original"]["fill"]["rows"][0]["value"] == 0
+    assert data["current"]["fill"]["rows"][0]["value"] == 0
+    reread = client.get(f"/scheduled-sessions/{plan['id']}").json()
+    assert [reread[k] for k in ("original_start", "original_end", "start_time", "end_time")] == [
+        plan[k] for k in ("original_start", "original_end", "start_time", "end_time")
+    ]
+
+
+def test_split_paused_timer_preserves_identity_and_does_not_resume(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    timer = client.post("/timers", json={"operation_id": str(uuid4()), "tags": "#old"}).json()["timer"]
+    assert client.post(f"/timers/{timer['id']}/pause", json={"operation_id": str(uuid4())}).status_code == 200
+    payload = {"operation_id": str(uuid4()), "new_tags": "#new", "new_notes": "future context"}
+    result = client.post(f"/timers/{timer['id']}/split", json=payload)
+    assert result.status_code == 200, result.text
+    assert result.json()["timer"]["id"] == timer["id"]
+    assert result.json()["timer"]["state"] == "paused"
+    assert client.post(f"/timers/{timer['id']}/split", json=payload).json() == result.json()
+    for work_id in result.json()["recorded_work_ids"]:
+        assert client.get(f"/recorded-work/{work_id}").json()["tags"] == "#old"
+
+
+def test_start_assigned_frozen_timer_selects_without_resuming_or_losing_gap(client, db, tmp_path, monkeypatch):
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    task = client.post("/api/tasks", json={"title": "Frozen"}).json()
+    first = client.post(
+        "/timers", json={"operation_id": str(uuid4()), "task_id": task["id"], "notes": "original"}
+    ).json()["timer"]
+    MultipleTimerService(db).observe_activity(600)
+    frozen = client.get(f"/timers/{first['id']}").json()
+    selected = client.post(
+        "/timers", json={"operation_id": str(uuid4()), "task_id": task["id"], "notes": "replacement"}
+    )
+    assert selected.status_code == 200, selected.text
+    timer = selected.json()["timer"]
+    assert selected.json()["selected_existing"] is True
+    assert timer["id"] == first["id"] and timer["state"] == "frozen"
+    assert timer["idle_gaps"] == frozen["idle_gaps"]
+    assert timer["notes"] == "original"
+
+
+@pytest.mark.parametrize("action", ["split", "resolve"])
+def test_recording_and_gap_resolution_retry_after_finalization_failure(client, db, tmp_path, monkeypatch, action):
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "timers.json"))
+    a = client.post("/timers", json={"operation_id": str(uuid4())}).json()["timer"]
+    b = client.post("/timers", json={"operation_id": str(uuid4()), "pause_when_idle": False}).json()["timer"]
+    payload = {"operation_id": str(uuid4())}
+    if action == "resolve":
+        MultipleTimerService(db).observe_activity(600)
+        MultipleTimerService(db).observe_activity(0)
+        gap = client.get(f"/timers/{a['id']}").json()["idle_gaps"][0]
+        payload.update(gap_id=gap["id"], decision="claim")
+    else:
+        payload.update(new_tags="#future", new_notes="new segment")
+    commit = db.commit
+    commits = 0
+
+    def fail_finalization():
+        nonlocal commits
+        commits += 1
+        if commits == 2:
+            raise OSError("injected finalization failure")
+        commit()
+
+    monkeypatch.setattr(db, "commit", fail_finalization)
+    failure = client.post(f"/timers/{a['id']}/{action}", json=payload)
+    assert failure.status_code == 409, failure.text
+    monkeypatch.setattr(db, "commit", commit)
+    recovered = client.post(f"/timers/{a['id']}/{action}", json=payload)
+    assert recovered.status_code == 200, recovered.text
+    assert client.post(f"/timers/{a['id']}/{action}", json=payload).json() == recovered.json()
+    assert recovered.json()["timer"]["id"] == a["id"]
+    assert client.get(f"/timers/{b['id']}").json()["state"] == "running"
+    if action == "split":
+        assert len(client.get("/sessions").json()) == 1
+    else:
+        assert recovered.json()["timer"]["state"] == "paused"
+        assert client.post(f"/timers/{a['id']}/stop", json={"operation_id": str(uuid4())}).status_code == 200
+        assert len(client.get("/sessions").json()) == 1
 
 
 def test_independent_timers_survive_process_restart(tmp_path):

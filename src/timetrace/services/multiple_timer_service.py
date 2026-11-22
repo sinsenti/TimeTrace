@@ -9,6 +9,7 @@ from pathlib import Path
 from threading import RLock
 from uuid import uuid7
 
+from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from timetrace.config import settings
@@ -108,12 +109,39 @@ class MultipleTimerService:
                 if timer["running_start"]:
                     elapsed += (now - datetime.fromisoformat(timer["running_start"])).total_seconds()
                 timer["elapsed_seconds"] = elapsed
+                target = timer.get("target_minutes")
+                timer["remaining_seconds"] = (
+                    max(0, target * 60 - elapsed) if timer["mode"] == "pomodoro" and target else None
+                )
                 timers.append(timer)
             return {
                 "revision": state["revision"],
                 "timers": timers,
                 "idle_detection_enabled": state.get("idle_detection_enabled", settings.idle_detection_enabled),
+                "idle_threshold_seconds": state.get("idle_threshold_seconds", settings.idle_threshold_seconds),
             }
+
+    def assistant_status(self):
+        """Read-only multi-timer context without opaque migration/recovery payloads."""
+        status = self.list_timers()
+        for timer in status["timers"]:
+            timer.pop("legacy_payload", None)
+            timer.pop("segments", None)
+            for gap in timer["idle_gaps"]:
+                gap.pop("legacy_payload", None)
+        status["next_scheduled_session"] = None
+        if not any(t["state"] == "running" for t in status["timers"]):
+            upcoming = SessionService(self.db).next_upcoming_occurrence()
+            if upcoming:
+                start = upcoming["start_time"]
+                if start.tzinfo is None:
+                    start = start.replace(tzinfo=UTC)
+                status["next_scheduled_session"] = {
+                    "title": upcoming["title"],
+                    "start_time": start.isoformat(),
+                    "starts_in_minutes": max(1, int((start - datetime.now(UTC)).total_seconds() / 60)),
+                }
+        return status
 
     def get_timer(self, timer_id):
         status = self.list_timers()
@@ -142,6 +170,12 @@ class MultipleTimerService:
         with _writes, self.store.locked():
             try:
                 return self._reconcile()["revision"]
+            except (OSError, SQLAlchemyError) as exc:
+                self.db.rollback()
+                raise ConflictError(
+                    "Timer persistence requires reconciliation; retain the operation ID.",
+                    code="reconciliation_required",
+                ) from exc
             except Exception:
                 self.db.rollback()
                 raise
@@ -196,7 +230,9 @@ class MultipleTimerService:
                     task_deletion = self._prepare_task_deletion(after, payload)
                     timer, selected = None, False
                 elif action == "activity":
-                    if after.get("idle_detection_enabled", settings.idle_detection_enabled):
+                    if payload["idle_seconds"] is not None and after.get(
+                        "idle_detection_enabled", settings.idle_detection_enabled
+                    ):
                         self._activity(after, payload["idle_seconds"], cutoff)
                     timer, selected = None, False
                     if after == state:
@@ -285,8 +321,17 @@ class MultipleTimerService:
                     "work": work,
                     "task_deletion": task_deletion,
                     "plan_capture": plan_capture,
+                    "plan_update": (
+                        {"id": timer["scheduled_session_id"], "expected_revision": payload["expected_plan_revision"]}
+                        if action == "start" and not selected and not plan_capture and timer["scheduled_session_id"]
+                        else None
+                    ),
                 }
+                if intent["plan_update"]:
+                    result["plan_revision"] = intent["plan_update"]["expected_revision"] + 1
+                    intent["result_json"] = json.dumps(result)
                 if plan_capture:
+                    result["plan_revision"] = 1
                     result["captured_plan_id"] = plan_capture["id"]
                     result["requested_scheduled_session_id"] = payload["scheduled_session_id"]
                     intent["result_json"] = json.dumps(result)
@@ -297,6 +342,12 @@ class MultipleTimerService:
                 self.store.write(state)
                 self._complete(intent)
                 return result
+            except (OSError, SQLAlchemyError) as exc:
+                self.db.rollback()
+                raise ConflictError(
+                    "Timer persistence requires reconciliation; retain the operation ID.",
+                    code="reconciliation_required",
+                ) from exc
             except Exception:
                 self.db.rollback()
                 raise
@@ -387,12 +438,9 @@ class MultipleTimerService:
     def _activity(self, after, idle_seconds, cutoff):
         now = datetime.fromisoformat(cutoff)
         last_activity = (now - timedelta(seconds=max(0, idle_seconds))).isoformat()
+        threshold = after.get("idle_threshold_seconds", settings.idle_threshold_seconds)
         for timer in after["timers"].values():
-            if (
-                timer["state"] == "running"
-                and timer["pause_when_idle"]
-                and idle_seconds >= settings.idle_threshold_seconds
-            ):
+            if timer["state"] == "running" and timer["pause_when_idle"] and idle_seconds >= threshold:
                 onset = max(last_activity, timer["running_start"])
                 self._close_segment(timer, onset)
                 timer["idle_gaps"].append(
@@ -410,7 +458,7 @@ class MultipleTimerService:
                 )
                 timer["state"] = "frozen"
                 timer["revision"] += 1
-            elif timer["state"] == "frozen" and idle_seconds < settings.idle_threshold_seconds:
+            elif timer["state"] == "frozen" and idle_seconds < threshold:
                 for gap in timer["idle_gaps"]:
                     if gap["return_at"] is None and last_activity >= gap["onset"]:
                         gap["return_at"] = last_activity
@@ -426,6 +474,11 @@ class MultipleTimerService:
         decision = payload.get("decision")
         if decision not in ("claim", "discard"):
             raise TimerError("Choose claim or discard.")
+        if decision == "claim" and gap.get("boundary_source") == "legacy_uncertain":
+            raise ConflictError(
+                "Legacy first-return boundary is uncertain; discard or retain for explicit review.",
+                code="idle_boundary_uncertain",
+            )
         if decision == "claim" and gap["return_at"] > gap["onset"]:
             timer["segments"].append(
                 {
@@ -468,6 +521,13 @@ class MultipleTimerService:
         lock_sqlite_writer(self.db)
         receipt = self.db.get(MutationOperation, intent["id"])
         if receipt is None:
+            plan_update = intent.get("plan_update")
+            if plan_update:
+                plan = self.db.get(ScheduledSession, plan_update["id"])
+                if plan is None or plan.revision != plan_update["expected_revision"]:
+                    raise ConflictError("Pending timer plan context changed.", code="reconciliation_required")
+                plan.revision += 1
+                self.db.add(plan)
             capture = intent.get("plan_capture")
             if capture:
                 occurrence = SessionService(self.db).recurrence.projected_occurrence(
@@ -521,7 +581,7 @@ class MultipleTimerService:
                     },
                 )
             receipt = MutationOperation(
-                **{k: v for k, v in intent.items() if k not in {"work", "task_deletion", "plan_capture"}}
+                **{k: v for k, v in intent.items() if k not in {"work", "task_deletion", "plan_capture", "plan_update"}}
             )
             self.db.add(receipt)
             self.db.commit()

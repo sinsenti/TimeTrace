@@ -97,6 +97,7 @@ async function readTimerStatus(actionRead = false) {
     if (timerActionPending && !actionRead) return null;
     const version = ++timerReadVersion;
     try {
+        if (window.multipleTimersReady) await window.multipleTimersReady;
         let data;
         if (window.multipleTimers) {
             const status = await window.multipleTimers.refresh();
@@ -105,7 +106,7 @@ async function readTimerStatus(actionRead = false) {
             data = {...timer, is_running:timer.state === 'running', is_frozen_idle:timer.state === 'frozen',
                 idle_detection_enabled:status.idle_detection_enabled, pending_idle_gap:null,
                 elapsed_seconds:Math.floor(timer.elapsed_seconds || 0), multiple_count:status.timers.length,
-                start_time:timer.running_start, remaining_seconds:null};
+                start_time:timer.running_start, remaining_seconds:timer.remaining_seconds ?? null};
         } else data = await api.get('/timer/status');
         if (version !== timerReadVersion) return null;
         if (!data || typeof data.is_running !== 'boolean' || typeof data.is_frozen_idle !== 'boolean') throw new Error('Unknown timer status');

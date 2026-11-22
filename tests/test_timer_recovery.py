@@ -113,8 +113,9 @@ def test_second_commit_failure_recovers_stable_work_without_inserting_again(clie
 
     payload = {"operation_id": str(uuid7())}
     monkeypatch.setattr(db, "commit", fail_finalization)
-    with pytest.raises(OperationalError):
-        client.post(f"/timers/{timer_id}/stop", json=payload)
+    failed = client.post(f"/timers/{timer_id}/stop", json=payload)
+    assert failed.status_code == 409, failed.text
+    assert failed.json()["code"] == "reconciliation_required"
     monkeypatch.setattr(db, "commit", commit)
     assert client.get(f"/operations/{payload['operation_id']}").json()["status"] == "pending_reconciliation"
     response = client.post(f"/timers/{timer_id}/stop", json=payload)
@@ -164,8 +165,8 @@ def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recover
         response = client.get(path)
         assert response.status_code == 200
         html = response.text
-        assert html.count('src="/static/js/timer_control.js"') == 1
-        assert html.count('src="/static/js/multiple_timers.js"') == 1
+        assert html.count('src="/static/js/timer_control.js?v=timers4"') == 1
+        assert html.count('src="/static/js/multiple_timers.js?v=timers4d"') == 1
         assert html.count('id="multiple_timers"') == 1
         assert html.count('id="idle_resolution_modal"') == 1
         assert len(re.findall(r'href="/static/css/timer\.css(?:\?[^\"]*)?"', html)) == 1

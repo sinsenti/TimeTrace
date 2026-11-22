@@ -1,6 +1,5 @@
 """Durable JSON and local advisory lock, without database or HTTP dependencies."""
 
-import fcntl
 import json
 import os
 from contextlib import contextmanager
@@ -28,12 +27,27 @@ class TimerStore:
     @contextmanager
     def locked(self):
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with self.path.with_suffix(".lock").open("a") as lock:
-            fcntl.flock(lock, fcntl.LOCK_EX)
+        with self.path.with_suffix(".lock").open("a+b") as lock:
+            if os.name == "nt":
+                import msvcrt
+
+                if os.fstat(lock.fileno()).st_size == 0:
+                    lock.write(b"\x00")
+                    lock.flush()
+                lock.seek(0)
+                msvcrt.locking(lock.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(lock, fcntl.LOCK_EX)
             try:
                 yield
             finally:
-                fcntl.flock(lock, fcntl.LOCK_UN)
+                if os.name == "nt":
+                    lock.seek(0)
+                    msvcrt.locking(lock.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    fcntl.flock(lock, fcntl.LOCK_UN)
 
     def read(self):
         if not self.path.exists():
@@ -140,12 +154,25 @@ class TimerStore:
                 json.dump(state, stream, sort_keys=True)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, self.path)
-            directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
-            try:
-                os.fsync(directory)
-            finally:
-                os.close(directory)
+            if os.name == "nt":
+                # Request replace + write-through from the kernel; do not emulate a POSIX
+                # directory fsync by silently swallowing an unsupported directory open.
+                import ctypes
+                from ctypes import wintypes
+
+                kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+                move = kernel.MoveFileExW
+                move.argtypes = (wintypes.LPCWSTR, wintypes.LPCWSTR, wintypes.DWORD)
+                move.restype = wintypes.BOOL
+                if not move(str(temporary), str(self.path), 0x1 | 0x8):
+                    raise ctypes.WinError(ctypes.get_last_error())
+            else:
+                os.replace(temporary, self.path)
+                directory = os.open(self.path.parent, os.O_RDONLY | os.O_DIRECTORY)
+                try:
+                    os.fsync(directory)
+                finally:
+                    os.close(directory)
         finally:
             if temporary is not None:
                 temporary.unlink(missing_ok=True)

@@ -3,14 +3,16 @@ import subprocess
 import sys
 
 
-def get_idle_seconds() -> float:
+def get_idle_seconds() -> float | None:
     """
     Cross-platform non-blocking system idle time detector.
-    Returns the number of seconds since the last mouse or keyboard input.
+    Returns seconds since observed input, or None when activity cannot be observed.
+    Failure/unsupported platforms are not evidence of returned activity.
     """
     # 1. Windows Platform
     if sys.platform.startswith("win"):
         try:
+
             class LASTINPUTINFO(ctypes.Structure):
                 _fields_ = [("cbSize", ctypes.c_uint), ("dwTime", ctypes.c_uint)]
 
@@ -20,7 +22,7 @@ def get_idle_seconds() -> float:
                 millis = ctypes.windll.kernel32.GetTickCount() - last_input.dwTime
                 return max(0.0, millis / 1000.0)
         except Exception:
-            return 0.0
+            return None
 
     # 2. macOS Platform
     elif sys.platform == "darwin":
@@ -32,7 +34,7 @@ def get_idle_seconds() -> float:
                     nanos = int(line.split("=")[-1].strip())
                     return max(0.0, nanos / 1_000_000_000.0)
         except Exception:
-            return 0.0
+            return None
 
     # 3. Linux / Unix Platform (X11 / Wayland)
     elif sys.platform.startswith("linux"):
@@ -50,4 +52,4 @@ def get_idle_seconds() -> float:
         except Exception:
             pass
 
-    return 0.0
+    return None
