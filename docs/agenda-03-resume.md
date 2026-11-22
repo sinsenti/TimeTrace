@@ -39,3 +39,33 @@ personal database, owner-worktree changes, publication or integration are author
 Pending: durable interpreter binding, final full suites/lint/migration confirmation, final native
 read against the latest code, owned-resource cleanup, scoped finishing commit and implementation
 report. Parent owns the independent two-axis review and integration.
+
+## Resumed final validation
+
+The venv now uses durable installed CPython 3.14.6, not the private temporary Python installation;
+its editable package resolves to this checkout. No implementation rewrite was needed on resume.
+
+- Full Python: **748 passed, 538 warnings**, 119.17s. Warnings include the inherited serializer
+  warnings and Python 3.12+ sqlite datetime-adapter deprecations exercised by new bounded queries.
+- Full Node: **821 passed**, zero failures/skips/cancellations.
+- Scoped Python lint passed; all 16 changed Python files passed format checking. Changed Agenda
+  JavaScript passed `node --check`; whitespace checking passed.
+- Full Ruff remains **17 inherited findings**, byte-identical to a fresh base archive using the
+  same executable, working-directory-relative output and `--no-cache`.
+- Fresh/copied migration seam rerun: **10 passed**. Actual scratch startup reached
+  `0016_recorded_work_index`, with the expected four-column index and empty FK check.
+- Latest-code native rereads preserved raw rows and 1.5h task union. Editing only current schedule
+  showed immutable original 09:00–10:00 / fill 1h, current 09:15–09:45 / fill .5h; outside task
+  credit changed from .5h to 1h. A taskless manual entry added elapsed/unassigned credit without
+  adding task credit. Recording from projected-plan context with attachment unchecked left the
+  projection visible beside the work row while allowing matching fill. These used actual daemon
+  responses, not mocked browser HTTP. Held ACK/conflict races remain deterministic Node coverage.
+- Native console retained one expected failed `/timer/status` fetch from the controlled daemon
+  shutdown/restart, plus the existing Tailwind CDN warning; no clean-console certification is made.
+- The verified owned daemon and owned browser tab/profile were stopped/closed/deleted. Shutdown
+  finished and port 18612 refused connections. The separate preview lane was not touched.
+
+Remaining limitations are intentional capability boundaries, not claimed completed downstream work:
+no tag/time grouping or full custom union widgets, no work editing/reassignment, no timer-v2 receipts
+or file upgrade. Physical touch, screen readers, other engines and real 200% zoom were not tested.
+The parent still owns required independent two-axis review and integration/publication.
