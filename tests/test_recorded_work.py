@@ -246,9 +246,8 @@ def test_query_rejects_unsupported_capabilities_instead_of_approximating_tags(cl
         "date_range": {"preset": "custom", "start_date": "2000-01-04", "end_date": "2000-01-04"},
     }
     for extra in (
-        {"group_by": ["tag"]},
-        {"tag_attribution": "split_evenly"},
-        {"filters": [{"field": "tag", "op": "eq", "values": ["a"]}]},
+        {"filters": [{"field": "tag", "op": "neq", "values": ["#a"]}]},
+        {"filters": [{"field": "provenance", "op": "contains", "values": ["manual"]}]},
         {"date_range": {"preset": "all_time"}},
         {"plan_basis": "original"},
         {"group_by": ["plan_id"]},

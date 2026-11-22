@@ -216,6 +216,34 @@ SOURCES: dict[QuerySource, SourceSpec] = {
 }
 
 
+def recorded_measure_capability(measure: Measure) -> dict:
+    """Per-measure contract projected by HTTP capabilities and saved-widget validation."""
+    comparison = measure in (Measure.INSIDE_SCHEDULED_TASK_TIME, Measure.OUTSIDE_SCHEDULED_TASK_TIME, Measure.PLAN_FILL)
+    dimensions = [d.dimension.value for d in _UTC_TIME_DIMS]
+    fields = [f.field.value for f in _UTC_TIME_FILTERS] + ["notes", "duration_seconds", "provenance", "has_task"]
+    if measure != Measure.UNASSIGNED_RECORDED_TIME:
+        dimensions += ["task", "category", "status", "priority"]
+        fields += ["task", "task_parent", "category", "status", "priority"]
+    if not comparison:
+        dimensions += ["tag"]
+        fields += ["tag"]
+    if measure == Measure.PLAN_FILL:
+        dimensions = ["plan_id"]
+    operators = {field: ["eq", "in"] for field in fields}
+    operators.update(notes=["contains"], duration_seconds=["eq", "gte", "lte"], has_task=["eq"])
+    return {
+        "dimensions": dimensions,
+        "filter_operators": operators,
+        "plan_bases": ["original", "current"] if comparison else [],
+        "tag_attributions": ["fan_out"] if comparison else ["fan_out", "split_evenly"],
+        "max_dimensions": 1 if measure == Measure.PLAN_FILL else 2,
+        "bounded_start_range": True,
+        "max_local_days": 400,
+        "plan_selection": comparison,
+        "non_additive": True,
+    }
+
+
 SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
     source=QuerySource.RECORDED_WORK,
     table="session",
@@ -233,10 +261,23 @@ SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
     dimensions=_dimensions(
         *_UTC_TIME_DIMS,
         DimensionSpec(Dimension.PLAN_ID, "Plan"),
+        DimensionSpec(Dimension.TAG, "Tag"),
         DimensionSpec(Dimension.TASK, "Task"),
         DimensionSpec(Dimension.CATEGORY, "Category"),
         DimensionSpec(Dimension.STATUS, "Status"),
         DimensionSpec(Dimension.PRIORITY, "Priority"),
     ),
-    filter_fields=_filters(FilterSpec(FilterField.TASK, "Work task")),
+    filter_fields=_filters(
+        *_UTC_TIME_FILTERS,
+        FilterSpec(FilterField.TASK, "Work task"),
+        FilterSpec(FilterField.TAG, "Tag"),
+        FilterSpec(FilterField.TASK_PARENT, "Parent task"),
+        FilterSpec(FilterField.CATEGORY, "Category"),
+        FilterSpec(FilterField.STATUS, "Status"),
+        FilterSpec(FilterField.PRIORITY, "Priority"),
+        FilterSpec(FilterField.HAS_TASK, "Has task"),
+        FilterSpec(FilterField.NOTES, "Notes"),
+        FilterSpec(FilterField.DURATION_SECONDS, "Raw duration (seconds)"),
+        FilterSpec(FilterField.PROVENANCE, "Recording provenance"),
+    ),
 )

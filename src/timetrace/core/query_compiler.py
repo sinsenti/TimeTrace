@@ -17,7 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from timetrace.core.exceptions import ValidationError
-from timetrace.core.query_registry import SOURCES, TimeAnchorKind
+from timetrace.core.query_registry import SOURCES, TimeAnchorKind, recorded_measure_capability
 from timetrace.core.query_spec import (
     AnalyticsQuery,
     Dimension,
@@ -867,13 +867,16 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
     )
     if (end_day - start_day).days >= 400:
         raise ValidationError("Recorded-work ranges cannot exceed 400 local days.")
-    if query.fill_gaps or query.comparison or query.tag_attribution.value != "fan_out":
+    if query.fill_gaps or query.comparison:
         raise ValidationError("Recorded work does not support gap filling, baselines or tag attribution.")
     comparison = query.measure in (
         Measure.INSIDE_SCHEDULED_TASK_TIME,
         Measure.OUTSIDE_SCHEDULED_TASK_TIME,
         Measure.PLAN_FILL,
     )
+    tagged = Dimension.TAG in query.group_by or any(f.field == FilterField.TAG for f in query.filters)
+    if comparison and tagged:
+        raise ValidationError("Tag-based plan comparisons are not supported.")
     fill = query.measure == Measure.PLAN_FILL
     if comparison and (query.plan_basis not in ("original", "current") or not query.plan_ids):
         raise ValidationError("Plan comparisons require explicit plan_ids and plan_basis original/current.")
@@ -883,19 +886,61 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         raise ValidationError("plan_id grouping is only supported for plan_fill.")
     if fill and query.group_by != [Dimension.PLAN_ID]:
         raise ValidationError("plan_fill requires plan_id grouping; overlapping fills cannot be summed.")
-    if query.measure == Measure.UNASSIGNED_RECORDED_TIME and any(d not in _TIME_DIMENSIONS for d in query.group_by):
+    if query.measure == Measure.UNASSIGNED_RECORDED_TIME and any(
+        d not in _TIME_DIMENSIONS and d != Dimension.TAG for d in query.group_by
+    ):
         raise ValidationError("Unassigned work does not support task grouping.")
     params = {"start": ctx.range_start_utc, "end": ctx.range_end_utc, "measurement": ctx.now_utc}
-    predicate = ""
+    conditions = []
+    tag_conditions = []
     for i, f in enumerate(query.filters):
-        if f.field != FilterField.TASK or f.op.value not in ("eq", "in") or not f.values:
-            raise ValidationError("Recorded work supports task eq/in filters only.")
+        allowed = (FilterOp.EQ, FilterOp.IN)
+        if f.field == FilterField.NOTES:
+            allowed = (FilterOp.CONTAINS,)
+        elif f.field == FilterField.DURATION_SECONDS:
+            allowed = (FilterOp.EQ, FilterOp.GTE, FilterOp.LTE)
+        elif f.field == FilterField.HAS_TASK:
+            allowed = (FilterOp.EQ,)
+        if f.op not in allowed or not f.values:
+            raise ValidationError(f"Unsupported recorded-work predicate: {f.field} {f.op}")
+        if query.measure == Measure.UNASSIGNED_RECORDED_TIME:
+            if f.field in (
+                FilterField.TASK,
+                FilterField.TASK_PARENT,
+                FilterField.CATEGORY,
+                FilterField.STATUS,
+                FilterField.PRIORITY,
+            ):
+                raise ValidationError("Unassigned work does not support task metadata filters.")
+            if f.field == FilterField.HAS_TASK and f.values != [False]:
+                raise ValidationError("Unassigned work requires has_task=false.")
+        if f.field == FilterField.TAG:
+            names = []
+            for j, value in enumerate(f.values):
+                name = f"work_tag_{i}_{j}"
+                params[name] = value
+                names.append(":" + name)
+            tag_conditions.append("tag IN (" + ",".join(names) + ")")
+            continue
+        if f.field == FilterField.PROVENANCE:
+            col = "s.provenance"
+        elif f.field in _TIME_DIMENSIONS:
+            col = _time_dimension_sql(Dimension(f.field.value), "s.start_time", TimeAnchorKind.UTC_DATETIME)
+        else:
+            col = _NON_TIME_FILTER_SQL[QuerySource.SESSIONS].get(f.field)
+        if col is None:
+            raise ValidationError(f"Unsupported recorded-work filter: {f.field}")
         names = []
         for j, value in enumerate(f.values):
-            name = f"work_task_{i}_{j}"
-            params[name] = value
+            name = f"work_filter_{i}_{j}"
+            params[name] = f"%{value}%" if f.op == FilterOp.CONTAINS else value
             names.append(":" + name)
-        predicate += " AND task_id IN (" + ",".join(names) + ")"
+        if f.op == FilterOp.IN:
+            conditions.append(f"{col} IN ({','.join(names)})")
+        else:
+            operator = {FilterOp.EQ: "=", FilterOp.CONTAINS: "LIKE", FilterOp.GTE: ">=", FilterOp.LTE: "<="}[f.op]
+            conditions.append(f"{col} {operator} {names[0]}")
+    predicate = "".join(" AND " + condition for condition in conditions)
     task = query.measure in (
         Measure.RECORDED_TASK_TIME,
         Measure.INSIDE_SCHEDULED_TASK_TIME,
@@ -906,10 +951,17 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
     elif query.measure == Measure.UNASSIGNED_RECORDED_TIME:
         predicate += " AND task_id IS NULL"
     group_exprs = (
-        [] if fill else _select_group_columns(query, QuerySource.SESSIONS, "s.start_time", TimeAnchorKind.UTC_DATETIME)
+        []
+        if fill
+        else _select_group_columns(
+            query.model_copy(update={"group_by": [d for d in query.group_by if d != Dimension.TAG]}),
+            QuerySource.SESSIONS,
+            "s.start_time",
+            TimeAnchorKind.UTC_DATETIME,
+        )
     )
-    group_names = [f"g{i}" for i in range(len(group_exprs))]
-    group_select = "".join(f", {expr} AS {name}" for expr, name in zip(group_exprs, group_names))
+    group_names = [f"g{i}" for i, d in enumerate(query.group_by) if d != Dimension.TAG] if not fill else []
+    group_select = "".join(f", {expr} AS {name}" for expr, name in zip(group_exprs, group_names, strict=True))
     group_keys = "".join(f", {name}" for name in group_names)
     params["__week_start"] = f"weekday {ctx.first_day_of_week}"
     partition = "task_id" if task else "'all'"
@@ -918,6 +970,31 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         # Storage is naive UTC with six fractional digits. Integer arithmetic preserves
         # microsecond intervals that SQLite's millisecond-resolution julianday would lose.
         return f"(unixepoch(substr({expression},1,19))*1000000 + CAST(substr({expression},21,6) AS INTEGER))"
+
+    if tagged:
+        from timetrace.core.recorded_attribution import tag_union_sql
+
+        selected_sql = f"""SELECT s.id,s.task_id,s.tags,
+          {microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b{group_select}
+          FROM session s LEFT JOIN task t ON t.id=s.task_id
+          WHERE s.kind='recorded_work' AND s.end_time<=:measurement
+            AND s.start_time>=:start AND s.start_time<:end {predicate}"""
+        sql = tag_union_sql(
+            selected_sql,
+            group_names,
+            query.group_by.index(Dimension.TAG) if Dimension.TAG in query.group_by else None,
+            task,
+            query.tag_attribution == TagAttribution.SPLIT_EVENLY,
+            " AND ".join(tag_conditions) or "1",
+        )
+        return CompiledQuery(
+            sql=sql,
+            params=params,
+            source=query.source,
+            measure=query.measure,
+            group_by=query.group_by,
+            totals_overlap=True,
+        )
 
     windows = []
     for i, (plan_id, task_id, start, end) in enumerate(ctx.plan_windows):
@@ -931,7 +1008,8 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
     # Union clipped pieces as well as work: overlapping plan windows must not duplicate fill.
     pieces = f"SELECT task_id, a, b, id AS identity{group_keys} FROM selected"
     if comparison:
-        pieces = f"""SELECT s.task_id, MAX(s.a,p.a) AS a, MIN(s.b,p.b) AS b, p.plan_id AS identity{"".join(", s." + name for name in group_names)}
+        pieces = f"""SELECT s.task_id, MAX(s.a,p.a) AS a, MIN(s.b,p.b) AS b,
+            p.plan_id AS identity{"".join(", s." + name for name in group_names)}
             FROM selected s JOIN plans p ON s.task_id=p.task_id AND s.a<p.b AND s.b>p.a"""
     key = "identity" if fill else partition
 
@@ -943,7 +1021,8 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
           SELECT *, SUM(CASE WHEN prior_end IS NULL OR a>prior_end THEN 1 ELSE 0 END)
             OVER (PARTITION BY {domain}{group_keys} ORDER BY a,b,identity) AS island FROM {prefix}_prior
         ), {prefix}_merged AS (
-          SELECT {domain} AS domain{group_keys}, MIN(a) AS a,MAX(b) AS b FROM {prefix}_islands GROUP BY {domain}{group_keys},island
+          SELECT {domain} AS domain{group_keys}, MIN(a) AS a,MAX(b) AS b
+          FROM {prefix}_islands GROUP BY {domain}{group_keys},island
         )"""
 
     ctes = merged_ctes("credit", pieces, key)
@@ -982,15 +1061,17 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
     sql = f"""WITH selected AS (
         SELECT s.id,s.task_id,{microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b
         {group_select} FROM session s LEFT JOIN task t ON t.id=s.task_id
-        WHERE s.kind='recorded_work' AND s.end_time<=:measurement AND s.start_time>=:start AND s.start_time<:end {predicate}
+        WHERE s.kind='recorded_work' AND s.end_time<=:measurement
+          AND s.start_time>=:start AND s.start_time<:end {predicate}
     ), plans AS ({plans}), {ctes}
     SELECT {columns}{expression} AS value,(SELECT COUNT(*) FROM selected) FROM credit_merged{group}
     """
     if fill:
         sql = f"""WITH selected AS (
-            SELECT id,task_id,{microseconds("start_time")} AS a,{microseconds("end_time")} AS b FROM session
-            WHERE kind='recorded_work' AND end_time<=:measurement
-              AND start_time>=:start AND start_time<:end {predicate}
+            SELECT s.id,s.task_id,{microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b
+            FROM session s LEFT JOIN task t ON t.id=s.task_id
+            WHERE s.kind='recorded_work' AND s.end_time<=:measurement
+              AND s.start_time>=:start AND s.start_time<:end {predicate}
         ), plans AS ({plans}), {ctes}
         SELECT p.plan_id, ROUND(COALESCE(SUM(c.b-c.a)/1000000.0,0),6)/3600 AS value,
             (SELECT COUNT(*) FROM selected)
@@ -1028,6 +1109,16 @@ def validate_query(query: AnalyticsQuery) -> None:
 
     if query.measure not in source_spec.measures:
         raise ValidationError(f"Measure {query.measure} is not supported for source {query.source}")
+
+    if query.source == QuerySource.RECORDED_WORK:
+        capability = recorded_measure_capability(query.measure)
+        if any(d.value not in capability["dimensions"] for d in query.group_by):
+            raise ValidationError("Unsupported dimensions for this recorded-work measure.")
+        for f in query.filters:
+            if f.op.value not in capability["filter_operators"].get(f.field.value, []):
+                raise ValidationError("Unsupported predicate for this recorded-work measure.")
+        if query.tag_attribution.value not in capability["tag_attributions"]:
+            raise ValidationError("Unsupported attribution for this recorded-work measure.")
 
     if len(query.group_by) != len(set(query.group_by)):
         raise ValidationError("group_by dimensions must be distinct")
