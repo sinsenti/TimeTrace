@@ -79,6 +79,96 @@ def test_intervening_writer_wins_before_live_boundary(client, focus_world, actio
     assert not any(n["kind"] == "break_due" for n in client.get("/timer-notifications").json()["notices"])
 
 
+@pytest.mark.parametrize("behavior", ["notify_only", "automatic_break"])
+def test_forward_wall_adjustment_preserves_active_focus(client, focus_world, behavior):
+    clock, factory, start = focus_world
+    path = start(behavior)
+    timer = client.get(path).json()
+    assert (
+        client.post(
+            path + "/focus-settings",
+            json={
+                "operation_id": "25-minute",
+                "expected_revision": timer["revision"],
+                "enabled": False,
+                "work_minutes": 25,
+                "break_minutes": 5,
+                "behavior": behavior,
+            },
+        ).status_code
+        == 200
+    )
+    timer = client.get(path).json()
+    assert (
+        client.post(
+            path + "/focus-settings",
+            json={
+                "operation_id": "enable-25",
+                "expected_revision": timer["revision"],
+                "enabled": True,
+                "work_minutes": 25,
+                "break_minutes": 5,
+                "behavior": behavior,
+            },
+        ).status_code
+        == 200
+    )
+    original = client.get(path).json()
+    evaluator = factory()
+    evaluator.evaluate()
+    clock.at += timedelta(hours=1)
+    clock.tick += 1
+    clock.boot += 1
+    evaluator.evaluate()
+    timer = client.get(path).json()
+    assert timer["focus"]["phase"] == "work"
+    assert timer["focus"]["remaining_seconds"] == 1499
+    assert timer["state"] == "running"
+    assert timer["segments"] == original["segments"]
+    assert timer["identity_started_at"] == original["identity_started_at"]
+    assert client.get("/timer-notifications").json()["notices"] == []
+    # Another known adjustment crosses the immutable wall warning, not work due.
+    clock.at += timedelta(hours=1)
+    clock.tick += 1
+    clock.boot += 1
+    evaluator.evaluate()
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 1498
+    assert [n["kind"] for n in client.get("/timer-notifications").json()["notices"]] == ["two_hour"]
+    clock.advance(1497)
+    evaluator.evaluate()
+    clock.advance(1)
+    evaluator.evaluate()
+    timer = client.get(path).json()
+    assert timer["focus"]["phase"] == ("break" if behavior == "automatic_break" else "work_due")
+    assert sorted(n["kind"] for n in client.get("/timer-notifications").json()["notices"]) == ["two_hour", "work_due"]
+
+
+@pytest.mark.parametrize("evidence", ["suspend", "missing"])
+def test_forward_lapse_without_runtime_proof_catches_up_once(client, focus_world, evidence):
+    clock, factory, start = focus_world
+    path = start("automatic_break")
+    evaluator = factory()
+    if evidence == "missing":
+        evaluator.suspend_clock = lambda: None
+    evaluator.evaluate()
+    clock.at += timedelta(hours=1)
+    clock.tick += 1
+    clock.boot += 3600
+    evaluator.evaluate()
+    timer = client.get(path).json()
+    assert timer["state"] == "running"
+    assert timer["segments"] == []
+    assert timer["focus"]["phase"] == "work_due"
+    assert timer["focus"]["remaining_seconds"] == 0
+    notices = client.get("/timer-notifications").json()
+    clock.at -= timedelta(hours=1)
+    clock.tick += 1
+    clock.boot += 1
+    evaluator.evaluate()
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 0
+    assert client.get("/timer-notifications").json() == notices
+
+
 def test_live_wall_rollback_does_not_rewind_active_focus(client, focus_world):
     clock, factory, start = focus_world
     path = start()

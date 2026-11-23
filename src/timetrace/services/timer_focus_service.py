@@ -47,18 +47,18 @@ class FocusEvaluator:
             samples.append(sample)
             continuous = False
             previous = self.previous
-            rollback_shift = 0
+            clock_shift = 0
             if previous and sample[2] is not None and previous[2] is not None:
                 wall = (sample[0] - previous[0]).total_seconds()
                 mono, boot = sample[1] - previous[1], sample[2] - previous[2]
                 continuous = 0 <= wall <= 2 and abs(wall - mono) <= 0.25 and abs(boot - mono) <= 0.25
-                if mono >= 0 and abs(boot - mono) <= 0.25 and mono - wall > 0.25:
-                    rollback_shift = mono - wall
+                if mono >= 0 and abs(boot - mono) <= 0.25 and abs(mono - wall) > 0.25:
+                    clock_shift = mono - wall
             context = {
                 "cutoff": sample[0].isoformat(),
                 "continuous": continuous,
                 "previous_wall": previous[0].isoformat() if previous else None,
-                "rollback_shift": rollback_shift,
+                "clock_shift": clock_shift,
                 "previous_tokens": self.tokens,
             }
             contexts.append(context)
@@ -102,7 +102,7 @@ def evaluate_state(service, state, cutoff, continuity):
                 timer["focus"]["recording_anchor"] = None
         focus = timer["focus"]
         token = (focus["generation"], focus.get("recording_anchor"), timer["state"], timer["revision"])
-        shift = continuity.get("rollback_shift", 0)
+        shift = continuity.get("clock_shift", 0)
         if (
             shift
             and focus["phase"] == "work"
