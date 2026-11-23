@@ -224,6 +224,21 @@ intent with/without receipt) preserve all original table data, reviews/ratings/d
 recurrence, stored widgets and query semantics; integrity/FK and repeated full lifespan checks pass.
 Post-integration regression evidence is recorded in the milestone handback, not full-ticket delivery.
 
+### Post-integration checkpoint verification
+
+Merged `timer-workspace-integration` at `06d2353` into `3d14d74`, retaining #65's shared
+summed-work/query/export implementation. The sole merge conflict was in `docs/development.md`;
+both feature descriptions were preserved.
+
+- **473 passed**, 4,435 warnings, across 26 explicitly selected backend test files after the merge
+  (472.92 seconds); evidence: `/tmp/timetrace-61-saved-postmerge-backend.log`.
+- The public export interoperability regression observes both corrected fragment IDs, exactly
+  1,500 summed recorded seconds rather than the original 1,800, and no DB/file mutation by preview.
+- **13 passed** in focused export/timer-control/workspace/card Node tests; the three merged #65 JS
+  files also pass `node --check`. Evidence: `/tmp/timetrace-61-saved-node.log`.
+- Scoped Ruff/format and whitespace checks pass. This is not a full Python/Node run, browser proof,
+  complete crash/fsync matrix, or final independent review. #61 correction controls remain unavailable.
+
 ## Next milestone
 
 Complete controller/B-style UI wiring, authoritative read invalidation, full durability/concurrency/

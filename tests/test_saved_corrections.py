@@ -182,6 +182,29 @@ def test_saved_edge_trims_retain_one_original_row(client, clock, left, right, ex
     assert (saved["start_time"][11:19], saved["end_time"][11:19]) == expected
 
 
+def test_corrected_fragments_feed_integrated_exact_export_cohort_without_double_count(client, db, tmp_path, clock):
+    row, path = manual(client, clock)
+    approved = client.post(path + "/correction-preview", json=exclusion(saved_target(row))).json()
+    result = client.post(path + "/correction", json={"operation_id": "correct", "preview": approved}).json()
+    ids = result["correction"]["changed_work_ids"] + result["correction"]["created_work_ids"]
+    before = persisted_snapshot(tmp_path, db)
+    exported = client.post(
+        "/api/agenda/history-export/preview",
+        json={
+            "start_date": "2026-11-23",
+            "end_date": "2026-11-23",
+            "timezone": "UTC",
+            "mode": "selected",
+            "selected_ids": ids,
+        },
+    )
+    assert exported.status_code == 200, exported.text
+    assert exported.json()["work_count"] == 2
+    assert exported.json()["summed_recorded_work_seconds"] == 1500
+    assert {row["id"] for row in exported.json()["rows"]} == set(ids)
+    assert persisted_snapshot(tmp_path, db) == before
+
+
 def test_saved_metadata_ratings_and_repeated_lineage_are_not_cloned(client, db, clock):
     from timetrace.db.models import Session as Work
 
