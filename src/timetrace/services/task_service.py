@@ -236,6 +236,9 @@ class TaskService:
         category_filter: str | None = None,
         assigned_date: str | None = None,
         due_before: str | None = None,
+        title_contains: str | None = None,
+        tag_contains: str | None = None,
+        limit: int | None = None,
     ) -> list[TaskReadResponse]:
         query = select(Task)
 
@@ -262,6 +265,15 @@ class TaskService:
             except Exception:
                 pass
 
+        if title_contains:
+            query = query.where(Task.title.icontains(title_contains, autoescape=True))
+        if tag_contains:
+            query = query.where(Task.tags.icontains(tag_contains, autoescape=True))
+        if limit is not None:
+            if not 1 <= limit <= 200:
+                raise ValidationError("Task discovery limit must be between 1 and 200.")
+            # Bound materialization, with deterministic UUID order before existing presentation sorting.
+            query = query.order_by(Task.id).limit(limit)
         tasks = self.db.exec(query).all()
         for t in tasks:
             t.created_at = ensure_utc(t.created_at)

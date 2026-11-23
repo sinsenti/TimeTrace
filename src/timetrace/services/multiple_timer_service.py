@@ -102,6 +102,8 @@ class MultipleTimerService:
                 if timer["state"] == "stopped":
                     continue
                 timer = deepcopy(timer)
+                task = self.db.get(Task, timer["task_id"]) if timer["task_id"] else None
+                timer["task_title"] = task.title if task else None
                 elapsed = sum(
                     (datetime.fromisoformat(s["end_time"]) - datetime.fromisoformat(s["start_time"])).total_seconds()
                     for s in timer["segments"]
@@ -261,8 +263,29 @@ class MultipleTimerService:
                         raise ConflictError("Resolve idle gaps first.", code="idle_gap_unresolved")
                     continue_running = timer["state"] == "running"
                     if action in ("pause", "stop", "split"):
-                        self._close_segment(timer, cutoff)
+                        closed_id = self._close_segment(timer, cutoff)
+                        timer["manual_pause_note_segment_id"] = closed_id if action == "pause" else None
                         timer["state"] = "paused"
+                    elif action == "note":
+                        if not isinstance(payload.get("new_notes"), str) or len(payload["new_notes"]) > 100000:
+                            raise TimerError("Current work note must be text of at most 100000 characters.")
+                        if payload.get("expected_revision") is None:
+                            raise TimerError("A current timer revision is required to edit its note.")
+                        target_id = payload.get("expected_note_segment_id")
+                        if timer["state"] == "paused":
+                            pointer = timer.get("manual_pause_note_segment_id")
+                            target = next((s for s in timer["segments"] if s["id"] == pointer), None)
+                            if not pointer or target_id != pointer or not target or target.get("recorded_work_id"):
+                                raise ConflictError(
+                                    "No eligible current manual-pause note interval; refresh and review.",
+                                    code="note_target_stale",
+                                )
+                            target["notes"] = payload["new_notes"]
+                        elif timer["state"] != "running" or target_id is not None:
+                            raise ConflictError(
+                                "Current note target changed; refresh and review.", code="note_target_stale"
+                            )
+                        timer["notes"] = payload["new_notes"]
                     elif action == "idle_preference":
                         if not isinstance(payload.get("pause_when_idle"), bool):
                             raise TimerError("Choose whether to pause when idle.")
@@ -273,6 +296,7 @@ class MultipleTimerService:
                         if timer["state"] != "paused":
                             raise TimerError("Timer is not paused.")
                         timer["running_start"] = cutoff
+                        timer["manual_pause_note_segment_id"] = None
                         timer["state"] = "running"
                     else:
                         raise TimerError("Unknown timer action.")
@@ -447,6 +471,7 @@ class MultipleTimerService:
             if timer["state"] == "running" and timer["pause_when_idle"] and idle_seconds >= threshold:
                 onset = max(last_activity, timer["running_start"])
                 self._close_segment(timer, onset)
+                timer["manual_pause_note_segment_id"] = None
                 timer["idle_gaps"].append(
                     {
                         "id": str(uuid7()),
@@ -496,15 +521,18 @@ class MultipleTimerService:
                 }
             )
         gap["decision"] = decision
+        timer["manual_pause_note_segment_id"] = None
         timer["state"] = "paused"
 
     @staticmethod
     def _close_segment(timer, cutoff):
         start = timer["running_start"]
+        closed_id = None
         if start and cutoff > start:
+            closed_id = str(uuid7())
             timer["segments"].append(
                 {
-                    "id": str(uuid7()),
+                    "id": closed_id,
                     "start_time": start,
                     "end_time": cutoff,
                     "task_id": timer["task_id"],
@@ -514,6 +542,7 @@ class MultipleTimerService:
                 }
             )
         timer["running_start"] = None
+        return closed_id
 
     def _complete(self, intent):
         current = self.store.read()

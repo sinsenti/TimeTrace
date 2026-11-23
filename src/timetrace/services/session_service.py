@@ -181,6 +181,28 @@ class SessionService:
         )
         return result
 
+    def update_recorded_work_note(self, work_id: str, notes: str, expected_revision: int) -> AgendaRecordedWorkRead:
+        """Edit only the work description; retain timestamps, association and review identity."""
+        lock_sqlite_writer(self.db)
+        row = self.db.get(SessionModel, work_id)
+        if row is None or row.kind != "recorded_work":
+            raise EntityNotFoundError("Recorded work not found.")
+        result = self.db.execute(
+            update(SessionModel)
+            .where(
+                SessionModel.id == work_id,
+                SessionModel.kind == "recorded_work",
+                SessionModel.revision == expected_revision,
+            )
+            .values(notes=notes, revision=expected_revision + 1)
+        )
+        if result.rowcount != 1:
+            self.db.rollback()
+            raise ConflictError("Recorded work changed; read the saved note before editing again.")
+        self.db.commit()
+        self.db.expire_all()
+        return self.get_recorded_work(work_id)
+
     def get_recorded_work(self, work_id: str) -> AgendaRecordedWorkRead:
         row = self.db.get(SessionModel, work_id)
         if row is None or row.kind != "recorded_work":

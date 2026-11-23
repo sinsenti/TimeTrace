@@ -264,6 +264,12 @@ class AgendaRecordedWorkRead(AgendaLegacyRead):
     timer_segment_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
+class RecordedWorkNoteUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    expected_revision: int = Field(ge=1)
+    notes: str = Field(max_length=100000)
+
+
 class RecordedWorkCreate(ScheduledSessionCreate):
     """Explicit manual work; legacy session input deliberately stays separate."""
 
