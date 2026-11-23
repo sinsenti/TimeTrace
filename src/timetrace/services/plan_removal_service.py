@@ -62,7 +62,13 @@ class PlanRemovalService:
             "recurrence": [row.model_dump(mode="json") for row in anchors],
             # Snapshot/audit content is not a mutable domain FK. Retain it, never cascade.
             "drafts": [
-                {"id": row.id, "status": row.status, "updated_at": row.updated_at.isoformat()} for row in drafts
+                {
+                    "id": row.id,
+                    "status": row.status,
+                    "updated_at": row.updated_at.isoformat(),
+                    "snapshot_fingerprint": _fingerprint(row.model_dump(mode="json")),
+                }
+                for row in drafts
             ],
             "unfinished_timers": MultipleTimerService(self.db).unfinished_for_plan(plan_id),
         }

@@ -156,7 +156,7 @@ const agendaPage = (() => {
             if (!row.task_id) start.title = 'Assign a task before linking a plan timer. Unassigned timers are available above.';
             start.addEventListener('click', async () => {
                 const capturedOwner = owner;
-                if (!window.multipleTimers || capturedOwner?.pending) return;
+                if (!window.multipleTimers || capturedOwner?.pending || capturedOwner?.removalPending) return;
                 start.disabled = true;
                 const payload = {task_id:row.task_id, tags:row.tags || '', notes:row.notes || '', scheduled_session_id:row.id};
                 if (row.is_virtual) payload.expected_projection_revision = row.projection_revision;
@@ -213,7 +213,8 @@ const agendaPage = (() => {
         get('form').hidden = !owner || Boolean(row && row.kind !== 'scheduled_session' && !owner.retainedWorkDraft);
         get('attachment').hidden = !owner?.work || !owner?.context;
         get('attach').disabled = Boolean(row || owner?.pending);
-        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft);
+        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft || owner?.removalPending);
+        get('cancel').disabled = Boolean(owner?.removalPending);
         get('metadata').hidden = Boolean(row);
         get('metadata').disabled = Boolean(row || owner?.pending);
         get('save').textContent = owner?.work ? 'Save recorded work' : row ? 'Save current schedule' : 'Add to schedule';
