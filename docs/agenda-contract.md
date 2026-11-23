@@ -8,6 +8,31 @@ Owner decisions [1–5](https://github.com/sinsenti/TimeTrace/issues/2#issuecomm
 [Q10–12](https://github.com/sinsenti/TimeTrace/issues/2#issuecomment-6959931616) are owner-approved.
 See [accepted boundaries](adr/0001-explicit-recorded-work-boundaries.md).
 
+## Implemented exact removal interface (#7)
+
+`GET /scheduled-sessions/{id}/removal-preview` returns an immutable-scope manifest and
+`consent_token` fingerprint, plus per-action refusal reasons. The manifest includes the whole
+selected plan, exact `scheduled_session_id`-owned work (including outside portions), revisions,
+metadata, recurrence anchors, rating/draft dependencies and unfinished timer contexts. Opening or
+canceling persists nothing. The token is a scope fingerprint, not an authentication credential.
+
+`POST /scheduled-sessions/{id}/removal` accepts `action` (`delete_everything` or `squeeze`),
+`consent_token` and a fresh `operation_id`. One explicit choice confirms the displayed whole
+manifest. Under SQLite writer ownership the server rebuilds and compares the manifest and reads
+`MultipleTimerService.unfinished_for_plan` without taking its advisory lock. Changed scope and
+unfinished timers refuse both actions. Squeeze changes only the current envelope, retaining gaps,
+originals and work timestamps; empty associated work refuses. Delete removes whole owned work and
+the selected plan atomically, converting its recurrence override to a skip. Work with live rating,
+AI draft restoration or legacy recurrence dependencies currently safely refuses deletion; metadata
+and append-only audit history are never silently discarded. Existing typed AI/legacy delete guards
+remain in force, as do task-completion, detachment and series-history protections.
+
+The existing private `MutationOperation` table stores database-only finalized receipts in the
+`plan-removal:` namespace (no timer recovery state). The returned namespaced `operation_id` can be
+read at `/operations/{operation_id}` after a lost acknowledgement. Same key/payload returns the
+original result even after deletion; a different payload refuses. Browser recovery only reads;
+a new preview/action is a new approval, not an automatic replay. No migration is required.
+
 ## 1. Settled boundaries and remaining owner choice
 
 Retain Folio B/Calendar, multiple initial timers, warning-only same-task overlap, no cross-task

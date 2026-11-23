@@ -11,6 +11,7 @@ from timetrace.interfaces.api.schemas import (
     AgendaRead,
     AgendaRecordedWorkRead,
     LegacySessionRead,
+    PlanRemovalRequest,
     RecordedWorkCreate,
     RecordedWorkCreated,
     RecurrenceScope,
@@ -25,9 +26,19 @@ from timetrace.interfaces.api.schemas import (
     SessionEditScope,
     SessionUpdate,
 )
-from timetrace.services import QueryService, SessionService
+from timetrace.services import PlanRemovalService, QueryService, SessionService
 
 router = APIRouter(prefix="", tags=["Sessions"])
+
+
+@router.get("/scheduled-sessions/{plan_id}/removal-preview")
+def preview_plan_removal(plan_id: str, db: DBSession = Depends(get_session)):
+    return PlanRemovalService(db).preview(plan_id)
+
+
+@router.post("/scheduled-sessions/{plan_id}/removal")
+def apply_plan_removal(plan_id: str, req: PlanRemovalRequest, db: DBSession = Depends(get_session)):
+    return PlanRemovalService(db).apply(plan_id, req)
 
 
 @router.get("/recorded-work-progress")
