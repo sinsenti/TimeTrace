@@ -142,6 +142,10 @@ if (typeof window !== 'undefined') {
                 label.dataset.timerLabel = timer.id;
                 label.textContent = timerLabel(timer);
                 row.append(label);
+                if (timer.scheduled_session_id && document.getElementById('agenda-extension')) {
+                    row.append(button('Extend selected plan', () => window.dispatchEvent(new CustomEvent('extend-selected-plan',
+                        {detail:{planId:timer.scheduled_session_id, timerId:timer.id}})), blocked, `${timer.id}/extend-plan`));
+                }
                 const act = (action, payload = {}) => window.multipleTimers.act(timer.id, action, {expected_revision:timer.revision, ...payload});
                 row.append(button(timer.state === 'running' ? 'Pause' : 'Resume', () => act(timer.state === 'running' ? 'pause' : 'resume'), blocked || timer.state === 'frozen', `${timer.id}/pause-resume`));
                 row.append(button('Stop & record', () => act('stop'), blocked || timer.state === 'frozen', `${timer.id}/stop`));

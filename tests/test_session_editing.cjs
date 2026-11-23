@@ -293,9 +293,10 @@ test('details opens its own recorded session without publishing task history as 
 function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
-        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress']) p.element(`agenda-${suffix}`);
+        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension']) p.element(`agenda-${suffix}`);
     p.context.URLSearchParams = URLSearchParams;
     p.context.confirm = () => true;
+    p.load('plan_extension.js');
     p.load('agenda.js');
     return p.run('agendaPage.refresh()');
 }

@@ -179,6 +179,10 @@ const agendaPage = (() => {
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);
+            const extend = make('button', 'Extend current schedule');
+            extend.type = 'button';
+            extend.addEventListener('click', () => showExtension(row));
+            root.appendChild(extend);
         } else {
             add('Interval', interval(row.start_time, row.end_time));
             if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');
@@ -187,6 +191,60 @@ const agendaPage = (() => {
         add('Tags', row.tags || 'None');
         add('Notes', row.notes || 'None');
     }
+
+    function showExtension(plan) {
+        const root = get('extension');
+        clear(root);
+        const end = make('input', '');
+        end.type = 'datetime-local'; end.step = '0.001';
+        end.value = localInput(new Date(Math.max(Date.now(), Date.parse(plan.end_time) + 60000)));
+        end.setAttribute('aria-label', 'Proposed current scheduled end');
+        const status = make('p', 'Choose an end, then preview the current interval. Original plan and recorded work stay unchanged.');
+        status.setAttribute('role', 'status');
+        const preview = make('button', 'Preview extension'); preview.type = 'button';
+        const apply = make('button', 'Apply extension'); apply.type = 'button'; apply.hidden = true;
+        const retry = make('button', 'Check result / refresh only'); retry.type = 'button'; retry.hidden = true;
+        const captured = owner;
+        const action = createPlanExtensionAction({api,
+            acknowledge(saved) {
+                if (owner === captured) { owner.row = saved; details(saved); controls(); }
+                rows = rows.filter(item => item.id !== plan.id && item.id !== saved.id);
+                rows.push(saved); ledger();
+            },
+            async refresh() {
+                // Reread both comparison bases together via the existing shared-snapshot endpoint.
+                await agendaPage.refresh();
+                if (!get('retry').hidden) throw Error('Refresh incomplete');
+            },
+            onState(state) {
+                apply.hidden = state.phase !== 'preview'; apply.disabled = state.pending;
+                preview.disabled = state.pending || ['uncertain', 'stale', 'acknowledged', 'refresh_failed', 'complete'].includes(state.phase);
+                end.disabled = state.pending || state.phase !== 'idle';
+                retry.hidden = !['uncertain', 'refresh_failed', 'acknowledged'].includes(state.phase);
+                retry.disabled = state.pending;
+                const messages = {
+                    preview:`Proposed CURRENT interval: ${interval(plan.start_time, state.end)}. Apply is consent; other plans, timers and work stay unchanged.`,
+                    stale:'Schedule changed. Attempted extension is retained above; review saved schedule, then explicitly open a new extension.',
+                    uncertain:'Apply not confirmed. Check the operation result; this control never repeats the write.',
+                    refresh_failed:'Extension saved; refresh failed. Retry reads only.',
+                    complete:'Current schedule extended. Original plan and recorded work unchanged.',
+                };
+                status.textContent = messages[state.phase] || state.error || 'Saving extension…';
+            }});
+        preview.addEventListener('click', () => { try { action.preview(plan, end.value); } catch (err) { status.textContent = err.message; } });
+        apply.addEventListener('click', action.apply);
+        retry.addEventListener('click', action.recover);
+        root.append(end, preview, status, apply, retry);
+    }
+
+    window.addEventListener('extend-selected-plan', async event => {
+        const id = event.detail?.planId;
+        if (!id || !switchAllowed()) return;
+        try {
+            const plan = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
+            open(plan, true); showExtension(plan);
+        } catch (err) { get('edit-status').textContent = `Could not read selected timer's plan: ${err.message}`; }
+    });
 
     const saveUnavailable = () => Boolean(owner?.pending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
         (!owner?.row && (createPending || unconfirmedCreate)));
@@ -218,6 +276,7 @@ const agendaPage = (() => {
             get('attach').checked = false;
             owner.baseline = values();
         }
+        clear(get('extension'));
         details(row);
         showProgress();
         get('edit-status').textContent = work ? 'Record actual past work. Plan context does not attach work unless explicitly checked.' : create ? 'Scheduling time does not record work.' : '';
