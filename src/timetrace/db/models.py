@@ -30,6 +30,23 @@ def generate_uuid7() -> str:
     return str(uuid.uuid7())
 
 
+class TimerNotification(SQLModel, table=True):
+    """Install-local delivery state; never an analytics source or work-row parent."""
+
+    __tablename__ = "timer_notification"
+    __table_args__ = (UniqueConstraint("timer_id", "kind", "generation"),)
+    id: str = Field(primary_key=True)
+    timer_id: str = Field(index=True)
+    kind: str
+    generation: int
+    due_at: str
+    status: str = "pending"
+    channel: str | None = None
+    claim_token: str | None = None
+    claim_operation: str | None = None
+    acknowledged: bool = False
+
+
 class MutationOperation(SQLModel, table=True):
     """Private recovery receipt; not an analytics source."""
 

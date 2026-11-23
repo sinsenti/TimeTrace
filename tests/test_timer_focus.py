@@ -3,6 +3,49 @@
 from datetime import UTC, datetime, timedelta
 
 
+def test_due_events_and_paused_wall_warning_persist_once(client, db, monkeypatch):
+    from timetrace.services import multiple_timer_service as module
+    from timetrace.services.timer_focus_service import FocusEvaluator
+
+    class Clock(datetime):
+        at = datetime(2026, 11, 23, 10, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.at
+
+    monkeypatch.setattr(module, "datetime", Clock)
+    timer = client.post("/timers", json={"operation_id": "start"}).json()["timer"]
+    path = "/timers/" + timer["id"]
+    client.post(
+        path + "/focus-settings",
+        json={
+            "operation_id": "enable",
+            "expected_revision": 1,
+            "enabled": True,
+            "work_minutes": 1,
+            "break_minutes": 1,
+            "behavior": "notify_only",
+        },
+    )
+    evaluator = FocusEvaluator(db, wall_clock=lambda: Clock.at, monotonic_clock=lambda: 0, suspend_clock=lambda: 0)
+    Clock.at += timedelta(seconds=60)
+    evaluator.evaluate()
+    notices = client.get("/timer-notifications").json()["notices"]
+    assert [n["kind"] for n in notices] == ["work_due"]
+    identity = notices[0]["id"]
+    assert client.get(path).json()["state"] == "running"
+    evaluator.evaluate()
+    assert [n["id"] for n in client.get("/timer-notifications").json()["notices"]] == [identity]
+    client.post(path + "/pause", json={"operation_id": "pause"})
+    Clock.at += timedelta(hours=2)
+    FocusEvaluator(db, wall_clock=lambda: Clock.at).evaluate()
+    notices = client.get("/timer-notifications").json()["notices"]
+    assert sorted(n["kind"] for n in notices) == ["two_hour", "work_due"]
+    evaluator.evaluate()
+    assert len(client.get("/timer-notifications").json()["notices"]) == 2
+
+
 def test_focus_pause_actions_and_next_period_settings(client, db, monkeypatch):
     from timetrace.services import multiple_timer_service as module
 

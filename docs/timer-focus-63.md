@@ -19,11 +19,11 @@ whole minutes. No external adapter or live notification has been invoked.
 | Initial defaults, future timer snapshot, exact replay, invalid boolean length | Public HTTP red 404 then green 1 passed (`tests/test_timer_focus.py`) |
 | Overrides, next-period settings and disable | HTTP routes and period snapshots implemented; bounded evidence only |
 | Independent active clock, pause/idle/correction and actions | Public fake-clock pause/Take break/early Resume/replay/observed-idle test passes; correction/race matrix not yet proved |
-| Automatic boundary continuity and catch-up | Not implemented |
-| Immutable warning evaluation | Creation anchor only; evaluation not implemented |
-| Durable event claims, adapters and bounded daemon lifecycle | Not implemented |
+| Automatic boundary continuity and catch-up | Public evaluator with wall/monotonic/BOOTTIME continuity inputs; on-time and late/sleep/restart/rollback tests pass |
+| Immutable warning evaluation | Durable unique generation-zero warning; paused wall-clock/restart tests pass; old creation-receipt/prospective initialization is serialized |
+| Durable event claims, adapters and bounded daemon lifecycle | SQLite events and exclusive conservative-unknown claims implemented; adapters and daemon loop pending |
 | Browser settings, countdown, actions, drafts and narrow layout | Not implemented |
-| Migration 0019 fresh/copied-synthetic/fault acceptance | Not implemented |
+| Migration 0019 fresh/copied-synthetic/fault acceptance | Normal fresh chain, copied old pending creation receipt and repeated restart pass; related #61 migration suite passes |
 | Final Python/Node/scoped lint/browser | Partial-source Python 1114/Node 878 pass; scoped Ruff passes; browser unrun |
 
 ## Exact initial red/green
@@ -47,10 +47,46 @@ real browser, clock discontinuity, external-send and focus-specific fault matric
 No daemon or real OS notification/sound was started. `git merge timer-workspace-integration`
 reported already up to date at `e96497a`; this does not integrate the partial feature elsewhere.
 
+## Durable events/evaluator milestone (continuation)
+
+Actual public red: new evaluator service import failed (`ModuleNotFoundError`), then minimal
+notify-only due event/paused two-hour HTTP proof passed (3 focused tests). Expanded fake-clock
+checks cover automatic break at an observed live boundary, other-timer independence, break wait,
+unknown claim before send, duplicate tabs/replay suppression, correction-independent elapsed and
+non-staling delivery claims, missed/suspended/restarted/rollback catch-up, stopped suppression.
+Real-process fault tests kill after pending JSON replacement (pre-DB) and before final JSON
+replacement (post-DB), recover twice, and verify stable event/interval identities and finalized
+receipts. They exposed a real red: work_due countdown could become positive after wall rollback;
+minimal green latches due countdown to zero. Normal fresh migration and a consistent synthetic
+copied old0018 DB/timer with pending old creation receipt upgrade to0019 twice without changing
+old result/hash, recovering honest creation-receipt provenance. Related existing #61 full-startup
+migration fixtures cover ratings/lineages/plans/query/export preservation. Combined focused run:
+26 passed in89.39s initially. Expanded focused correction/idle/note/receipt/history/migration
+run: **253 passed**,133 warnings,in212.84s. After final acknowledgement route addition:
+focus/recovery/SQL-sandbox APIs **35 passed** in36.70s; related existing Node controller/correction/
+workspace/export **21 passed**. Scoped Ruff passes. Full suites intentionally deferred until
+complete-ticket delivery; prior1114Python/878Node checks are historical partial-source evidence.
+
+Public backend entrypoint `FocusEvaluator.evaluate()` accepts injectable trusted clocks, not an
+HTTP future cutoff. First sample/no suspend clock/lost continuity cannot auto-pause. Subsequent
+samples compare UTC, monotonic and suspend-inclusive BOOTTIME deltas; a boundary must be bracketed
+by observations and dispatched within one second. Samples are taken again under the shared serialization lock, not before waiting for it.
+No-op evaluations do not create receipt/file generations. No adapter or scheduling loop exists yet.
+Timer transitions and notification staging share the original fixed-intent DB/file receipt funnel;
+new staging keys are explicitly excluded from `MutationOperation`. Delivery claims use the same
+process/advisory/SQLite lock order, reconcile first, but do not create timer mutation receipts or
+change timer revisions. Claim state is `unknown` before external IO, so crash/retry cannot authorize
+a second alert. Exact same claim operation returns `send_authorized=false`; clients must obey it.
+Definite failure/unknown exposes durable passive fallback status, not a second native attempt.
+POST `/timer-notifications/{id}/ack` independently dismisses a passive card, idempotently,
+without authorizing any send or losing an already accepted/unknown delivery result. Concurrent
+real processes prove one due event and one successful exclusive claim (200/409). Claim
+ tokens/operation IDs are omitted from notice reads; the table is outside SQL-widget allowlist
+and has no work/task FK, so deleting history cannot cascade/block notification recovery.
+
 **Incomplete: do not publish/close #63 or describe these checkpoints as the whole implementation.**
-There is no notification evaluator, event table, delivery adapter, automatic-break boundary,
-warning evaluation, UI or platform acceptance. The existing HTTP settings accept automatic-break
-policy but its evaluator is absent: this branch is development-only, not a working automatic mode.
+Delivery adapter, daemon scheduling loop, UI and platform acceptance remain pending. Backend
+evaluation is explicit only: automatic mode is not scheduled/delivered to users yet.
 
 2026-11-23: isolated external HOME/TMPDIR/DB; `uv run python -P -m pytest tests/test_timer_focus.py -q`.
 Red: 1 failed, GET `/timer-focus/defaults` returned 404. Green after minimal defaults slice: 1 passed

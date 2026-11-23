@@ -37,6 +37,7 @@ from timetrace.db.models import (
     RecurrenceException,
     ScheduledSession,
     Task,
+    TimerNotification,
 )
 from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import RecordedWorkCreate
@@ -663,7 +664,9 @@ class MultipleTimerService:
     def observe_activity(self, idle_seconds):
         return self.mutate("activity", None, {"operation_id": str(uuid7()), "idle_seconds": idle_seconds})
 
-    def mutate(self, action, timer_id, payload):
+    def mutate(self, action, timer_id, payload, *, _evaluation=None):
+        if action == "focus_evaluate" and _evaluation is None:
+            raise TimerError("Focus evaluation is a daemon service operation.")
         payload = {**payload, "action": action, "timer_id": timer_id}
         operation_id = payload["operation_id"]
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -678,12 +681,22 @@ class MultipleTimerService:
                     if action == "correction_initialize":
                         signing_key(settings.db_file.parent / "correction-signing.key")
                     return json.loads(receipt.result_json)
-                cutoff = datetime.now(UTC).isoformat()
+                evaluation = _evaluation() if _evaluation is not None else None
+                cutoff = evaluation["cutoff"] if evaluation else datetime.now(UTC).isoformat()
                 after = deepcopy(state)
+                notification_events = None
                 task_deletion = None
                 plan_capture = None
                 correction_changes = correction_audits = correction_guard = correction_result = None
-                if action == "focus_defaults":
+                if action == "focus_evaluate":
+                    from timetrace.services.timer_focus_service import evaluate_state
+
+                    notification_events = evaluate_state(self, after, cutoff, evaluation)
+                    if after == state and not notification_events:
+                        self.db.rollback()
+                        return {"evaluated": True, "changed": False}
+                    timer, selected = None, False
+                elif action == "focus_defaults":
                     update_defaults(after, payload)
                     timer, selected = None, False
                 elif action == "correction_initialize":
@@ -874,6 +887,8 @@ class MultipleTimerService:
                         timer["state"] = "running" if continue_running else "paused"
                         timer["running_start"] = cutoff if continue_running else None
                         if continue_running:
+                            if timer.get("focus") and timer["focus"]["phase"] in ("work", "work_due"):
+                                timer["focus"]["recording_anchor"] = cutoff
                             timer["running_segment_id"] = str(uuid7())
                             timer["running_evidence"] = evidence(cutoff, "context_split")
                 after["revision"] += 1
@@ -943,6 +958,8 @@ class MultipleTimerService:
                         else None
                     ),
                 }
+                if notification_events is not None:
+                    intent["notification_events"] = notification_events
                 if correction_changes is not None:
                     intent.update(
                         correction_changes=correction_changes,
@@ -1069,7 +1086,7 @@ class MultipleTimerService:
         for timer in after["timers"].values():
             if timer["state"] == "running" and timer["pause_when_idle"] and idle_seconds >= threshold:
                 onset = max(last_activity, timer["running_start"])
-                checkpoint(timer, onset)
+                checkpoint(timer, last_activity)
                 if timer.get("focus"):
                     timer["focus"]["recording_anchor"] = None
                 self._close_segment(timer, onset)
@@ -1243,6 +1260,24 @@ class MultipleTimerService:
                         "timer_segment_id": segment["id"],
                     },
                 )
+            for notice in self.db.exec(select(TimerNotification).where(TimerNotification.status == "pending")).all():
+                owner = expected["timers"].get(notice.timer_id)
+                if owner and (
+                    owner["state"] == "stopped"
+                    or (notice.kind != "two_hour" and notice.generation != owner.get("focus", {}).get("generation"))
+                ):
+                    notice.status = "cancelled"
+                    self.db.add(notice)
+            for event in intent.get("notification_events", []):
+                existing = self.db.exec(
+                    select(TimerNotification).where(
+                        TimerNotification.timer_id == event["timer_id"],
+                        TimerNotification.kind == event["kind"],
+                        TimerNotification.generation == event["generation"],
+                    )
+                ).first()
+                if existing is None:
+                    self.db.add(TimerNotification(**event))
             receipt = MutationOperation(
                 **{
                     k: v
@@ -1256,6 +1291,7 @@ class MultipleTimerService:
                         "correction_changes",
                         "correction_audits",
                         "correction_guard",
+                        "notification_events",
                     }
                 }
             )

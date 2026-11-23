@@ -55,7 +55,9 @@ def display(timer, cutoff):
     focus = timer.get("focus")
     if not focus:
         return
-    if focus["phase"] in ("work", "work_due"):
+    if focus["phase"] in ("work_due", "break_due"):
+        focus["remaining_seconds"] = 0
+    elif focus["phase"] == "work":
         focus["remaining_seconds"] = max(0, focus["period"]["work_minutes"] * 60 - elapsed(focus, cutoff))
     elif focus["phase"] in ("break", "break_due"):
         focus["remaining_seconds"] = max(

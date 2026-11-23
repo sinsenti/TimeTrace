@@ -12,6 +12,46 @@ from timetrace.services.multiple_timer_service import MultipleTimerService
 router = APIRouter(tags=["Timers"])
 
 
+class NotificationClaim(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    channel: Literal["in_app", "browser", "native"]
+
+
+class NotificationResult(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    claim_token: str = Field(min_length=1, max_length=128)
+    outcome: Literal["accepted", "failed", "unknown", "in_app_acknowledged"]
+
+
+@router.get("/timer-notifications")
+def notifications(db: Session = Depends(get_session)):
+    from timetrace.services.timer_focus_service import TimerNotificationService
+
+    return TimerNotificationService(db).list_notices()
+
+
+@router.post("/timer-notifications/{event_id}/claim")
+def notification_claim(event_id: str, req: NotificationClaim, db: Session = Depends(get_session)):
+    from timetrace.services.timer_focus_service import TimerNotificationService
+
+    return TimerNotificationService(db).claim(event_id, req.operation_id, req.channel)
+
+
+@router.post("/timer-notifications/{event_id}/ack")
+def notification_ack(event_id: str, db: Session = Depends(get_session)):
+    from timetrace.services.timer_focus_service import TimerNotificationService
+
+    return TimerNotificationService(db).acknowledge(event_id)
+
+
+@router.post("/timer-notifications/{event_id}/result")
+def notification_result(event_id: str, req: NotificationResult, db: Session = Depends(get_session)):
+    from timetrace.services.timer_focus_service import TimerNotificationService
+
+    return TimerNotificationService(db).result(event_id, req.claim_token, req.outcome)
+
+
 class FocusDefaultsRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     operation_id: str = Field(min_length=1, max_length=128)

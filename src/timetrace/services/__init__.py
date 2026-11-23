@@ -18,6 +18,7 @@ from timetrace.services.saved_correction_service import SavedCorrectionService
 from timetrace.services.session_service import SessionService
 from timetrace.services.sql_query_service import SqlQueryService
 from timetrace.services.task_service import TaskService
+from timetrace.services.timer_focus_service import FocusEvaluator, TimerNotificationService
 from timetrace.services.timer_service import TimerService
 
 __all__ = [
@@ -26,6 +27,8 @@ __all__ = [
     "SessionService",
     "PlanRemovalService",
     "TimerService",
+    "FocusEvaluator",
+    "TimerNotificationService",
     "MultipleTimerService",
     "RevisionService",
     "RatingService",
