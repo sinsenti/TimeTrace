@@ -23,6 +23,7 @@
     document.getElementById('history-export-open').click();
     find('Load eligible rows').click();
     await wait(() => document.querySelectorAll('dialog fieldset input').length > 0);
+    check(document.querySelector('dialog [role=status]').textContent.includes('effective zone'), 'eligible selection exposes effective timezone');
     const group = document.querySelector('dialog fieldset input');
     group.click();
     find('Preview checkbox selection').click();
@@ -38,6 +39,13 @@
         await wait(() => document.querySelector('dialog [role=status]').textContent.includes('synthetic clipboard denial'));
         check(preview.value === frozen && !find('Download preview').disabled, 'clipboard failure retains accepted bytes');
     } finally { navigator.clipboard.writeText = clipboard; }
+    const createURL = URL.createObjectURL;
+    URL.createObjectURL = () => { throw Error('synthetic download failure'); };
+    try {
+        find('Download preview').click();
+        await wait(() => document.querySelector('dialog [role=status]').textContent.includes('synthetic download failure'));
+        check(preview.value === frozen && !find('Download preview').disabled, 'download failure retains accepted bytes');
+    } finally { URL.createObjectURL = createURL; }
     const width = document.querySelector('dialog').getBoundingClientRect().width;
     check(width <= window.innerWidth, 'dialog bounded to viewport');
     // Inject only the external read boundary to exercise late response ownership.
@@ -61,6 +69,6 @@
     // Native dialog close/focus completion is checked in the next Orca command;
     // this headless transport can defer its rendering task until eval returns.
     check(dirtyEditor.value === draft && dirtyEditor.isConnected, 'dirty saved-work editor survives export and failed reads');
-    return {unicodeFilter:true,groupSelection:true,selectedPreview:true,clipboardFailureRetainsBytes:true,
+    return {unicodeFilter:true,groupSelection:true,selectedPreview:true,clipboardFailureRetainsBytes:true,downloadFailureRetainsBytes:true,
         narrowDialogWidth:width,viewport:window.innerWidth,lateMutationReadRejected:true,readFailure:true,closeFocusRequiresNextTurn:true,dirtyEditorRetained:true};
 })()

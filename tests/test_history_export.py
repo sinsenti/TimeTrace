@@ -256,6 +256,23 @@ def test_export_preserves_microsecond_precision_without_hour_roundtrip(client):
     assert preview["elapsed_recorded_time_seconds"] == 0.000007
 
 
+def test_markdown_consolidates_interleaved_rows_into_one_day_task_group(client):
+    tasks = [client.post("/api/tasks", json={"title": name}).json()["id"] for name in ["A", "B"]]
+    for hour, task in [(10, tasks[0]), (11, tasks[1]), (12, tasks[0])]:
+        client.post(
+            "/recorded-work",
+            json={"task_id": task, "start_time": f"2000-01-04T{hour}:00:00Z", "end_time": f"2000-01-04T{hour}:30:00Z"},
+        )
+    response = client.post(
+        "/api/agenda/history-export/preview",
+        json={"start_date": "2000-01-04", "end_date": "2000-01-04", "timezone": "UTC", "mode": "filtered"},
+    ).json()
+    markdown = response["markdown"]["content"]
+    assert markdown.count("/ " + tasks[0] + "\n") == 1
+    assert response["work_count"] == 3
+    assert response["summed_recorded_work_seconds"] == 5400
+
+
 def test_summed_recorded_work_counts_same_task_overlap_fully(client):
     task = client.post("/api/tasks", json={"title": "Overlap"}).json()["id"]
     for start, end, task_id in [("10:00", "11:00", task), ("10:30", "11:30", task), ("11:15", "11:45", None)]:

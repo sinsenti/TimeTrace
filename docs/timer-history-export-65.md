@@ -60,13 +60,13 @@ saved evidence; this slice consumes mutation invalidation and does not alter its
 | Shared literal Unicode title/tag/note, taskless label | Public HTTP literal Unicode conjunction and public visible JS predicate; browser title/tag/note + same-name UUID groups |
 | Carry-in/start-day/overnight/DST/zone fallback | Public HTTP whole overnight, carry-in refusal, repeated NY hour with -04/-05 endpoints and explicit effective-zone warning; invalid daemon fallback |
 | Plans/legacy/live distinction | Public HTTP plans excluded, uncertain opt-in separate/unknown/zero totals; no timer-buffer read path |
-| Counts, complete bytes, safe text and no mutation | Public HTTP CSV decoding, Unicode/BOM/control/formula prefixes, Markdown HTML/table escaping, repeated original-note reads, per-artifact UTF-8 counts |
+| Counts, complete bytes, safe text and no mutation | Public HTTP CSV decoding, Unicode/BOM/control/formula prefixes, Markdown HTML/table escaping, consolidated interleaved day/task sections, repeated original-note reads, per-artifact UTF-8 counts |
 | Caps and stale selections | Public HTTP range/invalid combinations/stale IDs, 10,001-candidate refusal with bounded explicit-ID success, 2,001 eligible refusal, 4MiB combined refusal |
 | Immutable artifacts/generation/invalidation | Public controller empty selection, late-read rejection, external/accepted-state mutation resistance, known mutation invalidation, clipboard failure retention |
 | Browser selection/output | Real eligible group checkbox and selected preview; two identical task titles remain two UUID groups, first-group selection exports one row; all three filters applied |
 | Actual clipboard/download | Trusted Orca Copy completed with pass-through captured text exactly equal to preview; typed Orca downloads saved both UTF-8 files and actual saved bytes equal pass-through browser Blob bytes |
-| Narrow/focus/drafts/failures | Real browser 390px viewport/352px dialog, retained dirty saved-work editor, late mutation-read refusal, read and clipboard failure retention, subsequent-turn launcher-focus proof |
-| Existing callers/full regressions | 848 Python and 869 Node passed; changed-JS syntax passed; full Ruff retains exactly 17 baseline findings |
+| Narrow/focus/drafts/failures | Real browser 390px viewport/352px dialog, retained dirty saved-work editor, late mutation-read refusal, read/clipboard/download failure retention, subsequent-turn launcher-focus proof |
+| Existing callers/full regressions | 849 Python and 869 Node passed; changed-JS syntax passed; full Ruff retains exactly 17 baseline findings |
 | Migration/protocol boundaries | No model/schema change; no migration required; no #61 receipt/hash/lock/lineage changes |
 
 ### Bounded limitations
@@ -83,8 +83,8 @@ or partial checkpoint was merged here.
 ## Red/green and verification receipts
 
 Synthetic data only; absolute scratch DB plus isolated HOME/TMPDIR established before imports.
-`uv run python -P -m pytest -q`: **848 passed**. `node --test tests/*.cjs`: **869 passed**.
-Focused export/query HTTP: **35 passed**; new export HTTP file: **24 tests**. Public export controller:
+`uv run python -P -m pytest -q`: **849 passed**. `node --test tests/*.cjs`: **869 passed**.
+Focused export/query HTTP: **36 passed**; new export HTTP file: **25 tests**. Public export controller:
 **3 tests**. Changed JS and `tests/browser_history_export_65.js` pass `node --check`.
 Full Ruff: **17 inherited findings**, compared by file/code/message multiset to an archive of baseline
 `5958cd0`; no new findings. Scoped formatting was applied only to changed Python files.
@@ -94,11 +94,13 @@ snapshot, invalid request acceptance, mislabeled SUM basis, microsecond hour-rou
 invalid daemon-zone failure, missing taskless-title match, absent controller/copy/predicate and mutable
 nested envelope. Each behavior was followed by its minimum implementation and focused green run.
 The candidate-scan tracer first refused explicit IDs along with filtered-all, then gained bound-ID SQL.
+A final public HTTP tracer exposed repeated Markdown sections for interleaved A/B/A intervals; stable
+classification/day/UUID grouping fixed it without changing raw rows, CSV order or either total.
 Existing Node harnesses gained browser CustomEvent/dispatch boundaries for the new ACK signal.
 
 One early full Python run during development failed (18 failures: intentionally disabled idle detection
 and source edits during that run); it is not the final result. The final complete run used the standard
-test idle setting, with daemon idle detection separately disabled, and passed all 848 tests. An invalid
+test idle setting, with daemon idle detection separately disabled, and passed all 849 tests. An invalid
 fixture with `recorded_work`/null provenance was rejected by the existing DB check constraint during
 exploration and was removed, not presented as an export regression. See the worker report for exact
 local command/output paths; the tracked browser probe is `tests/browser_history_export_65.js`.

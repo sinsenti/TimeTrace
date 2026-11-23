@@ -60,7 +60,9 @@ def render_history(rows: list[dict], snapshot: str, zone: str, totals: dict, req
         "",
     ]
     group = None
-    for row in rows:
+    # Keep each raw interval, but consolidate day/task/kind sections even when
+    # physical start order interleaves tasks. CSV retains physical start order.
+    for row in sorted(rows, key=lambda row: (row["classification"], row["start"][:10], row["task_id"] or "")):
         key = (row["classification"], row["start"][:10], row["task_id"])
         if key != group:
             group = key
