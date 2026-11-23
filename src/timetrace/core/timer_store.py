@@ -49,6 +49,24 @@ class TimerStore:
                 else:
                     fcntl.flock(lock, fcntl.LOCK_UN)
 
+    def inspect(self):
+        """Inspect persisted JSON without locking, upgrading, backing up or reconciling.
+
+        Atomic replacement gives readers a coherent file. Legacy shape is returned
+        unchanged so a caller can refuse it without invoking the writing read path.
+        """
+        if not self.path.exists():
+            return {"version": 2, "revision": 0, "timers": {}, "pending_operation": None}
+        try:
+            state = json.loads(self.path.read_text(encoding="utf-8"))
+        except (ValueError, TypeError) as exc:
+            raise ConflictError(
+                "Timer JSON is corrupt; preserve it for recovery.", code="reconciliation_required"
+            ) from exc
+        if not isinstance(state, dict):
+            raise ConflictError("Timer state is not an object.", code="reconciliation_required")
+        return state
+
     def read(self):
         if not self.path.exists():
             return {"version": 2, "revision": 0, "timers": {}, "pending_operation": None}

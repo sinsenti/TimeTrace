@@ -1,7 +1,9 @@
 """Additive targeted timer HTTP interface."""
 
+from typing import Annotated, Literal
+
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from sqlmodel import Session
 
 from timetrace.db.session import get_session
@@ -34,6 +36,54 @@ class TimerMutation(BaseModel):
     gap_id: str | None = None
     decision: str | None = None
     pause_when_idle: bool | None = None
+
+
+class CorrectionRunningTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["running"]
+    segment_id: str = Field(min_length=1, max_length=128)
+
+
+class CorrectionBufferedTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["buffered"]
+    segment_id: str = Field(min_length=1, max_length=128)
+
+
+class CorrectionSavedTarget(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["saved"]
+    work_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+
+
+class CorrectionStartStep(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["step_start"]
+    credited_delta_seconds: int
+
+    @field_validator("credited_delta_seconds")
+    @classmethod
+    def five_minute_step(cls, value):
+        if value not in (-300, 300):
+            raise ValueError("Choose an elapsed five-minute step.")
+        return value
+
+
+class CorrectionPreviewRequest(BaseModel):
+    """Initial strict preparation interface; no successful approval is issued yet."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+    target: Annotated[
+        CorrectionRunningTarget | CorrectionBufferedTarget | CorrectionSavedTarget, Field(discriminator="kind")
+    ]
+    change: CorrectionStartStep
+
+
+# Must precede the legacy two-component mutation route, whose schema/hashes stay unchanged.
+@router.post("/timers/{timer_id}/correction-preview")
+def correction_preview(timer_id: str, req: CorrectionPreviewRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).correction_preview(timer_id, req.model_dump())
 
 
 @router.post("/timers/{timer_id}/{action}")

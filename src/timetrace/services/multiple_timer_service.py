@@ -31,6 +31,30 @@ class MultipleTimerService:
             Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "active_timer.json"))
         )
 
+    def correction_preview(self, timer_id, request):
+        """Non-writing preparation gate; signed corrections are not enabled yet.
+
+        Do not use get/list/read or take the store lock here: those paths can
+        reconcile receipts, migrate legacy JSON or create directory entries.
+        """
+        state = self.store.inspect()
+        with self.db.no_autoflush:
+            pending_receipt = self.db.exec(
+                select(MutationOperation.id).where(MutationOperation.file_finalized.is_(False)).limit(1)
+            ).first()
+        if state.get("pending_operation") or pending_receipt:
+            raise ConflictError(
+                "Recover the outstanding timer operation before preparing a correction.",
+                code="reconciliation_required",
+            )
+        if state.get("version") != 2 and "is_running" not in state:
+            raise ConflictError("Unknown timer format; preserve it for recovery.", code="reconciliation_required")
+        raise ConflictError(
+            "Explicit correction initialization is required. Corrections are not available in this build; "
+            "existing timer controls remain available.",
+            code="correction_initialization_required",
+        )
+
     def unfinished_for_plan(self, plan_id):
         """Read while holding SQLite's writer lock for a destructive/extension manifest.
 
