@@ -12,6 +12,27 @@ from timetrace.services.multiple_timer_service import MultipleTimerService
 router = APIRouter(tags=["Timers"])
 
 
+class FocusDefaultsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=0)
+    enabled: bool
+    work_minutes: int = Field(ge=1, le=1440)
+    break_minutes: int = Field(ge=1, le=1440)
+    behavior: Literal["notify_only", "automatic_break"]
+    sound_enabled: bool
+
+
+@router.get("/timer-focus/defaults")
+def focus_defaults(db: Session = Depends(get_session)):
+    return MultipleTimerService(db).focus_defaults()
+
+
+@router.post("/timer-focus/defaults")
+def set_focus_defaults(req: FocusDefaultsRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("focus_defaults", None, req.model_dump())
+
+
 class StartTimer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation_id: str = Field(min_length=1, max_length=128)

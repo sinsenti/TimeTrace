@@ -25,6 +25,7 @@ from timetrace.core.correction_step import (
     subtract_interval,
 )
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
+from timetrace.core.focus import DEFAULTS, new_focus, update_defaults
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
 from timetrace.core.timezones import daemon_tzinfo, validate_local_instant
@@ -50,6 +51,10 @@ class MultipleTimerService:
         self.store = TimerStore(
             Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "active_timer.json"))
         )
+
+    def focus_defaults(self):
+        with _writes, self.store.locked():
+            return deepcopy(self._reconcile().get("focus_defaults", DEFAULTS))
 
     def correction_preview(self, timer_id, request):
         """Inspect and sign explicit corrections without filesystem or database writes.
@@ -677,7 +682,10 @@ class MultipleTimerService:
                 task_deletion = None
                 plan_capture = None
                 correction_changes = correction_audits = correction_guard = correction_result = None
-                if action == "correction_initialize":
+                if action == "focus_defaults":
+                    update_defaults(after, payload)
+                    timer, selected = None, False
+                elif action == "correction_initialize":
                     for item in after["timers"].values():
                         previous = deepcopy(item)
                         initialize_identities(item)
@@ -860,6 +868,8 @@ class MultipleTimerService:
                             }
                         ),
                     }
+                if action == "focus_defaults":
+                    result["focus_defaults"] = after["focus_defaults"]
                 if action == "correction_initialize":
                     result["correction_initialized"] = True
                 intent = {
@@ -992,6 +1002,9 @@ class MultipleTimerService:
             "running_evidence": evidence(None, "uninterrupted"),
             "idle_gaps": [],
         }
+        timer["identity_started_at"] = cutoff
+        timer["identity_started_at_provenance"] = "creation"
+        timer["focus"] = new_focus(after.get("focus_defaults", DEFAULTS), cutoff)
         after["timers"][timer["id"]] = timer
         return timer, False, capture
 
