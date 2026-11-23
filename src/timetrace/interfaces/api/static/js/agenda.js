@@ -234,6 +234,7 @@ const agendaPage = (() => {
             onState(state) {
                 if (owner === captured) {
                     owner.extensionPending = state.pending || state.phase === 'uncertain';
+                    if (state.phase === 'stale') owner.blocked = true;
                     controls();
                 }
                 apply.hidden = state.phase !== 'preview'; apply.disabled = state.pending;
