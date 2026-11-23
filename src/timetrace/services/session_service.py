@@ -218,9 +218,9 @@ class SessionService:
 
     def extend_scheduled_session(self, plan_id: str, req: ScheduledSessionExtension) -> ScheduledSessionRead:
         """Only the selected current end changes; the finalized DB receipt is atomic with it."""
-        digest = hashlib.sha256(
-            json.dumps({"action": "extend", "plan_id": plan_id, **req.model_dump(mode="json")}, sort_keys=True).encode()
-        ).hexdigest()
+        payload = {"action": "extend", "plan_id": plan_id, **req.model_dump(mode="json")}
+        payload["end_time"] = ensure_utc(req.end_time).isoformat()
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         try:
             lock_sqlite_writer(self.db)
             receipt = self.db.get(MutationOperation, req.operation_id)

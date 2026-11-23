@@ -1,5 +1,8 @@
 """Explicit extension through the actual root HTTP contract."""
 
+import os
+import subprocess
+import sys
 from uuid import uuid4
 
 import pytest
@@ -105,6 +108,48 @@ def test_virtual_extension_captures_only_selected_originals_with_retry_receipt(c
     assert client.post(url, json={**body, "end_time": "2099-01-04T12:00:00Z"}).status_code == 409
 
 
+def test_concurrent_extensions_require_review_and_old_receipt_stays_fixed(tmp_path):
+    env = {
+        **os.environ,
+        "TIMETRACE_DB_FILE": str(tmp_path / "concurrent.db"),
+        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "timers.json"),
+        "HOME": str(tmp_path / "home"),
+        "TMPDIR": str(tmp_path),
+    }
+    script = """
+from concurrent.futures import ThreadPoolExecutor
+from uuid import uuid4
+from fastapi.testclient import TestClient
+from timetrace.db.session import init_db
+from timetrace.main import create_daemon_app
+init_db()
+client = TestClient(create_daemon_app())
+    plan = client.post(
+        "/scheduled-sessions", json={"start_time": "2000-01-04T09:00:00Z", "end_time": "2000-01-04T10:00:00Z"}
+    ).json()
+    url = f"/scheduled-sessions/{plan['id']}"
+    bodies = [
+        {"end_time": f"2000-01-04T{hour}:00:00Z", "expected_revision": 1, "operation_id": str(uuid4())}
+        for hour in ("11", "12")
+    ]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        replies = list(pool.map(lambda body: client.post(url + "/extend", json=body), bodies))
+    assert sorted(reply.status_code for reply in replies) == [200, 409]
+    index = next(i for i, reply in enumerate(replies) if reply.status_code == 200)
+    saved = replies[index].json()
+    newer = client.post(
+        url + "/extend", json={"end_time": "2000-01-04T13:00:00Z", "expected_revision": 2, "operation_id": str(uuid4())}
+    )
+    assert newer.status_code == 200
+    assert client.post(url + "/extend", json=bodies[index]).json() == saved
+    assert client.get(url).json() == newer.json()
+"""
+    # A real per-request DB session is required; the ordinary fixture intentionally shares one.
+    script = script.replace("\n    ", "\n")
+    result = subprocess.run([sys.executable, "-P", "-c", script], env=env, capture_output=True, text=True, timeout=60)
+    assert result.returncode == 0, result.stderr
+
+
 def test_extension_is_explicit_preserves_original_and_replays_fixed_receipt(client):
     plan = client.post(
         "/scheduled-sessions",
@@ -121,6 +166,7 @@ def test_extension_is_explicit_preserves_original_and_replays_fixed_receipt(clie
     saved = response.json()
     assert saved == {**plan, "end_time": payload["end_time"], "duration_seconds": 7200, "revision": 2}
     assert client.post(url + "/extend", json=payload).json() == saved
+    assert client.post(url + "/extend", json={**payload, "end_time": "2000-01-04T12:00:00+01:00"}).json() == saved
     assert client.get("/operations/extension-tracer").json()["result"] == saved
     assert client.get(url).json() == saved
     assert client.get("/sessions").json() == []
