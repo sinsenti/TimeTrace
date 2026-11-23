@@ -115,6 +115,9 @@ receipt funnel and `SessionService.stage_work_corrections`, not generic legacy u
 requires migration `0018_work_corrections`; controller/browser delivery and complete #61 acceptance
 remain pending.
 
+[Selected-history export](timer-history-export-65.md) adds a separate bounded start-day selection view,
+frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserving summed-work measure.
+
 ### Implementation notes and historical adoption checkpoints
 
 The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording

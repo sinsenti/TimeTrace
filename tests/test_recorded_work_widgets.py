@@ -90,9 +90,13 @@ def test_advertised_measure_dimension_matrix_executes_through_public_query(clien
             assert response.status_code == 200, (query, response.text)
             result = response.json()
             expected = 0 if measure["value"] == "outside_scheduled_task_time" else 1
-            if measure["value"] != "plan_fill":
-                assert result["total"] == expected, query
-            assert all(row["value"] == expected for row in result["rows"]), query
+            if measure["value"] == "summed_recorded_work":
+                assert result["total"] == 2, query
+                assert sum(row["value"] for row in result["rows"]) == 2, query
+            else:
+                if measure["value"] != "plan_fill":
+                    assert result["total"] == expected, query
+                assert all(row["value"] == expected for row in result["rows"]), query
 
 
 def test_comparison_plan_selection_is_independent_of_work_start_range(client):

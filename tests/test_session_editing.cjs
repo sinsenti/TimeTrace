@@ -33,6 +33,8 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
         sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
         addEventListener(name, fn) { listeners.set(name, fn); },
+        CustomEvent: class { constructor(type, options = {}) { this.type = type; this.detail = options.detail; } },
+        dispatchEvent(event) { return listeners.get(event.type)?.(event); },
         async fetch(url, options) {
             if (options.method !== 'GET') writes.push({ url, method: options.method, payload: options.body && JSON.parse(options.body) });
             const data = await http(url, options);
