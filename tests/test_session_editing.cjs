@@ -29,7 +29,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     }
     const document = { getElementById: id => elements.get(id) || null, createElement: tag => element('', tag),
         addEventListener(name, fn) { documentListeners.set(name, fn); }, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
-    context = vm.createContext({ document, Date, setTimeout: () => {}, console: { error() {} },
+    context = vm.createContext({ document, Date, URLSearchParams, location: {search:'',pathname:'/agenda-view',href:''}, setTimeout: () => {}, console: { error() {} },
         sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
         addEventListener(name, fn) { listeners.set(name, fn); },
@@ -297,11 +297,15 @@ test('details opens its own recorded session without publishing task history as 
 function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
-        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension']) p.element(`agenda-${suffix}`);
+        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension',
+        'unfinished', 'pin-status', 'pins', 'activities', 'search', 'filter-tag', 'filter-note']) p.element(`agenda-${suffix}`);
     p.context.URLSearchParams = URLSearchParams;
     p.context.crypto = require('node:crypto').webcrypto;
     p.context.confirm = () => true;
     p.load('plan_extension.js');
+    p.load('workspace_pins.js');
+    p.load('workspace_history.js');
+    p.load('workspace_notes.js');
     p.load('agenda.js');
     return p.run('agendaPage.refresh()');
 }

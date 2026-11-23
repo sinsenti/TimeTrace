@@ -39,6 +39,13 @@
 .workspace-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .workspace-actions button { padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; }
 .workspace-actions button:disabled { opacity: .5; }
+#workspace-current-note label { display: block; margin-top: 18px; }
+#workspace-current-note textarea { display: block; width: 100%; min-height: 5rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
+#workspace-current-note button, #agenda-pins button, #agenda-activities button { margin: 6px 8px 6px 0; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; }
+#agenda-pins > div, #agenda-activities > div { padding: 8px 0; border-bottom: 1px solid var(--border-muted); }
+#agenda-pins button:disabled, #agenda-activities button:disabled { opacity: .5; }
+#agenda-ledger details { padding: 14px 0; border-bottom: 1px solid var(--border-muted); }
+#agenda-ledger summary { cursor: pointer; font-weight: 600; }
 @media (max-width: 740px) {
     .folio { padding: 28px 18px 70px; }
     .folio-columns { display: flex; flex-direction: column; gap: 24px; }

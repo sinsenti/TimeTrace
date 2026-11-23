@@ -101,7 +101,11 @@ async function readTimerStatus(actionRead = false) {
         let data;
         if (window.multipleTimers) {
             const status = await window.multipleTimers.refresh();
-            if (!status) throw new Error('Timer status unavailable');
+            if (!status) {
+                // The shared owner already renders real read failures. A superseded
+                // shared read is also null: it must not fabricate a legacy recovery hold.
+                timerStatusFresh = false; timerNotice = ''; renderTimerState(); return null;
+            }
             const timer = status.timers.length === 1 ? status.timers[0] : {};
             data = {...timer, is_running:timer.state === 'running', is_frozen_idle:timer.state === 'frozen',
                 idle_detection_enabled:status.idle_detection_enabled, pending_idle_gap:null,

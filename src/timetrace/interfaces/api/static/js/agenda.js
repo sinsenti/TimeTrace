@@ -1,6 +1,9 @@
 /* Folio owns one editable draft; range reads never replace that draft. */
 const agendaPage = (() => {
     const get = id => document.getElementById(`agenda-${id}`);
+    // Reuse the sole shared controller region, below the prominent current card.
+    const unfinished = document.getElementById('multiple_timers');
+    if (unfinished) get('unfinished').append(unfinished);
     const date = get('date');
     const fields = ['task', 'tags', 'notes', 'start', 'end'];
     const values = () => ({...Object.fromEntries(fields.map(key => [key, get(key).value])), attach: Boolean(get('attach').checked)});
@@ -50,6 +53,10 @@ const agendaPage = (() => {
         if (taskId && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(taskId))) {
             get('pin-status').textContent = 'Task unavailable or metadata stale. Refresh before starting.'; return;
         }
+        const timerState = window.multipleTimers?.snapshot();
+        if (!timerState?.fresh || timerState.pending || timerState.receipt) {
+            get('pin-status').textContent = 'Refresh timer status or resolve its saved operation before starting.'; return;
+        }
         // Repeat activities never inherit an old plan association, note or timestamp.
         await window.multipleTimers?.start({task_id:taskId || null});
     }
@@ -61,6 +68,10 @@ const agendaPage = (() => {
         const fresh = taskKnowledge.state().status === 'fresh';
         const action = (label, fn, disabled = false) => {
             const button = make('button', label); button.type = 'button'; button.disabled = disabled;
+            if (label === 'Start') {
+                button.dataset.workspaceStart = 'true'; button.dataset.metadataAvailable = String(!disabled);
+                const state = window.multipleTimers?.snapshot(); button.disabled ||= !state?.fresh || state.pending || Boolean(state.receipt);
+            }
             button.addEventListener('click', fn); return button;
         };
         const toggle = (id, remove) => {
@@ -128,6 +139,8 @@ const agendaPage = (() => {
                 parents.get(row.id).append(metadata);
                 const again = make('button', 'Start again'); again.type = 'button';
                 again.disabled = Boolean(row.task_id && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(row.task_id)));
+                again.dataset.workspaceStart = 'true'; again.dataset.metadataAvailable = String(!again.disabled);
+                const timerState = window.multipleTimers?.snapshot(); again.disabled ||= !timerState?.fresh || timerState.pending || Boolean(timerState.receipt);
                 again.addEventListener('click', () => startActivity(row.task_id)); parents.get(row.id).append(again);
             }
             if (focused === row.id) button.focus();
@@ -552,6 +565,10 @@ const agendaPage = (() => {
         } else if (result?.plan_revision && owner?.row?.id === result.timer?.scheduled_session_id) {
             owner.row.revision = result.plan_revision;
         }
+    });
+    window.addEventListener('beforeunload', event => {
+        if (!agendaPage.hasDraft() && !window.multipleTimers?.hasNoteDraft?.()) return;
+        event.preventDefault(); event.returnValue = '';
     });
     void refresh();
     for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });

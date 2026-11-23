@@ -26,6 +26,19 @@ def test_work_note_edits_are_independent_revision_checked_and_do_not_correct_tim
     assert client.get(f"/recorded-work/{work['id']}").json()["notes"] == "After"
 
 
+def test_running_timer_label_refreshes_after_normal_task_edit(client, tmp_path, monkeypatch):
+    from uuid import uuid4
+
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(tmp_path / "rename.json"))
+    task = client.post("/api/tasks", json={"title": "Before rename"}).json()
+    timer = client.post("/timers", json={"operation_id": str(uuid4()), "task_id": task["id"]}).json()["timer"]
+    assert client.put(f"/api/tasks/{task['id']}", json={"title": "After rename"}).status_code == 200
+    current = client.get(f"/timers/{timer['id']}").json()
+    assert current["task_title"] == "After rename"
+    assert current["running_start"] == timer["running_start"]
+    assert current["revision"] == timer["revision"]
+
+
 def test_workspace_search_bounds_matching_task_title_and_tags(client):
     first = client.post("/api/tasks", json={"title": "Writing", "tags": "#paper", "description": "Draft notes"}).json()
     client.post("/api/tasks", json={"title": "Writing second", "tags": "#other"})

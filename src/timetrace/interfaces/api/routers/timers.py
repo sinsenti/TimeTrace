@@ -30,6 +30,7 @@ class TimerMutation(BaseModel):
     expected_revision: int | None = None
     new_tags: str = ""
     new_notes: str = ""
+    expected_note_segment_id: str | None = None
     gap_id: str | None = None
     decision: str | None = None
     pause_when_idle: bool | None = None
@@ -37,7 +38,11 @@ class TimerMutation(BaseModel):
 
 @router.post("/timers/{timer_id}/{action}")
 def mutate_timer(timer_id: str, action: str, req: TimerMutation, db: Session = Depends(get_session)):
-    return MultipleTimerService(db).mutate(action, timer_id, req.model_dump())
+    payload = req.model_dump()
+    if action != "note":
+        # Keep canonical payload hashes for operations journaled before note support.
+        payload.pop("expected_note_segment_id", None)
+    return MultipleTimerService(db).mutate(action, timer_id, payload)
 
 
 @router.get("/timers/{timer_id}")

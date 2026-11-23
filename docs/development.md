@@ -106,6 +106,10 @@ In the table, `static/`, `templates/`, and `routers/` shorthand is under `interf
 Templates include shared pieces from `templates/components/`, but there is no common base template.
 The root app is the runtime entry point, not the separate unused `interfaces/api/main.py` instance.
 
+The [core timer workspace contract and verification](timer-workspace-60.md) documents Agenda's
+selected current card, device-local pins, bounded discovery, grouped history, note-only timer/work
+mutations, keyboard bindings and the intentionally unavailable #61 correction integration points.
+
 ### Implementation notes and historical adoption checkpoints
 
 The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording

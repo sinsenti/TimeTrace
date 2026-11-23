@@ -14,13 +14,14 @@
         {% include "components/navbar.html" %}
     </header>
     <main class="folio" id="agenda-workspace">
+        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><div id="workspace-current-note"></div></section>
+        <div id="agenda-unfinished"></div>
         <header class="folio-masthead">
             <span class="folio-eyebrow">Agenda · The daily edition</span>
             <h1>Make space for <em>meaningful work.</em></h1>
             <p class="folio-deck">Your plan and your recorded work, side by side. One does not replace the other.</p>
         </header>
         <p>Timer shortcuts (outside editors): Alt+Shift+1–9 selects; Alt+Shift+Enter starts the picked task; Alt+Shift+P pauses/resumes selected; Alt+Shift+S stops selected; Alt+Shift+F searches. Adjust time and five-minute corrections await the reviewed correction interface (#61).</p>
-        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"></section>
         <div class="folio-strip">
             <label>Local date <input id="agenda-date" type="date" required></label>
             <button id="agenda-new" type="button">+ Plan session</button>
@@ -37,7 +38,7 @@
                     <label>Task search <input id="agenda-search" type="search"></label>
                     <label>Tag contains <input id="agenda-filter-tag" type="search"></label>
                     <label>Work note contains <input id="agenda-filter-note" type="search"></label>
-                    <p>History filters apply to the selected local day only. Task search returns at most 50 matching tasks in stable ID order before display sorting; work-note filtering does not search task descriptions. Cross-day and advanced combinations are available in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
+                    <p>History reads intervals intersecting the selected local day, grouped by local start day; totals retain their labeled start-date cohort. Task search returns at most 50 matching tasks in stable ID order before display sorting; work-note filtering does not search task descriptions. Cross-day and advanced combinations are available in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
                     <div id="agenda-activities"></div>
                 </section>
                 <h3>Activity history and plan context</h3>
@@ -86,6 +87,7 @@
     <script src="/static/js/tags_engine.js"></script>
     <script src="/static/js/task_attach.js"></script>
     <script src="/static/js/task_modal.js"></script>
+    <script src="/static/js/current_note_editor.js"></script>
     <script src="/static/js/workspace_notes.js"></script>
     <script src="/static/js/workspace_pins.js"></script>
     <script src="/static/js/workspace_history.js"></script>

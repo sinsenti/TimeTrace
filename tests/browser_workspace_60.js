@@ -19,8 +19,18 @@
     const card = document.getElementById('workspace-current-timer');
     await wait(()=>card.textContent.includes('Synthetic same title') && find(card,'Pause') && !find(card,'Pause').disabled);
     assert(document.activeElement === card,'Start visibly focuses current card');
+    const noteRoot = document.getElementById('workspace-current-note');
+    const noteInput = noteRoot.querySelector('textarea');
+    noteInput.value = 'Running work note'; noteInput.dispatchEvent(new Event('input',{bubbles:true}));
+    find(noteRoot,'Save current work note').click();
+    await wait(()=>find(noteRoot,'Save current work note').disabled && !document.querySelector('[data-timer-start]').disabled);
+    assert(noteInput.value === 'Running work note','running current note saves independently');
     find(card,'Pause').click();
     await wait(()=>find(card,'Resume') && !find(card,'Resume').disabled);
+    noteInput.value = 'Paused work note'; noteInput.dispatchEvent(new Event('input',{bubbles:true}));
+    find(noteRoot,'Save current work note').click();
+    await wait(()=>find(noteRoot,'Save current work note').disabled && !document.querySelector('[data-timer-start]').disabled);
+    assert(card.textContent.includes('paused'),'paused current note saves without resuming');
     find(document.getElementById('agenda-pins'),'Start').click();
     await wait(()=>!document.querySelector('[data-timer-start]').disabled);
     assert(card.textContent.includes('paused'),'same-task Start selects paused timer without resuming');
@@ -35,13 +45,17 @@
     card.dispatchEvent(new KeyboardEvent('keydown',{code:'KeyP',key:'P',altKey:true,shiftKey:true,bubbles:true,cancelable:true}));
     await wait(()=>find(card,'Pause') && !find(card,'Pause').disabled);
     assert(card.textContent.includes('running'),'targeted pause/resume shortcut works outside editor');
+    const priorIntervals = document.querySelectorAll('[data-agenda-row]').length;
     find(card,'Stop & record').click();
-    await wait(()=>document.getElementById('agenda-ledger').querySelector('details'));
+    await wait(()=>document.querySelectorAll('[data-agenda-row]').length > priorIntervals);
     const group = document.getElementById('agenda-ledger').querySelector('details');
     group.open = true;
     assert(group.textContent.includes('Recorded work') && group.textContent.includes('timer'),'group exposes recorded intervals and provenance');
+    assert(document.getElementById('agenda-ledger').textContent.includes('Paused work note'),'paused note appears in recorded history');
     assert(Boolean(find(group,'Start again')),'history offers Start again');
     assert(!buttons(card).some(button=>/Adjust time|[+-]5/.test(button.textContent)),'unsupported correction actions are not enabled');
     assert(document.getElementById('agenda-progress').textContent.includes('Elapsed recorded time'),'union total labels remain visible');
+    const recovery = document.getElementById('timer_recovery_notice');
+    assert(!recovery || recovery.classList.contains('hidden'),'shared status reads do not fabricate a legacy recovery overlay');
     return evidence;
 })()

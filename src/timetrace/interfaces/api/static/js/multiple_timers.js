@@ -2,7 +2,7 @@
 function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID()}) {
     const key = 'timetrace_timer_v2_operation';
     let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '', lastResult = null;
-    let informationNotice = '', readGeneration = 0, selectedTimerId = null;
+    let informationNotice = '', readGeneration = 0, selectedTimerId = null, selectionGeneration = 0;
     try {
         receipt = JSON.parse(storage.getItem(key) || 'null');
         const legacy = JSON.parse(storage.getItem('timetrace_timer_receipt') || 'null');
@@ -38,11 +38,12 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             fresh = false; message = 'Timer status unavailable. Last-known timers retained; retry status.'; publish(); return null;
         }
     }
-    async function write(url, payload, retry = false) {
+    async function write(url, payload, retry = false, onAcknowledged = null) {
         if (pending || (receipt && !retry)) return false;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
         pending = true; publish();
         let acknowledged = false;
+        const selectionAtStart = selectionGeneration;
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
@@ -72,7 +73,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (result?.operation_id !== receipt.payload.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
             receipt.outcome = 'acknowledged';
             lastResult = result;
-            if (result.timer && result.timer.state !== 'stopped') selectedTimerId = result.timer.id;
+            if (result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) selectedTimerId = result.timer.id;
             try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* The original fixed request remains retry-safe. */ }
             if (result.timer) timers = [...timers.filter(t => t.id !== result.timer.id), result.timer].filter(t => t.state !== 'stopped');
             message = (result.information || []).map(i => i.code === 'association_not_changed'
@@ -81,7 +82,9 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             informationNotice = message;
             // ACK is a writer checkpoint, not a status read. Release the request phase
             // and notify owners before a display GET can fail or remain pending forever.
-            acknowledged = true; pending = false; fresh = false; publish();
+            acknowledged = true; pending = false; fresh = false;
+            if (onAcknowledged) onAcknowledged(result);
+            publish();
             if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:result}));
             await refresh();
             return true;
@@ -93,7 +96,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             const result = await api.get(`/operations/${encodeURIComponent(receipt.payload.operation_id)}`);
             if (result.status === 'finalized') {
                 lastResult = result.result;
-                if (lastResult?.timer && lastResult.timer.state !== 'stopped') selectedTimerId = lastResult.timer.id;
+                if (lastResult?.timer && lastResult.timer.state !== 'stopped' && selectionGeneration === 0) selectedTimerId = lastResult.timer.id;
                 receipt.outcome = 'acknowledged';
                 try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* Retain the original journal, as for a direct ACK. */ }
                 if (lastResult?.timer) timers = [...timers.filter(t => t.id !== lastResult.timer.id), lastResult.timer].filter(t => t.state !== 'stopped');
@@ -116,11 +119,11 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     return {snapshot, refresh, recover, review,
         select: id => {
             if (!timers.some(timer => timer.id === id)) return false;
-            selectedTimerId = id; publish(); return true;
+            selectionGeneration++; selectedTimerId = id; publish(); return true;
         },
         retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
         start: payload => write('/timers', payload),
-        act: (id, action, payload = {}) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload)
+        act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
 }
 
@@ -156,6 +159,7 @@ function renderTimerWorkspaceCard(root, state, control) {
     const seconds = Math.floor(timer.elapsed_seconds || 0);
     const clock = create('p', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} live · ${timer.state}`);
     clock.className = 'workspace-clock';
+    clock.dataset.timerCorrectionClock = ''; // #61 owns circular step controls beside this clock.
     const row = create('div', ''); row.className = 'workspace-actions';
     if (timer.task_id && control?.editTask) {
         const edit = create('button', 'Edit task'); edit.type = 'button';
@@ -181,12 +185,21 @@ if (typeof window !== 'undefined') {
         if (!region || window.multipleTimers) { ready(); return; }
         const list = region.querySelector('[data-timer-list]');
         const currentCard = document.getElementById('workspace-current-timer');
-        let interaction = 0;
+        let interaction = 0, noteView = null;
+        let requestedTimer = new URLSearchParams(window.location.search).get('timer');
         for (const event of ['pointerdown', 'keydown', 'focusin']) document.addEventListener(event, () => { interaction++; }, true);
         const startFocus = createTimerStartFocus({interaction:()=>interaction,
             guarded:()=> Boolean(document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]')) ||
-                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()),
-            focus:()=> { currentCard?.scrollIntoView({block:'nearest'}); currentCard?.focus({preventScroll:true}); }});
+                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) ||
+                (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts()),
+            focus:()=> {
+                if (!currentCard) {
+                    const id = window.multipleTimers.snapshot().selectedTimerId;
+                    if (id) window.location.href = `/agenda-view?${new URLSearchParams({timer:id})}`;
+                    return;
+                }
+                currentCard.scrollIntoView({block:'nearest'}); currentCard.focus({preventScroll:true});
+            }});
         const notice = region.querySelector('[data-timer-message]');
         const tasks = region.querySelector('[data-timer-task]');
         const reviewPanel = region.querySelector('[data-idle-review]');
@@ -204,13 +217,19 @@ if (typeof window !== 'undefined') {
             return `${timer.task_title || timer.notes || 'Unassigned'} · ${timer.id.slice(-8)} · ${timer.state} · ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2,'0')} live${remaining}`;
         };
         function render(state) {
+            if (requestedTimer && state.timers.some(timer=>timer.id === requestedTimer)) {
+                const id = requestedTimer; requestedTimer = null;
+                window.multipleTimers.select(id); return;
+            }
             notice.textContent = state.message;
-            if (currentCard) renderTimerWorkspaceCard(currentCard, state, window.multipleTimers);
+            if (currentCard) renderTimerWorkspaceCard(currentCard.querySelector('[data-current-display]'), state, window.multipleTimers);
+            noteView?.render(state);
             startFocus(state);
             const focused = region.contains(document.activeElement) ? document.activeElement.dataset.timerFocus : null;
             if (focused) restoreFocus = focused;
             const blocked = state.pending || Boolean(state.receipt) || !state.fresh;
             region.querySelector('[data-timer-start]').disabled = blocked;
+            for (const button of document.querySelectorAll('[data-workspace-start]')) button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
             const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {
@@ -222,6 +241,14 @@ if (typeof window !== 'undefined') {
             }
             renderedSignature = signature;
             list.replaceChildren();
+            if (!currentCard && state.selectedTimerId) {
+                const link = document.createElement('a'); link.textContent = 'Open selected timer workspace';
+                link.href = `/agenda-view?${new URLSearchParams({timer:state.selectedTimerId})}`;
+                link.addEventListener('click', event => {
+                    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts() && !window.confirm('Leave unsaved editor changes to open the timer workspace?')) event.preventDefault();
+                });
+                list.append(link);
+            }
             reviewList.replaceChildren();
             const unresolved = new Set(state.timers.flatMap(t => (t.idle_gaps || []).filter(g => !g.decision).map(g => g.id)));
             for (const id of choices.keys()) if (!unresolved.has(id)) choices.delete(id);
@@ -291,6 +318,16 @@ if (typeof window !== 'undefined') {
         }
         const control = createTimerController({api, storage:sessionStorage, onState:render});
         window.multipleTimers = control;
+        if (currentCard) noteView = createCurrentNoteView(document.getElementById('workspace-current-note'),control);
+        control.hasNoteDraft = () => Boolean(noteView?.hasDraft());
+        const act = control.act;
+        control.act = (id, action, ...args) => {
+            if (action === 'stop' && noteView?.hasDraft(id)) {
+                notice.textContent = 'Save the current work-note draft or explicitly use the saved note before Stop & record.';
+                return Promise.resolve(false);
+            }
+            return act(id,action,...args);
+        };
         control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };
         ready();
         control.perform = async (operation, payload, stillCurrent = () => true) => {

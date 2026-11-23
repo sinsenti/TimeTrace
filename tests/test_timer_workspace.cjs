@@ -19,6 +19,19 @@ test('start focus never interrupts newer interaction or dirty editors', () => {
     assert.equal(focused,1);
 });
 
+test('a newer explicit selection survives a delayed Start acknowledgement', async () => {
+    let release;
+    const response = new Promise(resolve=>{release=resolve;});
+    const values = new Map();
+    const control = createTimerController({api:{get:async()=>({timers:[{id:'a',state:'running'},{id:'b',state:'paused'}]}),post:()=>response},storage:{getItem:key=>values.get(key),setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)},operationId:()=> 'late-selection',onState(){}});
+    await control.refresh();
+    const start = control.start({});
+    control.select('b');
+    release({operation_id:'late-selection',timer:{id:'a',state:'running'}});
+    await start;
+    assert.equal(control.snapshot().selectedTimerId,'b');
+});
+
 test('selecting a paused timer is local and Start ACK selects existing identity before refresh', async () => {
     const values = new Map();
     const states = [];
