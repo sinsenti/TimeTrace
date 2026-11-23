@@ -171,19 +171,10 @@ const agendaPage = (() => {
                 else payload.expected_plan_revision = row.revision;
                 try {
                     const acknowledged = await window.multipleTimers.start(payload);
-                    const result = window.multipleTimers.snapshot().lastResult;
-                    if (acknowledged && result?.plan_revision && owner === capturedOwner &&
-                            (result.timer.scheduled_session_id === row.id || result.captured_plan_id)) {
-                        owner.row.revision = result.plan_revision;
-                    }
-                    if (acknowledged && result?.captured_plan_id && owner === capturedOwner) {
-                        // Adopt the committed UUID before any refresh; preserve newer form inputs.
-                        owner.row = {...row, id:result.captured_plan_id, is_virtual:false};
-                        try { owner.row = await api.get(`/scheduled-sessions/${encodeURIComponent(result.captured_plan_id)}`); }
-                        catch (_) { get('edit-status').textContent = 'Timer started; plan refresh failed. Refresh reads only.'; }
-                        details(owner.row);
-                    }
-                    if (acknowledged) await refresh();
+                    // The authoritative timer-mutated event already adopted this ACK's
+                    // identity/revision. Never rebuild from the pre-capture row or a mutable
+                    // global lastResult after status refresh; either may belong to older intent.
+                    if (acknowledged && owner === capturedOwner) await refresh();
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);

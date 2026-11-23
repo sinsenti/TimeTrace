@@ -347,6 +347,93 @@ for (const intent of ['same-row typing', 'other-row', 'date', 'late failure', 'u
     });
 }
 
+test('actual Agenda Start keeps the early capture revision through its continuation and the next form Save', async () => {
+    const status = deferred(), statusRequested = deferred(), planRead = deferred();
+    const projection = {id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task',
+        is_virtual:true, projection_revision:'token', start_time:'2099-01-04T09:00:00Z',
+        end_time:'2099-01-04T10:00:00Z', original_start:'2099-01-04T09:00:00Z', original_end:'2099-01-04T10:00:00Z'};
+    const saved = {...projection, id:'captured', is_virtual:false, revision:2, projection_revision:null};
+    let captured = false, redundantReads = 0;
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') return [{id:'task',title:'Task'}];
+        if (url === '/timers' && options.method === 'POST') {
+            captured = true;
+            return {operation_id:'start-op', requested_scheduled_session_id:projection.id, captured_plan_id:'captured',
+                plan_revision:2, timer:{id:'timer-a',state:'running',scheduled_session_id:'captured'}};
+        }
+        if (url === '/timers') { statusRequested.resolve(); return status.promise; }
+        if (url === '/scheduled-sessions/captured' && options.method === 'GET') { redundantReads++; return planRead.promise; }
+        if (options.method === 'PUT') return {...saved, revision:3};
+        return {items:[captured ? saved : projection]};
+    });
+    await loadFolio(p);
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
+    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===projection.id).click();
+    const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
+    try {
+        await statusRequested.promise;
+        assert.match(p.elements.get('agenda-kind').textContent, /Scheduled session/i);
+        p.elements.get('agenda-notes').value = 'newer draft';
+        status.resolve({timers:[],revision:2});
+        await new Promise(resolve=>setImmediate(resolve));
+        // The status read is done, but any obsolete plan hydration remains truly held.
+        p.elements.get('agenda-end').value = '2099-01-04T11:00';
+        await p.elements.get('agenda-form').submit({preventDefault(){}});
+        const save = p.writes.find(w=>w.method==='PUT');
+        assert.equal(save.url, '/scheduled-sessions/captured?scope=only_this');
+        assert.equal(save.payload.expected_revision, 2);
+        assert.equal(save.payload.end_time, new Date('2099-01-04T11:00').toISOString());
+        assert.equal(redundantReads, 0, 'the authoritative capture needs no owner-replacing plan hydration');
+    } finally { status.resolve({timers:[],revision:2}); planRead.resolve(saved); await start; }
+});
+
+for (const intent of ['other row', 'same-owner typing', 'new date']) test(`Agenda Start cannot report a late plan-read error over ${intent}`, async () => {
+    const status = deferred(), requested = deferred(), planRead = deferred();
+    const plan = {id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task', is_virtual:true,
+        projection_revision:'token', start_time:'2099-01-04T09:00:00Z',end_time:'2099-01-04T10:00:00Z',
+        original_start:'2099-01-04T09:00:00Z',original_end:'2099-01-04T10:00:00Z'};
+    const saved = {...plan,id:'captured',is_virtual:false,revision:2};
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') return [];
+        if (url === '/timers' && options.method === 'POST') return {operation_id:'start-op',
+            requested_scheduled_session_id:plan.id,captured_plan_id:'captured',plan_revision:2,
+            timer:{id:'a',state:'running',scheduled_session_id:'captured'}};
+        if (url === '/timers') { requested.resolve(); return status.promise; }
+        if (url === '/scheduled-sessions/captured') return planRead.promise;
+        return {items:[plan,{...saved,id:'other'}]};
+    });
+    await loadFolio(p);
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
+    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
+    const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
+    try {
+        await requested.promise;
+        status.resolve({timers:[],revision:2});
+        await new Promise(resolve=>setImmediate(resolve));
+        if (intent === 'other row') p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow==='other').click();
+        if (intent === 'new date') {
+            p.elements.get('agenda-date').value = '2099-01-05';
+            await p.elements.get('agenda-date').change();
+        }
+        p.elements.get('agenda-notes').value = 'new input';
+        p.elements.get('agenda-notes').focus();
+        const previousStatus = p.elements.get('agenda-edit-status').textContent;
+        planRead.resolve(new Response(JSON.stringify({detail:'late failure'}),{status:503}));
+        await start;
+        assert.equal(p.elements.get('agenda-edit-status').textContent, previousStatus);
+        assert.equal(p.elements.get('agenda-notes').value, 'new input');
+        assert.equal(p.context.document.activeElement, p.elements.get('agenda-notes'));
+    } finally {
+        status.resolve({timers:[],revision:2}); planRead.resolve(saved); await start;
+    }
+});
+
 test('Folio explicit extension retains stale attempt and offers read-only review', async () => {
     const plan = {id:'plan-stale', kind:'scheduled_session', revision:1,
         start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',
