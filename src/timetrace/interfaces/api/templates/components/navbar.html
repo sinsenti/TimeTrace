@@ -30,8 +30,15 @@
     </div>
     <p data-timer-message role="status" aria-live="polite"></p>
     <div data-timer-list></div>
+    <section data-idle-review aria-label="Per-timer idle review" hidden>
+        <h2>Review idle gaps</h2>
+        <p>Choose each gap independently. Claim adds only the observed absence as work; Discard excludes it.
+            Leave unresolved changes nothing. Resolved timers remain paused until explicit Resume.</p>
+        <div data-idle-review-list></div>
+        <button type="button" data-idle-apply disabled>Apply selected decisions</button>
+    </section>
 </section>
-<script defer src="/static/js/multiple_timers.js?v=timers4d"></script>
+<script defer src="/static/js/multiple_timers.js?v=idle5"></script>
 <link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
 {% include "components/idle_resolution_modal.html" %}
 {% if active_page == 'settings_ai' or (active_page == 'tasks' and task_id is not defined) %}
