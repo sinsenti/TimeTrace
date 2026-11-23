@@ -1,7 +1,57 @@
 """Per-timer preferences and absence review through the root HTTP seam."""
 
+import json
+import os
+import subprocess
+import sys
 from datetime import UTC, datetime
 from uuid import uuid4
+
+
+def test_unselected_gap_and_preferences_survive_process_restart(tmp_path):
+    env = {
+        **os.environ,
+        "TIMETRACE_DB_FILE": str(tmp_path / "restart.db"),
+        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "timers.json"),
+        "HOME": str(tmp_path / "home"),
+        "TMPDIR": str(tmp_path),
+    }
+    setup = """
+import json
+from uuid import uuid4
+from fastapi.testclient import TestClient
+from sqlmodel import Session
+from timetrace.db.session import init_db, engine
+from timetrace.main import create_daemon_app
+from timetrace.services.multiple_timer_service import MultipleTimerService
+init_db()
+c = TestClient(create_daemon_app())
+a = c.post('/timers', json={'operation_id':str(uuid4())}).json()['timer']
+b = c.post('/timers', json={'operation_id':str(uuid4())}).json()['timer']
+c.post('/timers', json={'operation_id':str(uuid4()), 'pause_when_idle':False})
+with Session(engine) as db:
+    MultipleTimerService(db).observe_activity(600)
+    MultipleTimerService(db).observe_activity(0)
+a = c.get('/timers/'+a['id']).json()
+r = c.post('/timers/'+a['id']+'/resolve',json={'operation_id':str(uuid4()),'gap_id':a['idle_gaps'][0]['id'],'decision':'discard'})
+assert r.status_code == 200, r.text
+print(json.dumps(c.get('/timers').json()['timers']))
+"""
+    read = """
+import json
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+c = TestClient(create_daemon_app())
+print(json.dumps(c.get('/timers').json()['timers']))
+"""
+    before = subprocess.run([sys.executable, "-P", "-c", setup], env=env, capture_output=True, text=True, check=True)
+    after = subprocess.run([sys.executable, "-P", "-c", read], env=env, capture_output=True, text=True, check=True)
+    a, b = json.loads(before.stdout), json.loads(after.stdout)
+    assert [t["state"] for t in b] == ["paused", "frozen", "running"]
+    assert [t["pause_when_idle"] for t in b] == [True, True, False]
+    assert [t["idle_gaps"] for t in b] == [t["idle_gaps"] for t in a]
+    assert b[1]["idle_gaps"][0]["decision"] is None
+    assert b[1]["idle_gaps"][0]["return_at"] is not None
 
 
 def test_preference_is_persisted_targeted_and_does_not_resolve_a_gap(client, db, tmp_path, monkeypatch):
