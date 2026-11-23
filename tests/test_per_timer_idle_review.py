@@ -33,7 +33,8 @@ with Session(engine) as db:
     MultipleTimerService(db).observe_activity(600)
     MultipleTimerService(db).observe_activity(0)
 a = c.get('/timers/'+a['id']).json()
-r = c.post('/timers/'+a['id']+'/resolve',json={'operation_id':str(uuid4()),'gap_id':a['idle_gaps'][0]['id'],'decision':'discard'})
+payload = {'operation_id':str(uuid4()),'gap_id':a['idle_gaps'][0]['id'],'decision':'discard'}
+r = c.post('/timers/'+a['id']+'/resolve',json=payload)
 assert r.status_code == 200, r.text
 print(json.dumps(c.get('/timers').json()['timers']))
 """
