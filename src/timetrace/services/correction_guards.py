@@ -12,7 +12,7 @@ from timetrace.core.timer_store import TimerStore
 from timetrace.db.models import MutationOperation
 
 
-def check_correction_guard(db, *, work_ids=(), task_ids=(), plan_ids=()):
+def check_correction_guard(db, *, work_ids=(), task_ids=(), plan_ids=(), assignment_only=False):
     store = TimerStore(
         Path(os.environ.get("TIMETRACE_TIMER_STATE_FILE", settings.db_file.parent / "active_timer.json"))
     )
@@ -25,6 +25,17 @@ def check_correction_guard(db, *, work_ids=(), task_ids=(), plan_ids=()):
     if receipt is not None:
         if receipt.payload_hash != pending.get("payload_hash"):
             raise ConflictError("Pending receipt identity is corrupt.", code="reconciliation_required")
+        return
+    assignment = pending.get("assignment")
+    if assignment:
+        try:
+            affected = {c["before"]["id"] for c in assignment["changes"]}
+            task_context = {assignment["task_id"], *assignment.get("dependency_task_ids", [])}
+            if set(work_ids) & affected or task_context & set(task_ids):
+                raise ConflictError("Accepted assignment must recover first", code="assignment_pending")
+        except (KeyError, TypeError) as exc:
+            raise ConflictError("Pending assignment guard is corrupt", code="reconciliation_required") from exc
+    if assignment_only:
         return
     guard = pending.get("correction_guard") or {}
     changes = pending.get("correction_changes") or []

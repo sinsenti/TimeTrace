@@ -161,6 +161,21 @@ class TaskService:
     def create_task(
         self, req: TaskCreate, parse_title_syntax: bool = True, *, allow_title_schedule: bool = True
     ) -> Task:
+        try:
+            task = self.stage_create_task(req, parse_title_syntax, allow_title_schedule=allow_title_schedule)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+        self.db.refresh(task)
+        task.created_at = ensure_utc(task.created_at)
+        task.due_date = ensure_utc(task.due_date)
+        return task
+
+    def stage_create_task(
+        self, req: TaskCreate, parse_title_syntax: bool = True, *, allow_title_schedule: bool = True
+    ) -> Task:
+        """Normal task creation in the caller's transaction, including title syntax."""
         task_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
         # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
@@ -194,24 +209,12 @@ class TaskService:
         if db_task.due_date:
             db_task.due_date = ensure_utc(db_task.due_date).replace(tzinfo=None)
 
-        try:
-            self.db.add(db_task)
-
-            if schedule_session_at is not None:
-                self._create_scheduled_session(db_task, schedule_session_at)
-
-            # Recurring tasks pre-generate nothing: one RRULE is stored and occurrences are
-            # projected on read (RecurrenceService).
-            RecurrenceService(self.db).apply_recurrence_fields(db_task, task_dict)
-
-            self.db.commit()
-        except Exception:
-            self.db.rollback()
-            raise
-        self.db.refresh(db_task)
-        db_task.created_at = ensure_utc(db_task.created_at)
-        db_task.due_date = ensure_utc(db_task.due_date)
-
+        self.db.add(db_task)
+        if schedule_session_at is not None:
+            self._create_scheduled_session(db_task, schedule_session_at)
+        # Recurring tasks pre-generate nothing: preserve the normal creation contract.
+        RecurrenceService(self.db).apply_recurrence_fields(db_task, task_dict)
+        self.db.flush()
         return db_task
 
     def _create_scheduled_session(self, task: Task, start_at: datetime) -> None:
@@ -353,8 +356,10 @@ class TaskService:
         update_dict = req.model_dump(exclude_unset=True)
         recurrence = RecurrenceService(self.db)
         touches_recurrence = recurrence.touches_recurrence(update_dict)
-        if touches_recurrence:
-            lock_sqlite_writer(self.db)
+        lock_sqlite_writer(self.db)
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, task_ids=[task_id], assignment_only=True)
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)

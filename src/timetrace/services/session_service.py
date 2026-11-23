@@ -235,6 +235,43 @@ class SessionService:
             "operation_ids": [e.operation_id for e in events],
         }
 
+    def prepare_work_assignment(self, works, task_id):
+        """Freeze exact taskless physical rows; never expand correction descendants."""
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, work_ids=[item["id"] for item in works], task_ids=[task_id])
+        task = self.db.get(Task, task_id)
+        if task is None:
+            raise EntityNotFoundError("Task", task_id)
+        changes = []
+        for item in works:
+            row = self.db.get(SessionModel, item["id"])
+            if (
+                row is None
+                or row.kind != "recorded_work"
+                or row.provenance not in ("manual", "timer")
+                or row.task_id is not None
+                or row.scheduled_session_id is not None
+                or row.revision != item["expected_revision"]
+                or row.end_time <= row.start_time
+            ):
+                raise ConflictError("Assignment targets changed; refresh exact saved records", code="assignment_stale")
+            before = row.model_dump(mode="json")
+            changes.append({"before": before, "rows": [{**before, "task_id": task_id, "revision": row.revision + 1}]})
+        return {"changes": changes, "task_id": task_id, "task_snapshot": task.model_dump(mode="json")}
+
+    def stage_work_assignment(self, assignment):
+        task = self.db.get(Task, assignment["task_id"])
+        if task is None and assignment.get("created_task"):
+            task = Task.model_validate(assignment["created_task"])
+            self.db.add(task)
+            self.db.flush()
+            for values in assignment.get("created_plans", []):
+                self.db.add(ScheduledSession.model_validate(values))
+        if task is None or task.model_dump(mode="json") != assignment["task_snapshot"]:
+            raise ConflictError("Pending assignment destination changed", code="reconciliation_required")
+        self.stage_work_corrections(assignment["changes"])
+
     def stage_work_corrections(self, changes):
         """Apply fixed full-row CAS predicates/fragments; receipt owner commits history atomically."""
         lock_sqlite_writer(self.db)

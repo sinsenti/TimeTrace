@@ -3,6 +3,8 @@
 from datetime import UTC, datetime
 from uuid import uuid4
 
+import pytest
+
 
 def test_goal_settings_retry_stale_and_disable_reenable(client):
     request = {"operation_id": str(uuid4()), "owner_kind": "global", "cadence": "day", "target_seconds": 3600}
@@ -159,6 +161,128 @@ def test_prior_period_is_not_given_a_retroactive_target(client):
     )
     assert response.status_code == 201
     assert client.get("/goals?period_start=2000-01-04").json() == {"goals": []}
+
+
+def test_taskless_assignment_preserves_saved_identity_and_global_credit(client):
+    task = client.post("/api/tasks", json={"title": "Assignment destination"}).json()["id"]
+    saved = client.post(
+        "/recorded-work",
+        json={
+            "start_time": "2000-01-04T10:00:00Z",
+            "end_time": "2000-01-04T11:00:00Z",
+            "notes": "keep me",
+            "tags": "original",
+        },
+    ).json()
+    request = {
+        "operation_id": str(uuid4()),
+        "works": [{"id": saved["id"], "expected_revision": saved["revision"]}],
+        "destination": {"kind": "existing", "task_id": task},
+    }
+    response = client.post("/recorded-work/assignment", json=request)
+    assert response.status_code == 200, response.text
+    assigned = client.get(f"/recorded-work/{saved['id']}").json()
+    assert assigned["task_id"] == task
+    assert assigned["revision"] == saved["revision"] + 1
+    for field in ["id", "start_time", "end_time", "notes", "tags", "scheduled_session_id"]:
+        assert assigned[field] == saved[field]
+    assert client.post("/recorded-work/assignment", json=request).json() == response.json()
+    assert client.post("/recorded-work/assignment", json={**request, "works": []}).status_code in (409, 422)
+
+
+def test_assignment_can_create_one_normal_task_and_retry_without_duplicates(client):
+    saved = client.post(
+        "/recorded-work", json={"start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"}
+    ).json()
+    request = {
+        "operation_id": str(uuid4()),
+        "works": [{"id": saved["id"], "expected_revision": saved["revision"]}],
+        "destination": {"kind": "new", "task_draft": {"title": "New assignment #project [2h]"}},
+    }
+    response = client.post("/recorded-work/assignment", json=request)
+    assert response.status_code == 200, response.text
+    assert client.post("/recorded-work/assignment", json=request).json() == response.json()
+    tasks = client.get("/api/tasks").json()
+    assert len(tasks) == 1
+    assert tasks[0]["title"] == "New assignment"
+    assert tasks[0]["estimated_minutes"] == 120
+    assert "project" in tasks[0]["tags"]
+    assert client.get(f"/recorded-work/{saved['id']}").json()["task_id"] == tasks[0]["id"]
+
+
+def test_assignment_multi_record_stale_refuses_and_rolls_back_new_task(client):
+    records = [
+        client.post(
+            "/recorded-work", json={"start_time": f"2000-01-04T{hour}:00:00Z", "end_time": f"2000-01-04T{hour}:30:00Z"}
+        ).json()
+        for hour in ["10", "11"]
+    ]
+    request = {
+        "operation_id": str(uuid4()),
+        "works": [{"id": r["id"], "expected_revision": r["revision"]} for r in records],
+        "destination": {"kind": "new", "task_draft": {"title": "Must roll back"}},
+    }
+    changed = client.patch(
+        f"/recorded-work/{records[1]['id']}/note",
+        json={"notes": "new note", "expected_revision": records[1]["revision"]},
+    )
+    assert changed.status_code == 200
+    response = client.post("/recorded-work/assignment", json=request)
+    assert response.status_code == 409, response.text
+    assert client.get("/api/tasks").json() == []
+    assert [client.get(f"/recorded-work/{r['id']}").json()["task_id"] for r in records] == [None, None]
+    request["works"][1]["expected_revision"] += 1
+    request["operation_id"] = str(uuid4())
+    assigned = client.post("/recorded-work/assignment", json=request)
+    assert assigned.status_code == 200, assigned.text
+    assert len(assigned.json()["works"]) == 2
+    assert client.get(f"/recorded-work/{records[1]['id']}").json()["notes"] == "new note"
+
+
+@pytest.mark.parametrize("phase", ["pre_db", "post_db"])
+def test_assignment_recovers_lost_ack_and_protects_only_precommit_targets(client, monkeypatch, phase):
+    from timetrace.core.timer_store import TimerStore
+
+    saved = client.post(
+        "/recorded-work", json={"start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"}
+    ).json()
+    operation_id = str(uuid4())
+    request = {
+        "operation_id": operation_id,
+        "works": [{"id": saved["id"], "expected_revision": saved["revision"]}],
+        "destination": {"kind": "new", "task_draft": {"title": "Crash-safe destination"}},
+    }
+    write = TimerStore.write
+
+    def fail_file(store, state):
+        if phase == "pre_db":
+            write(store, state)
+            if (state.get("pending_operation") or {}).get("id") == operation_id:
+                raise OSError("synthetic failure after accepted intent")
+        elif not state.get("pending_operation"):
+            raise OSError("synthetic file finalization failure")
+        else:
+            write(store, state)
+
+    monkeypatch.setattr(TimerStore, "write", fail_file)
+    assert client.post("/recorded-work/assignment", json=request).status_code == 409
+    note = client.patch(
+        f"/recorded-work/{saved['id']}/note",
+        json={
+            "notes": "independent after DB" if phase == "post_db" else "must refuse",
+            "expected_revision": saved["revision"] + (phase == "post_db"),
+        },
+    )
+    assert note.status_code == (200 if phase == "post_db" else 409), note.text
+    monkeypatch.setattr(TimerStore, "write", write)
+    recovered = client.post("/recorded-work/assignment", json=request)
+    assert recovered.status_code == 200, recovered.text
+    assert len(client.get("/api/tasks").json()) == 1
+    row = client.get(f"/recorded-work/{saved['id']}").json()
+    assert row["task_id"] == recovered.json()["task_id"]
+    if phase == "post_db":
+        assert row["notes"] == "independent after DB"
+    assert client.get(f"/operations/{operation_id}").json()["status"] == "finalized"
 
 
 def test_goals_are_absent_until_configured(client):

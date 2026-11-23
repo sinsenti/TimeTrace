@@ -688,6 +688,7 @@ class MultipleTimerService:
                 cutoff = evaluation["cutoff"] if evaluation else datetime.now(UTC).isoformat()
                 after = deepcopy(state)
                 notification_events = None
+                assignment = None
                 task_deletion = None
                 plan_capture = None
                 correction_changes = correction_audits = correction_guard = correction_result = None
@@ -747,6 +748,39 @@ class MultipleTimerService:
                             state["timers"][timer_id], timer, envelope, operation_id
                         )
                         correction_guard = {}
+                elif action == "assignment":
+                    destination = payload["destination"]
+                    created = None
+                    if destination["kind"] == "new":
+                        from timetrace.interfaces.api.schemas import TaskCreate
+                        from timetrace.services.task_service import TaskService
+
+                        draft = TaskCreate.model_validate(destination["task_draft"])
+                        if draft.parent_id:
+                            from timetrace.services.correction_guards import check_correction_guard
+
+                            check_correction_guard(self.db, task_ids=[draft.parent_id])
+                            if self.db.get(Task, draft.parent_id) is None:
+                                raise EntityNotFoundError("Task", draft.parent_id)
+                        created = TaskService(self.db).stage_create_task(draft)
+                        task_id = created.id
+                    else:
+                        task_id = destination["task_id"]
+                    assignment = SessionService(self.db).prepare_work_assignment(payload["works"], task_id)
+                    if created is not None:
+                        assignment["created_task"] = created.model_dump(mode="json")
+                        assignment["dependency_task_ids"] = [created.parent_id] if created.parent_id else []
+                        assignment["created_plans"] = [
+                            p.model_dump(mode="json")
+                            for p in self.db.exec(
+                                select(ScheduledSession).where(ScheduledSession.task_id == created.id)
+                            ).all()
+                        ]
+                    for owner in after["timers"].values():
+                        for segment in owner["segments"]:
+                            if segment.get("recorded_work_id") in {c["before"]["id"] for c in assignment["changes"]}:
+                                segment["task_id"] = assignment["task_id"]
+                    timer, selected = None, False
                 elif action == "start":
                     timer, selected, plan_capture = self._start(after, payload, cutoff)
                 elif action == "delete_tasks":
@@ -919,6 +953,18 @@ class MultipleTimerService:
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
+                if action == "stop":
+                    result["saved_taskless_work"] = [
+                        {
+                            "id": s["recorded_work_id"],
+                            "revision": 1,
+                            "start_time": s["start_time"],
+                            "end_time": s["end_time"],
+                        }
+                        for s in work
+                        if s["task_id"] is None
+                        and datetime.fromisoformat(s["end_time"]) > datetime.fromisoformat(s["start_time"])
+                    ]
                 if action == "correction" and correction_result is not None:
                     result["correction"] = correction_result
                 elif action == "correction":
@@ -963,6 +1009,13 @@ class MultipleTimerService:
                         else None
                     ),
                 }
+                if assignment is not None:
+                    intent["assignment"] = assignment
+                    result["task_id"] = assignment["task_id"]
+                    result["works"] = [
+                        {"id": c["before"]["id"], "revision": c["rows"][0]["revision"]} for c in assignment["changes"]
+                    ]
+                    intent["result_json"] = json.dumps(result)
                 if notification_events is not None:
                     intent["notification_events"] = notification_events
                 if correction_changes is not None:
@@ -1206,6 +1259,8 @@ class MultipleTimerService:
                     or plan.task_id != expected_plan["task_id"]
                 ):
                     raise ConflictError("Pending correction plan context changed.", code="reconciliation_required")
+            if intent.get("assignment"):
+                SessionService(self.db).stage_work_assignment(intent["assignment"])
             if intent.get("correction_changes"):
                 SessionService(self.db).stage_work_corrections(intent["correction_changes"])
             if intent.get("correction_audits"):
@@ -1304,6 +1359,7 @@ class MultipleTimerService:
                         "correction_audits",
                         "correction_guard",
                         "notification_events",
+                        "assignment",
                     }
                 }
             )

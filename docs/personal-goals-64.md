@@ -29,7 +29,9 @@ Recursive descendant membership uses bound SQL and UNION identity deduplication/
 | Full legacy/live/plan/lineage, DST and week-start coverage | Pending |
 | Task deletion/history integrity and concurrency restart coverage | Pending |
 | Weekly A/C and compact workspace/task UI | Pending |
-| Optional post-Stop taskless assignment and crash/concurrency proof | Pending |
+| Existing/new atomic ID-preserving assignment, strict manifest, retries, stale multi-record rollback | Public HTTP tests |
+| Pre/post DB file-boundary failure, exact recovery, later-note preservation | Public HTTP tests with injected filesystem failure |
+| Optional post-Stop assignment prompt and subprocess crash/concurrency proof | Pending |
 | Fresh/copied synthetic migrations and repeated startup | Pending |
 | Real browser desktop/narrow and integration | Pending |
 | Final full Python/Node, lint comparison and independent reviews | Pending |
