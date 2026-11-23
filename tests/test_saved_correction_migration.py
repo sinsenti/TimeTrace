@@ -120,7 +120,7 @@ with TestClient(create_daemon_app()) as c:
     assert replay.status_code==200,replay.text
     assert replay.json()==expected['old_result']
     with sqlite3.connect(os.environ['TIMETRACE_DB_FILE']) as db:
-        assert db.execute('SELECT version_num FROM alembic_version').fetchone()[0]=='0018_work_corrections'
+        assert db.execute('SELECT version_num FROM alembic_version').fetchone()[0]=='0019_timer_focus'
         stored=db.execute("SELECT payload_hash,after_state_json FROM mutation_operation "
             "WHERE id='historical-correction'").fetchone()
         assert stored==(expected['old_hash'],expected['expected_old_after_state_json'])

@@ -64,13 +64,27 @@ async def lifespan(app: FastAPI):
         datefmt="%Y-%m-%d %H:%M:%S",
         force=True,
     )
+
+    runtime = app.state.focus_runtime_factory(engine, app.state.notification_adapter)
     idle_task = asyncio.create_task(idle_checker_loop())
-    yield
-    idle_task.cancel()
+    focus_task = asyncio.create_task(runtime.run())
+    try:
+        yield
+    finally:
+        idle_task.cancel()
+        focus_task.cancel()
+        await asyncio.gather(idle_task, focus_task, return_exceptions=True)
 
 
-def create_daemon_app() -> FastAPI:
+def create_daemon_app(*, notification_adapter=None, focus_runtime_factory=None) -> FastAPI:
+    from timetrace.services.focus_runtime import FocusRuntime
+    from timetrace.services.notification_delivery import LinuxNotifications
+
     app = FastAPI(title=settings.app_name, version=__version__, lifespan=lifespan)
+    app.state.notification_adapter = notification_adapter or LinuxNotifications(
+        enabled=settings.native_notifications_enabled
+    )
+    app.state.focus_runtime_factory = focus_runtime_factory or FocusRuntime
 
     # Same-origin only. The dashboard, CLI and TUI all talk to this daemon on its own
     # host:port, so a wildcard bought nothing and -- now that the statistics page can run

@@ -12,6 +12,8 @@ from pathlib import Path
 
 _TEST_HOME = Path(tempfile.mkdtemp(prefix="timetrace-tests-"))
 os.environ["TIMETRACE_DB_FILE"] = str(_TEST_HOME / "test.db")
+# Automated lifespans must never submit actual desktop notifications.
+os.environ["TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

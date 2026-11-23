@@ -588,7 +588,7 @@ const agendaPage = (() => {
         }
     });
     window.addEventListener('beforeunload', event => {
-        if (!agendaPage.hasDraft() && !window.multipleTimers?.hasNoteDraft?.()) return;
+        if (!agendaPage.hasDraft() && !window.multipleTimers?.hasNoteDraft?.() && !window.multipleTimers?.hasFocusDraft?.()) return;
         event.preventDefault(); event.returnValue = '';
     });
     void refresh();
