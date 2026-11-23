@@ -38,6 +38,11 @@ def persisted_snapshot(directory, db):
 
 def test_old_v2_preview_requires_initialization_without_any_persisted_change(client, db, tmp_path):
     timer = client.post("/timers", json={"operation_id": "start-before-corrections"}).json()["timer"]
+    path = Path(os.environ["TIMETRACE_TIMER_STATE_FILE"])
+    state = json.loads(path.read_text())
+    state["timers"][timer["id"]].pop("running_segment_id", None)
+    state["timers"][timer["id"]].pop("running_evidence", None)
+    path.write_text(json.dumps(state))
     before = persisted_snapshot(tmp_path, db)
     response = client.post(f"/timers/{timer['id']}/correction-preview", json=REQUEST)
     assert response.status_code == 409, response.text

@@ -16,9 +16,10 @@ The endpoint **never issues a successful preview**. It inspects JSON without acq
 writing store lock, calling legacy `read`, reconciling receipts, upgrading files, allocating
 identities, creating a backup/key, or persisting rows. Missing state, legacy v1 and old v2
 return 409 `correction_initialization_required`, explicitly explaining that corrections are
-not yet available in this build. An outstanding file intent or unfinalized DB receipt returns
+not yet available in this build. After explicit initialization it returns `correction_not_enabled`.
+An outstanding file intent or unfinalized DB receipt returns
 409 `reconciliation_required` and directs recovery of the existing operation first. Corrupt
-JSON/unknown formats fail closed. No automatic retry or initialization endpoint is advertised.
+JSON/unknown formats fail closed. No automatic retry is performed.
 The existing timer controls, mutation schemas/hashes and legacy store consumers are unchanged;
 correction UI remains unavailable. The gate does not establish target existence/ownership or
 validate a proposed interval, and its refusal must not be interpreted as an approved correction.
@@ -30,11 +31,52 @@ before implementation with 422 from the legacy mutation adapter rather than the 
 Subsequent coverage includes v1, old v2 missing running identity, pending old intent, unfinalized
 receipt, absent parent directory, strict input rejection and all three single-target shapes.
 
+## Explicit initialization and additive lifecycle checkpoint
+
+`POST /timers/correction-initialize` accepts only a strict bounded string `operation_id`.
+It runs inside the existing serialized mutation funnel: reconcile old fixed intent first,
+check canonical operation hash/receipt, build an additive after-state, persist intent, commit
+receipt, install file and finalize. Duplicate exact operations return their original result;
+reusing a key for another canonical action conflicts. Old request schemas and hash calculation
+are unchanged. No pending old after-state is normalized before replay.
+
+Open work has `running_segment_id`; close reuses it as the closed segment ID. Start allocates
+an unbounded uninterrupted identity, Resume allocates an identity bounded at actual resume,
+and a running context split allocates one bounded at its split cutoff. Idle claims carry their
+own onset-bound evidence. Closing copies `running_evidence` to segment `correction_evidence`.
+Both evidence forms use `{version: 1, lower_bound: UTC instant or null, provenance,
+forbidden_ranges: []}`. Provenance is `uninterrupted`, `resume`, `context_split`, `idle_claim`
+or `legacy_unknown`. Forbidden exclusion ranges will be added by the later correction module;
+this checkpoint refuses unknown/nonempty evidence rather than extrapolating it.
+
+Initialization classifies old shapes conservatively: only a validated plain open timer without
+segments, idle gaps or opaque legacy payload receives an unbounded floor. Old closed work and
+open timers with history/opaque recovery evidence receive their existing start as a conservative
+`legacy_unknown` floor; this does not assert a real pause at that instant. Legacy v1 conversion
+retains opaque payload and therefore cannot grant earlier extension. Existing closed IDs,
+snapshots, associations and manual-pause note targets remain intact. New unknown/corrupt evidence
+refuses initialization. A future correction trim must retain this evidence, not infer a new bound.
+
+A separate `correction-signing.key` beside the configured DB is created only during explicit
+initialization, using random 32-byte material, owner-only permissions and a fully fsynced temporary
+file linked without replacing an existing key. Directory fsync follows. This happens before timer
+intent persistence: a crash can leave only a key, reused on retry, not acknowledged initialization.
+There is no cross-file atomicity claim. Existing invalid/symlink/insecure keys refuse rather than
+being replaced; secrets are absent from intents, receipts and responses. Repeated initialization
+and recovery preserve key bytes and segment IDs. Post-initialization preview remains nonwriting
+and returns `correction_not_enabled`; missing/corrupt key requires recovery and is never recreated
+by preview. Windows-specific key creation/permission behavior is not verified by this checkpoint.
+
+Public regressions include initial 405-before/200-after initialization, duplicate and conflicting
+operation IDs, old v1/v2, old fixed start-intent recovery before additive initialization, stable
+pause/resume/stop identities and note targets, corrupt key/evidence and a real subprocess killed
+at file replacement after initialization's DB commit. Two fresh process restarts then recover
+through root HTTP with identical IDs/receipt results/key material. Focused suites passed 66 tests;
+full delivery suites, other crash points and actual interval correction remain unrun.
+
 ## Next milestone
 
-Implement explicit serialized receipt-backed correction initialization, including reconciliation
-of old pending shapes before additive identity/boundary installation and separate durable HMAC
-key creation. Then implement signed canonical previews and commits, interval/evidence algebra,
+Implement signed canonical previews and commits, interval/evidence algebra,
 lineage migration, writer guards, durability/recovery, controller/browser UI and complete #61
 acceptance. Do not enable correction controls based on this gate. Full Python/Node, migration,
 crash/concurrency and real-browser acceptance remain required at eventual complete delivery.

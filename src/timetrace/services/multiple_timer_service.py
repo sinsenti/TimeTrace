@@ -13,6 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlmodel import select
 
 from timetrace.config import settings
+from timetrace.core.correction_identity import evidence, initialize_identities, signing_key
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
@@ -49,6 +50,11 @@ class MultipleTimerService:
             )
         if state.get("version") != 2 and "is_running" not in state:
             raise ConflictError("Unknown timer format; preserve it for recovery.", code="reconciliation_required")
+        if state.get("correction_initialized"):
+            signing_key(settings.db_file.parent / "correction-signing.key")
+            raise ConflictError(
+                "Signed correction previews are not enabled in this build.", code="correction_not_enabled"
+            )
         raise ConflictError(
             "Explicit correction initialization is required. Corrections are not available in this build; "
             "existing timer controls remain available.",
@@ -245,12 +251,23 @@ class MultipleTimerService:
                 if receipt:
                     if receipt.payload_hash != digest:
                         raise ConflictError("Operation payload differs.", code="operation_payload_mismatch")
+                    if action == "correction_initialize":
+                        signing_key(settings.db_file.parent / "correction-signing.key")
                     return json.loads(receipt.result_json)
                 cutoff = datetime.now(UTC).isoformat()
                 after = deepcopy(state)
                 task_deletion = None
                 plan_capture = None
-                if action == "start":
+                if action == "correction_initialize":
+                    for item in after["timers"].values():
+                        previous = deepcopy(item)
+                        initialize_identities(item)
+                        if item != previous:
+                            item["revision"] += 1
+                    signing_key(settings.db_file.parent / "correction-signing.key", create=True)
+                    after["correction_initialized"] = True
+                    timer, selected = None, False
+                elif action == "start":
                     timer, selected, plan_capture = self._start(after, payload, cutoff)
                 elif action == "delete_tasks":
                     task_deletion = self._prepare_task_deletion(after, payload)
@@ -320,6 +337,8 @@ class MultipleTimerService:
                         if timer["state"] != "paused":
                             raise TimerError("Timer is not paused.")
                         timer["running_start"] = cutoff
+                        timer["running_segment_id"] = str(uuid7())
+                        timer["running_evidence"] = evidence(cutoff, "resume")
                         timer["manual_pause_note_segment_id"] = None
                         timer["state"] = "running"
                     else:
@@ -339,6 +358,9 @@ class MultipleTimerService:
                         timer["notes"] = payload.get("new_notes", "")
                         timer["state"] = "running" if continue_running else "paused"
                         timer["running_start"] = cutoff if continue_running else None
+                        if continue_running:
+                            timer["running_segment_id"] = str(uuid7())
+                            timer["running_evidence"] = evidence(cutoff, "context_split")
                 after["revision"] += 1
                 information = []
                 if action == "start":
@@ -362,6 +384,8 @@ class MultipleTimerService:
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
+                if action == "correction_initialize":
+                    result["correction_initialized"] = True
                 intent = {
                     "id": operation_id,
                     "payload_hash": digest,
@@ -482,6 +506,8 @@ class MultipleTimerService:
             "pause_when_idle": payload.get("pause_when_idle", True),
             "segments": [],
             "running_start": cutoff,
+            "running_segment_id": str(uuid7()),
+            "running_evidence": evidence(None, "uninterrupted"),
             "idle_gaps": [],
         }
         after["timers"][timer["id"]] = timer
@@ -536,6 +562,7 @@ class MultipleTimerService:
             timer["segments"].append(
                 {
                     "id": str(uuid7()),
+                    "correction_evidence": evidence(gap["onset"], "idle_claim"),
                     "start_time": gap["onset"],
                     "end_time": gap["return_at"],
                     "task_id": gap["task_id"],
@@ -553,10 +580,15 @@ class MultipleTimerService:
         start = timer["running_start"]
         closed_id = None
         if start and cutoff > start:
-            closed_id = str(uuid7())
+            closed_id = timer.get("running_segment_id") or str(uuid7())
             timer["segments"].append(
                 {
                     "id": closed_id,
+                    **(
+                        {"correction_evidence": deepcopy(timer["running_evidence"])}
+                        if "running_evidence" in timer
+                        else {}
+                    ),
                     "start_time": start,
                     "end_time": cutoff,
                     "task_id": timer["task_id"],
@@ -566,6 +598,8 @@ class MultipleTimerService:
                 }
             )
         timer["running_start"] = None
+        timer.pop("running_segment_id", None)
+        timer.pop("running_evidence", None)
         return closed_id
 
     def _complete(self, intent):

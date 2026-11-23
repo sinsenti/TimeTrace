@@ -38,6 +38,16 @@ class TimerMutation(BaseModel):
     pause_when_idle: bool | None = None
 
 
+class CorrectionInitializeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/timers/correction-initialize")
+def correction_initialize(req: CorrectionInitializeRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("correction_initialize", None, req.model_dump())
+
+
 class CorrectionRunningTarget(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["running"]
