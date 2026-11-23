@@ -476,13 +476,13 @@ assert client.get(log_path).json() == dict(log_before, task_id=None)
         assert conn.execute("SELECT target_type, target_id FROM ratingentry").fetchone() == ("session", LOG)
 
 
-@pytest.mark.parametrize("copied", [False, True])
-def test_recorded_work_range_index_fresh_and_consistent_synthetic_copy(tmp_path, copied):
+@pytest.mark.parametrize("old_revision", [None, "0015_typed_recurrence", "0016_recorded_work_index"])
+def test_recorded_work_range_index_fresh_and_consistent_synthetic_copy(tmp_path, old_revision):
     source = tmp_path / "source.sqlite"
     target = tmp_path / "target.sqlite"
     before = None
-    if copied:
-        run_on(source, "-m", "alembic", "upgrade", "0015_typed_recurrence")
+    if old_revision:
+        run_on(source, "-m", "alembic", "upgrade", old_revision)
         with closing(sqlite3.connect(source)) as conn:
             seed_old(conn)
             conn.commit()
