@@ -36,7 +36,10 @@ const agendaPage = (() => {
     };
     const clear = el => { el.textContent = ''; };
     let rows = [], owner = null, generation = 0, createPending = false, unconfirmedCreate = null;
-    let activeDate = localDay(new Date());
+    const entryParams = new URLSearchParams(window.location?.search || '');
+    let requestedEntry = entryParams.get('entry');
+    let activeDate = /^\d{4}-\d{2}-\d{2}$/.test(entryParams.get('date') || '')
+        ? entryParams.get('date') : localDay(new Date());
     date.value = activeDate;
 
     function ledger() {
@@ -114,6 +117,11 @@ const agendaPage = (() => {
         if (read !== generation) return;
         const rangeFailed = range.status === 'rejected' || !Array.isArray(range.value?.items);
         if (!rangeFailed) rows = range.value.items;
+        if (!rangeFailed && requestedEntry && !owner) {
+            const row = rows.find(row => row.id === requestedEntry);
+            requestedEntry = null;
+            if (row) open(row);
+        }
         ledger();
         const taskFailed = taskKnowledge.state().failed;
         get('retry').hidden = !rangeFailed && !taskFailed && !unconfirmedCreate;
@@ -202,6 +210,10 @@ const agendaPage = (() => {
             if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');
             else add('Basis', 'Legacy meaning is uncertain. Not included in plan-versus-record comparisons.');
         }
+        const calendarLink = make('a', 'Open this day in Calendar');
+        calendarLink.href = `/dashboard?${new URLSearchParams({date:localDay(row.start_time), view:'timeGridDay',
+            ...(row.task_id ? {task:row.task_id} : {})})}`;
+        root.appendChild(calendarLink);
         add('Tags', row.tags || 'None');
         add('Notes', row.notes || 'None');
     }
@@ -358,7 +370,7 @@ const agendaPage = (() => {
         get('edit-status').textContent = 'Saving entry…';
         let saved;
         try {
-            saved = draft.work ? await api.post('/recorded-work', payload) : await api.saveScheduledSession(row, payload);
+            saved = draft.work ? await api.saveRecordedWork(payload) : await api.saveScheduledSession(row, payload);
         } catch (err) {
             const uncertain = !err.status || err.status >= 500;
             draft.blocked = uncertain || err.status === 409;
