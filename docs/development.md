@@ -117,6 +117,9 @@ in `static/js/multiple_timers.js` and `timer_corrections.js`; finalized/recovere
 Agenda, Calendar and #65 export consumers. Combined suite and real isolated DOM acceptance are
 recorded in that checkpoint document; independent review/publication remain pending.
 
+[Calendar live coverage](calendar-live-62.md) documents the read-only unfinished-work source,
+shared status cutoffs/ACK fences, guarded selected-timer navigation and isolated acceptance evidence.
+
 [Selected-history export](timer-history-export-65.md) adds a separate bounded start-day selection view,
 frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserving summed-work measure.
 

@@ -191,6 +191,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
             
             eventClick: function(info) {
+                if (info.event.extendedProps.kind === 'live_work') {
+                    window.multipleTimers?.select(info.event.extendedProps.timer_id);
+                    // Reuse the workspace link's existing dirty-editor departure guard.
+                    document.querySelector('#multiple_timers a[href^="/agenda-view?"]')?.click();
+                    return;
+                }
                 openEditSessionModal(info.event.id, info.el);
             },
 
