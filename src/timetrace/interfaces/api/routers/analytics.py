@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Query, Request, Response, status
 from fastapi.responses import PlainTextResponse
 from sqlmodel import Session as DBSession
 
+from timetrace.core.history_export import HistoryExportRequest
 from timetrace.db.session import get_session
 from timetrace.interfaces.api.schemas import (
     AnalyticsQueryBatchRequest,
@@ -16,6 +17,11 @@ from timetrace.interfaces.api.schemas import (
 from timetrace.services import AnalyticsService, QueryService, SqlQueryService
 
 router = APIRouter(tags=["Analytics & Markdown Agenda"])
+
+
+@router.post("/api/agenda/history-export/preview")
+def preview_history_export(request: HistoryExportRequest, db: DBSession = Depends(get_session)):
+    return AnalyticsService(db).preview_history_export(request)
 
 
 @router.get("/analytics/summary")

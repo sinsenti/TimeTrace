@@ -27,6 +27,8 @@ from timetrace.core.query_spec import (
     ComparisonSpec,
     DateRange,
     Dimension,
+    Measure,
+    QuerySource,
     RangePreset,
     SortKey,
     TagAttribution,
@@ -334,6 +336,20 @@ class QueryService:
             )
         return QueryCapabilitiesResponse(sources=sources, sql_enabled=settings.sql_widgets_enabled)
 
+    def summarize_recorded_cohort(self, ids: tuple[str, ...], context: QueryContext) -> dict[str, float]:
+        """Exact physical evidence within the caller's existing read snapshot, in seconds."""
+        from dataclasses import replace
+
+        if len(ids) > 2000:
+            raise ValidationError("Recorded-work cohort cannot exceed 2,000 IDs.")
+        context = replace(context, recorded_work_ids=ids, recorded_work_seconds=True)
+        result = {}
+        for measure in (Measure.SUMMED_RECORDED_WORK, Measure.ELAPSED_RECORDED_TIME):
+            compiled = compile_query(AnalyticsQuery(source=QuerySource.RECORDED_WORK, measure=measure), context)
+            seconds = self.db.exec(text(compiled.sql), params=compiled.params).first()[0]
+            result[measure.value + "_seconds"] = seconds
+        return result
+
     def run(self, query: AnalyticsQuery, context: QueryContextRequest) -> AnalyticsQueryResponse:
         if query.source.value == "recorded_work":
             with sqlite_read_snapshot(self.db) as reader:
@@ -388,9 +404,11 @@ class QueryService:
 
         if query.source.value == "recorded_work":
             meta.measurement_at = compiled.params["measurement"].replace(tzinfo=UTC)
-            meta.basis = query.plan_basis or "recorded_work_union"
+            meta.basis = query.plan_basis or (
+                "summed_recorded_work" if query.measure == Measure.SUMMED_RECORDED_WORK else "recorded_work_union"
+            )
             meta.cohort = "Whole typed intervals by local record-start range; legacy/live/future-ended rows excluded"
-            meta.non_additive = bool(query.group_by)
+            meta.non_additive = bool(query.group_by) and query.measure != Measure.SUMMED_RECORDED_WORK
             meta.cohort_predicate = [f.model_dump(mode="json") for f in query.filters]
             if query.measure.value != "plan_fill":
                 physical_query = query.model_copy(update={"group_by": [], "tag_attribution": TagAttribution.FAN_OUT})

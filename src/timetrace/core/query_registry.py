@@ -224,7 +224,7 @@ def recorded_measure_capability(measure: Measure) -> dict:
     if measure != Measure.UNASSIGNED_RECORDED_TIME:
         dimensions += ["task", "category", "status", "priority"]
         fields += ["task", "task_parent", "category", "status", "priority"]
-    if not comparison:
+    if not comparison and measure != Measure.SUMMED_RECORDED_WORK:
         dimensions += ["tag"]
         fields += ["tag"]
     if measure == Measure.PLAN_FILL:
@@ -235,12 +235,14 @@ def recorded_measure_capability(measure: Measure) -> dict:
         "dimensions": dimensions,
         "filter_operators": operators,
         "plan_bases": ["original", "current"] if comparison else [],
-        "tag_attributions": ["fan_out"] if comparison else ["fan_out", "split_evenly"],
+        "tag_attributions": ["fan_out"]
+        if comparison or measure == Measure.SUMMED_RECORDED_WORK
+        else ["fan_out", "split_evenly"],
         "max_dimensions": 1 if measure == Measure.PLAN_FILL else 2,
         "bounded_start_range": True,
         "max_local_days": 400,
         "plan_selection": comparison,
-        "non_additive": True,
+        "non_additive": measure != Measure.SUMMED_RECORDED_WORK,
     }
 
 
@@ -254,6 +256,7 @@ SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
         MeasureSpec(Measure.INSIDE_SCHEDULED_TASK_TIME, "hours", "Inside matching plans (union; selected basis)"),
         MeasureSpec(Measure.OUTSIDE_SCHEDULED_TASK_TIME, "hours", "Outside matching plans (union; selected basis)"),
         MeasureSpec(Measure.PLAN_FILL, "hours", "Plan fill (non-additive; selected basis)"),
+        MeasureSpec(Measure.SUMMED_RECORDED_WORK, "hours", "Summed recorded work (overlaps count in full)"),
         MeasureSpec(Measure.RECORDED_TASK_TIME, "hours", "Recorded task time (union; typed work only)"),
         MeasureSpec(Measure.ELAPSED_RECORDED_TIME, "hours", "Elapsed recorded time (union; typed work only)"),
         MeasureSpec(Measure.UNASSIGNED_RECORDED_TIME, "hours", "Unassigned recorded time (union; non-additive)"),

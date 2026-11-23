@@ -109,6 +109,8 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 The [core timer workspace contract and verification](timer-workspace-60.md) documents Agenda's
 selected current card, device-local pins, bounded discovery, grouped history, note-only timer/work
 mutations, keyboard bindings and the intentionally unavailable #61 correction integration points.
+[Selected-history export](timer-history-export-65.md) adds a separate bounded start-day selection view,
+frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserving summed-work measure.
 
 ### Implementation notes and historical adoption checkpoints
 

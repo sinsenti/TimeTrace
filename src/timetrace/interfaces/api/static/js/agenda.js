@@ -47,7 +47,7 @@ const agendaPage = (() => {
 
     let pins = null;
     try { pins = createWorkspacePins(localStorage); } catch (error) { get('pin-status').textContent = error.message; }
-    const queryText = id => (get(id)?.value || '').trim().toLocaleLowerCase();
+    const queryText = id => (get(id)?.value || '').trim().toLowerCase();
     async function startActivity(taskId) {
         await taskKnowledge.load(true);
         if (taskId && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(taskId))) {
@@ -109,8 +109,7 @@ const agendaPage = (() => {
         const focused = document.activeElement?.dataset?.agendaRow;
         clear(root);
         const search = queryText('search'), tag = queryText('filter-tag'), note = queryText('filter-note');
-        const visible = rows.filter(row => (!search || taskTitle(row).toLocaleLowerCase().includes(search)) &&
-            (!tag || (row.tags || '').toLocaleLowerCase().includes(tag)) && (!note || (row.notes || '').toLocaleLowerCase().includes(note)));
+        const visible = rows.filter(row => workspaceHistoryMatches(row,taskTitle(row),{title:search,tag,note}));
         const parents = new Map();
         for (const group of groupWorkspaceHistory(visible)) {
             const details = make('details', '');
@@ -287,7 +286,12 @@ const agendaPage = (() => {
                 const save = make('button', 'Save work note'); save.type = 'button'; save.disabled = true;
                 const retry = make('button', 'Refresh saved note (read only)'); retry.type = 'button';
                 const status = make('p', ''); status.setAttribute('role','status');
+                let exportRevision = row.revision;
                 const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),onState(state) {
+                    if (state.saved.revision !== exportRevision) {
+                        exportRevision = state.saved.revision;
+                        window.dispatchEvent(new CustomEvent('timetrace:history-mutated', {detail:{}}));
+                    }
                     if (owner !== captured) return;
                     captured.notePending = state.pending;
                     captured.noteDirty = input.value !== (state.saved.notes || '');
@@ -484,6 +488,7 @@ const agendaPage = (() => {
             if (!row) createPending = false;
             controls();
         }
+        window.dispatchEvent(new CustomEvent('timetrace:history-mutated', {detail:{}}));
         generation++; // Any pre-acknowledgement range response is obsolete.
         rows = rows.filter(item => item.id !== (row?.id || saved.id));
         const [dayStart, dayEnd] = localDayBounds(activeDate);

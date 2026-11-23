@@ -12,4 +12,9 @@ function groupWorkspaceHistory(rows, timeZone = Intl.DateTimeFormat().resolvedOp
     }
     return [...groups.values()];
 }
-if (typeof module !== 'undefined') module.exports = {groupWorkspaceHistory};
+/** Shared visible literal predicate: ECMAScript Unicode lower(), not locale-specific matching. */
+function workspaceHistoryMatches(row, title, filters) {
+    return [[filters.title,title],[filters.tag,row.tags],[filters.note,row.notes]].every(
+        ([needle,value]) => String(value || '').toLowerCase().includes(String(needle || '').toLowerCase()));
+}
+if (typeof module !== 'undefined') module.exports = {groupWorkspaceHistory,workspaceHistoryMatches};
