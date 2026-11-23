@@ -19,7 +19,10 @@ context. Shared task metadata refreshes labels, not dirty form fields.
 Both pages consume the shared multiple-timer controller and its durable operation journal.
 Starting a saved assigned plan from Calendar uses its plan revision/projection token. Timer ACKs
 adopt captured UUIDs and revisions before refreshing; subsequent range-read failure cannot revert
-writer identity. Starting another plan for an unfinished task selects that existing timer rather
+writer identity. ACK publication and the timer-mutated event also precede a status GET that
+never settles; the partial ACK does not mark the complete timer list fresh. Once acknowledged,
+the saved-operation retry action is a status read only (including after reload); an uncertain
+operation alone retains the explicit same-key, same-payload POST retry. Starting another plan for an unfinished task selects that existing timer rather
 than reassociating/resuming it. Navigation does not replay timer operations. Retargeting is not
 available. Independent extension/removal/idle interfaces remain owned by their respective slices;
 this integration does not add speculative routes or bypass their consent contracts.

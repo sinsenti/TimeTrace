@@ -9,7 +9,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 
 // Caller seam: shipped handlers + ApiClient, with only HTTP, clock and browser DOM boundaries controlled.
 function sessionPage(http = async () => ({ id: 'real-session' })) {
-    const elements = new Map(), alerts = [], writes = [], listeners = new Map();
+    const elements = new Map(), alerts = [], writes = [], listeners = new Map(), documentListeners = new Map();
     let context;
     const safetyStorage = new Map();
     function element(id = '', tag = 'div') {
@@ -20,6 +20,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
             addEventListener(name, fn) { this[name] = fn; }, removeEventListener() {},
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); },
             append(...children) { for (const child of children) this.appendChild(child); },
+            replaceChildren(...children) { this.children = []; this.append(...children); },
             querySelectorAll() { return []; }, contains(child) { return this === child || this.children.includes(child); },
             insertBefore(child) { this.children.unshift(child); }, remove() { elements.delete(this.id); },
             focus() { context.document.activeElement = this; }, select() {} };
@@ -27,7 +28,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
         return el;
     }
     const document = { getElementById: id => elements.get(id) || null, createElement: tag => element('', tag),
-        addEventListener() {}, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
+        addEventListener(name, fn) { documentListeners.set(name, fn); }, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
     context = vm.createContext({ document, Date, setTimeout: () => {}, console: { error() {} },
         sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
@@ -52,7 +53,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     for (const name of ['api_client.js', 'task_knowledge.js', 'utils.js', 'task_attach.js', 'tags_engine.js', 'session_modal.js', 'calendar.js']) load(name);
     context.allSessions = [];
     const open = () => run('openCreateSessionModal(new Date("2026-11-10T23:45:00Z"), new Date("2026-11-11T00:30:00Z"))');
-    return { context, elements, alerts, writes, listeners, run, load, open, element };
+    return { context, elements, alerts, writes, listeners, documentListeners, run, load, open, element };
 }
 
 test('pending Session Save ignores double activation and retains failed mutation draft for explicit retry', async () => {
@@ -417,6 +418,87 @@ test('manual recording uncertainty blocks Calendar reopen and navigation to anot
     assert.equal(p.writes.length, 1, 'uncertain manual work must not be replayed by reopening');
     await assert.rejects(p.run('new ApiClient().saveRecordedWork({start_time:"2000-01-04T09:00Z", end_time:"2000-01-04T10:00Z"})'), /unconfirmed/);
     assert.equal(p.writes.length, 1, 'the navigation client consumes the same persisted journal');
+});
+
+for (const recovery of [false, true]) test(`Calendar receives production timer capture ACK before pending status (${recovery ? 'receipt recovery after reload' : 'POST'})`, async () => {
+    const held = deferred(), requested = deferred();
+    const ack = {operation_id:'capture-op', requested_scheduled_session_id:'virt:task:20990104T090000Z',
+        captured_plan_id:'captured', plan_revision:2,
+        timer:{id:'timer-a', state:'running', scheduled_session_id:'captured'}};
+    const p = sessionPage(async (url, options) => {
+        if (url === '/operations/capture-op') return {status:'finalized', result:ack};
+        if (url === '/timers' && options.method === 'POST') {
+            if (recovery) throw Error('lost ACK');
+            return ack;
+        }
+        if (url === '/timers') { requested.resolve(); return held.promise; }
+        return {items:[]};
+    });
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`rememberSavedSession({id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task',
+        is_virtual:true, projection_revision:'projection', start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'});
+        openEditSessionModal('virt:task:20990104T090000Z');
+        window.control = createTimerController({api, storage:sessionStorage, onState() {}, operationId:()=> 'capture-op'});`);
+    let start = p.run(`control.start({scheduled_session_id:'virt:task:20990104T090000Z'})`);
+    if (recovery) {
+        await start;
+        p.run(`window.control = createTimerController({api, storage:sessionStorage, onState() {}})`);
+        start = p.run('control.recover()');
+    }
+    try {
+        await requested.promise;
+        assert.equal(p.elements.get('edit_session_id').value, 'captured');
+        assert.equal(p.run('sessionModalOwner.session.kind'), 'scheduled_session');
+        assert.equal(p.run('sessionModalOwner.session.revision'), 2);
+        assert.equal(p.run('control.snapshot().pending'), false);
+        assert.equal(p.run('control.snapshot().fresh'), false, 'partial ACK is not a full read');
+        assert.equal(p.run('control.snapshot().receipt.outcome'), 'acknowledged');
+        p.elements.get('session_modal_notes').value = 'newer draft';
+        assert.equal(p.writes.length, 1);
+    } finally { held.resolve({timers:[], revision:2}); await start; }
+    assert.equal(p.elements.get('session_modal_notes').value, 'newer draft');
+    p.run(`openCreateSessionModal(new Date('2099-01-05T09:00Z'), new Date('2099-01-05T10:00Z'))`);
+    p.elements.get('session_modal_notes').value = 'new selection';
+    await p.run('control.recover()');
+    assert.equal(p.elements.get('edit_session_id').value, '');
+    assert.equal(p.elements.get('session_modal_notes').value, 'new selection');
+});
+
+test('visible acknowledged timer retry reads status without replaying the POST', async () => {
+    let fail = false, reads = 0;
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks') return [];
+        if (options.method === 'POST') {
+            fail = true;
+            return {operation_id:JSON.parse(options.body).operation_id, timer:{id:'timer-a', state:'running'}};
+        }
+        if (url === '/timers') { reads++; if (fail) throw Error('offline'); return {timers:[], revision:2}; }
+        return {items:[]};
+    });
+    const region = p.element('multiple_timers'), nodes = new Map();
+    for (const name of ['timer-list','timer-message','timer-task','idle-review','idle-review-list',
+        'timer-start','idle-apply','timer-refresh','timer-idle']) nodes.set(`[data-${name}]`, p.element());
+    region.querySelector = selector => nodes.get(selector);
+    p.context.setInterval = () => {};
+    p.context.crypto = {randomUUID:()=> 'visible-op'};
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.documentListeners.get('DOMContentLoaded')();
+    await p.run('multipleTimers.refresh()');
+    await p.run('multipleTimers.start({})');
+    const retry = nodes.get('[data-timer-list]').children.find(child => child.textContent === 'Retry status refresh');
+    assert.ok(retry, 'ACK recovery is visibly a read-only refresh');
+    const before = reads;
+    await retry.click();
+    assert.ok(reads > before);
+    assert.equal(p.writes.length, 1);
+    fail = false;
+    await p.run('multipleTimers.retry()');
+    assert.equal(p.writes.length, 1);
+    assert.equal(p.run('multipleTimers.snapshot().receipt'), null);
 });
 
 test('Calendar targeted timer ACK adopts captured plan UUID and revision before a failed read', async () => {
