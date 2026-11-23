@@ -187,10 +187,14 @@ const agendaPage = (() => {
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);
+            const extend = make('button', 'Extend current schedule');
+            extend.type = 'button';
+            extend.addEventListener('click', () => showExtension(row));
+            root.appendChild(extend);
             const capturedDraft = owner;
             window.planRemoval?.mount(root, row, {
                 api,
-                available: () => owner === capturedDraft && !owner?.pending && !owner?.removalPending && switchAllowed(),
+                available: () => owner === capturedDraft && !owner?.pending && !owner?.extensionPending && !owner?.removalPending && switchAllowed(),
                 lock: pending => { if (owner === capturedDraft) { owner.removalPending = pending; controls(); } },
                 ack: async result => {
                     generation++;
@@ -214,7 +218,67 @@ const agendaPage = (() => {
         add('Notes', row.notes || 'None');
     }
 
-    const saveUnavailable = () => Boolean(owner?.pending || owner?.removalPending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
+    function showExtension(plan) {
+        if (owner?.pending || owner?.removalPending || owner?.extensionPending) return;
+        const root = get('extension');
+        clear(root);
+        const end = make('input', '');
+        end.type = 'datetime-local'; end.step = '0.001';
+        end.value = localInput(new Date(Math.max(Date.now(), Date.parse(plan.end_time) + 60000)));
+        end.setAttribute('aria-label', 'Proposed current scheduled end');
+        const status = make('p', 'Choose an end, then preview the current interval. Original plan and recorded work stay unchanged.');
+        status.setAttribute('role', 'status');
+        const preview = make('button', 'Preview extension'); preview.type = 'button';
+        const apply = make('button', 'Apply extension'); apply.type = 'button'; apply.hidden = true;
+        const retry = make('button', 'Check result / refresh only'); retry.type = 'button'; retry.hidden = true;
+        const captured = owner;
+        const action = createPlanExtensionAction({api,
+            acknowledge(saved) {
+                if (owner === captured) { owner.row = saved; details(saved); controls(); }
+                rows = rows.filter(item => item.id !== plan.id && item.id !== saved.id);
+                rows.push(saved); ledger();
+            },
+            async refresh() {
+                // Reread both comparison bases together via the existing shared-snapshot endpoint.
+                await agendaPage.refresh();
+                if (!get('retry').hidden) throw Error('Refresh incomplete');
+            },
+            onState(state) {
+                if (owner === captured) {
+                    owner.extensionPending = state.pending || state.phase === 'uncertain';
+                    if (state.phase === 'stale') owner.blocked = true;
+                    controls();
+                }
+                apply.hidden = state.phase !== 'preview'; apply.disabled = state.pending;
+                preview.disabled = state.pending || ['uncertain', 'stale', 'acknowledged', 'refresh_failed', 'complete'].includes(state.phase);
+                end.disabled = state.pending || state.phase !== 'idle';
+                retry.hidden = !['uncertain', 'refresh_failed', 'acknowledged'].includes(state.phase);
+                retry.disabled = state.pending;
+                const messages = {
+                    preview:`Proposed CURRENT interval: ${interval(plan.start_time, state.end)}. Apply is consent; other plans, timers and work stay unchanged.`,
+                    stale:'Schedule changed. Attempted extension is retained above; review saved schedule, then explicitly open a new extension.',
+                    uncertain:'Apply not confirmed. Check the operation result; this control never repeats the write.',
+                    refresh_failed:'Extension saved; refresh failed. Retry reads only.',
+                    complete:'Current schedule extended. Original plan and recorded work unchanged.',
+                };
+                status.textContent = messages[state.phase] || state.error || 'Saving extension…';
+            }});
+        preview.addEventListener('click', () => { try { action.preview(plan, end.value); } catch (err) { status.textContent = err.message; } });
+        apply.addEventListener('click', action.apply);
+        retry.addEventListener('click', action.recover);
+        root.append(end, preview, status, apply, retry);
+    }
+
+    window.addEventListener('extend-selected-plan', async event => {
+        const id = event.detail?.planId;
+        if (!id || !switchAllowed()) return;
+        try {
+            const plan = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
+            open(plan, true); showExtension(plan);
+        } catch (err) { get('edit-status').textContent = `Could not read selected timer's plan: ${err.message}`; }
+    });
+
+    const saveUnavailable = () => Boolean(owner?.pending || owner?.extensionPending || owner?.removalPending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
         (!owner?.row && (createPending || unconfirmedCreate)));
 
     function controls() {
@@ -222,8 +286,8 @@ const agendaPage = (() => {
         get('form').hidden = !owner || Boolean(row && row.kind !== 'scheduled_session' && !owner.retainedWorkDraft);
         get('attachment').hidden = !owner?.work || !owner?.context;
         get('attach').disabled = Boolean(row || owner?.pending);
-        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft || owner?.removalPending);
-        get('cancel').disabled = Boolean(owner?.removalPending);
+        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft || owner?.extensionPending || owner?.removalPending);
+        get('cancel').disabled = Boolean(owner?.extensionPending || owner?.removalPending);
         get('metadata').hidden = Boolean(row);
         get('metadata').disabled = Boolean(row || owner?.pending);
         get('save').textContent = owner?.work ? 'Save recorded work' : row ? 'Save current schedule' : 'Add to schedule';
@@ -245,6 +309,7 @@ const agendaPage = (() => {
             get('attach').checked = false;
             owner.baseline = values();
         }
+        clear(get('extension'));
         details(row);
         showProgress();
         get('edit-status').textContent = work ? 'Record actual past work. Plan context does not attach work unless explicitly checked.' : create ? 'Scheduling time does not record work.' : '';
@@ -256,7 +321,7 @@ const agendaPage = (() => {
     }
 
     function switchAllowed() {
-        if (owner?.removalPending) return false;
+        if (owner?.removalPending || owner?.extensionPending) return false;
         const dirty = owner && !get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline);
         return !dirty || window.confirm('Leave these unsaved schedule edits?');
     }

@@ -123,6 +123,15 @@ class ScheduledSessionCreate(BaseModel):
     notes: str | None = None
 
 
+class ScheduledSessionExtension(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    end_time: datetime
+    operation_id: str = Field(min_length=1, max_length=200)
+    expected_revision: StrictInt | None = Field(default=None, ge=1)
+    expected_projection_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
 class ScheduledSessionUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

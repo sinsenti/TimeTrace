@@ -19,6 +19,7 @@ from timetrace.interfaces.api.schemas import (
     RetroSessionCreate,
     ScheduledOccurrenceUpdate,
     ScheduledSessionCreate,
+    ScheduledSessionExtension,
     ScheduledSessionRead,
     ScheduledSessionUpdate,
     SessionCreate,
@@ -86,6 +87,11 @@ def create_scheduled_session(req: ScheduledSessionCreate, db: DBSession = Depend
 @router.get("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead | AgendaProjectedPlanRead)
 def get_scheduled_session(plan_id: str, db: DBSession = Depends(get_session)):
     return SessionService(db).get_scheduled_session(plan_id)
+
+
+@router.post("/scheduled-sessions/{plan_id}/extend", response_model=ScheduledSessionRead)
+def extend_scheduled_session(plan_id: str, req: ScheduledSessionExtension, db: DBSession = Depends(get_session)):
+    return SessionService(db).extend_scheduled_session(plan_id, req)
 
 
 @router.put("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)

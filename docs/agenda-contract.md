@@ -445,6 +445,13 @@ bounded cross-task work reads. It transforms no rows or JSON; fresh-chain and sy
 0015 data tests check index use, FKs and retained IDs, recurrence, ratings, audit/draft JSON and widgets.
 
 
+### Explicit extension capability
+
+See [schedule-extension-contract.md](schedule-extension-contract.md) for the implemented #6
+root HTTP action, fixed DB receipt, shared browser controller and Calendar consumer interface.
+Only Apply after the displayed CURRENT-interval preview extends the explicitly selected plan;
+running timers do not block it and overlap does not trigger warning or another confirmation.
+
 ### Shared recording producer interface
 
 `SessionService.stage_recorded_work(RecordedWorkCreate(...), provenance="manual"|"timer")`

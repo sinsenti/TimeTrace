@@ -19,6 +19,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
             setAttribute(name, value) { this[name] = value; }, removeAttribute(name) { delete this[name]; },
             addEventListener(name, fn) { this[name] = fn; }, removeEventListener() {},
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); },
+            append(...children) { for (const child of children) this.appendChild(child); },
             querySelectorAll() { return []; }, contains(child) { return this === child || this.children.includes(child); },
             insertBefore(child) { this.children.unshift(child); }, remove() { elements.delete(this.id); },
             focus() { context.document.activeElement = this; }, select() {} };
@@ -295,12 +296,42 @@ test('details opens its own recorded session without publishing task history as 
 function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
-        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress']) p.element(`agenda-${suffix}`);
+        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension']) p.element(`agenda-${suffix}`);
     p.context.URLSearchParams = URLSearchParams;
+    p.context.crypto = require('node:crypto').webcrypto;
     p.context.confirm = () => true;
+    p.load('plan_extension.js');
     p.load('agenda.js');
     return p.run('agendaPage.refresh()');
 }
+
+test('Folio explicit extension retains stale attempt and offers read-only review', async () => {
+    const plan = {id:'plan-stale', kind:'scheduled_session', revision:1,
+        start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',
+        original_start:'2000-01-04T09:00:00Z', original_end:'2000-01-04T10:00:00Z'};
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') return [];
+        if (options.method === 'POST') return new Response(JSON.stringify({detail:'Changed',code:'revision_stale'}),{status:409});
+        if (url.startsWith('/agenda?')) return {items:[plan]};
+        return {...plan,revision:2};
+    });
+    await loadFolio(p);
+    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
+    p.elements.get('agenda-detail').children.find(e=>e.textContent==='Extend current schedule').click();
+    const extension = p.elements.get('agenda-extension');
+    const input = extension.children.find(e=>e.type==='datetime-local');
+    input.value='2000-01-05T14:00';
+    extension.children.find(e=>e.textContent==='Preview extension').click();
+    assert.match(extension.children.find(e=>e.tagName==='P').textContent,/Proposed CURRENT/);
+    assert.equal(p.writes.length,0);
+    await extension.children.find(e=>e.textContent==='Apply extension').click();
+    assert.equal(p.writes.length,1);
+    assert.equal(input.value,'2000-01-05T14:00');
+    assert.equal(p.elements.get('agenda-review').hidden,false);
+    await p.elements.get('agenda-review').click();
+    assert.equal(p.writes.length,1);
+    assert.equal(p.elements.get('agenda-use-latest').hidden,false);
+});
 
 test('Folio acknowledges a create before refreshing and retains later endpoint typing', async () => {
     const held = deferred();

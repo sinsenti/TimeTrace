@@ -1,3 +1,5 @@
+import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 
@@ -7,7 +9,7 @@ from sqlmodel import Session, func, select
 
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id, parse_occurrence_id
-from timetrace.db.models import RecurrenceException, ScheduledSession, Task, generate_uuid7
+from timetrace.db.models import MutationOperation, RecurrenceException, ScheduledSession, Task, generate_uuid7
 from timetrace.db.models import Session as SessionModel
 from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import (
@@ -22,6 +24,7 @@ from timetrace.interfaces.api.schemas import (
     RetroSessionCreate,
     ScheduledOccurrenceUpdate,
     ScheduledSessionCreate,
+    ScheduledSessionExtension,
     ScheduledSessionInfo,
     ScheduledSessionRead,
     ScheduledSessionUpdate,
@@ -64,7 +67,10 @@ class SessionService:
             raise
 
     def stage_recorded_work(
-        self, req: RecordedWorkCreate, *, provenance: Literal["manual", "timer"],
+        self,
+        req: RecordedWorkCreate,
+        *,
+        provenance: Literal["manual", "timer"],
         timer_identity: dict[str, str] | None = None,
     ) -> RecordedWorkCreated:
         """Stage validated work under the SQLite writer lock; never commit or roll back.
@@ -210,6 +216,59 @@ class SessionService:
         plan, exception = result
         return self._read_scheduled_session(plan, exception)
 
+    def extend_scheduled_session(self, plan_id: str, req: ScheduledSessionExtension) -> ScheduledSessionRead:
+        """Only the selected current end changes; the finalized DB receipt is atomic with it."""
+        payload = {"action": "extend", "plan_id": plan_id, **req.model_dump(mode="json")}
+        payload["end_time"] = ensure_utc(req.end_time).isoformat()
+        digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
+        try:
+            lock_sqlite_writer(self.db)
+            receipt = self.db.get(MutationOperation, req.operation_id)
+            if receipt:
+                if receipt.payload_hash != digest:
+                    raise ConflictError("Operation payload differs.", code="operation_payload_mismatch")
+                return ScheduledSessionRead.model_validate_json(receipt.result_json)
+            try:
+                plan = self.get_scheduled_session(plan_id)
+            except EntityNotFoundError, ValidationError:
+                if is_occurrence_id(plan_id):
+                    raise self._stale_projection() from None
+                raise
+            virtual = plan.is_virtual
+            if virtual:
+                if req.expected_revision is not None or req.expected_projection_revision != plan.projection_revision:
+                    raise self._stale_projection()
+            elif req.expected_projection_revision is not None or req.expected_revision != plan.revision:
+                raise self._stale_plan()
+            if ensure_utc(req.end_time) <= ensure_utc(plan.end_time):
+                raise ValidationError("Extension end must be after the current scheduled end.", code="invalid_interval")
+            data = {"start_time": plan.start_time, "end_time": req.end_time}
+            if virtual:
+                update_req = ScheduledOccurrenceUpdate(
+                    **data, expected_projection_revision=req.expected_projection_revision
+                )
+                saved = self._materialize_scheduled_occurrence(plan_id, update_req, resize_series=False, commit=False)
+            else:
+                start, end = self._scheduled_interval(plan.start_time, req.end_time)
+                saved = self._update_plan_interval(plan_id, req.expected_revision, start, end, commit=False)
+            self.db.add(
+                MutationOperation(
+                    id=req.operation_id,
+                    payload_hash=digest,
+                    before_revision=0 if virtual else plan.revision,
+                    after_revision=saved.revision,
+                    cutoff=datetime.now(UTC).isoformat(),
+                    after_state_json="{}",
+                    result_json=saved.model_dump_json(),
+                    file_finalized=True,
+                )
+            )
+            self.db.commit()
+            return saved
+        except Exception:
+            self.db.rollback()
+            raise
+
     def update_scheduled_session(
         self, plan_id: str, req: ScheduledSessionUpdate | ScheduledOccurrenceUpdate, scope: str = "only_this"
     ) -> ScheduledSessionRead:
@@ -248,7 +307,7 @@ class SessionService:
         return self._update_plan_interval(plan_id, req.expected_revision, start, end)
 
     def _update_plan_interval(
-        self, plan_id: str, revision: int, start: datetime, end: datetime
+        self, plan_id: str, revision: int, start: datetime, end: datetime, *, commit: bool = True
     ) -> ScheduledSessionRead:
         # Compare-and-set in one statement: two concurrent editors cannot both overwrite revision N.
         plan = self.db.scalars(
@@ -263,11 +322,12 @@ class SessionService:
                 raise EntityNotFoundError("Scheduled session", plan_id)
             raise self._stale_plan()
         response = self._read_scheduled_session(plan, self.recurrence.exception_for_plan(plan_id))
-        self.db.commit()
+        if commit:
+            self.db.commit()
         return response
 
     def _materialize_scheduled_occurrence(
-        self, occurrence_id: str, req: ScheduledOccurrenceUpdate, *, resize_series: bool
+        self, occurrence_id: str, req: ScheduledOccurrenceUpdate, *, resize_series: bool, commit: bool = True
     ) -> ScheduledSessionRead:
         start, end = self._scheduled_interval(req.start_time, req.end_time)
         try:
@@ -302,7 +362,8 @@ class SessionService:
                     occurrence.task_id, self._series_minutes(start, end), exclude_plan_id=plan.id
                 )
             response = self._read_scheduled_session(plan, exception)
-            self.db.commit()
+            if commit:
+                self.db.commit()
         except IntegrityError:
             self.db.rollback()
             raise self._stale_projection() from None
