@@ -107,8 +107,44 @@ real browser, scheduler lifecycle, permission/sound and external-send adapter fa
 implemented or claimed at this milestone. No personal data or external notification was used.
 
 **Incomplete: do not publish/close #63 or describe these checkpoints as the whole implementation.**
-Delivery adapter, daemon scheduling loop, UI and platform acceptance remain pending. Backend
-evaluation is explicit only: automatic mode is not scheduled/delivered to users yet.
+## Final implementation continuation
+
+The root lifespan now schedules focus independently of idle enablement and cancels/awaits both
+loops; an in-flight threaded claim/send/result is awaited before shutdown completes. Linux uses
+bounded argument-safe `gdbus` calls (2s), capability-only probe, suppress-sound by default, fixed
+non-sensitive text and accepted/failed/unknown results. Other platforms, WSL/SSH, missing bus,
+binary or desktop report unavailable. Native submission is supported only from an interactive
+Linux user's session with `org.freedesktop.Notifications`; no service installation or privileges.
+Capabilities are cached for the daemon epoch: restart after changing desktop/session prerequisites.
+`TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false` forces in-app fallback for scratch/testing; tests
+set only that flag globally, not idle detection. No OS send or sound was invoked for acceptance.
+
+Shared exported controller now journals defaults/initialization/settings/actions without changing
+legacy payloads. Focus drafts retain their initial revision and survive polling/selection;
+Use current saved focus settings is explicit reset after a stale edit. Selected identity is a
+best-effort session display preference, independent of the mutation journal. Focus UI uses server
+remaining only, default/override editors, next-period explanation, generation-checked break actions,
+passive durable cards and explicit browser-permission gesture. Browser fallback is open-page only;
+permission default/denied means in-app. Native acceptance/unknown never fans out a browser alert.
+One selected notification channel owns optional sound; OS/browser settings may silence it.
+Legacy Pomodoro target maps to the same independent focus period, not credited-work countdown.
+
+Actual red/green: missing native adapter module -> fake transport green; missing exported JS module
+-> selected identity/generation/draft green; stale editor test exposed silently rebased revision5
+instead of captured4 -> minimal draft-revision retention green. Fake delivery/root-lifespan/process
+fault and migration group passed32; actual root startup and in-flight cancellation are tested.
+Complete candidate Node run:887 passed,0 failures/skips,in3.50s; final Python/format evidence follows
+only after source freeze.
+
+Actual isolated Orca browser with synthetic profile/fake-clock daemon18463: both policies,
+Take break/break wait/Resume, independent taskless timers, dirty note and focus editor retention,
+correction-independent focus/warning anchors, once warnings for paused/running identities, saved
+defaults and selected identity across reload, native-unavailable/denied fallback, lost ACK and hung
+display (one POST each, read-only recovery) passed. At390px viewport focus panel302px/right346px,
+flex-wrap enabled; two real screenshots inspected (current card and settings), no no-frame failure.
+This is bounded rendering evidence, not broad visual/accessibility or native OS visibility certification.
+Tracked probe: `tests/browser_timer_focus_63.js`; navigation assertions were split around reload.
+
 
 2026-11-23: isolated external HOME/TMPDIR/DB; `uv run python -P -m pytest tests/test_timer_focus.py -q`.
 Red: 1 failed, GET `/timer-focus/defaults` returned 404. Green after minimal defaults slice: 1 passed

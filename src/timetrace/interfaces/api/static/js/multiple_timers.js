@@ -12,6 +12,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         }
     }
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
+    try { selectedTimerId = storage.getItem('timetrace_timer_selected') || null; } catch (_) { /* Display preference only. */ }
     let observedAt = null;
     const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, observed_at:observedAt});
     const publish = () => {
@@ -86,7 +87,10 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             observedAt = null;
             receipt.outcome = 'acknowledged';
             lastResult = result;
-            if (selectResult && !receipt.url.endsWith('/correction') && result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) selectedTimerId = result.timer.id;
+            if (selectResult && !receipt.url.endsWith('/correction') && result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) {
+                selectedTimerId = result.timer.id;
+                try {storage.setItem('timetrace_timer_selected',selectedTimerId);}catch(_){/* Non-authoritative display preference. */}
+            }
             try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* The original fixed request remains retry-safe. */ }
             if (result.timer) timers = [...timers.filter(t => t.id !== result.timer.id), result.timer].filter(t => t.state !== 'stopped');
             message = (result.information || []).map(i => i.code === 'association_not_changed'
@@ -137,9 +141,14 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         return {acknowledged, remaining:choices.map(c => c.gap_id).filter(id => !acknowledged.includes(id))};
     }
     return {snapshot, refresh, recover, review,
+        initializeFocus:()=>write('/timer-focus/initialize',{},false,null,false),
+        saveFocusDefaults:({enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision})=>write('/timer-focus/defaults',
+            {enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},false,null,false),
         select: id => {
             if (!timers.some(timer => timer.id === id)) return false;
-            selectionGeneration++; selectedTimerId = id; publish(); return true;
+            selectionGeneration++; selectedTimerId = id;
+            try {storage.setItem('timetrace_timer_selected',id);}catch(_){/* Display preference only; safety journal is independent. */}
+            publish(); return true;
         },
         retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
         initializeCorrections: () => write('/timers/correction-initialize', {}),
@@ -239,7 +248,7 @@ if (typeof window !== 'undefined') {
         for (const event of ['pointerdown', 'keydown', 'focusin']) document.addEventListener(event, () => { interaction++; }, true);
         const startFocus = createTimerStartFocus({interaction:()=>interaction,
             guarded:()=> Boolean(document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]')) ||
-                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) ||
+                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) || Boolean(window.multipleTimers?.hasFocusDraft?.()) ||
                 (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts()),
             focus:()=> {
                 if (!currentCard) {

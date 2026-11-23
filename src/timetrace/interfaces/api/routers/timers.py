@@ -2,7 +2,7 @@
 
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator
 from sqlmodel import Session
 
@@ -22,6 +22,11 @@ class NotificationResult(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     claim_token: str = Field(min_length=1, max_length=128)
     outcome: Literal["accepted", "failed", "unknown", "in_app_acknowledged"]
+
+
+@router.get("/timer-notifications/capability")
+def notification_capability(request: Request):
+    return request.app.state.notification_adapter.capability()
 
 
 @router.get("/timer-notifications")
@@ -50,6 +55,16 @@ def notification_result(event_id: str, req: NotificationResult, db: Session = De
     from timetrace.services.timer_focus_service import TimerNotificationService
 
     return TimerNotificationService(db).result(event_id, req.claim_token, req.outcome)
+
+
+class FocusInitializeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+
+
+@router.post("/timer-focus/initialize")
+def focus_initialize(req: FocusInitializeRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("focus_initialize", None, req.model_dump())
 
 
 class FocusDefaultsRequest(BaseModel):

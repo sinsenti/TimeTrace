@@ -133,6 +133,19 @@ def test_focus_pause_actions_and_next_period_settings(client, db, monkeypatch):
     assert client.get(path).json()["focus"]["active_seconds"] == 60
 
 
+def test_legacy_pomodoro_target_maps_to_independent_focus_period(client):
+    timer = client.post(
+        "/timers", json={"operation_id": "legacy-mode", "mode": "pomodoro", "target_minutes": 15}
+    ).json()["timer"]
+    assert timer["focus"]["settings"]["enabled"] is True
+    assert timer["focus"]["period"]["work_minutes"] == 15
+    assert timer["focus"]["period"]["behavior"] == "notify_only"
+    response = client.post("/timer-focus/initialize", json={"operation_id": "focus-initialize"})
+    assert response.status_code == 200
+    assert client.post("/timer-focus/initialize", json={"operation_id": "focus-initialize"}).json() == response.json()
+    assert client.get("/operations/focus-initialize").json()["status"] == "finalized"
+
+
 def test_focus_defaults_are_durable_receipted_and_future_timer_only(client):
     initial = client.get("/timer-focus/defaults")
     assert initial.status_code == 200

@@ -69,7 +69,7 @@ def evaluate_state(service, state, cutoff, continuity):
     for timer in state["timers"].values():
         if timer["state"] == "stopped":
             continue
-        if "identity_started_at" not in timer:
+        if not timer.get("identity_started_at"):
             anchor = None
             for receipt in service.db.exec(select(MutationOperation)).all():
                 result = json.loads(receipt.result_json)
@@ -83,7 +83,13 @@ def evaluate_state(service, state, cutoff, continuity):
             timer["identity_started_at"] = anchor or cutoff
             timer["identity_started_at_provenance"] = "creation_receipt" if anchor else "prospective_unknown_history"
         if "focus" not in timer:
-            timer["focus"] = new_focus(DEFAULTS, cutoff)
+            policy = dict(DEFAULTS)
+            target = timer.get("target_minutes")
+            if timer.get("mode") == "pomodoro" and type(target) is int and 1 <= target <= 1440:
+                policy.update(enabled=True, work_minutes=target)
+            timer["focus"] = new_focus(policy, cutoff)
+            if timer["state"] != "running":
+                timer["focus"]["recording_anchor"] = None
         focus = timer["focus"]
 
         def emit(kind, generation, due, timer_id=timer["id"]):

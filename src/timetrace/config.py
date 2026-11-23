@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     port: int = 8002
 
     # Inactivity / Idle Detection Settings
+    native_notifications_enabled: bool = True
     idle_detection_enabled: bool = True
     idle_threshold_seconds: int = 600  # 10 minutes
 

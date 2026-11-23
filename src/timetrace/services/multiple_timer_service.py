@@ -570,6 +570,8 @@ class MultipleTimerService:
                     max(0, target * 60 - elapsed) if timer["mode"] == "pomodoro" and target else None
                 )
                 display(timer, now.isoformat())
+                if timer.get("focus", {}).get("settings", {}).get("enabled") and timer["mode"] == "pomodoro":
+                    timer["remaining_seconds"] = timer["focus"]["remaining_seconds"]
                 timers.append(timer)
             return {
                 "revision": state["revision"],
@@ -689,11 +691,13 @@ class MultipleTimerService:
                 task_deletion = None
                 plan_capture = None
                 correction_changes = correction_audits = correction_guard = correction_result = None
-                if action == "focus_evaluate":
+                if action in ("focus_evaluate", "focus_initialize"):
                     from timetrace.services.timer_focus_service import evaluate_state
 
-                    notification_events = evaluate_state(self, after, cutoff, evaluation)
-                    if after == state and not notification_events:
+                    notification_events = evaluate_state(
+                        self, after, cutoff, evaluation or {"continuous": False, "previous_wall": None}
+                    )
+                    if action == "focus_evaluate" and after == state and not notification_events:
                         self.db.rollback()
                         return {"evaluated": True, "changed": False}
                     timer, selected = None, False
@@ -1076,7 +1080,14 @@ class MultipleTimerService:
         }
         timer["identity_started_at"] = cutoff
         timer["identity_started_at_provenance"] = "creation"
-        timer["focus"] = new_focus(after.get("focus_defaults", DEFAULTS), cutoff)
+        policy = deepcopy(after.get("focus_defaults", DEFAULTS))
+        if (
+            timer["mode"] == "pomodoro"
+            and type(timer.get("target_minutes")) is int
+            and 1 <= timer["target_minutes"] <= 1440
+        ):
+            policy.update(enabled=True, work_minutes=timer["target_minutes"])
+        timer["focus"] = new_focus(policy, cutoff)
         after["timers"][timer["id"]] = timer
         return timer, False, capture
 
