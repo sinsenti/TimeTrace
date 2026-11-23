@@ -1,162 +1,148 @@
-# Focus implementation ledger (#63)
+# Timer focus and notifications (#63)
 
-Authority: [reviewed owner brief](https://github.com/sinsenti/TimeTrace/issues/63#issuecomment-7102493844).
-This is an engineering/evidence ledger, not a replacement specification or delivery receipt.
+Implementation is ready for independent review, not published/closed or deployed. Authority:
+[owner decisions and reviewed brief](https://github.com/sinsenti/TimeTrace/issues/63#issuecomment-7102493844).
+This is the engineering/verification ledger, not a duplicate product specification.
 
-## Confirmed seams and decisions
+## Implementation map and decisions
 
-Public root HTTP/service, public JS controller, isolated real browser. Existing receipt funnel
-serializes writes; legacy request models and digest construction remain untouched. Defaults live in
-the existing versioned timer file and use the existing SQLite operation receipt, not another store.
-New timer identities capture creation independently of editable credited intervals. Period settings
-are snapshots; later defaults affect future timers only. Validation is strict and bounded 1–1440
-whole minutes. No external adapter or live notification has been invoked.
+- `core/focus.py`: independent active clock, period snapshots, freeze/checkpoint and countdown.
+  Corrections/claimed idle credit never become focus credit. Legacy Pomodoro mode/target maps to
+  this same period; credited-work remaining is no longer a second focus clock.
+- `MultipleTimerService`: original serialized process/advisory/SQLite receipt+file funnel owns
+  defaults, initialization, settings, actions, automatic transitions and staged notification rows.
+  New staging keys are explicitly excluded from `MutationOperation` construction. Old request
+  schemas/defaults/hash construction and exact receipt/file replay remain unchanged.
+- `timer_focus_service.py`: public `FocusEvaluator.evaluate()` takes trusted injectable UTC,
+  monotonic and suspend-inclusive clocks, sampled again under serialization. First sample/restart,
+  missing BOOTTIME, late dispatch, sleep or clock discontinuity cannot authorize a missed break.
+  A live boundary must be bracketed, within one second, with unchanged prior generation/revision.
+  An intervening Note/Pause/Stop wins. UTC rollback with proven live monotonic continuity rebases
+  only the focus anchor; work intervals and immutable creation anchor never move. Due remains zero.
+- Warning generation is constant zero, uniquely per unfinished identity. Old initialization uses
+  a trustworthy retained creation receipt, otherwise explicitly labels a prospective unknown-history
+  anchor. No UUID timestamp/corrected earliest-start reconstruction; GET never initializes/emits.
+- Migration `0019_timer_focus`, parent `0018_work_corrections`, adds private local notification
+  events/claims. No task/work FKs, external queue or second timer JSON store. Analytics SQL
+  allowlist excludes the table. Claim credentials appear only in dedicated claim/result exchange,
+  not ordinary notice reads, widgets or logs.
+- `focus_runtime.py`: root lifespan evaluator loop independent of idle enablement, bounded native
+  dispatch (16 pending notices/tick), no-op ticks write no receipt/file, cancellation awaits an
+  in-flight threaded claim/send/result. Root shutdown cancels AND awaits idle and focus tasks.
+- `notification_delivery.py`: argument-safe bounded `gdbus` protocol adapter; no new dependency,
+  shell interpolation, installer, privileges, tray, wrapper, push or external infrastructure.
+- `timer_focus.js`: exported controller and shared navbar/current-workspace UI, server countdown,
+  default/override forms, next-period explanation, due actions, diagnostics and passive cards.
+  All user settings/actions use the existing controller ACK-first mutation journal. Draft revisions
+  remain captured until explicit reset; polling/selection preserve drafts. A best-effort selected
+  identity session preference is display state, not another timer store or mutation journal.
 
-## Acceptance matrix (in progress, not delivered)
+### Public interfaces
 
-| Cell | Evidence |
+| Interface | Contract |
 | --- | --- |
-| Initial defaults, future timer snapshot, exact replay, invalid boolean length | Public HTTP red 404 then green 1 passed (`tests/test_timer_focus.py`) |
-| Overrides, next-period settings and disable | HTTP routes and period snapshots implemented; bounded evidence only |
-| Independent active clock, pause/idle/correction and actions | Public fake-clock pause/Take break/early Resume/replay/observed-idle test passes; correction/race matrix not yet proved |
-| Automatic boundary continuity and catch-up | Public evaluator with wall/monotonic/BOOTTIME continuity inputs; on-time and late/sleep/restart/rollback tests pass |
-| Immutable warning evaluation | Durable unique generation-zero warning; paused wall-clock/restart tests pass; old creation-receipt/prospective initialization is serialized |
-| Durable event claims, adapters and bounded daemon lifecycle | SQLite events and exclusive conservative-unknown claims implemented; adapters and daemon loop pending |
-| Browser settings, countdown, actions, drafts and narrow layout | Not implemented |
-| Migration 0019 fresh/copied-synthetic/fault acceptance | Normal fresh chain, copied old pending creation receipt and repeated restart pass; related #61 migration suite passes |
-| Final Python/Node/scoped lint/browser | Events milestone post-merge focused Python284/Node25 pass; scoped Ruff and merged-JS syntax pass; full-ticket suites/browser deferred |
+| GET/POST `/timer-focus/defaults` | Strict bounded policy, expected settings revision and original operation receipt |
+| POST `/timer-focus/initialize` | Explicit receipted retained-state initialization/replay |
+| POST `/timers/{id}/focus-settings` | Strict targeted effective settings; subsequent periods, disable does not resume |
+| POST `/timers/{id}/focus-action` | Identity/revision/generation checked Take break, Keep working, Resume work |
+| GET `/timer-notifications` | Durable passive notice projection, no transitions or claim credentials |
+| GET `/timer-notifications/capability` | Sanitized supported/unavailable diagnostics; capability probe does not notify |
+| POST `/timer-notifications/{id}/claim` | Exclusive channel ownership; unknown persisted before external IO |
+| POST `/timer-notifications/{id}/result` | accepted/failed/unknown/in_app_acknowledged, no work/revision mutation |
+| POST `/timer-notifications/{id}/ack` | Idempotent passive-card dismissal without authorizing send |
 
-## Exact initial red/green
+Exact claim retry returns `send_authorized=false`. Lost claim ACK or a crash after send may miss
+an intrusive alert rather than authorize a duplicate blast. Unknown claims are never automatically
+leased/re-sent. Native acceptance means submitted, not seen. Failed/unknown notices retain honest
+in-app fallback/status. Passive cards across views are not additional intrusive alerts. Browser
+permission is requested only by explicit gesture; denied/default/unsupported uses in-app fallback.
+Browser Notification sound is optional and OS-controlled, not a separate WebAudio beep. Native
+sound hints are off unless the saved global preference is on and the server advertises sound.
+Unsupported sound/failed delivery is visible and never changes recording or starts retry loops.
 
-Second slice: settings POST initially 422 (legacy generic mutation rejected extra fields), then
-2 focused tests passed in 0.26s. Third red: ordinary Resume retained break phase; minimal green
-adds explicit break-to-work restart and idle checkpoint at observation onset. The focused pair
-then passed in 0.33s with idle enabled explicitly in the idle test (not globally disabled).
-A preliminary full Python run after slice two passed 1114 tests in 339.43s, with 4877 warnings;
-this predates the last idle/ordinary-resume change and is not final-source acceptance.
+## Platform / launch matrix
 
+| Environment | Supported result / limitations |
+| --- | --- |
+| Linux interactive user + `gdbus` + usable session bus + `org.freedesktop.Notifications` | Bounded capability and Notify submission; fake transport tested, real desktop visibility not certified |
+| Root/system service, SSH, WSL, headless/no display/bus/binary/server | Explicit unavailable; durable in-app fallback |
+| Windows/macOS | Native unavailable; optional permitted open-page browser fallback, otherwise in-app |
+| Browser closed, daemon and supported desktop session still running | Daemon owns timing/submission; fake service/process proof, no real host OS visibility claim |
+| Daemon stopped/sleep/system clock discontinuity | No exact-time guarantee; one catch-up, never retroactive breaks or automatic resume |
 
-## Final partial-source checks (not ticket delivery)
+Launch as the normal interactive desktop user, with the existing session bus/display environment.
+No service installation/escalation is needed or authorized. Capability is cached for the daemon
+execution epoch; restart after repairing desktop-session prerequisites.
+`TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false` forces safe in-app fallback for scratch/testing.
+Automated tests set only this native-delivery guard globally, not idle detection. OS/browser/DND
+settings may silence opted-in sound; no human-seen/exactly-once promise is made.
 
-At production tip `531b1e6`, full `uv run python -P -m pytest -q`: **1114 passed**, 4877 warnings,
-314.95s. `node --test tests/*.cjs`: **878 passed**, zero failures/skips, 3.94s. Scoped Ruff passes.
-Repository Ruff reports the inherited **17** findings; every offending file (migration0002,
-CLI commands, analytics service) and the models noqa warning is unchanged versus `e96497a`.
-No JS was changed. No schema change or migration0019 was made; migration acceptance, native delivery,
-real browser, clock discontinuity, external-send and focus-specific fault matrices remain unrun.
-No daemon or real OS notification/sound was started. `git merge timer-workspace-integration`
-reported already up to date at `e96497a`; this does not integrate the partial feature elsewhere.
+## Acceptance matrix
 
-## Durable events/evaluator milestone (continuation)
+| Cell | Actual evidence |
+| --- | --- |
+| Defaults off/25/5/notify-only/sound-off; persisted defaults and overrides | Public strict HTTP tests, process restart and real browser saved default/reload |
+| Notify-only, independent timers, Take break/Keep working | Public fake clocks + real selected-workspace DOM controls |
+| Live automatic break, fixed cutoff, other timer untouched | Public continuity tests, real fake-clock browser; unchanged revision token required |
+| Break completion once, paused wait, explicit/early ordinary Resume | Public tests and actual browser |
+| Manual pause/resume/split, corrections/idle independent focus | Focus/correction/idle/notes suites; actual correction leaves countdown/creation unchanged |
+| Unresolved idle refusal and claimed-credit isolation | Public explicit refusal, byte-preserved gaps, frozen warning, Claim leaves focus unchanged |
+| Immutable two-hour running/paused/frozen once; stopped suppression | Public fake clocks/restarts + actual browser two independent identities, stable event IDs |
+| Late/suspend/restart/rollback, no fabricated intervals/backlog | Public continuity tests; live rollback regression preserves active focus via monotonic proof |
+| Two evaluators/processes/tabs and exclusive delivery | Real concurrent processes, exported JS channel/permission tests, CAS/lock claims |
+| Pre/post DB/file and send/result crash recovery | Real subprocess kills, repeated full lifespan startup, fixed event/interval IDs and finalized receipts |
+| Migration0019 normal fresh + copied synthetic old DB/timer | Own old0018 pending creation receipt fixture and richer #61 lineage/rating/plan/query/export migration fixture, integrity/FK and exact old hash/result preservation |
+| Strict settings, stale/tamper/replay, lost ACK/hung display | HTTP/controller suites; actual browser one POST each and read-only recovery, draft retained/reset explicitly |
+| Capability/sound/permission/failure/unknown, no real OS effects | Fake transport/native runtime/process and exported browser boundary tests; actual denied/unavailable fallback |
+| Narrow UI/drafts/reload/selection/Calendar/export | Actual isolated Orca browser, two taskless timers, 390px DOM bounds/wrapping, two inspected screenshots; existing Calendar and export preview usable |
 
-Actual public red: new evaluator service import failed (`ModuleNotFoundError`), then minimal
-notify-only due event/paused two-hour HTTP proof passed (3 focused tests). Expanded fake-clock
-checks cover automatic break at an observed live boundary, other-timer independence, break wait,
-unknown claim before send, duplicate tabs/replay suppression, correction-independent elapsed and
-non-staling delivery claims, missed/suspended/restarted/rollback catch-up, stopped suppression.
-Real-process fault tests kill after pending JSON replacement (pre-DB) and before final JSON
-replacement (post-DB), recover twice, and verify stable event/interval identities and finalized
-receipts. They exposed a real red: work_due countdown could become positive after wall rollback;
-minimal green latches due countdown to zero. Normal fresh migration and a consistent synthetic
-copied old0018 DB/timer with pending old creation receipt upgrade to0019 twice without changing
-old result/hash, recovering honest creation-receipt provenance. Related existing #61 full-startup
-migration fixtures cover ratings/lineages/plans/query/export preservation. Combined focused run:
-26 passed in89.39s initially. Expanded focused correction/idle/note/receipt/history/migration
-run: **253 passed**,133 warnings,in212.84s. After final acknowledgement route addition:
-focus/recovery/SQL-sandbox APIs **35 passed** in36.70s; related existing Node controller/correction/
-workspace/export **21 passed**. Scoped Ruff passes. Full suites intentionally deferred until
-complete-ticket delivery; prior1114Python/878Node checks are historical partial-source evidence.
+## Exact verification
 
-Public backend entrypoint `FocusEvaluator.evaluate()` accepts injectable trusted clocks, not an
-HTTP future cutoff. First sample/no suspend clock/lost continuity cannot auto-pause. Subsequent
-samples compare UTC, monotonic and suspend-inclusive BOOTTIME deltas; a boundary must be bracketed
-by observations and dispatched within one second. Samples are taken again under the shared serialization lock, not before waiting for it.
-No-op evaluations do not create receipt/file generations. No adapter or scheduling loop exists yet.
-Timer transitions and notification staging share the original fixed-intent DB/file receipt funnel;
-new staging keys are explicitly excluded from `MutationOperation`. Delivery claims use the same
-process/advisory/SQLite lock order, reconcile first, but do not create timer mutation receipts or
-change timer revisions. Claim state is `unknown` before external IO, so crash/retry cannot authorize
-a second alert. Exact same claim operation returns `send_authorized=false`; clients must obey it.
-Definite failure/unknown exposes durable passive fallback status, not a second native attempt.
-POST `/timer-notifications/{id}/ack` independently dismisses a passive card, idempotently,
-without authorizing any send or losing an already accepted/unknown delivery result. Concurrent
-real processes prove one due event and one successful exclusive claim (200/409). Claim
-tokens/operation IDs are omitted from notice reads; the table is outside SQL-widget allowlist
-and has no work/task FK, so deleting history cannot cascade/block notification recovery.
+Final production source: `053485320745a2c50a83d78e46f6ab65c1d45b64`, already contains completed
+#62 integration `5aabcba79ffec840b5a6feb719d9d7ff7f80723a`; no Calendar implementation duplicated.
 
-### Events milestone final-source evidence
+- **Full Python:** `uv run python -P -m pytest -q`: **1148 passed**,4879 warnings,in354.98s.
+- **Full Node:** `node --test tests/*.cjs`: **887 passed**,zero failed/skipped,in3963.01ms.
+- Scoped Ruff across all23 changed Python files: pass. Scoped format check:23 already formatted.
+  Changed-JS/browser-probe syntax and `git diff --check`: pass.
+- Repository Ruff: exactly **17 inherited findings**, all in untouched migration0002, CLI commands
+  and analytics service files (byte-unchanged against `e96497a`); no scoped failures.
+- Last focused source checks:24 passed (clock ownership/idle/root lifespan); earlier expanded
+  post-merge backend/correction/history/SQL/Calendar/migration group:284 passed. These are not
+  substituted for the final complete suites above.
+- Actual final-source browser: isolated profile and fake-clock/fake-delivery daemon18463,
+  `tests/browser_timer_focus_63.js` main/more/fault probes pass. Both policies, controls, dirty
+  note/focus drafts, correction independence, saved defaults, once warnings and one-POST lost ACK/
+  hung display recoveries passed. Selected B and defaults4 survive final reload. Two subsequent
+  actual full lifespans also preserve defaults4, timer creation/generation/state and notice IDs. Earlier same-UI
+  390px check: panel302px/right346px, flex-wrap enabled; two actual PNGs inspected. Native OS
+  visibility/permission prompts/sound were never triggered. Navigation assertions split across loads.
+- Public protocol source checked: freedesktop notification protocol (GetCapabilities/Notify/sound
+  hints), not evidence that this host's desktop displays notifications.
 
-Committed events backend checkpoint `c3e202f`; merged completed #62 integration tip `5aabcba`
-without conflict at `9af55e4`, preserving its volatile display-only `observed_at`. Post-merge
-focused regression: **284 Python passed**,231 warnings,in202.43s; related public JS controller/
-correction/workspace/history/Calendar tests: **25 passed**,zero failures/skips,in98.34ms.
-Final additional public proofs explicitly verify next-period settings snapshots (no silent retiming),
-unresolved-idle action refusal, frozen wall warning, byte-preserved unresolved gaps and unchanged focus
-credit after Claim idle. Focus/evaluator/process-recovery group: **16 passed** in35.62s.
-Scoped Ruff on every changed Python file and `git diff --check` pass. Syntax checks pass for
-all four JS files brought by the #62 merge; no #63 JS was changed. Full Python/Node are deliberately
-not rerun/claimed for this backend milestone; they remain required after final #63 production work.
+### Red/green and failed attempts (retained, not hidden)
 
-Own recovery tests now use actual daemon lifespan startup in each subprocess, including both
-pre-DB and post-DB automatic-break crash cases. They assert one retained closed interval and event,
-fixed IDs through two restarts, all accepted receipts finalized, normal fresh0019 chain and copied
-old0018 pending receipt integrity/FK/result/hash/creation-provenance preservation. Concurrent actual
-process evaluators/claimants prove one event/one claim winner. Existing copied #61 migration fixture
-also passes under0019, retaining its plans/work lineage/ratings/query/export evidence. Native OS,
-real browser, scheduler lifecycle, permission/sound and external-send adapter fault cells are not
-implemented or claimed at this milestone. No personal data or external notification was used.
+Initial defaults GET404 ->1 green. Focus settings422 ->2 green. Ordinary Resume retained break
+phase -> fixed and observed-idle checkpoint green. Evaluator/adapter/exported-controller imports
+initially missing -> corresponding public/fake boundary greens. Due countdown could become positive
+after rollback -> latched zero. Dirty settings silently rebased revision5 instead of captured4 ->
+draft revision retained. Live pre-due wall rollback returned50s instead of29s -> monotonic reanchor
+regression green. First complete Python candidate:1143 passed/1 failed,in357.26s, solely the old
+page test cache-tag assertion (`idle5`); updated it to require exactly one controller/focus include
+on all thirteen pages/aliases. Final full pass above follows all production fixes. Initial Ruff
+style findings were scoped-formatted; the final inherited17 remain untouched.
 
-**Incomplete: do not publish/close #63 or describe these checkpoints as the whole implementation.**
-## Final implementation continuation
+Historical partial checkpoints `4274e58`/`531b1e6`/`e7d8310` and events checkpoint `c3e202f`
+were explicitly incomplete. Their1114Python/878Node or284-focused results were never full #63
+acceptance. Final scheduler/UI checkpoint `f1dd0c6` plus clock ownership repair `0534853` supersede
+those incomplete status statements.
 
-The root lifespan now schedules focus independently of idle enablement and cancels/awaits both
-loops; an in-flight threaded claim/send/result is awaited before shutdown completes. Linux uses
-bounded argument-safe `gdbus` calls (2s), capability-only probe, suppress-sound by default, fixed
-non-sensitive text and accepted/failed/unknown results. Other platforms, WSL/SSH, missing bus,
-binary or desktop report unavailable. Native submission is supported only from an interactive
-Linux user's session with `org.freedesktop.Notifications`; no service installation or privileges.
-Capabilities are cached for the daemon epoch: restart after changing desktop/session prerequisites.
-`TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false` forces in-app fallback for scratch/testing; tests
-set only that flag globally, not idle detection. No OS send or sound was invoked for acceptance.
+## Remaining review / certification limits
 
-Shared exported controller now journals defaults/initialization/settings/actions without changing
-legacy payloads. Focus drafts retain their initial revision and survive polling/selection;
-Use current saved focus settings is explicit reset after a stale edit. Selected identity is a
-best-effort session display preference, independent of the mutation journal. Focus UI uses server
-remaining only, default/override editors, next-period explanation, generation-checked break actions,
-passive durable cards and explicit browser-permission gesture. Browser fallback is open-page only;
-permission default/denied means in-app. Native acceptance/unknown never fans out a browser alert.
-One selected notification channel owns optional sound; OS/browser settings may silence it.
-Legacy Pomodoro target maps to the same independent focus period, not credited-work countdown.
-
-Actual red/green: missing native adapter module -> fake transport green; missing exported JS module
--> selected identity/generation/draft green; stale editor test exposed silently rebased revision5
-instead of captured4 -> minimal draft-revision retention green. Fake delivery/root-lifespan/process
-fault and migration group passed32; actual root startup and in-flight cancellation are tested.
-Complete candidate Node run:887 passed,0 failures/skips,in3.50s. First full Python candidate:
-1143 passed/1 failed (357.26s); the sole failure was the existing page-include assertion still
-expecting the old `?v=idle5` asset tag. Updated it to require exactly one new-version shared
-controller and focus include on all thirteen pages/aliases; focused page proof passes.
-
-Final clock proof exposed a real red before due: a live UTC rollback rewound remaining time
-50s instead of29s. The evaluator now compares suspend-aware monotonic/UTC deltas and reanchors
-only the independent focus clock when the prior identity/generation/recording-state token still
-matches; immutable creation and work intervals remain untouched. Automatic boundary proof also
-requires the prior timer revision, so an intervening Note/Pause/Stop wins rather than an old
-sample forcing an autonomous pause. Focus/root-lifespan/page group:22 passed after the first fix;
-final full-source suites follow below. No-op steady ticks still write no receipt/file.
-
-
-Actual isolated Orca browser with synthetic profile/fake-clock daemon18463: both policies,
-Take break/break wait/Resume, independent taskless timers, dirty note and focus editor retention,
-correction-independent focus/warning anchors, once warnings for paused/running identities, saved
-defaults and selected identity across reload, native-unavailable/denied fallback, lost ACK and hung
-display (one POST each, read-only recovery) passed. At390px viewport focus panel302px/right346px,
-flex-wrap enabled; two real screenshots inspected (current card and settings), no no-frame failure.
-This is bounded rendering evidence, not broad visual/accessibility or native OS visibility certification.
-Tracked probe: `tests/browser_timer_focus_63.js`; navigation assertions were split around reload.
-
-
-2026-11-23: isolated external HOME/TMPDIR/DB; `uv run python -P -m pytest tests/test_timer_focus.py -q`.
-Red: 1 failed, GET `/timer-focus/defaults` returned 404. Green after minimal defaults slice: 1 passed
-in 0.17s. This single slice is not acceptance of the full ticket.
+Coordinator owns fresh integration merger, independent Standards/Spec review/repair and publication/
+closure. No independent review or delivery/deployment is claimed here. Real Linux desktop visible
+notifications, Windows/macOS native support, OS permission UI/sound/DND/device behavior, broad pixel/
+accessibility certification and personal-daemon deployment are unrun/unsupported as stated above,
+not fictitiously passed. Synthetic processes/transport prove durable attempts, not human visibility.
+No personal database/key/provider, actual OS alert/sound, paid calls, port8002 or broad cleanup was
+used. Only exact owned scratch daemons were terminated; no other tree/process was touched.
