@@ -533,6 +533,9 @@ class TaskService:
         return ClearScheduledSessionsResponse(deleted_count=len(deleted_ids), deleted_session_ids=deleted_ids)
 
     def _detach_task_history(self, task_ids: set[str], *, allow_plan_detachment: bool = True) -> None:
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, task_ids=task_ids)
         SessionService(self.db).detach_plans_for_deleted_tasks(task_ids, allow=allow_plan_detachment)
         for row in self.db.exec(select(SessionModel).where(SessionModel.task_id.in_(task_ids))):
             row.task_id = None
@@ -563,6 +566,7 @@ class TaskService:
 
     def stage_task_deletion(self, root_ids: list[str], scope: set[str], *, allow_plan_detachment: bool = True) -> int:
         """Stage history-preserving deletion; durability/commit belongs to the timer receipt funnel."""
+        lock_sqlite_writer(self.db)
         self._detach_task_history(scope, allow_plan_detachment=allow_plan_detachment)
         count = 0
         for task_id in root_ids:

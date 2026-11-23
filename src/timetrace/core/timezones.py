@@ -95,6 +95,21 @@ def from_local_naive(local_naive: datetime, tz: ZoneInfo) -> datetime:
     return local_naive.replace(tzinfo=tz).astimezone(UTC).replace(tzinfo=None)
 
 
+def validate_local_instant(utc_text: str, local_text: str, zone_name: str, offset_seconds: int) -> str:
+    """Strict explicit correction input: no unknown-zone fallback or DST guessing."""
+    zone = ZoneInfo(zone_name)
+    local = datetime.fromisoformat(local_text)
+    instant = datetime.fromisoformat(utc_text)
+    if "T" not in local_text or local.tzinfo is not None or instant.tzinfo is None:
+        raise ValueError("Provide explicit local date/time and aware UTC instant")
+    actual = instant.astimezone(zone)
+    if actual.replace(tzinfo=None) != local or actual.utcoffset().total_seconds() != offset_seconds:
+        raise ValueError("Local time/offset/UTC disagree or local time does not exist")
+    if instant.utcoffset().total_seconds() != 0:
+        raise ValueError("UTC instant must use zero offset")
+    return instant.astimezone(UTC).isoformat()
+
+
 def _reset_caches() -> None:
     """Test hook: drop the memoized daemon timezone so a changed `TZ` is picked up."""
     global _daemon_tz_name_cache, _daemon_tz_cache

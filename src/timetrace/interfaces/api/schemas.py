@@ -257,6 +257,8 @@ class AgendaLegacyRead(LegacySessionRead):
 
 
 class AgendaRecordedWorkRead(AgendaLegacyRead):
+    correction_lineage: dict | None = Field(default=None, exclude_if=lambda value: value is None)
+
     kind: Literal["recorded_work"] = "recorded_work"
     provenance: Literal["manual", "timer"]
     scheduled_session_id: str | None

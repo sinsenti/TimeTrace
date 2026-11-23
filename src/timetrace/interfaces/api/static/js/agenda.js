@@ -136,6 +136,18 @@ const agendaPage = (() => {
             if (row.kind !== 'scheduled_session') {
                 const metadata = make('p', `${interval(row.start_time,row.end_time)} · ${row.provenance || 'Uncertain legacy provenance'} · ${row.notes || 'No work note'}`);
                 parents.get(row.id).append(metadata);
+                if (row.correction_lineage) {
+                    const original=row.correction_lineage.rating_source_work_id;
+                    const label=make('p',original===row.id ? 'Corrected original: ratings remain on this identity.' : `Part of corrected original ${original}; not an independently entered score.`);
+                    const ratings=make('a','View original rating inputs (read only)');
+                    ratings.href=`/rating-entries?target_type=session&target_id=${encodeURIComponent(original)}`; ratings.target='_blank'; ratings.rel='noopener';
+                    label.append(ratings); parents.get(row.id).append(label);
+                }
+                if (row.kind === 'recorded_work') {
+                    const adjust=make('button','Adjust saved actual time'); adjust.type='button';
+                    adjust.addEventListener('click',()=>window.openTimeCorrection({row}));
+                    parents.get(row.id).append(adjust);
+                }
                 const again = make('button', 'Start again'); again.type = 'button';
                 again.disabled = Boolean(row.task_id && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(row.task_id)));
                 again.dataset.workspaceStart = 'true'; again.dataset.metadataAvailable = String(!again.disabled);
@@ -299,6 +311,7 @@ const agendaPage = (() => {
                     status.textContent = state.message;
                     if (state.saved.revision !== row.revision) captured.row = state.saved;
                 }});
+                captured.invalidateWorkNote = reason => editor.invalidate(reason);
                 input.addEventListener('input',()=> { captured.noteDirty = input.value !== (editor.state().saved.notes || ''); save.disabled = editor.state().pending || editor.state().blocked || !captured.noteDirty; });
                 save.addEventListener('click',()=>editor.save(input.value)); retry.addEventListener('click',editor.retry);
                 root.append(label,save,retry,status);
@@ -564,6 +577,9 @@ const agendaPage = (() => {
 
     window.addEventListener('timetrace:timer-mutated', event => {
         const result = event.detail;
+        if (result?.correction?.changed_work_ids?.includes(owner?.row?.id)) {
+            owner.invalidateWorkNote?.(`Actual time changed. Your typing is retained, but this note snapshot is stale. Reopen the interval from refreshed history before writing. Affected start days (${result.correction.timezone || 'historical receipt context'}): ${result.correction.affected_local_dates.join(', ')}.`);
+        }
         if (result?.captured_plan_id && owner?.row?.id === result.requested_scheduled_session_id) {
             owner.row = {...owner.row, id:result.captured_plan_id, is_virtual:false, revision:result.plan_revision};
             details(owner.row); controls();
@@ -578,6 +594,7 @@ const agendaPage = (() => {
     void refresh();
     for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,
+        correctionConflicts: ids => Boolean(owner && ids.includes(owner.row?.id) && (owner.noteDirty || owner.notePending || owner.pending || (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline)))),
         hasDraft: () => Boolean(owner && (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline) || owner.pending || owner.extensionPending || owner.removalPending || owner.noteDirty || owner.notePending))
     };
 })();

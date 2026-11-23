@@ -133,9 +133,14 @@ def create_daemon_app() -> FastAPI:
         logger.error(f"Validation Failure Details: {validation_summary}")
         logger.error("=" * 60)
 
+        errors = exc.errors()
+        if request.url.path.endswith(("/correction", "/correction-preview", "/correction-initialize")):
+            # JSON permits some parsers to produce Infinity/NaN. Do not echo raw
+            # untrusted correction input or exception context into strict JSON.
+            errors = [{key: error[key] for key in ("type", "loc", "msg")} for error in errors]
         return JSONResponse(
             status_code=422,
-            content={"detail": jsonable_encoder(exc.errors())},
+            content={"detail": jsonable_encoder(errors)},
         )
 
     app.include_router(web_router)

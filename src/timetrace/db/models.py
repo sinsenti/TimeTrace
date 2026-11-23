@@ -44,6 +44,21 @@ class MutationOperation(SQLModel, table=True):
     file_finalized: bool = False
 
 
+class WorkCorrection(SQLModel, table=True):
+    """Append-only identity/geometry history, deliberately independent of live-row FKs."""
+
+    __tablename__ = "work_correction"
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    operation_id: str = Field(index=True)
+    source_identity: str = Field(index=True)
+    source_work_id: str | None = Field(default=None, index=True)
+    source_revision: int
+    before_json: str
+    results_json: str
+    cutoff: str
+    action: str
+
+
 class TaskStatus(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     name: str = Field(unique=True, index=True)

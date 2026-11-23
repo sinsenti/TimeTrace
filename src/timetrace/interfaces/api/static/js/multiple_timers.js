@@ -2,7 +2,7 @@
 function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID()}) {
     const key = 'timetrace_timer_v2_operation';
     let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '', lastResult = null;
-    let informationNotice = '', readGeneration = 0, selectedTimerId = null, selectionGeneration = 0;
+    let informationNotice = '', readGeneration = 0, selectedTimerId = null, selectionGeneration = 0, writeGeneration = 0;
     try {
         receipt = JSON.parse(storage.getItem(key) || 'null');
         const legacy = JSON.parse(storage.getItem('timetrace_timer_receipt') || 'null');
@@ -38,8 +38,9 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             fresh = false; message = 'Timer status unavailable. Last-known timers retained; retry status.'; publish(); return null;
         }
     }
-    async function write(url, payload, retry = false, onAcknowledged = null) {
-        if (pending || (receipt && !retry)) return false;
+    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true) {
+        if (pending || (receipt && receipt.outcome !== 'acknowledged' && !retry)) return false;
+        const ownership = ++writeGeneration;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
         pending = true; publish();
         let acknowledged = false;
@@ -47,7 +48,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
-                receipt = {url, payload: {...payload, operation_id: operationId()}, outcome:'uncertain'};
+                receipt = {url, payload: JSON.parse(JSON.stringify({...payload, operation_id: operationId()})), outcome:'uncertain'};
                 try { storage.setItem(key, JSON.stringify(receipt)); }
                 catch (_) { receipt = {outcome:'storage'}; message = 'Safety storage unavailable; no write sent.'; return false; }
             }
@@ -58,8 +59,11 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 // A definite rejection plus serialized operation-not-found proves THIS request
                 // has no intent/receipt. A lost response alone never permits clearing its journal.
                 if ([400,404,409,422].includes(error.status) && error.code !== 'reconciliation_required' && error.code !== 'operation_payload_mismatch') {
+                    pending = false; publish(); // A status GET must not own the writer phase.
                     try { await api.get(`/operations/${encodeURIComponent(receipt.payload.operation_id)}`); }
                     catch (lookup) {
+                        if (ownership !== writeGeneration) return false;
+                        if (receipt?.outcome === 'acknowledged') return true;
                         if (lookup.status === 404) {
                             storage.removeItem(key); receipt = null;
                             informationNotice = error.message || 'Timer action refused. Refresh and choose again.';
@@ -68,12 +72,14 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                         }
                     }
                 }
+                if (ownership !== writeGeneration) return false;
+                if (receipt?.outcome === 'acknowledged') return true;
                 message = 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
             }
             if (result?.operation_id !== receipt.payload.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
             receipt.outcome = 'acknowledged';
             lastResult = result;
-            if (result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) selectedTimerId = result.timer.id;
+            if (selectResult && !receipt.url.endsWith('/correction') && result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) selectedTimerId = result.timer.id;
             try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* The original fixed request remains retry-safe. */ }
             if (result.timer) timers = [...timers.filter(t => t.id !== result.timer.id), result.timer].filter(t => t.state !== 'stopped');
             message = (result.information || []).map(i => i.code === 'association_not_changed'
@@ -86,25 +92,30 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (onAcknowledged) onAcknowledged(result);
             publish();
             if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:result}));
-            await refresh();
+            void refresh();
             return true;
-        } finally { if (!acknowledged) pending = false; publish(); }
+        } finally { if (!acknowledged && ownership === writeGeneration) pending = false; publish(); }
     }
     async function recover() {
         if (!receipt?.payload?.operation_id || pending) return;
+        if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
+        const recovering = receipt;
         try {
-            const result = await api.get(`/operations/${encodeURIComponent(receipt.payload.operation_id)}`);
+            const result = await api.get(`/operations/${encodeURIComponent(recovering.payload.operation_id)}`);
+            if (receipt !== recovering || pending) return;
+            if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
             if (result.status === 'finalized') {
                 lastResult = result.result;
-                if (lastResult?.timer && lastResult.timer.state !== 'stopped' && selectionGeneration === 0) selectedTimerId = lastResult.timer.id;
+                if (lastResult?.correction) { informationNotice = 'Saved correction acknowledged from authoritative operation status; subsequent recovery retries are reads only.'; message = informationNotice; }
+                if (!recovering.url.endsWith('/correction') && lastResult?.timer && lastResult.timer.state !== 'stopped' && selectionGeneration === 0) selectedTimerId = lastResult.timer.id;
                 receipt.outcome = 'acknowledged';
                 try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* Retain the original journal, as for a direct ACK. */ }
                 if (lastResult?.timer) timers = [...timers.filter(t => t.id !== lastResult.timer.id), lastResult.timer].filter(t => t.state !== 'stopped');
                 fresh = false; publish();
                 if (typeof window !== 'undefined' && lastResult) window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:lastResult}));
-                await refresh();
+                void refresh();
             } else { message = 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
-        } catch (_) { message = 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
+        } catch (_) { if (receipt !== recovering || pending) return; message = 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
     }
     async function review(choices) {
         const acknowledged = [];
@@ -122,6 +133,16 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             selectionGeneration++; selectedTimerId = id; publish(); return true;
         },
         retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
+        initializeCorrections: () => write('/timers/correction-initialize', {}),
+        previewCorrection: (resource, request) => {
+            if (pending || (receipt && receipt.outcome !== 'acknowledged')) return Promise.reject(Error('Finish timer recovery before previewing corrections.'));
+            if (!/^\/(timers|recorded-work)\/[^/]+$/.test(resource)) return Promise.reject(Error('Choose an explicit correction resource.'));
+            return api.post(`${resource}/correction-preview`, request);
+        },
+        commitCorrection: (resource, preview) => {
+            if (!/^\/(timers|recorded-work)\/[^/]+$/.test(resource) || preview?.resource !== resource) return Promise.reject(Error('Correction resource does not match approval.'));
+            return write(`${resource}/correction`, {preview}, false, null, false);
+        },
         start: payload => write('/timers', payload),
         act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
@@ -142,6 +163,10 @@ function createTimerStartFocus({interaction, guarded, focus}) {
     };
 }
 
+function timerWorkspaceClock(timer, fresh) {
+    if (!Number.isFinite(timer.elapsed_seconds)) return `Credited total awaiting authoritative read · ${timer.state}`;
+    return `${Math.floor(timer.elapsed_seconds / 60)}:${String(Math.floor(timer.elapsed_seconds) % 60).padStart(2,'0')} ${fresh ? 'live' : 'last known'} · ${timer.state}`;
+}
 function renderTimerWorkspaceCard(root, state, control) {
     const create = (tag, text) => {
         const node = root.ownerDocument.createElement(tag); node.textContent = text; return node;
@@ -149,15 +174,14 @@ function renderTimerWorkspaceCard(root, state, control) {
     const timer = state.timers.find(timer => timer.id === state.selectedTimerId);
     const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
     if (root.dataset.workspaceSignature === signature && timer) {
-        root.querySelector('.workspace-clock').textContent = `${Math.floor((timer.elapsed_seconds || 0) / 60)}:${String(Math.floor(timer.elapsed_seconds || 0) % 60).padStart(2, '0')} live · ${timer.state}`;
+        root.querySelector('.workspace-clock').firstChild.textContent = timerWorkspaceClock(timer, state.fresh);
         return;
     }
     root.dataset.workspaceSignature = signature;
     root.replaceChildren();
     if (!timer) { root.append(create('p', 'Choose an activity or start unassigned recording.')); return; }
-    const title = create('h2', timer.task_title || 'Unassigned recording');
-    const seconds = Math.floor(timer.elapsed_seconds || 0);
-    const clock = create('p', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} live · ${timer.state}`);
+    const title = create('h2', timer.task_title || (timer.task_id ? `Task ${timer.task_id.slice(-8)} · title awaiting read` : 'Unassigned recording'));
+    const clock = create('p', timerWorkspaceClock(timer, state.fresh));
     clock.className = 'workspace-clock';
     clock.dataset.timerCorrectionClock = ''; // #61 owns circular step controls beside this clock.
     const row = create('div', ''); row.className = 'workspace-actions';
@@ -166,7 +190,23 @@ function renderTimerWorkspaceCard(root, state, control) {
         edit.addEventListener('click', () => control.editTask(timer.task_id)); row.append(edit);
     }
     row.dataset.timerCorrectionActions = ''; // #61 owns reviewed Adjust time wiring.
-    const blocked = state.pending || Boolean(state.receipt) || !state.fresh || timer.state === 'frozen';
+    const ackOwnsTimer = state.receipt?.outcome === 'acknowledged' && state.lastResult?.timer?.id === timer.id && state.lastResult.timer.revision === timer.revision;
+    const blocked = state.pending || Boolean(state.receipt && state.receipt.outcome !== 'acknowledged') || (!state.fresh && !ackOwnsTimer) || timer.state === 'frozen' || (timer.idle_gaps || []).some(g=>!g.decision);
+    if (control?.correctTime) {
+        const target = timer.state === 'running' ? {start_time:timer.running_start} : (timer.segments || []).find(s=>s.id === timer.manual_pause_note_segment_id && !s.recorded_work_id);
+        for (const [symbol,delta] of [['−',-300],['+',300]]) {
+            const step=create('button',symbol); step.type='button'; step.className='correction-step';
+            step.title=`${delta > 0 ? 'Add' : 'Remove'} five credited minutes by moving the start of ${target?.start_time || 'an explicitly selected actual interval'} ${delta > 0 ? 'earlier' : 'later'}; preview before applying.`;
+            step.setAttribute('aria-label',step.title);
+            step.disabled=blocked || !target?.start_time;
+            step.addEventListener('click',()=>control.correctTime(timer,{kind:'step_start',credited_delta_seconds:delta})); clock.append(step);
+        }
+        const adjust=create('button','Adjust time'); adjust.type='button'; adjust.disabled=blocked;
+        adjust.addEventListener('click',()=>control.correctTime(timer)); row.append(adjust);
+        if (timer.state === 'frozen' || (timer.idle_gaps || []).some(g=>!g.decision)) {
+            const review=create('a','Review idle time'); review.href='#multiple_timers'; row.append(review);
+        }
+    }
     for (const [label, action] of [[timer.state === 'running' ? 'Pause' : 'Resume', timer.state === 'running' ? 'pause' : 'resume'], ['Stop & record', 'stop']]) {
         const button = create('button', label); button.type = 'button'; button.disabled = blocked;
         button.addEventListener('click', () => control.act(timer.id, action, {expected_revision:timer.revision}));
@@ -319,7 +359,7 @@ if (typeof window !== 'undefined') {
         const control = createTimerController({api, storage:sessionStorage, onState:render});
         window.multipleTimers = control;
         if (currentCard) noteView = createCurrentNoteView(document.getElementById('workspace-current-note'),control);
-        control.hasNoteDraft = () => Boolean(noteView?.hasDraft());
+        control.hasNoteDraft = id => Boolean(noteView?.hasDraft(id));
         const act = control.act;
         control.act = (id, action, ...args) => {
             if (action === 'stop' && noteView?.hasDraft(id)) {
@@ -328,6 +368,7 @@ if (typeof window !== 'undefined') {
             }
             return act(id,action,...args);
         };
+        if (typeof window.openTimeCorrection === 'function') control.correctTime = (timer,change) => window.openTimeCorrection({timer,change});
         control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };
         ready();
         control.perform = async (operation, payload, stillCurrent = () => true) => {

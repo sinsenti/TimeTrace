@@ -55,7 +55,28 @@ class PlanRemovalService:
             )
             .order_by(AIDraftItem.id)
         ).all()
+        from timetrace.db.models import WorkCorrection
+
+        lineage = self.db.exec(
+            select(WorkCorrection)
+            .where(
+                or_(
+                    WorkCorrection.source_work_id.in_(ids),
+                    *[WorkCorrection.results_json.contains(identity) for identity in ids],
+                    *[
+                        WorkCorrection.results_json.contains(row.timer_segment_id)
+                        for row in work
+                        if row.timer_segment_id
+                    ],
+                )
+            )
+            .order_by(WorkCorrection.id)
+        ).all()
         return {
+            "lineage": [
+                {"id": e.id, "source_work_id": e.source_work_id, "fingerprint": _fingerprint(e.model_dump(mode="json"))}
+                for e in lineage
+            ],
             "plan": plan.model_dump(mode="json"),
             "work": [row.model_dump(mode="json") for row in work],
             "ratings": [row.model_dump(mode="json") for row in ratings],
@@ -118,6 +139,9 @@ class PlanRemovalService:
                 result = json.loads(receipt.result_json)
                 self.db.rollback()
                 return result
+            from timetrace.services.correction_guards import check_correction_guard
+
+            check_correction_guard(self.db, plan_ids=[plan_id])
             manifest = self._manifest(plan_id)
             if _fingerprint(manifest) != request.consent_token:
                 raise ConflictError(

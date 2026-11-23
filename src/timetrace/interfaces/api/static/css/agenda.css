@@ -39,6 +39,17 @@
 .workspace-actions { display: flex; flex-wrap: wrap; gap: 12px; }
 .workspace-actions button { padding: 8px 14px; border: 1px solid var(--border-color); border-radius: 8px; }
 .workspace-actions button:disabled { opacity: .5; }
+.workspace-clock .correction-step { box-sizing: border-box; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); border-radius: 50%; width: 2rem; height: 2rem; margin-left: .5rem; font-size: 1.1rem; vertical-align: middle; background: transparent; color: inherit; }
+.correction-step:disabled { opacity: .4; }
+#timer-correction-dialog { box-sizing: border-box; width: min(900px, 94vw); max-height: 90vh; overflow: auto; overflow-wrap: anywhere; background: var(--bg-card, white); color: var(--text-main, black); border: 1px solid var(--border-color); border-radius: 12px; padding: 1rem; }
+#timer-correction-dialog :is(button,input,select) { color: inherit; background: var(--bg-card, white); border: 1px solid var(--border-color); border-radius: 5px; }
+#timer-correction-dialog :focus-visible { outline: 2px solid var(--focus-color, currentColor); outline-offset: 2px; }
+#timer-correction-dialog::backdrop { background: #0006; }
+#timer-correction-dialog fieldset label { display: block; overflow-wrap: anywhere; margin-block: .5rem; }
+.correction-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr)); gap: .75rem; }
+.correction-fields label { display: flex; flex-direction: column; }
+.correction-fields input, .correction-fields select { min-width: 0; padding: .5rem; }
+.correction-preview { white-space: pre-wrap; overflow-wrap: anywhere; font-size: .85rem; }
 #workspace-current-note label { display: block; margin-top: 18px; }
 #workspace-current-note textarea { display: block; width: 100%; min-height: 5rem; padding: 10px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-card); }
 #workspace-current-note button, #agenda-pins button, #agenda-activities button { margin: 6px 8px 6px 0; padding: 6px 10px; border: 1px solid var(--border-color); border-radius: 6px; }

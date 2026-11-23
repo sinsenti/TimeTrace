@@ -9,7 +9,14 @@ from sqlmodel import Session, func, select
 
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id, parse_occurrence_id
-from timetrace.db.models import MutationOperation, RecurrenceException, ScheduledSession, Task, generate_uuid7
+from timetrace.db.models import (
+    MutationOperation,
+    RecurrenceException,
+    ScheduledSession,
+    Task,
+    WorkCorrection,
+    generate_uuid7,
+)
 from timetrace.db.models import Session as SessionModel
 from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import (
@@ -133,6 +140,9 @@ class SessionService:
                     )
                 if plan.revision != req.expected_plan_revision:
                     raise self._stale_plan()
+            from timetrace.services.correction_guards import check_correction_guard
+
+            check_correction_guard(self.db, plan_ids=[plan.id])
             plan.revision += 1
             self.db.add(plan)
         elif req.expected_plan_revision is not None or req.expected_projection_revision is not None:
@@ -181,9 +191,73 @@ class SessionService:
         )
         return result
 
+    def correction_lineage(self, work_id):
+        row = self.db.get(SessionModel, work_id)
+        identities = set()
+        if row and row.provenance == "timer" and row.timer_id and row.timer_segment_id:
+            identities.add((row.timer_id, row.timer_segment_id))
+        elif row is None:
+            # A deleted row still has an exact immutable receipt mapping. Never
+            # infer segment ownership from task, timestamps or array position.
+            receipts = self.db.exec(
+                select(MutationOperation).where(MutationOperation.after_state_json.contains(work_id))
+            ).all()
+            for receipt in receipts:
+                try:
+                    state = json.loads(receipt.after_state_json)
+                    for timer in state.get("timers", {}).values():
+                        for segment in timer.get("segments", []):
+                            if segment.get("recorded_work_id") == work_id:
+                                identities.add((timer["id"], segment["id"]))
+                except (ValueError, TypeError, KeyError, AttributeError) as exc:
+                    raise ConflictError(
+                        "Historical receipt mapping requires recovery.", code="reconciliation_required"
+                    ) from exc
+        conditions = [WorkCorrection.source_work_id == work_id, WorkCorrection.results_json.contains(work_id)]
+        for timer_id, segment_id in identities:
+            conditions.extend(
+                [
+                    WorkCorrection.source_identity == f"/timers/{timer_id}/segments/{segment_id}",
+                    WorkCorrection.results_json.contains(segment_id),
+                ]
+            )
+        events = self.db.exec(select(WorkCorrection).where(or_(*conditions)).order_by(WorkCorrection.id)).all()
+        if not events:
+            return None
+        root = work_id
+        for event in events:
+            for item in json.loads(event.results_json):
+                if item.get("work_id") == work_id:
+                    root = item.get("rating_source_work_id", root)
+        return {
+            "original_work_id": root,
+            "rating_source_work_id": root,
+            "operation_ids": [e.operation_id for e in events],
+        }
+
+    def stage_work_corrections(self, changes):
+        """Apply fixed full-row CAS predicates/fragments; receipt owner commits history atomically."""
+        lock_sqlite_writer(self.db)
+        for change in changes:
+            row = self.db.get(SessionModel, change["before"]["id"])
+            if row is None or row.model_dump(mode="json") != change["before"]:
+                raise ConflictError("Pending correction work changed.", code="reconciliation_required")
+            for index, values in enumerate(change["rows"]):
+                restored = SessionModel.model_validate(values)
+                if index == 0:
+                    for field in SessionModel.model_fields:
+                        setattr(row, field, getattr(restored, field))
+                    self.db.add(row)
+                else:
+                    self.db.add(restored)
+        self.db.flush()
+
     def update_recorded_work_note(self, work_id: str, notes: str, expected_revision: int) -> AgendaRecordedWorkRead:
         """Edit only the work description; retain timestamps, association and review identity."""
         lock_sqlite_writer(self.db)
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, work_ids=[work_id])
         row = self.db.get(SessionModel, work_id)
         if row is None or row.kind != "recorded_work":
             raise EntityNotFoundError("Recorded work not found.")
@@ -331,6 +405,10 @@ class SessionService:
     def _update_plan_interval(
         self, plan_id: str, revision: int, start: datetime, end: datetime, *, commit: bool = True
     ) -> ScheduledSessionRead:
+        from timetrace.services.correction_guards import check_correction_guard
+
+        lock_sqlite_writer(self.db)
+        check_correction_guard(self.db, plan_ids=[plan_id])
         # Compare-and-set in one statement: two concurrent editors cannot both overwrite revision N.
         plan = self.db.scalars(
             update(ScheduledSession)
@@ -529,10 +607,11 @@ class SessionService:
                     return agenda._read_agenda_session(row, exception)
             raise EntityNotFoundError("Occurrence", occurrence_id)
 
-    @classmethod
-    def _read_agenda_session(cls, row: SessionModel, exception: RecurrenceException | None = None) -> AgendaLegacyRead:
+    def _read_agenda_session(self, row: SessionModel, exception: RecurrenceException | None = None) -> AgendaLegacyRead:
         read_type = AgendaRecordedWorkRead if row.kind == "recorded_work" else AgendaLegacyRead
-        update = cls._utc_session_times(row)
+        update = self._utc_session_times(row)
+        if row.kind == "recorded_work":
+            update["correction_lineage"] = self.correction_lineage(row.id)
         if exception and row.kind == "legacy_uncertain":
             return read_type.model_validate(row).model_copy(
                 update={
@@ -1012,6 +1091,9 @@ class SessionService:
 
     def detach_plans_for_deleted_tasks(self, task_ids: set[str], *, allow: bool = True) -> None:
         """Stage detachment in the caller's already locked task-delete transaction."""
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, task_ids=task_ids)
         plans = select(ScheduledSession.id).where(ScheduledSession.task_id.in_(task_ids))
         if not allow:
             if self.db.exec(plans.limit(1)).first() is not None:

@@ -7,7 +7,7 @@ function createWorkNoteEditor({api,row,refresh,onState = () => {}}) {
         catch { message = 'Note saved or unconfirmed; display refresh failed. Retry reads only.'; }
         publish();
     }
-    return {state,retry,async save(notes) {
+    return {state,retry,invalidate(reason) { blocked=true;message=reason;publish(); },async save(notes) {
         if (pending || blocked) return false;
         pending = true; publish();
         try {

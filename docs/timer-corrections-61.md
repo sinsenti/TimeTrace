@@ -1,0 +1,286 @@
+# Timer corrections #61 — implementation checkpoints
+
+Authority: [#61 finalized contract](https://github.com/sinsenti/TimeTrace/issues/61#issuecomment-7101764274).
+This checkpoint is **not delivery of #61**; the finalized contract remains required.
+Existing #60 evidence in `timer-workspace-60.md` is unchanged.
+
+Latest checkpoint: signed steps, dated starts and exact exclusions support initialized running,
+uncommitted-buffered and explicit saved-work targets. Earlier blanket preview refusals below
+are historical checkpoint evidence, not the current saved-work capability. Earlier
+checkpoint sections retain their historical evidence; this is still not full #61 delivery.
+
+## Non-writing preview preparation gate
+
+`POST /timers/{timer_id}/correction-preview` now has a dedicated strict schema and precedes
+the legacy generic mutation route. This first checkpoint accepts only the contract's single
+target shapes (`running`, `buffered`, `saved`) with `step_start` of exactly +300 or -300
+integer elapsed seconds. Extra fields, coercions and other actions are rejected (422).
+Explicit-date and exclusion request schemas are not implemented yet.
+
+The endpoint **never issues a successful preview**. It inspects JSON without acquiring the
+writing store lock, calling legacy `read`, reconciling receipts, upgrading files, allocating
+identities, creating a backup/key, or persisting rows. Missing state, legacy v1 and old v2
+return 409 `correction_initialization_required`, explicitly explaining that corrections are
+not yet available in this build. After explicit initialization it returns `correction_not_enabled`.
+An outstanding file intent or unfinalized DB receipt returns
+409 `reconciliation_required` and directs recovery of the existing operation first. Corrupt
+JSON/unknown formats fail closed. No automatic retry is performed.
+The existing timer controls, mutation schemas/hashes and legacy store consumers are unchanged;
+correction UI remains unavailable. The gate does not establish target existence/ownership or
+validate a proposed interval, and its refusal must not be interpreted as an approved correction.
+
+Public regressions in `tests/test_timer_correction_preview.py` exercise the real daemon root
+HTTP route with synthetic persisted state. They compare all table rows and file bytes/identities/
+modification times and directory entries before/after preview. The first regression failed
+before implementation with 422 from the legacy mutation adapter rather than the required 409.
+Subsequent coverage includes v1, old v2 missing running identity, pending old intent, unfinalized
+receipt, absent parent directory, strict input rejection and all three single-target shapes.
+
+## Explicit initialization and additive lifecycle checkpoint
+
+`POST /timers/correction-initialize` accepts only a strict bounded string `operation_id`.
+It runs inside the existing serialized mutation funnel: reconcile old fixed intent first,
+check canonical operation hash/receipt, build an additive after-state, persist intent, commit
+receipt, install file and finalize. Duplicate exact operations return their original result;
+reusing a key for another canonical action conflicts. Old request schemas and hash calculation
+are unchanged. No pending old after-state is normalized before replay.
+
+Open work has `running_segment_id`; close reuses it as the closed segment ID. Start allocates
+an unbounded uninterrupted identity, Resume allocates an identity bounded at actual resume,
+and a running context split allocates one bounded at its split cutoff. Idle claims carry their
+own onset-bound evidence. Closing copies `running_evidence` to segment `correction_evidence`.
+Both evidence forms use `{version: 1, lower_bound: UTC instant or null, provenance,
+forbidden_ranges: []}`. Provenance is `uninterrupted`, `resume`, `context_split`, `idle_claim`
+or `legacy_unknown`. Forbidden exclusion ranges will be added by the later correction module;
+the initialization checkpoint refused unknown/nonempty evidence rather than extrapolating it.
+The exclusion checkpoint now validates and retains explicitly recorded forbidden UTC ranges.
+
+Initialization classifies old shapes conservatively: only a validated plain open timer without
+segments, idle gaps or opaque legacy payload receives an unbounded floor. Old closed work and
+open timers with history/opaque recovery evidence receive their existing start as a conservative
+`legacy_unknown` floor; this does not assert a real pause at that instant. Legacy v1 conversion
+retains opaque payload and therefore cannot grant earlier extension. Existing closed IDs,
+snapshots, associations and manual-pause note targets remain intact. New unknown/corrupt evidence
+refuses initialization. A future correction trim must retain this evidence, not infer a new bound.
+
+A separate `correction-signing.key` beside the configured DB is created only during explicit
+initialization, using random 32-byte material, owner-only permissions and a fully fsynced temporary
+file linked without replacing an existing key. Directory fsync follows. This happens before timer
+intent persistence: a crash can leave only a key, reused on retry, not acknowledged initialization.
+There is no cross-file atomicity claim. Existing invalid/symlink/insecure keys refuse rather than
+being replaced; secrets are absent from intents, receipts and responses. Repeated initialization
+and recovery preserve key bytes and segment IDs. Post-initialization preview remains nonwriting
+and returns `correction_not_enabled`; missing/corrupt key requires recovery and is never recreated
+by preview. Windows-specific key creation/permission behavior is not verified by this checkpoint.
+
+Public regressions include initial 405-before/200-after initialization, duplicate and conflicting
+operation IDs, old v1/v2, old fixed start-intent recovery before additive initialization, stable
+pause/resume/stop identities and note targets, corrupt key/evidence and a real subprocess killed
+at file replacement after initialization's DB commit. Two fresh process restarts then recover
+through root HTTP with identical IDs/receipt results/key material. Focused suites passed 66 tests;
+full delivery suites, other crash points and actual interval correction remain unrun.
+
+## Signed five-minute start-step checkpoint
+
+Initialized timers now support read-only signed preview and strict
+`POST /timers/{id}/correction` commit for an explicit running segment or an explicit uncommitted
+buffer. Saved targets refuse as unsupported; dated starts/exclusions are not implemented.
+`+300` credits five elapsed minutes by moving actual start earlier; `-300` moves it later.
+Pure core validation enforces positive work and conservative context floors/forbidden ranges.
+Uninterrupted original start is not a false floor. Identity-preserving paused edits never
+resume and retain the existing manual-pause note target. Snapshots, plans and unrelated timers
+are not rewritten. These actual-work timestamps must not be treated as immutable focus-clock
+origins by later features.
+
+Version-1 strict envelopes authenticate resource, action, normalized request, cutoff, target
+revision, dependency digest, exact before/after UTC intervals, duration and warnings with
+HMAC-SHA256. Commit verifies in constant time, refreshes DB reads and reconstructs full approved
+content under the existing locks/writer reservation before fixing intent. Dependency digests
+include the selected timer/context and relevant tasks, plan/work/rating/recurrence/draft
+manifests; unrelated timer/global generation and live elapsed seconds are not dependencies.
+No client after-state is accepted. Target note/state/context changes, task detachment and
+rating edits without timer revision invalidate approval. Exact accepted operation retries
+return the original receipt before reconsidering stale signature/dependencies; different
+payload reuse conflicts.
+
+Running preview displays a pinned cutoff but commit changes only actual start; work continues
+after the pinned cutoff until the normal lifecycle closes it. Accepted after-state/receipt
+recovery never repeats arithmetic. Public root HTTP tests prove running/paused +/-300, bounds,
+short/zero work refusal, explicit ownership, immutable previews, semantic/route/signature
+forgery, stale dependencies, unrelated activity, note-pointer preservation and exact retry.
+A subprocess dies before file replacement after correction DB commit, then two processes
+recover the fixed correction and idempotent Stop with one exact saved interval. Other crash
+points/full concurrency remain delivery checks, not passing claims for this checkpoint.
+
+## Dated-start and exact-exclusion checkpoint
+
+Dated starts use `{kind: 'set_start', start_utc, timezone, local_datetime, offset_seconds}`.
+The IANA zone must exist; explicit naive local date/time and chosen offset must roundtrip from
+aware zero-offset UTC. Nonexistent DST times refuse; both fall-back folds are selectable only
+with their correct explicit offsets. There is no same-day restriction. Version-2 signed dated
+envelopes include local dates/offsets on both sides, absolute durations and rebucketing consequence.
+Running and paused identity-preserving trims keep state and eligible note pointer; real context
+floors and forbidden coverage remain immutable through trim/restore.
+
+Exclusions use `{kind: 'exclude', start_utc, end_utc, timezone, start_local_datetime,
+end_local_datetime, start_offset_seconds, end_offset_seconds}`. Target may be one explicit
+running/buffered target, or `{kind: 'selection', targets: [...]}` for up to 64 explicitly chosen
+running/buffered targets. Duplicate targets refuse; selection order is normalized. Saved targets
+remain unsupported. Every selected interval must intersect positively and retain positive work;
+zero/reversed/future/touching/no-op and complete removal refuse atomically. End exactly at signed
+cutoff is allowed. No subtraction spills into an unselected interval.
+
+Version-2 exclusion approval authenticates every retained fragment's source/allocated identity,
+UTC endpoints and running status, exact removed coverage, already-uncredited gap duration,
+unselected-covered duration and positive-work warnings. Allocation during preview is nonpersistent;
+commit authenticates and reconstructs with those server-signed allocations, rejects collisions,
+then fixes server-owned after-state through existing receipts. A real pause gap is labeled as
+already uncredited, not treated as removed work; unselected covered work is disclosed separately.
+
+11:00–11:30 minus 11:10–11:15 retains 11:00–11:10 and 11:15–11:30. Earliest retained work keeps
+original ID. Running middle split closes left and continues right with a new stable ID; paused
+stays paused. For tail exclusion ending at running cutoff, the positive left is closed and a new
+open continuation starts at cutoff with zero previewed work, never persisted as a zero row.
+All snapshots are preserved; forbidden coverage is appended to each affected fragment and survives
+reinitialization so later step/date edits cannot resurrect the break. Pointer clearing is scoped
+to splitting its own eligible interval; splitting an older interval preserves untouched pointer.
+
+Version-1 step wire dumps/hashes gain no defaults. A genuine accepted request/hash/result fixture
+from `7a3a37e` is replayed unchanged through two fresh processes, without its historical signing key.
+Version-2 date/exclusion envelopes coexist explicitly rather than changing v1 receipt meaning.
+Public tests also cover overnight/DST, exact edge/middle/multi-target gaps, invalid atomic selection,
+pointer scope, forged allocations/ranges/cutoffs, stale/unrelated state and post-DB/pre-file process
+crash followed by fixed fragment IDs and idempotent exact Stop rows across two restarts.
+
+Focused related suites passed 123 tests before final gap-disclosure hardening; final correction/
+initialization/gate suites passed 89 tests after it, followed by 35 interval-specific tests
+including final presentation-schema hardening and mixed buffer/running selection. Other durability/concurrency, SQL lineage,
+UI/browser and full-delivery suites remain unrun. The immutable focus/warning clock origins of
+neighboring features are not edited or implemented here.
+
+## Saved-work backend checkpoint
+
+Dedicated strict `/recorded-work/{id}/correction-preview` and `/correction` routes support one
+explicit saved target/revision; timer routes also support owned committed members and mixed
+saved/buffer/running exclusion selections. They use the same serialized operation/intent/
+receipt funnel, not generic legacy updates or a second writer. A transient interval view
+adapts saved rows to the existing planner; it is never persisted as a fabricated timer.
+Version-3 authenticated envelopes bind the real resource, explicit saved request, unchanged
+v1/v2 interval plan, fresh saved dependency digest, current timer state and consequence warnings.
+Targets normalize before manifest construction, including reversed multi-saved selections.
+
+`SavedCorrectionService` reads/plans; `SessionService.stage_work_corrections` applies fixed full-row
+CAS under SQLite writer reservation without committing; `MultipleTimerService` stages audits,
+receipt and fixed file after-state and owns commit/finalization. Original ID/revision/timer tuple
+stay on earliest positive retained work; new fragments get fixed fresh identities. Notes, tags,
+timezone, review flags, provenance and external metadata copy as data; ratings are never cloned,
+and task/day reviews stay at their original identities/dates. Plans are neither recaptured nor
+resized/revision-incremented by coverage correction. File summaries for saved IDs refresh from DB
+truth and carry the retained geometry, so later Stop only saves remaining uncommitted buffers.
+
+Head `0018_work_corrections` adds append-only `work_correction` history/indexes with no live-row
+foreign keys. This private history is not added to the SQL-widget allowlist; both column and
+COUNT(*) reads remain denied. SQLite triggers prohibit audit update/delete; downgrade refuses audit or receipt
+history, including receipt-only pending recovery. Startup requires the actual new migration asset
+before opening a DB. Audit source identity is explicitly saved-work ID or timer/segment identity;
+non-DB buffers have null source_work_id, never invented saved IDs. Results retain exact identities,
+geometry and boundary evidence. Once saved, optional `correction_lineage` links the original rating
+source and correction operations; absent lineage is omitted on old reads. Existing receipts provide
+exact segment/work mappings even after valid deletion, without guessing ownership by time/task.
+
+Typed pre-receipt timer rows with an entirely absent owner tuple remain eligible with conservative
+unknown start floor; new fragments keep timer_id null rather than fabricate an owner, while their
+correction operation/segment pair is fresh. Partial corrupt tuples and legacy/recurrence-owned work
+refuse. Repeated corrections preserve forbidden coverage and rating-source identity.
+
+Pre-intent snapshots cover full target rows, task/plan/work context, rating definitions/entries
+(including original linked ratings), relevant review flags/content, drafts and lineage. Accepted
+intent guards freeze only replay-critical work/task/plan dependencies. Note, task-history detachment,
+plan update/removal and association-capable staging check compact guards while holding SQLite writer
+reservation, without taking an advisory lock. Series-revision invalidation checks its actual affected
+plan IDs, not every recurrence edit on the task: unrelated task/series metadata remains legal when
+no replay-critical plan would be written. Future assignment writers must use this same guard
+seam rather than bypass it or broaden legacy mutation eligibility. Independent rating/definition,
+draft and subjective-review edits remain legal after acceptance; replay never revalidates or
+rewrites those rows. A committed receipt also permits later saved-note edits while file finalization
+is pending; recovery skips DB staging and later Stop cannot restore stale notes or excluded time.
+
+Same-task overlap is disclosed in authenticated warnings without redefining sum/union measures.
+Positive subsecond work/exclusions no longer produce uncommittable zero approvals; finite numeric
+validation rejects Infinity/NaN with structured 422 errors on correction routes. Established integer
+stored duration semantics and every previously valid v1 integer display/hash remain unchanged.
+Old v2 integer exclusion displays retain authenticated reconstruction compatibility; exact UTC
+geometry is authoritative. No defaults are injected into prior request/envelope dumps.
+
+Pre-integration focused saved/migration/recovery tests passed 40 tests. Two additional genuine
+`9e0e7d2` v2 exclusion fixture cases (finalized and file-unfinalized receipt) pass exact retry,
+original hash/result preservation and precise fractional geometry through two restarts and Stop;
+no historical signing key is stored in the fixture. They include both pre-DB
+and post-DB/pre-file process failures, consistent copied DB/timer/key state, competing actual DB
+connections under an externally held advisory lock, independent rating/definition/draft/review
+writes, two restarts, saved and buffered deletion-surviving lineage, and linked-timer post-DB note
+repair followed by Stop. Fresh full-chain and copied synthetic head-0017 upgrades (old pending
+intent with/without receipt) preserve all original table data, reviews/ratings/dismissals, drafts,
+recurrence, stored widgets and query semantics; integrity/FK and repeated full lifespan checks pass.
+Post-integration regression evidence is recorded in the milestone handback, not full-ticket delivery.
+
+### Post-integration checkpoint verification
+
+Merged `timer-workspace-integration` at `06d2353` into `3d14d74`, retaining #65's shared
+summed-work/query/export implementation. The sole merge conflict was in `docs/development.md`;
+both feature descriptions were preserved.
+
+- **473 passed**, 4,435 warnings, across 26 explicitly selected backend test files after the merge
+  (472.92 seconds); evidence: `/tmp/timetrace-61-saved-postmerge-backend.log`.
+- The public export interoperability regression observes both corrected fragment IDs, exactly
+  1,500 summed recorded seconds rather than the original 1,800, and no DB/file mutation by preview.
+- **13 passed** in focused export/timer-control/workspace/card Node tests; the three merged #65 JS
+  files also pass `node --check`. Evidence: `/tmp/timetrace-61-saved-node.log`.
+- Scoped Ruff/format and whitespace checks pass. This is not a full Python/Node run, browser proof,
+  complete crash/fsync matrix, or final independent review. #61 correction controls remain unavailable.
+
+## Final implementation: ready for independent review
+
+The working branch now includes strict controller initialization/preview/commit transport, exact
+journal recovery, B-style clock controls and an explicit dated/offset/interval picker, saved-history
+entrypoints, original-rating links, and ACK-only existing-data refresh integration. Correction
+results add exact `work_fragments` source-to-retained-ID mappings so known #65 export selections
+can invalidate old bytes and remap only selected sources without duplicating SUM logic. Old receipts
+without this additive result field remain unchanged and require explicit fragment reselection.
+New results label affected start days with the daemon's actual read-cohort timezone while preserving
+the stored descriptive timezone on every work row.
+
+Public red/green checks cover strict payloads, hung display reads, newer mutation ownership,
+selection retention, B controls, export identity mapping, saved-note invalidation and stale status
+replies after recovered ACK. Real isolated Orca DOM/module assertions now cover running/paused,
+saved/mixed exclusions, DST, overnight/day rebucketing, independent note/task drafts, exact retry,
+lost ACK/reload, hung display with a valid new Stop, frozen review, existing Calendar ACK/refetch,
+and actual UTF-8 #65 corrected-fragment download. Desktop/narrow geometry passes; screenshot attempts
+both failed with the headless no-frame capture timeout, so no pixel certification is claimed.
+The full Node run passed **878 tests**. New backend evidence includes **121** fault/process cases,
+**3** genuine checkpoint-v3 receipt cases and strengthened separate-process association guards.
+The final full Python run passed **1,112 tests**, with 4,877 warnings, in 290.54 seconds;
+`/tmp/timetrace-61-final-python.log` records the result. The first full run was interrupted by the
+Orca restart near 54% and is retained separately, not counted as passing. Full Node evidence is
+`/tmp/timetrace-61-final-node.log`. Full Ruff comparison against archived `bed2237` verified exactly
+**17 unchanged inherited findings** in three untouched files; no unrelated lint was swept.
+Changed JS syntax, scoped Python Ruff/format and whitespace checks pass.
+
+The real browser assertions are reproducible in `tests/browser_timer_corrections_61.js` against an
+explicitly isolated non-8002 synthetic daemon/profile. They test real module/DOM boundaries and
+actual HTTP responses, including transport faults, rather than counting Node/source checks as
+browser proof. Desktop 1280×900 and narrow 390×844 checks observe 32px circular controls and one/two
+action rows respectively. Both screenshot attempts failed with `Page.captureScreenshot`: the
+headless page did not draw a frame. DOM/layout assertions are passing; pixel/visual certification
+is explicitly unavailable. Actual UTF-8 CSV download bytes match the accepted corrected-fragment
+report. The existing Calendar renders DB identities/geometry and refetches its actual source on ACK.
+After the full suite, both upgraded copied-old-DB phases also passed a normal-startup exact-ID
+#65 export read with preserved session rows, shared SUM, integrity and FKs;
+`/tmp/timetrace-61-migrated-export.log` records these two additional checks.
+
+### Review/publication gate
+
+Implementation and combined automated/DOM acceptance are ready for the coordinator's fresh merger
+and independent Standards/Spec reviews. **This is not independent review, publication, delivery or
+issue closure.** No push or merge into integration/dev was performed, and #62/#63/#64 remain outside
+this work. Raster screenshot certification and other-platform/manual OS behavior are not claimed.
