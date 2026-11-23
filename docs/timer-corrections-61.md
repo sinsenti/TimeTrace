@@ -239,7 +239,22 @@ both feature descriptions were preserved.
 - Scoped Ruff/format and whitespace checks pass. This is not a full Python/Node run, browser proof,
   complete crash/fsync matrix, or final independent review. #61 correction controls remain unavailable.
 
-## Next milestone
+## Final implementation phase (in progress)
+
+The working branch now includes strict controller initialization/preview/commit transport, exact
+journal recovery, B-style clock controls and an explicit dated/offset/interval picker, saved-history
+entrypoints, original-rating links, and ACK-only existing-data refresh integration. Correction
+results add exact `work_fragments` source-to-retained-ID mappings so known #65 export selections
+can invalidate old bytes and remap only selected sources without duplicating SUM logic. Old receipts
+without this additive result field remain unchanged and require explicit fragment reselection.
+
+Public red/green checks cover strict payloads, hung display reads, newer mutation ownership,
+selection retention, B controls, export identity mapping and saved-note invalidation. Initial real
+isolated Orca browser checks observed explicit initialization, positive-work refusal and one signed
+running correction ACK. These are development evidence only: full combined suites, remaining real
+browser/durability cases and final review are still pending; **this is not completed #61 delivery**.
+
+### Remaining final acceptance
 
 Complete controller/B-style UI wiring, authoritative read invalidation, full durability/concurrency/
 fsync verification and independent final #61 review. Do not

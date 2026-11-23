@@ -386,6 +386,10 @@ class SavedCorrectionService:
         result = {
             "changed_work_ids": changed,
             "created_work_ids": created,
+            "work_fragments": [
+                {"source_work_id": change["before"]["id"], "work_ids": [row["id"] for row in change["rows"]]}
+                for change in staged
+            ],
             "buffer_before": buffer_before,
             "buffer_after": buffer_after,
             "buffer_timezone": daemon_tzinfo().key,

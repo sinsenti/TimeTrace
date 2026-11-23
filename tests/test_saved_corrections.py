@@ -42,6 +42,7 @@ def test_manual_saved_split_preserves_original_identity(client, clock):
     assert result.status_code == 200, result.text
     ids = result.json()["correction"]["changed_work_ids"] + result.json()["correction"]["created_work_ids"]
     assert ids[0] == row["id"]
+    assert result.json()["correction"]["work_fragments"] == [{"source_work_id": row["id"], "work_ids": ids}]
     rows = [client.get("/recorded-work/" + identity).json() for identity in ids]
     assert [(r["start_time"][11:19], r["end_time"][11:19]) for r in rows] == [
         ("11:00:00", "11:10:00"),

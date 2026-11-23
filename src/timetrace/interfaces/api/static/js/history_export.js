@@ -12,6 +12,18 @@ function createHistoryExportController(api) {
         select(id, checked) { invalidate(); checked ? selected.add(id) : selected.delete(id); },
         selectGroup(rows, checked) { invalidate(); for (const row of rows) checked ? selected.add(row.id) : selected.delete(row.id); },
         invalidate,
+        corrected(correction) {
+            invalidate(); error='';
+            const changed=correction.changed_work_ids || [];
+            const maps=correction.work_fragments || [];
+            for(const id of changed) {
+                if(!selected.has(id))continue;
+                const mapping=maps.find(item=>item.source_work_id===id);
+                selected.delete(id);
+                if(mapping?.work_ids?.length)for(const retained of mapping.work_ids)selected.add(retained);
+                else error='Older correction receipt has no exact source mapping. Reload eligible rows and explicitly select the retained fragments; affected old selection was removed, not guessed.';
+            }
+        },
         close() { invalidate(); },
         state() { return {envelope, pending, error, selected: [...selected]}; },
         async copy(format) {
@@ -125,7 +137,11 @@ if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded
     format.addEventListener('change',paint);
     dialog.addEventListener('close', () => { controller.close(); paint(); launch.focus(); });
     for (const id of ['agenda-date','agenda-search','agenda-filter-tag','agenda-filter-note']) document.getElementById(id).addEventListener('input',configure);
-    for (const event of ['timetrace:timer-mutated','timetrace:history-mutated']) window.addEventListener(event, () => {
-        controller.invalidate(); paint(); status.textContent = 'Work changed; regenerate explicitly.';
+    for (const event of ['timetrace:timer-mutated','timetrace:history-mutated']) window.addEventListener(event, change => {
+        if(change.detail?.correction) {
+            controller.corrected(change.detail.correction);
+            eligible=[]; list.textContent='';
+        } else controller.invalidate();
+        paint(); status.textContent = controller.state().error || 'Work changed; regenerate explicitly from retained selected IDs. Start-day dates may have changed; review the date cohort before previewing.';
     });
 });
