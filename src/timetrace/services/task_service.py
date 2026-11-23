@@ -3,7 +3,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from typing import Any
 
 import sqlalchemy as sa
-from sqlmodel import Session, select
+from sqlmodel import Session, select, text
 
 from timetrace.core.exceptions import EntityNotFoundError, ValidationError
 from timetrace.core.inline_parser import parse_inline_task
@@ -363,6 +363,20 @@ class TaskService:
         db_task = self.db.get(Task, task_id)
         if not db_task:
             raise EntityNotFoundError("Task", task_id)
+
+        if update_dict.get("parent_id"):
+            parent_id = update_dict["parent_id"]
+            if self.db.get(Task, parent_id) is None:
+                raise EntityNotFoundError("Task", parent_id)
+            cyclic = self.db.exec(
+                text("""WITH RECURSIVE subtree(id) AS (
+                SELECT id FROM task WHERE id=:root
+                UNION SELECT t.id FROM task t JOIN subtree s ON t.parent_id=s.id
+                ) SELECT id FROM subtree WHERE id=:parent LIMIT 1"""),
+                params={"root": task_id, "parent": parent_id},
+            ).first()
+            if cyclic:
+                raise ValidationError("A task cannot be parented to itself or one of its descendants")
 
         old_status_name = db_task.status
         old_spec = recurrence.spec_for_task(db_task) if touches_recurrence else None

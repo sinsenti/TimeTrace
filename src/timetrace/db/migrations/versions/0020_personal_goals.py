@@ -11,6 +11,16 @@ depends_on = None
 
 def upgrade():
     op.create_table(
+        "goal_reporting_context",
+        sa.Column("id", sa.String(), primary_key=True),
+        sa.Column("revision", sa.Integer(), nullable=False, unique=True),
+        sa.Column("timezone", sa.String(), nullable=False),
+        sa.Column("first_day_of_week", sa.Integer(), nullable=False),
+        sa.Column("effective_at", sa.String(), nullable=False),
+        sa.Column("effective_day_start", sa.String(), nullable=False),
+        sa.Column("effective_week_start", sa.String(), nullable=False),
+    )
+    op.create_table(
         "goal_definition",
         sa.Column("id", sa.String(), primary_key=True),
         sa.Column("owner_key", sa.String(), nullable=False),
@@ -24,6 +34,7 @@ def upgrade():
         sa.Column("goal_id", sa.String(), nullable=False),
         sa.Column("revision", sa.Integer(), nullable=False),
         sa.Column("effective_period_start", sa.String(), nullable=False),
+        sa.Column("context_revision", sa.Integer(), nullable=False),
         sa.Column("target_seconds", sa.Float(), nullable=False),
         sa.Column("enabled", sa.Boolean(), nullable=False),
         sa.Column("include_descendants", sa.Boolean(), nullable=False),
@@ -45,3 +56,4 @@ def downgrade():
     op.drop_index("ix_goal_settings_version_goal_id", table_name="goal_settings_version")
     op.drop_table("goal_settings_version")
     op.drop_table("goal_definition")
+    op.drop_table("goal_reporting_context")

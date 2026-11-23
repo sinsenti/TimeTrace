@@ -15,6 +15,13 @@ Evidence reuses the structured `summed_recorded_work` compiler. An internal type
 execution path permits all-time totals without widening public widget date-range capabilities.
 Recursive descendant membership uses bound SQL and UNION identity deduplication/cycle defense.
 
+Context epochs are persisted append-only settings series. Explicit `PUT /goal-reporting-context`
+starts a current/future epoch and CAS-increments affected goal definitions; prior complete periods
+retain prior timezone/week start. Closed epoch periods cannot be extended into current/future time.
+Epoch totals are incomparable and never merged. SQLite cannot reliably rebucket a captured timezone
+that differs from the daemon: goal progress is explicitly unavailable, with retained context/warnings,
+rather than a falsely precise fallback total. A single snapshot/cutoff covers weekly goal/query evidence.
+
 ## Acceptance matrix
 
 | Contract | Current evidence |
@@ -23,9 +30,9 @@ Recursive descendant membership uses bound SQL and UNION identity deduplication/
 | Absent until configured; global day/week and task day coexist | Public HTTP tests |
 | Exact settings retry, changed payload conflict, stale edit, disable/re-enable | Public HTTP test |
 | Total includes work older than 400 days; optional inclusive start | Public HTTP tests |
-| Nested descendant scopes and global independence | Public HTTP test |
+| Nested descendant scopes and global independence | Public HTTP test; normal task updates now refuse self/descendant cycles using a bound recursive SQL cohort |
 | Historical target and current-hierarchy reparent attribution | Public HTTP test |
-| Effective reporting context epochs and complete settings validation | Pending |
+| Effective reporting context epochs and settings validation | Public HTTP context CAS/retry, frozen prior scope/week bounds, stale settings revision, daemon-zone capability/unavailable progress, finite positive targets and precise microsecond evidence passed; context editor integration pending |
 | Full legacy/live/plan/lineage, DST and week-start coverage | Pending |
 | Task deletion/history integrity and concurrency restart coverage | Pending |
 | Weekly A/C and compact workspace/task UI | Initial public HTTP/Node slices; real DOM A→C and explicit goal save exercised, remaining matrix pending |

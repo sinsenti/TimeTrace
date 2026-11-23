@@ -41,6 +41,19 @@ class GoalDefinition(SQLModel, table=True):
     revision: int = 1
 
 
+class GoalReportingContext(SQLModel, table=True):
+    """Append-only single-device reporting epochs; historical periods keep their context."""
+
+    __tablename__ = "goal_reporting_context"
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    revision: int = Field(unique=True)
+    timezone: str
+    first_day_of_week: int
+    effective_at: str
+    effective_day_start: str
+    effective_week_start: str
+
+
 class GoalSettingsVersion(SQLModel, table=True):
     """Append-only effective settings; reads never persist progress counters."""
 
@@ -49,6 +62,7 @@ class GoalSettingsVersion(SQLModel, table=True):
     goal_id: str = Field(index=True)
     revision: int
     effective_period_start: str
+    context_revision: int = 1
     target_seconds: float
     enabled: bool = True
     include_descendants: bool = False

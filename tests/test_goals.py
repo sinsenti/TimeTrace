@@ -308,6 +308,195 @@ def test_weekly_overview_uses_whole_start_day_sum_and_separate_unions(client):
     assert client.get("/weekly-review?week_start=2000-01-10").json()["summed_recorded_work"]["total"] == 0
 
 
+def test_weekly_goal_and_query_evidence_share_one_measurement_cutoff(client):
+    task = client.post("/api/tasks", json={"title": "Coherent task"}).json()["id"]
+    for owner, cadence in [("global", "week"), ("task", "total")]:
+        request = {"operation_id": str(uuid4()), "owner_kind": owner, "cadence": cadence, "target_seconds": 3600}
+        if owner == "task":
+            request["task_id"] = task
+        assert client.post("/goals", json=request).status_code == 201
+    response = client.get("/weekly-review").json()
+    cutoff = datetime.fromisoformat(response["measurement_at"]).replace(tzinfo=UTC)
+    assert datetime.fromisoformat(response["daily"]["meta"]["measurement_at"]) == cutoff
+    assert response["goals"]
+    for goal in response["goals"]:
+        assert datetime.fromisoformat(goal["context"]["measurement_at"]).replace(tzinfo=UTC) == cutoff
+
+
+def test_total_settings_apply_immediately_even_while_browsing_an_old_week(client):
+    task = client.post("/api/tasks", json={"title": "Immediate total"}).json()["id"]
+    goal = client.post(
+        "/goals",
+        json={
+            "operation_id": str(uuid4()),
+            "owner_kind": "task",
+            "task_id": task,
+            "cadence": "total",
+            "target_seconds": 3600,
+        },
+    ).json()
+    changed = client.put(
+        "/goals/" + goal["id"],
+        json={"operation_id": str(uuid4()), "expected_revision": 1, "target_seconds": 7200, "start_date": "2000-01-05"},
+    )
+    assert changed.status_code == 200, changed.text
+    result = client.get("/goals?period_start=2000-01-03").json()["goals"]
+    assert len(result) == 1
+    assert result[0]["target_seconds"] == 7200
+    assert result[0]["start_date"] == "2000-01-05"
+
+
+def test_reporting_context_is_persisted_without_inventing_targets(client):
+    initial = client.get("/goal-reporting-context")
+    assert initial.status_code == 200, initial.text
+    assert initial.json()["revision"] == 0
+    assert (
+        client.post(
+            "/goals",
+            json={
+                "operation_id": str(uuid4()),
+                "owner_kind": "global",
+                "cadence": "week",
+                "target_seconds": 3600,
+                "first_day_of_week": 0,
+            },
+        ).status_code
+        == 201
+    )
+    context = client.get("/goal-reporting-context").json()
+    assert context["revision"] == 1
+    assert context["first_day_of_week"] == 0
+    goal = client.get("/goals").json()["goals"][0]
+    assert goal["context_revision"] == 1
+
+
+def test_reporting_context_changes_start_a_new_epoch_without_rebucketing_old_weeks(client, monkeypatch):
+    import timetrace.services.goal_service as clock
+
+    class Clock(datetime):
+        current = datetime(2000, 1, 4, 12, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.current.astimezone(tz)
+
+    monkeypatch.setattr(clock, "datetime", Clock)
+    goal = client.post(
+        "/goals",
+        json={
+            "operation_id": str(uuid4()),
+            "owner_kind": "global",
+            "cadence": "week",
+            "target_seconds": 3600,
+            "first_day_of_week": 1,
+        },
+    ).json()
+    Clock.current = datetime(2000, 1, 12, 12, tzinfo=UTC)
+    change = {"operation_id": str(uuid4()), "expected_revision": 1, "first_day_of_week": 0}
+    changed = client.put("/goal-reporting-context", json=change)
+    assert changed.status_code == 200, changed.text
+    assert client.put("/goal-reporting-context", json=change).json() == changed.json()
+    assert client.put("/goal-reporting-context", json={**change, "operation_id": str(uuid4())}).status_code == 409
+    current = client.get("/goals").json()["goals"][0]
+    assert (current["context_revision"], current["revision"], current["period_start"]) == (2, 2, "2000-01-09")
+    prior = client.get("/goals?period_start=2000-01-03&context_revision=1").json()["goals"][0]
+    assert (prior["context_revision"], prior["period_start"], prior["period_end"], prior["target_seconds"]) == (
+        1,
+        "2000-01-03",
+        "2000-01-09",
+        3600,
+    )
+    assert client.get("/goals?period_start=2000-01-03").json()["goals"][0]["context_revision"] == 1
+    assert client.get("/goals?period_start=2000-01-10&context_revision=1").json()["goals"] == []
+    overview = client.get("/weekly-review?week_start=2000-01-12").json()
+    assert overview["context_revision"] == 2
+    assert overview["summed_recorded_work"]["meta"]["first_day_of_week"] == 0
+    assert overview["week_start"] == "2000-01-09"
+    assert (
+        client.put(
+            "/goals/" + goal["id"], json={"operation_id": str(uuid4()), "expected_revision": 1, "target_seconds": 7200}
+        ).status_code
+        == 409
+    )
+
+
+def test_changed_daemon_timezone_does_not_silently_rebucket_frozen_goal_context(client, monkeypatch):
+    import time
+    from timetrace.core import timezones
+
+    try:
+        monkeypatch.setenv("TZ", "UTC")
+        time.tzset()
+        timezones._reset_caches()
+        assert (
+            client.post(
+                "/goals",
+                json={"operation_id": str(uuid4()), "owner_kind": "global", "cadence": "day", "target_seconds": 3600},
+            ).status_code
+            == 201
+        )
+        monkeypatch.setenv("TZ", "America/New_York")
+        time.tzset()
+        timezones._reset_caches()
+        goal = client.get("/goals").json()["goals"][0]
+        assert goal["summed_recorded_work_seconds"] is None
+        assert goal["percentage"] is None
+        assert goal["context"]["requested_timezone"] == "UTC"
+        assert goal["context"]["reliable"] is False
+        assert goal["context"]["warnings"]
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+        timezones._reset_caches()
+
+
+@pytest.mark.parametrize("target", [0, -1, True, "Infinity", "NaN", None])
+def test_invalid_goal_targets_never_create_settings(client, target):
+    response = client.post(
+        "/goals",
+        json={"operation_id": str(uuid4()), "owner_kind": "global", "cadence": "day", "target_seconds": target},
+    )
+    assert response.status_code == 422, response.text
+    assert client.get("/goals").json() == {"goals": []}
+
+
+def test_goal_evidence_keeps_physical_microseconds_instead_of_legacy_integer_duration(client):
+    task = client.post("/api/tasks", json={"title": "Precise physical work"}).json()["id"]
+    saved = client.post(
+        "/recorded-work",
+        json={
+            "task_id": task,
+            "start_time": datetime.now(UTC).date().isoformat() + "T10:00:00.000000Z",
+            "end_time": datetime.now(UTC).date().isoformat() + "T10:00:00.000007Z",
+        },
+    )
+    assert saved.status_code == 201
+    assert (
+        client.post(
+            "/goals",
+            json={
+                "operation_id": str(uuid4()),
+                "owner_kind": "task",
+                "task_id": task,
+                "cadence": "day",
+                "target_seconds": 0.000001,
+            },
+        ).status_code
+        == 201
+    )
+    goal = client.get("/goals").json()["goals"][0]
+    assert goal["summed_recorded_work_seconds"] == 0.000007
+    assert goal["percentage"] == pytest.approx(700)
+
+
+def test_goal_hierarchy_rejects_new_cycles_through_normal_task_writes(client):
+    parent = client.post("/api/tasks", json={"title": "No cycle parent"}).json()["id"]
+    child = client.post("/api/tasks", json={"title": "No cycle child", "parent_id": parent}).json()["id"]
+    response = client.put("/api/tasks/" + parent, json={"parent_id": child})
+    assert response.status_code == 400, response.text
+    assert client.put("/api/tasks/" + parent, json={"parent_id": parent}).status_code == 400
+
+
 def test_goals_are_absent_until_configured(client):
     assert client.get("/goals").json() == {"goals": []}
 
