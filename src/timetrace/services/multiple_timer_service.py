@@ -263,6 +263,10 @@ class MultipleTimerService:
                     if action in ("pause", "stop", "split"):
                         self._close_segment(timer, cutoff)
                         timer["state"] = "paused"
+                    elif action == "idle_preference":
+                        if not isinstance(payload.get("pause_when_idle"), bool):
+                            raise TimerError("Choose whether to pause when idle.")
+                        timer["pause_when_idle"] = payload["pause_when_idle"]
                     elif action == "resolve":
                         self._resolve(timer, payload)
                     elif action == "resume":

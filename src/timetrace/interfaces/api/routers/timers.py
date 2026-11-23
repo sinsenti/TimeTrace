@@ -32,6 +32,7 @@ class TimerMutation(BaseModel):
     new_notes: str = ""
     gap_id: str | None = None
     decision: str | None = None
+    pause_when_idle: bool | None = None
 
 
 @router.post("/timers/{timer_id}/{action}")

@@ -33,7 +33,12 @@ gap resolution, unfinished → stopped after recording. Each buffered segment sn
 association; later metadata/context edits cannot retag past work. Manual pause creates no gap.
 Idle clamps onset to each running segment start and freezes only opted-in timers. Activity polling
 continues while frozen and closes each gap at return, not review. Claim/discard leaves paused;
-open/uncertain gaps cannot be silently claimed. Keep the minimal targeted review controls until #5.
+open/uncertain gaps cannot be silently claimed. Shared navigation contains the #5 review screen:
+all unresolved gaps are grouped by timer, with explicit Leave unresolved / Claim as work /
+Discard absence selections. Apply sends only selected decisions, sequentially through the shared
+operation journal, and reports acknowledged versus unapplied selections. A failed read after an
+ACK retains that acknowledged result and blocks further writes until status recovery. There is
+no batch/global resolution or new receipt protocol.
 
 Under advisory lock, v1 conversion saves a backup and assigns one identity once. Retain all legacy
 fields and complete pending-gap payload. Frozen work before idle is retained as a closed segment,
@@ -97,7 +102,14 @@ uncommitted segment/unresolved-gap associations without acquiring the advisory l
 
 Timer reassociation/retarget preview/commit is **not enabled** by #4; there is no silent context
 change through Start or Split. Later callers must not invent success for that proposed interface.
-The independent minimal Claim/Discard controls are not #5's richer review screen. Legacy `break`
+The shared review screen is available on both Agenda and Calendar (and other shared-navbar pages).
+Each timer also exposes Pause when idle / Keep recording while idle. Changes use targeted
+`POST /timers/{id}/idle_preference` with `pause_when_idle`, operation ID and optional expected
+revision. The preference is persisted in the existing journal/file state; changing it never resolves
+a gap or resumes work, and unresolved gaps must be resolved first. New timers default to pause.
+Claim is a decision for that absence only and does not switch the timer to keep recording.
+Selections are local drafts, not work; reload preserves unresolved server gaps and pending operation
+recovery, not unsubmitted selections. Legacy `break`
 and `re_tag` adapters explicitly refuse unsupported classification instead of guessing. A legacy
 uncertain first-return boundary cannot be claimed even after later activity is observed; retain it
 for explicit review or discard once a return is observed. Known pre-idle segments remain intact.
