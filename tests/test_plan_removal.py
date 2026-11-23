@@ -97,6 +97,30 @@ def test_stale_work_refuses_without_partial_write(client, db):
     assert db.get(ScheduledSession, plan.id)
 
 
+def test_unrelated_timer_and_append_only_audit_survive(client, db, tmp_path):
+    from uuid import uuid4
+    from timetrace.db.models import AIAudit
+
+    plan, work = seed(db)
+    started = client.post("/timers", json={"operation_id": str(uuid4())})
+    assert started.status_code == 200
+    audit = AIAudit(
+        batch_id="historical",
+        entity_id=work[0].id,
+        entity_type="session",
+        transition="applied",
+        after_json='{"historical":true}',
+    )
+    db.add(audit)
+    db.commit()
+    path = tmp_path / "active_timer.json"
+    before = path.read_bytes()
+    assert apply(client, plan, preview(client, plan)).status_code == 200
+    assert before == path.read_bytes()
+    assert db.get(AIAudit, audit.id).entity_id == work[0].id
+    assert not db.connection().exec_driver_sql("PRAGMA foreign_key_check").all()
+
+
 def test_new_association_stales_old_consent(client, db):
     plan, work = seed(db)
     snap = preview(client, plan)
