@@ -553,8 +553,14 @@ class RecurrenceService:
     def occurrence_exists(self, task: Task | None, occurrence_start: datetime) -> bool:
         return self._occurrence_at(task, occurrence_start) is not None
 
-    def projected_occurrence(self, occurrence_id: str, *, planning: bool = False) -> ProjectedOccurrence:
-        """Read one virtual occurrence without materializing it (GET must not write)."""
+    def projected_occurrence(
+        self, occurrence_id: str, *, planning: bool = False, accepted_at: datetime | None = None
+    ) -> ProjectedOccurrence:
+        """Read without materializing; accepted_at is only for replaying durable timer intent.
+
+        Replay checks liveness at acceptance, but still validates the current task graph,
+        exception, coverage and projection token. Ordinary planning reads use the present.
+        """
         task, occurrence_start = self.resolve_occurrence(occurrence_id, planning=planning)
         existing = self.get_exception(task.id, occurrence_start)
         if existing:
@@ -564,7 +570,8 @@ class RecurrenceService:
             raise EntityNotFoundError("Occurrence", occurrence_id)
         end = occurrence.end_utc
         if planning:
-            if end <= _now_naive() or (task.status or "").strip().lower() in self._completed_status_names():
+            cutoff = accepted_at.astimezone(UTC).replace(tzinfo=None) if accepted_at is not None else _now_naive()
+            if end <= cutoff or (task.status or "").strip().lower() in self._completed_status_names():
                 raise EntityNotFoundError("Occurrence", occurrence_id)
             intervals = self._real_session_intervals([task.id], occurrence_start, end)
             if self._occurrence_covered(intervals.get(task.id, ()), occurrence_start, end):

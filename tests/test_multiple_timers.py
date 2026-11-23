@@ -244,6 +244,163 @@ def test_task_delete_detaches_unfinished_timer_and_preserves_recorded_history(cl
         assert client.get(f"/recorded-work/{work_id}").json()["task_id"] is None
 
 
+def test_pending_projection_capture_recovers_at_accepted_cutoff_after_expiry(client, db, tmp_path, monkeypatch):
+    from datetime import UTC, datetime
+
+    from timetrace.services import multiple_timer_service, recurrence_service, session_service
+
+    class Clock(datetime):
+        instant = datetime(2099, 1, 4, 9, 10, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.instant.astimezone(tz) if tz else cls.instant.replace(tzinfo=None)
+
+    monkeypatch.setattr(multiple_timer_service, "datetime", Clock)
+    monkeypatch.setattr(recurrence_service, "datetime", Clock)
+    monkeypatch.setattr(session_service, "datetime", Clock)
+    path = tmp_path / "timers.json"
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(path))
+    task = client.post(
+        "/api/tasks",
+        json={
+            "title": "Capture recovery",
+            "is_recurring": True,
+            "recurrence_rrule": "FREQ=DAILY",
+            "recurrence_dtstart": "2099-01-04T09:00:00Z",
+            "recurrence_duration_minutes": 30,
+            "recurrence_timezone": "UTC",
+        },
+    ).json()
+    projection = client.get("/agenda", params={"start": "2099-01-04T09:00:00Z", "end": "2099-01-04T10:00:00Z"}).json()[
+        "items"
+    ][0]
+    payload = {
+        "operation_id": str(uuid4()),
+        "task_id": task["id"],
+        "scheduled_session_id": projection["id"],
+        "expected_projection_revision": projection["projection_revision"],
+    }
+    fsync = os.fsync
+    calls = 0
+
+    def fail_after_intent(fd):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("crash after intent replacement, before DB transaction")
+        fsync(fd)
+
+    monkeypatch.setattr(os, "fsync", fail_after_intent)
+    response = client.post("/timers", json=payload)
+    assert response.status_code == 409, response.text
+    assert client.get(f"/operations/{payload['operation_id']}").json()["status"] == "pending_reconciliation"
+    # The filesystem seam records allocated identities before the simulated crash.
+    intent = json.loads(path.read_text())["pending_operation"]
+    fixed_plan_id = intent["plan_capture"]["id"]
+    fixed_timer_id = json.loads(intent["result_json"])["timer"]["id"]
+    monkeypatch.setattr(os, "fsync", fsync)
+    Clock.instant = datetime(2099, 1, 4, 10, tzinfo=UTC)
+    multiple_timer_service.MultipleTimerService(db).reconcile()
+    recovered = client.get(f"/operations/{payload['operation_id']}").json()
+    assert recovered["status"] == "finalized"
+    result = recovered["result"]
+    assert result["timer"]["id"] == fixed_timer_id
+    assert result["captured_plan_id"] == fixed_plan_id
+    assert result["timer"]["running_start"] == "2099-01-04T09:10:00+00:00"
+    assert result["timer"]["scheduled_session_id"] == fixed_plan_id
+    saved = client.get(f"/scheduled-sessions/{fixed_plan_id}").json()
+    assert saved["task_id"] == task["id"]
+    assert saved["start_time"] == saved["original_start"] == "2099-01-04T09:00:00Z"
+    assert saved["end_time"] == saved["original_end"] == "2099-01-04T09:30:00Z"
+    assert client.post("/timers", json=payload).json() == result
+    assert client.post("/timers", json={**payload, "notes": "mismatch"}).status_code == 409
+    # An independent NEW capture of this expired occurrence remains forbidden.
+    assert client.get(f"/scheduled-sessions/{projection['id']}").status_code == 404
+    stopped = client.post(f"/timers/{fixed_timer_id}/stop", json={"operation_id": str(uuid4())})
+    assert stopped.status_code == 200, stopped.text
+    work_ids = stopped.json()["recorded_work_ids"]
+    assert len(work_ids) == 1
+    work = client.get(f"/recorded-work/{work_ids[0]}").json()
+    assert work["start_time"] == "2099-01-04T09:10:00Z"
+    assert work["end_time"] == "2099-01-04T10:00:00Z"
+    assert work["scheduled_session_id"] == fixed_plan_id
+
+
+def test_process_crash_projection_capture_restarts_after_expiry(tmp_path):
+    import subprocess
+    import sys
+
+    env = {
+        **os.environ,
+        "TIMETRACE_DB_FILE": str(tmp_path / "crash.db"),
+        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "timers.json"),
+        "HOME": str(tmp_path / "home"),
+        "TMPDIR": str(tmp_path),
+    }
+    clock = """
+from datetime import UTC, datetime
+from timetrace.services import multiple_timer_service, recurrence_service
+class Clock(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        value = datetime(2099,1,4,HOUR,10,tzinfo=UTC)
+        return value.astimezone(tz) if tz else value.replace(tzinfo=None)
+multiple_timer_service.datetime = recurrence_service.datetime = Clock
+"""
+    crash = (
+        clock.replace("HOUR", "9")
+        + """
+import json, os
+from uuid import uuid4
+from sqlmodel import Session
+from fastapi.testclient import TestClient
+from timetrace.db.session import init_db
+from timetrace.main import create_daemon_app
+init_db()
+c = TestClient(create_daemon_app())
+t = c.post('/api/tasks',json={'title':'Crash capture','is_recurring':True,'recurrence_rrule':'FREQ=DAILY',
+    'recurrence_dtstart':'2099-01-04T09:00:00Z','recurrence_duration_minutes':30,'recurrence_timezone':'UTC'}).json()
+p = c.get('/agenda',params={'start':'2099-01-04T09:00:00Z','end':'2099-01-04T10:00:00Z'}).json()['items'][0]
+payload = {'operation_id':str(uuid4()),'task_id':t['id'],'scheduled_session_id':p['id'],
+    'expected_projection_revision':p['projection_revision']}
+print(json.dumps(payload),flush=True)
+def crash_commit(self): os._exit(91)
+Session.commit = crash_commit
+c.post('/timers',json=payload)
+raise AssertionError('crash not reached')
+"""
+    )
+    failed = subprocess.run([sys.executable, "-P", "-c", crash], env=env, capture_output=True, text=True)
+    assert failed.returncode == 91, failed.stderr
+    payload = json.loads(failed.stdout)
+    intent = json.loads((tmp_path / "timers.json").read_text())["pending_operation"]
+    fixed = json.loads(intent["result_json"])
+    recovery = (
+        clock.replace("HOUR", "10")
+        + """
+import json, sys
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+payload = json.loads(sys.argv[1])
+with TestClient(create_daemon_app()) as c:
+    receipt = c.get('/operations/' + payload['operation_id']).json()
+    assert receipt['status'] == 'finalized', receipt
+    result = c.post('/timers',json=payload)
+    assert result.status_code == 200, result.text
+    assert result.json() == receipt['result']
+    plan = c.get('/scheduled-sessions/' + result.json()['captured_plan_id']).json()
+    assert plan['original_start'] == plan['start_time'] == '2099-01-04T09:00:00Z'
+    assert plan['original_end'] == plan['end_time'] == '2099-01-04T09:30:00Z'
+    print(json.dumps(result.json()))
+"""
+    )
+    recovered = subprocess.run(
+        [sys.executable, "-P", "-c", recovery, json.dumps(payload)], env=env, capture_output=True, text=True, check=True
+    )
+    assert json.loads(recovered.stdout) == fixed
+
+
 def test_start_projected_plan_captures_originals_with_stable_timer_association(client, tmp_path, monkeypatch):
     from datetime import UTC, datetime, timedelta
 

@@ -25,7 +25,9 @@ the saved-operation retry action is a status read only (including after reload);
 operation alone retains the explicit same-key, same-payload POST retry. Starting another plan for an unfinished task selects that existing timer rather
 than reassociating/resuming it. Navigation does not replay timer operations. Retargeting is not
 available. Independent extension/removal/idle interfaces remain owned by their respective slices;
-this integration does not add speculative routes or bypass their consent contracts.
+this integration does not add speculative routes or bypass their consent contracts. An extension
+lookup is discarded when its selected owner, date, read generation or draft inputs have changed
+while the GET was pending; neither late success nor failure may replace newer user intent.
 
 Manual recordings share a separate sessionStorage uncertainty journal through `ApiClient` on both
 pages. It is written before POST and cleared after authoritative typed ACK, not after a display

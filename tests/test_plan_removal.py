@@ -57,9 +57,12 @@ def test_preview_cancel_no_write(client, db):
     result = preview(client, plan)
     assert len(result["manifest"]["work"]) == 2
     assert result["manifest"]["work"][1]["end_time"].startswith("2020-01-01T10:10")
-    assert db.get(ScheduledSession, plan.id).revision == 1
-    assert len(db.exec(select(Work)).all()) == 3
-    assert not db.exec(select(MutationOperation)).all()
+    saved = client.get(f"/scheduled-sessions/{plan.id}")
+    assert saved.status_code == 200
+    assert saved.json()["revision"] == 1
+    for row in work:
+        assert client.get(f"/recorded-work/{row.id}").status_code == 200
+    assert client.get("/operations/plan-removal:test-op").status_code == 404
 
 
 def test_delete_whole_exact_and_retry(client, db):
@@ -67,10 +70,15 @@ def test_delete_whole_exact_and_retry(client, db):
     snap = preview(client, plan)
     result = apply(client, plan, snap)
     assert result.status_code == 200, result.text
-    assert db.get(ScheduledSession, plan.id) is None
-    assert db.get(Work, work[0].id) is None
-    assert db.get(Work, work[1].id) is None
-    assert db.get(Work, work[2].id) is not None
+    assert client.get(f"/scheduled-sessions/{plan.id}").status_code == 404
+    assert client.get(f"/recorded-work/{work[0].id}").status_code == 404
+    assert client.get(f"/recorded-work/{work[1].id}").status_code == 404
+    remaining = client.get(f"/recorded-work/{work[2].id}")
+    assert remaining.status_code == 200
+    assert remaining.json()["scheduled_session_id"] is None
+    recovered = client.get("/operations/" + result.json()["operation_id"])
+    assert recovered.status_code == 200
+    assert recovered.json()["result"] == result.json()
     assert apply(client, plan, snap).json() == result.json()
     assert apply(client, plan, snap, "squeeze").status_code == 409
 
@@ -79,11 +87,23 @@ def test_squeeze_preserves_gap_original_and_raw(client, db):
     plan, work = seed(db)
     result = apply(client, plan, preview(client, plan), "squeeze")
     assert result.status_code == 200, result.text
-    db.refresh(plan)
-    assert plan.start_time == datetime(2020, 1, 1, 9, 10)
-    assert plan.end_time == datetime(2020, 1, 1, 10, 10)
-    assert plan.original_start == datetime(2020, 1, 1, 9)
-    assert len(db.exec(select(Work)).all()) == 3
+    response = client.get(f"/scheduled-sessions/{plan.id}")
+    assert response.status_code == 200
+    saved = response.json()
+    assert saved["start_time"] == "2020-01-01T09:10:00Z"
+    assert saved["end_time"] == "2020-01-01T10:10:00Z"
+    assert saved["original_start"] == "2020-01-01T09:00:00Z"
+    assert saved["original_end"] == "2020-01-01T10:00:00Z"
+    for row, start, end, association in [
+        (work[0], "2020-01-01T09:10:00Z", "2020-01-01T09:30:00Z", plan.id),
+        (work[1], "2020-01-01T09:50:00Z", "2020-01-01T10:10:00Z", plan.id),
+        (work[2], "2020-01-01T09:15:00Z", "2020-01-01T09:25:00Z", None),
+    ]:
+        read = client.get(f"/recorded-work/{row.id}")
+        assert read.status_code == 200
+        assert read.json()["start_time"] == start
+        assert read.json()["end_time"] == end
+        assert read.json()["scheduled_session_id"] == association
 
 
 def test_stale_work_refuses_without_partial_write(client, db):

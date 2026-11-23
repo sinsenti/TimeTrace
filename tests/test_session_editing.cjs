@@ -306,6 +306,47 @@ function loadFolio(p) {
     return p.run('agendaPage.refresh()');
 }
 
+for (const intent of ['same-row typing', 'other-row', 'date', 'late failure', 'unchanged']) {
+    test(`Folio extension lookup respects newer intent: ${intent}`, async () => {
+        const held = deferred(), requested = deferred();
+        const plan = {id:'old-plan', kind:'scheduled_session', revision:1,
+            start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',
+            original_start:'2000-01-04T09:00:00Z', original_end:'2000-01-04T10:00:00Z'};
+        const p = sessionPage(async url => {
+            if (url === '/api/tasks?status=all') return [];
+            if (url === '/scheduled-sessions/old-plan') { requested.resolve(); return held.promise; }
+            return {items:[plan, {...plan,id:'new-plan'}]};
+        });
+        await loadFolio(p);
+        const select = id => p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===id).click();
+        select('old-plan');
+        p.context.dispatchEvent = event => p.listeners.get(event.type)?.(event);
+        const lookup = p.context.dispatchEvent({type:'extend-selected-plan', detail:{planId:'old-plan'}});
+        try {
+            await requested.promise;
+            if (intent === 'other-row') select('new-plan');
+            if (intent === 'date') {
+                p.elements.get('agenda-date').value = '2000-01-05';
+                await p.elements.get('agenda-date').change();
+            }
+            if (intent !== 'unchanged') {
+                p.elements.get('agenda-notes').value = 'newer input';
+                p.elements.get('agenda-notes').focus();
+            }
+        } finally {
+            held.resolve(intent === 'late failure' ? new Response(JSON.stringify({detail:'offline'}),{status:503}) : plan);
+            await lookup;
+        }
+        if (intent === 'unchanged') assert.ok(p.elements.get('agenda-extension').children.some(e=>e.textContent==='Preview extension'));
+        else {
+            assert.equal(p.elements.get('agenda-notes').value, 'newer input');
+            assert.equal(p.context.document.activeElement, p.elements.get('agenda-notes'));
+            assert.equal(p.elements.get('agenda-extension').children.length, 0);
+            assert.doesNotMatch(p.elements.get('agenda-edit-status').textContent, /Could not read/);
+        }
+    });
+}
+
 test('Folio explicit extension retains stale attempt and offers read-only review', async () => {
     const plan = {id:'plan-stale', kind:'scheduled_session', revision:1,
         start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',

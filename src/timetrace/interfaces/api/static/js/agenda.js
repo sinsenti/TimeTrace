@@ -272,10 +272,16 @@ const agendaPage = (() => {
     window.addEventListener('extend-selected-plan', async event => {
         const id = event.detail?.planId;
         if (!id || !switchAllowed()) return;
+        const draft = owner, day = activeDate, read = ++generation, input = JSON.stringify(values());
+        const stillCurrent = () => owner === draft && activeDate === day && generation === read &&
+            JSON.stringify(values()) === input && !owner?.pending && !owner?.extensionPending && !owner?.removalPending;
         try {
             const plan = await api.get(`/scheduled-sessions/${encodeURIComponent(id)}`);
+            if (!stillCurrent()) return;
             open(plan, true); showExtension(plan);
-        } catch (err) { get('edit-status').textContent = `Could not read selected timer's plan: ${err.message}`; }
+        } catch (err) {
+            if (stillCurrent()) get('edit-status').textContent = `Could not read selected timer's plan: ${err.message}`;
+        }
     });
 
     const saveUnavailable = () => Boolean(owner?.pending || owner?.extensionPending || owner?.removalPending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||

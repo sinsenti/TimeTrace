@@ -54,7 +54,10 @@ result and complete after-state before any DB work. Atomic temp writes fsync fil
 fsync parent directory; failures propagate, never become warning-only success.
 
 Every mutation, including idle and legacy callers, first reconciles pending intent or unfinalized
-DB receipts. Intent without receipt completes its fixed DB transaction; receipt without installed
+DB receipts. Intent without receipt completes its fixed DB transaction; an accepted virtual-plan
+capture rechecks occurrence liveness at its persisted acceptance cutoff, not restart time. Current
+graph, projection revision, exception, coverage and ownership checks still apply; new captures
+and ordinary planning reads retain their present-time expiry rules. Receipt without installed
 file installs its fixed after-state without reinserting work. DB receipt and staged work commit
 together. File replacement then receipt finalization precede ACK. Different-key writes cannot
 replace a pending intent. Revision mismatch/corruption fails closed `reconciliation_required`.
