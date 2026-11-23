@@ -161,7 +161,8 @@ def test_pending_old_start_is_reconciled_before_additive_initialization(client, 
             "change": {"kind": "step_start", "credited_delta_seconds": 300},
         },
     )
-    assert preview.status_code == 409
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["signature"]
     assert persisted_snapshot(tmp_path, db) == before
 
 

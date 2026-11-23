@@ -99,3 +99,4 @@ def signing_key(path: Path, *, create=False):
         or (os.name != "nt" and path.stat().st_mode & 0o077)
     ):
         raise ConflictError("Correction signing material requires explicit recovery.", code="reconciliation_required")
+    return path.read_bytes()

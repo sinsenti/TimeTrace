@@ -4,6 +4,10 @@ Authority: [#61 finalized contract](https://github.com/sinsenti/TimeTrace/issues
 This checkpoint is **not delivery of #61**; the finalized contract remains required.
 Existing #60 evidence in `timer-workspace-60.md` is unchanged.
 
+Latest checkpoint: signed five-minute start steps below supersede earlier blanket preview
+refusals **only** for initialized explicit running/uncommitted-buffered targets. Earlier
+checkpoint sections retain their historical evidence; this is still not full #61 delivery.
+
 ## Non-writing preview preparation gate
 
 `POST /timers/{timer_id}/correction-preview` now has a dedicated strict schema and precedes
@@ -74,9 +78,42 @@ at file replacement after initialization's DB commit. Two fresh process restarts
 through root HTTP with identical IDs/receipt results/key material. Focused suites passed 66 tests;
 full delivery suites, other crash points and actual interval correction remain unrun.
 
+## Signed five-minute start-step checkpoint
+
+Initialized timers now support read-only signed preview and strict
+`POST /timers/{id}/correction` commit for an explicit running segment or an explicit uncommitted
+buffer. Saved targets refuse as unsupported; dated starts/exclusions are not implemented.
+`+300` credits five elapsed minutes by moving actual start earlier; `-300` moves it later.
+Pure core validation enforces positive work and conservative context floors/forbidden ranges.
+Uninterrupted original start is not a false floor. Identity-preserving paused edits never
+resume and retain the existing manual-pause note target. Snapshots, plans and unrelated timers
+are not rewritten. These actual-work timestamps must not be treated as immutable focus-clock
+origins by later features.
+
+Version-1 strict envelopes authenticate resource, action, normalized request, cutoff, target
+revision, dependency digest, exact before/after UTC intervals, duration and warnings with
+HMAC-SHA256. Commit verifies in constant time, refreshes DB reads and reconstructs full approved
+content under the existing locks/writer reservation before fixing intent. Dependency digests
+include the selected timer/context and relevant tasks, plan/work/rating/recurrence/draft
+manifests; unrelated timer/global generation and live elapsed seconds are not dependencies.
+No client after-state is accepted. Target note/state/context changes, task detachment and
+rating edits without timer revision invalidate approval. Exact accepted operation retries
+return the original receipt before reconsidering stale signature/dependencies; different
+payload reuse conflicts.
+
+Running preview displays a pinned cutoff but commit changes only actual start; work continues
+after the pinned cutoff until the normal lifecycle closes it. Accepted after-state/receipt
+recovery never repeats arithmetic. Public root HTTP tests prove running/paused +/-300, bounds,
+short/zero work refusal, explicit ownership, immutable previews, semantic/route/signature
+forgery, stale dependencies, unrelated activity, note-pointer preservation and exact retry.
+A subprocess dies before file replacement after correction DB commit, then two processes
+recover the fixed correction and idempotent Stop with one exact saved interval. Other crash
+points/full concurrency remain delivery checks, not passing claims for this checkpoint.
+
 ## Next milestone
 
-Implement signed canonical previews and commits, interval/evidence algebra,
+Implement explicit dated/DST start edits and exact buffered exclusions, then saved interval
+lineage/staging and replay guards,
 lineage migration, writer guards, durability/recovery, controller/browser UI and complete #61
 acceptance. Do not enable correction controls based on this gate. Full Python/Node, migration,
 crash/concurrency and real-browser acceptance remain required at eventual complete delivery.

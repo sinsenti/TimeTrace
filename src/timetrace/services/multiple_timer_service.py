@@ -1,6 +1,7 @@
 """Targeted timers: one durable transition funnel for every writer."""
 
 import hashlib
+import hmac
 import json
 import os
 from copy import deepcopy
@@ -10,14 +11,23 @@ from threading import RLock
 from uuid import uuid7
 
 from sqlalchemy.exc import SQLAlchemyError
-from sqlmodel import select
+from sqlmodel import or_, select
 
 from timetrace.config import settings
 from timetrace.core.correction_identity import evidence, initialize_identities, signing_key
+from timetrace.core.correction_step import fingerprint, signature, step_start
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
-from timetrace.db.models import MutationOperation, RecurrenceException, ScheduledSession, Task
+from timetrace.db.models import (
+    AIDraftItem,
+    MutationOperation,
+    RatingDefinition,
+    RatingEntry,
+    RecurrenceException,
+    ScheduledSession,
+    Task,
+)
 from timetrace.db.session import lock_sqlite_writer
 from timetrace.interfaces.api.schemas import RecordedWorkCreate
 from timetrace.services.session_service import SessionService
@@ -51,15 +61,114 @@ class MultipleTimerService:
         if state.get("version") != 2 and "is_running" not in state:
             raise ConflictError("Unknown timer format; preserve it for recovery.", code="reconciliation_required")
         if state.get("correction_initialized"):
-            signing_key(settings.db_file.parent / "correction-signing.key")
-            raise ConflictError(
-                "Signed correction previews are not enabled in this build.", code="correction_not_enabled"
-            )
+            with self.db.no_autoflush:
+                self.db.expire_all()
+                return self._step_preview(state, timer_id, request, datetime.now(UTC).isoformat())
         raise ConflictError(
             "Explicit correction initialization is required. Corrections are not available in this build; "
             "existing timer controls remain available.",
             code="correction_initialization_required",
         )
+
+    def _step_preview(self, state, timer_id, request, cutoff):
+        key = signing_key(settings.db_file.parent / "correction-signing.key")
+        timer = state["timers"].get(timer_id)
+        if timer is None:
+            raise EntityNotFoundError("Timer", timer_id)
+        if timer["state"] in ("stopped", "frozen") or any(g.get("decision") is None for g in timer["idle_gaps"]):
+            raise ConflictError("Resolve idle or select unfinished work first.", code="idle_gap_unresolved")
+        target = request["target"]
+        if target["kind"] == "running":
+            if timer["state"] != "running" or target["segment_id"] != timer.get("running_segment_id"):
+                raise ConflictError("Running target changed.", code="correction_target_stale")
+            start, end, bound = timer["running_start"], cutoff, timer.get("running_evidence")
+        elif target["kind"] == "buffered":
+            segment = next((s for s in timer["segments"] if s["id"] == target["segment_id"]), None)
+            if segment is None or segment.get("recorded_work_id"):
+                raise ConflictError("Select an explicit uncommitted interval.", code="correction_target_stale")
+            start, end, bound = segment["start_time"], segment["end_time"], segment.get("correction_evidence")
+        else:
+            raise ConflictError(
+                "Saved corrections require the later lineage implementation.", code="unsupported_work_kind"
+            )
+        if datetime.fromisoformat(end) > datetime.fromisoformat(cutoff):
+            raise TimerError("Future work cannot be corrected.")
+        proposed, duration = step_start(start, end, request["change"]["credited_delta_seconds"], bound)
+        contexts = [timer, *timer["segments"]]
+        task_ids = sorted({c["task_id"] for c in contexts if c.get("task_id")})
+        plan_ids = sorted({c["scheduled_session_id"] for c in contexts if c.get("scheduled_session_id")})
+        dependencies = {
+            "timer": timer,
+            "tasks": [self.db.get(Task, i).model_dump(mode="json") if self.db.get(Task, i) else None for i in task_ids],
+            "plans": [
+                self.db.get(ScheduledSession, i).model_dump(mode="json") if self.db.get(ScheduledSession, i) else None
+                for i in plan_ids
+            ],
+        }
+        from timetrace.services.plan_removal_service import PlanRemovalService
+
+        ratings = self.db.exec(
+            select(RatingEntry).where(RatingEntry.target_id.in_(task_ids)).order_by(RatingEntry.id)
+        ).all()
+        dependencies["task_ratings"] = [r.model_dump(mode="json") for r in ratings]
+        definition_ids = sorted({r.rating_definition_id for r in ratings})
+        dependencies["rating_definitions"] = [
+            self.db.get(RatingDefinition, i).model_dump(mode="json") if self.db.get(RatingDefinition, i) else None
+            for i in definition_ids
+        ]
+        drafts = self.db.exec(
+            select(AIDraftItem)
+            .where(or_(AIDraftItem.target_id.in_(task_ids), AIDraftItem.applied_entity_id.in_(task_ids)))
+            .order_by(AIDraftItem.id)
+        ).all()
+        dependencies["task_drafts"] = [r.model_dump(mode="json") for r in drafts]
+        dependencies["plan_manifests"] = []
+        for plan_id in plan_ids:
+            manifest = PlanRemovalService(self.db)._manifest(plan_id)
+            # Only the selected timer is approved; other timer activity is not a dependency.
+            manifest.pop("unfinished_timers", None)
+            dependencies["plan_manifests"].append(manifest)
+            for rating in manifest["ratings"]:
+                definition = self.db.get(RatingDefinition, rating["rating_definition_id"])
+                dependencies["rating_definitions"].append(definition.model_dump(mode="json") if definition else None)
+        envelope = {
+            "schema_version": 1,
+            "resource": f"/timers/{timer_id}",
+            "action": "step_start",
+            "request": request,
+            "cutoff": cutoff,
+            "timer_revision": timer["revision"],
+            "dependency_digest": fingerprint(dependencies),
+            "before": {"start_utc": start, "end_utc": end},
+            "after": {"start_utc": proposed, "end_utc": end},
+            "duration_seconds": duration,
+            "warnings": ["Running work continues after this preview cutoff."] if target["kind"] == "running" else [],
+        }
+        envelope["signature"] = signature(envelope, key)
+        return envelope
+
+    def _accept_step(self, after, timer_id, envelope):
+        key = signing_key(settings.db_file.parent / "correction-signing.key")
+        if not hmac.compare_digest(envelope["signature"], signature(envelope, key)):
+            raise ConflictError("Correction approval authentication failed.", code="correction_preview_invalid")
+        if envelope["resource"] != f"/timers/{timer_id}":
+            raise ConflictError("Correction approval belongs to another resource.", code="correction_preview_invalid")
+        self.db.expire_all()
+        try:
+            rebuilt = self._step_preview(after, timer_id, envelope["request"], envelope["cutoff"])
+        except (TimerError, EntityNotFoundError, ConflictError) as exc:
+            raise ConflictError("Correction target changed; preview again.", code="correction_preview_stale") from exc
+        if rebuilt != envelope:
+            raise ConflictError("Correction dependencies changed; preview again.", code="correction_preview_stale")
+        timer = after["timers"][timer_id]
+        target = envelope["request"]["target"]
+        if target["kind"] == "running":
+            timer["running_start"] = envelope["after"]["start_utc"]
+        else:
+            segment = next(s for s in timer["segments"] if s["id"] == target["segment_id"])
+            segment["start_time"] = envelope["after"]["start_utc"]
+        timer["revision"] += 1
+        return timer
 
     def unfinished_for_plan(self, plan_id):
         """Read while holding SQLite's writer lock for a destructive/extension manifest.
@@ -267,6 +376,10 @@ class MultipleTimerService:
                     signing_key(settings.db_file.parent / "correction-signing.key", create=True)
                     after["correction_initialized"] = True
                     timer, selected = None, False
+                elif action == "correction":
+                    if not after.get("correction_initialized"):
+                        raise ConflictError("Initialize corrections first.", code="correction_initialization_required")
+                    timer, selected = self._accept_step(after, timer_id, payload["preview"]), False
                 elif action == "start":
                     timer, selected, plan_capture = self._start(after, payload, cutoff)
                 elif action == "delete_tasks":
@@ -384,6 +497,13 @@ class MultipleTimerService:
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
+                if action == "correction":
+                    result["correction"] = {
+                        "before": payload["preview"]["before"],
+                        "after": payload["preview"]["after"],
+                        "target": payload["preview"]["request"]["target"],
+                        "timer_revision": timer["revision"],
+                    }
                 if action == "correction_initialize":
                     result["correction_initialized"] = True
                 intent = {

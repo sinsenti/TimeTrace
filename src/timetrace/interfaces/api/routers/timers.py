@@ -90,6 +90,39 @@ class CorrectionPreviewRequest(BaseModel):
     change: CorrectionStartStep
 
 
+class CorrectionInterval(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    start_utc: str = Field(min_length=1, max_length=64)
+    end_utc: str = Field(min_length=1, max_length=64)
+
+
+class CorrectionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    schema_version: int = Field(ge=1, le=1)
+    resource: str = Field(min_length=1, max_length=256)
+    action: Literal["step_start"]
+    request: CorrectionPreviewRequest
+    cutoff: str = Field(min_length=1, max_length=64)
+    timer_revision: int = Field(ge=1)
+    dependency_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    before: CorrectionInterval
+    after: CorrectionInterval
+    duration_seconds: int = Field(ge=1)
+    warnings: list[Annotated[str, Field(max_length=512)]] = Field(max_length=16)
+    signature: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class CorrectionCommitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    preview: CorrectionEnvelope
+
+
+@router.post("/timers/{timer_id}/correction")
+def correction_commit(timer_id: str, req: CorrectionCommitRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("correction", timer_id, req.model_dump())
+
+
 # Must precede the legacy two-component mutation route, whose schema/hashes stay unchanged.
 @router.post("/timers/{timer_id}/correction-preview")
 def correction_preview(timer_id: str, req: CorrectionPreviewRequest, db: Session = Depends(get_session)):
