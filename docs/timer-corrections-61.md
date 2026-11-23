@@ -4,8 +4,9 @@ Authority: [#61 finalized contract](https://github.com/sinsenti/TimeTrace/issues
 This checkpoint is **not delivery of #61**; the finalized contract remains required.
 Existing #60 evidence in `timer-workspace-60.md` is unchanged.
 
-Latest checkpoint: signed steps, dated starts and exact exclusions below supersede earlier
-blanket preview refusals **only** for initialized explicit running/uncommitted-buffered targets. Earlier
+Latest checkpoint: signed steps, dated starts and exact exclusions support initialized running,
+uncommitted-buffered and explicit saved-work targets. Earlier blanket preview refusals below
+are historical checkpoint evidence, not the current saved-work capability. Earlier
 checkpoint sections retain their historical evidence; this is still not full #61 delivery.
 
 ## Non-writing preview preparation gate
@@ -157,9 +158,75 @@ including final presentation-schema hardening and mixed buffer/running selection
 UI/browser and full-delivery suites remain unrun. The immutable focus/warning clock origins of
 neighboring features are not edited or implemented here.
 
+## Saved-work backend checkpoint
+
+Dedicated strict `/recorded-work/{id}/correction-preview` and `/correction` routes support one
+explicit saved target/revision; timer routes also support owned committed members and mixed
+saved/buffer/running exclusion selections. They use the same serialized operation/intent/
+receipt funnel, not generic legacy updates or a second writer. A transient interval view
+adapts saved rows to the existing planner; it is never persisted as a fabricated timer.
+Version-3 authenticated envelopes bind the real resource, explicit saved request, unchanged
+v1/v2 interval plan, fresh saved dependency digest, current timer state and consequence warnings.
+Targets normalize before manifest construction, including reversed multi-saved selections.
+
+`SavedCorrectionService` reads/plans; `SessionService.stage_work_corrections` applies fixed full-row
+CAS under SQLite writer reservation without committing; `MultipleTimerService` stages audits,
+receipt and fixed file after-state and owns commit/finalization. Original ID/revision/timer tuple
+stay on earliest positive retained work; new fragments get fixed fresh identities. Notes, tags,
+timezone, review flags, provenance and external metadata copy as data; ratings are never cloned,
+and task/day reviews stay at their original identities/dates. Plans are neither recaptured nor
+resized/revision-incremented by coverage correction. File summaries for saved IDs refresh from DB
+truth and carry the retained geometry, so later Stop only saves remaining uncommitted buffers.
+
+Head `0018_work_corrections` adds append-only `work_correction` history/indexes with no live-row
+foreign keys. This private history is not added to the SQL-widget allowlist; both column and
+COUNT(*) reads remain denied. SQLite triggers prohibit audit update/delete; downgrade refuses audit or receipt
+history, including receipt-only pending recovery. Startup requires the actual new migration asset
+before opening a DB. Audit source identity is explicitly saved-work ID or timer/segment identity;
+non-DB buffers have null source_work_id, never invented saved IDs. Results retain exact identities,
+geometry and boundary evidence. Once saved, optional `correction_lineage` links the original rating
+source and correction operations; absent lineage is omitted on old reads. Existing receipts provide
+exact segment/work mappings even after valid deletion, without guessing ownership by time/task.
+
+Typed pre-receipt timer rows with an entirely absent owner tuple remain eligible with conservative
+unknown start floor; new fragments keep timer_id null rather than fabricate an owner, while their
+correction operation/segment pair is fresh. Partial corrupt tuples and legacy/recurrence-owned work
+refuse. Repeated corrections preserve forbidden coverage and rating-source identity.
+
+Pre-intent snapshots cover full target rows, task/plan/work context, rating definitions/entries
+(including original linked ratings), relevant review flags/content, drafts and lineage. Accepted
+intent guards freeze only replay-critical work/task/plan dependencies. Note, task-history detachment,
+plan update/removal and association-capable staging check compact guards while holding SQLite writer
+reservation, without taking an advisory lock. Series-revision invalidation checks its actual affected
+plan IDs, not every recurrence edit on the task: unrelated task/series metadata remains legal when
+no replay-critical plan would be written. Future assignment writers must use this same guard
+seam rather than bypass it or broaden legacy mutation eligibility. Independent rating/definition,
+draft and subjective-review edits remain legal after acceptance; replay never revalidates or
+rewrites those rows. A committed receipt also permits later saved-note edits while file finalization
+is pending; recovery skips DB staging and later Stop cannot restore stale notes or excluded time.
+
+Same-task overlap is disclosed in authenticated warnings without redefining sum/union measures.
+Positive subsecond work/exclusions no longer produce uncommittable zero approvals; finite numeric
+validation rejects Infinity/NaN with structured 422 errors on correction routes. Established integer
+stored duration semantics and every previously valid v1 integer display/hash remain unchanged.
+Old v2 integer exclusion displays retain authenticated reconstruction compatibility; exact UTC
+geometry is authoritative. No defaults are injected into prior request/envelope dumps.
+
+Pre-integration focused saved/migration/recovery tests passed 40 tests. Two additional genuine
+`9e0e7d2` v2 exclusion fixture cases (finalized and file-unfinalized receipt) pass exact retry,
+original hash/result preservation and precise fractional geometry through two restarts and Stop;
+no historical signing key is stored in the fixture. They include both pre-DB
+and post-DB/pre-file process failures, consistent copied DB/timer/key state, competing actual DB
+connections under an externally held advisory lock, independent rating/definition/draft/review
+writes, two restarts, saved and buffered deletion-surviving lineage, and linked-timer post-DB note
+repair followed by Stop. Fresh full-chain and copied synthetic head-0017 upgrades (old pending
+intent with/without receipt) preserve all original table data, reviews/ratings/dismissals, drafts,
+recurrence, stored widgets and query semantics; integrity/FK and repeated full lifespan checks pass.
+Post-integration regression evidence is recorded in the milestone handback, not full-ticket delivery.
+
 ## Next milestone
 
-Implement saved interval lineage/staging, CAS and replay guards with migration verification,
-then complete durability/recovery, controller/browser UI and complete #61 acceptance. Do not
+Complete controller/B-style UI wiring, authoritative read invalidation, full durability/concurrency/
+fsync verification and independent final #61 review. Do not
 enable correction controls based on these backend checkpoints. Full Python/Node, migration,
 crash/concurrency and real-browser acceptance remain required at eventual complete delivery.

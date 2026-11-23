@@ -744,10 +744,16 @@ class RecurrenceService:
 
     def invalidate_plan_revisions(self, task_id: str, *, exclude_plan_id: str | None = None) -> None:
         """A linked plan's revision also protects its use as a series-resize target."""
+        from timetrace.services.correction_guards import check_correction_guard
+
+        lock_sqlite_writer(self.db)
         targets = select(RecurrenceException.scheduled_session_id).where(RecurrenceException.task_id == task_id)
         statement = update(ScheduledSession).where(ScheduledSession.id.in_(targets))
+        affected = select(ScheduledSession.id).where(ScheduledSession.id.in_(targets))
         if exclude_plan_id is not None:
             statement = statement.where(ScheduledSession.id != exclude_plan_id)
+            affected = affected.where(ScheduledSession.id != exclude_plan_id)
+        check_correction_guard(self.db, plan_ids=self.db.exec(affected).all())
         self.db.execute(statement.values(revision=ScheduledSession.revision + 1))
 
     @staticmethod

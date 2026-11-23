@@ -17,6 +17,7 @@ from timetrace.config import settings
 from timetrace.core.correction_identity import evidence, initialize_identities, signing_key
 from timetrace.core.correction_step import (
     covered_seconds,
+    elapsed_value,
     fingerprint,
     move_start,
     signature,
@@ -26,7 +27,7 @@ from timetrace.core.correction_step import (
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
-from timetrace.core.timezones import validate_local_instant
+from timetrace.core.timezones import daemon_tzinfo, validate_local_instant
 from timetrace.db.models import (
     AIDraftItem,
     MutationOperation,
@@ -36,7 +37,7 @@ from timetrace.db.models import (
     ScheduledSession,
     Task,
 )
-from timetrace.db.session import lock_sqlite_writer
+from timetrace.db.session import lock_sqlite_writer, sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import RecordedWorkCreate
 from timetrace.services.session_service import SessionService
 
@@ -71,16 +72,25 @@ class MultipleTimerService:
         if state.get("correction_initialized"):
             with self.db.no_autoflush:
                 self.db.expire_all()
+                targets = request["target"].get("targets", [request["target"]])
+                if any(t["kind"] == "saved" for t in targets):
+                    from timetrace.services.saved_correction_service import SavedCorrectionService
+
+                    resource = timer_id if timer_id.startswith("/recorded-work/") else "/timers/" + timer_id
+                    with sqlite_read_snapshot(self.db) as reader:
+                        return SavedCorrectionService(MultipleTimerService(reader)).preview(
+                            state, resource, request, datetime.now(UTC).isoformat()
+                        )
                 return self._step_preview(state, timer_id, request, datetime.now(UTC).isoformat())
         raise ConflictError(
-            "Explicit correction initialization is required. Corrections are not available in this build; "
-            "existing timer controls remain available.",
+            "Explicit correction initialization is required. Submit an operation ID to "
+            "POST /timers/correction-initialize, then request a fresh preview.",
             code="correction_initialization_required",
         )
 
-    def _step_preview(self, state, timer_id, request, cutoff, allocated=None):
+    def _step_preview(self, state, timer_id, request, cutoff, allocated=None, excluded_work_ids=()):
         if request["change"]["kind"] == "exclude":
-            return self._exclusion_preview(state, timer_id, request, cutoff, allocated)
+            return self._exclusion_preview(state, timer_id, request, cutoff, allocated, excluded_work_ids)
         if request["target"]["kind"] == "selection":
             raise TimerError("Multiple targets are only supported for explicit exclusions.")
         key = signing_key(settings.db_file.parent / "correction-signing.key")
@@ -111,7 +121,7 @@ class MultipleTimerService:
                 proposed = validate_local_instant(
                     change["start_utc"], change["local_datetime"], change["timezone"], change["offset_seconds"]
                 )
-            except (ValueError, KeyError) as exc:
+            except (ValueError, KeyError, OverflowError) as exc:
                 raise TimerError(
                     "Choose a valid explicit local time, IANA zone, offset and matching UTC instant."
                 ) from exc
@@ -134,6 +144,9 @@ class MultipleTimerService:
             "duration_seconds": duration,
             "warnings": ["Running work continues after this preview cutoff."] if target["kind"] == "running" else [],
         }
+        source_context = timer if target["kind"] == "running" else segment
+        if self._overlaps_saved(source_context.get("task_id"), proposed, end, excluded_work_ids):
+            envelope["warnings"].append("Retained work overlaps saved work for the same task.")
         if change["kind"] == "set_start":
             from zoneinfo import ZoneInfo
 
@@ -216,6 +229,14 @@ class MultipleTimerService:
             )
         except (TimerError, EntityNotFoundError, ConflictError) as exc:
             raise ConflictError("Correction target changed; preview again.", code="correction_preview_stale") from exc
+        if envelope["schema_version"] == 2 and envelope["action"] == "exclude":
+            display_fields = ("removed_seconds", "already_uncredited_seconds", "unselected_covered_seconds")
+            if all(type(envelope[field]) is int for field in display_fields):
+                # Old v2 approvals displayed integer seconds. Authenticate first,
+                # then retain that representation without changing exact geometry.
+                for field in display_fields:
+                    rebuilt[field] = int(rebuilt[field])
+                rebuilt["signature"] = signature(rebuilt, key)
         if rebuilt != envelope:
             raise ConflictError("Correction dependencies changed; preview again.", code="correction_preview_stale")
         timer = after["timers"][timer_id]
@@ -232,7 +253,27 @@ class MultipleTimerService:
         timer["revision"] += 1
         return timer
 
-    def _exclusion_preview(self, state, timer_id, request, cutoff, allocated=None):
+    def _overlaps_saved(self, task_id, start, end, excluded_work_ids):
+        if task_id is None or datetime.fromisoformat(start) >= datetime.fromisoformat(end):
+            return False
+        from timetrace.db.models import Session as Work
+
+        return (
+            self.db.exec(
+                select(Work.id)
+                .where(
+                    Work.kind == "recorded_work",
+                    Work.task_id == task_id,
+                    Work.id.not_in(excluded_work_ids),
+                    Work.start_time < datetime.fromisoformat(end).replace(tzinfo=None),
+                    Work.end_time > datetime.fromisoformat(start).replace(tzinfo=None),
+                )
+                .limit(1)
+            ).first()
+            is not None
+        )
+
+    def _exclusion_preview(self, state, timer_id, request, cutoff, allocated=None, excluded_work_ids=()):
         key = signing_key(settings.db_file.parent / "correction-signing.key")
         timer = state["timers"].get(timer_id)
         if timer is None:
@@ -249,7 +290,7 @@ class MultipleTimerService:
                     change["timezone"],
                     change[side + "_offset_seconds"],
                 )
-        except (ValueError, KeyError) as exc:
+        except (ValueError, KeyError, OverflowError) as exc:
             raise TimerError("Choose matching explicit dates, zone, offsets and UTC exclusion endpoints.") from exc
         target = request["target"]
         targets = target["targets"] if target["kind"] == "selection" else [target]
@@ -261,6 +302,7 @@ class MultipleTimerService:
             request["target"]["targets"] = targets
         before, after = [], []
         removed = 0
+        overlaps = False
         all_ids = {s["id"] for t in state["timers"].values() for s in t["segments"]}
         all_ids.update(t.get("running_segment_id") for t in state["timers"].values())
         new_ids = set()
@@ -282,7 +324,7 @@ class MultipleTimerService:
                 raise ConflictError("Saved corrections require lineage staging.", code="unsupported_work_kind")
             move_start(start, end, start, boundary)
             kept, coverage = subtract_interval(start, end, change["start_utc"], change["end_utc"], cutoff)
-            removed += coverage
+            removed = elapsed_value(float(removed + coverage))
             before.append(
                 {
                     "source_segment_id": identity,
@@ -306,6 +348,10 @@ class MultipleTimerService:
                     if fragment_id in all_ids or fragment_id in new_ids:
                         raise ConflictError("Fragment identity collision.", code="correction_preview_invalid")
                     new_ids.add(fragment_id)
+                source_context = timer if running else segment
+                overlaps = overlaps or self._overlaps_saved(
+                    source_context.get("task_id"), left, right, excluded_work_ids
+                )
                 after.append(
                     {
                         "source_segment_id": identity,
@@ -315,7 +361,7 @@ class MultipleTimerService:
                         "running": running and index == len(kept) - 1,
                     }
                 )
-        total_range = int(
+        total_range = elapsed_value(
             (datetime.fromisoformat(change["end_utc"]) - datetime.fromisoformat(change["start_utc"])).total_seconds()
         )
         intervals = [(s["start_time"], s["end_time"]) for s in timer["segments"]]
@@ -333,14 +379,16 @@ class MultipleTimerService:
             "before": before,
             "after": after,
             "removed_seconds": removed,
-            "already_uncredited_seconds": max(0, total_range - existing_coverage),
-            "unselected_covered_seconds": max(0, existing_coverage - removed),
+            "already_uncredited_seconds": elapsed_value(float(max(0, total_range - existing_coverage))),
+            "unselected_covered_seconds": elapsed_value(float(max(0, existing_coverage - removed))),
             "warnings": [
                 "Every selected interval must retain positive work; complete removal is unsupported.",
                 "Already-uncredited gaps and unselected covered work are unchanged.",
                 "Splitting the current paused note target clears its pointer; choose an explicit description target.",
             ],
         }
+        if overlaps:
+            result["warnings"].append("Retained work overlaps saved work for the same task.")
         result["signature"] = signature(result, key)
         return result
 
@@ -379,6 +427,57 @@ class MultipleTimerService:
             if len(fragments) > 1 and timer.get("manual_pause_note_segment_id") == identity:
                 timer["manual_pause_note_segment_id"] = None
         timer["segments"].sort(key=lambda s: (s["start_time"], s["id"]))
+
+    @staticmethod
+    def buffer_correction_audits(before_timer, after_timer, envelope, operation_id):
+        targets = (
+            envelope["before"]
+            if envelope["action"] == "exclude"
+            else [{"segment_id": envelope["request"]["target"]["segment_id"]}]
+        )
+        results = (
+            envelope["after"]
+            if envelope["action"] == "exclude"
+            else [
+                {
+                    **envelope["after"],
+                    "segment_id": targets[0]["segment_id"],
+                    "source_segment_id": targets[0]["segment_id"],
+                }
+            ]
+        )
+        audits = []
+        for target in targets:
+            identity = target["segment_id"]
+            if identity.startswith("saved:"):
+                continue
+            original = next((s for s in before_timer["segments"] if s["id"] == identity), None)
+            if original is None:
+                original = {
+                    k: deepcopy(before_timer.get(k))
+                    for k in ("running_start", "running_evidence", "task_id", "scheduled_session_id", "tags", "notes")
+                }
+            retained = []
+            for result in results:
+                if result["source_segment_id"] != identity:
+                    continue
+                fragment = next((s for s in after_timer["segments"] if s["id"] == result["segment_id"]), None)
+                boundary = fragment.get("correction_evidence") if fragment else after_timer.get("running_evidence")
+                retained.append({**result, "correction_evidence": deepcopy(boundary)})
+            audits.append(
+                {
+                    "id": str(uuid7()),
+                    "operation_id": operation_id,
+                    "source_identity": f"/timers/{before_timer['id']}/segments/{identity}",
+                    "source_work_id": None,
+                    "source_revision": before_timer["revision"],
+                    "before_json": json.dumps(original),
+                    "results_json": json.dumps(retained),
+                    "cutoff": envelope["cutoff"],
+                    "action": envelope["action"],
+                }
+            )
+        return audits
 
     def unfinished_for_plan(self, plan_id):
         """Read while holding SQLite's writer lock for a destructive/extension manifest.
@@ -577,6 +676,7 @@ class MultipleTimerService:
                 after = deepcopy(state)
                 task_deletion = None
                 plan_capture = None
+                correction_changes = correction_audits = correction_guard = correction_result = None
                 if action == "correction_initialize":
                     for item in after["timers"].values():
                         previous = deepcopy(item)
@@ -589,7 +689,37 @@ class MultipleTimerService:
                 elif action == "correction":
                     if not after.get("correction_initialized"):
                         raise ConflictError("Initialize corrections first.", code="correction_initialization_required")
-                    timer, selected = self._accept_step(after, timer_id, payload["preview"]), False
+                    envelope = payload["preview"]
+                    if envelope["schema_version"] == 3:
+                        from timetrace.services.saved_correction_service import SavedCorrectionService
+
+                        key = signing_key(settings.db_file.parent / "correction-signing.key")
+                        resource = timer_id if timer_id.startswith("/recorded-work/") else "/timers/" + timer_id
+                        if envelope["resource"] != resource or not hmac.compare_digest(
+                            envelope["signature"], signature(envelope, key)
+                        ):
+                            raise ConflictError(
+                                "Saved approval authentication failed.", code="correction_preview_invalid"
+                            )
+                        self.db.expire_all()
+                        try:
+                            timer, correction_changes, correction_audits, correction_guard, correction_result = (
+                                SavedCorrectionService(self).accept(after, resource, envelope, operation_id)
+                            )
+                        except (EntityNotFoundError, TimerError, ConflictError) as exc:
+                            if isinstance(exc, ConflictError) and exc.code == "correction_preview_invalid":
+                                raise
+                            raise ConflictError(
+                                "Saved approval is stale; preview again.", code="correction_preview_stale"
+                            ) from exc
+                        selected = False
+                    else:
+                        timer, selected = self._accept_step(after, timer_id, envelope), False
+                        correction_changes = []
+                        correction_audits = self.buffer_correction_audits(
+                            state["timers"][timer_id], timer, envelope, operation_id
+                        )
+                        correction_guard = {}
                 elif action == "start":
                     timer, selected, plan_capture = self._start(after, payload, cutoff)
                 elif action == "delete_tasks":
@@ -707,12 +837,28 @@ class MultipleTimerService:
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
-                if action == "correction":
+                if action == "correction" and correction_result is not None:
+                    result["correction"] = correction_result
+                elif action == "correction":
                     result["correction"] = {
                         "before": payload["preview"]["before"],
                         "after": payload["preview"]["after"],
                         "target": payload["preview"]["request"]["target"],
                         "timer_revision": timer["revision"],
+                        "changed_work_ids": [],
+                        "created_work_ids": [],
+                        "timezone": daemon_tzinfo().key,
+                        "affected_local_dates": sorted(
+                            {
+                                datetime.fromisoformat(f["start_utc"]).astimezone(daemon_tzinfo()).date().isoformat()
+                                for side in ("before", "after")
+                                for f in (
+                                    payload["preview"][side]
+                                    if isinstance(payload["preview"][side], list)
+                                    else [payload["preview"][side]]
+                                )
+                            }
+                        ),
                     }
                 if action == "correction_initialize":
                     result["correction_initialized"] = True
@@ -733,6 +879,12 @@ class MultipleTimerService:
                         else None
                     ),
                 }
+                if correction_changes is not None:
+                    intent.update(
+                        correction_changes=correction_changes,
+                        correction_audits=correction_audits,
+                        correction_guard=correction_guard,
+                    )
                 if intent["plan_update"]:
                     result["plan_revision"] = intent["plan_update"]["expected_revision"] + 1
                     intent["result_json"] = json.dumps(result)
@@ -942,6 +1094,26 @@ class MultipleTimerService:
         lock_sqlite_writer(self.db)
         receipt = self.db.get(MutationOperation, intent["id"])
         if receipt is None:
+            self.db.expire_all()
+            guard = intent.get("correction_guard") or {}
+            for task_id in guard.get("task_ids", []):
+                if self.db.get(Task, task_id) is None:
+                    raise ConflictError("Pending correction task context changed.", code="reconciliation_required")
+            for expected_plan in guard.get("plans", []):
+                plan = self.db.get(ScheduledSession, expected_plan["id"])
+                if (
+                    plan is None
+                    or plan.revision != expected_plan["revision"]
+                    or plan.task_id != expected_plan["task_id"]
+                ):
+                    raise ConflictError("Pending correction plan context changed.", code="reconciliation_required")
+            if intent.get("correction_changes"):
+                SessionService(self.db).stage_work_corrections(intent["correction_changes"])
+            if intent.get("correction_audits"):
+                from timetrace.db.models import WorkCorrection
+
+                for audit in intent["correction_audits"]:
+                    self.db.add(WorkCorrection.model_validate(audit))
             plan_update = intent.get("plan_update")
             if plan_update:
                 plan = self.db.get(ScheduledSession, plan_update["id"])
@@ -1002,7 +1174,20 @@ class MultipleTimerService:
                     },
                 )
             receipt = MutationOperation(
-                **{k: v for k, v in intent.items() if k not in {"work", "task_deletion", "plan_capture", "plan_update"}}
+                **{
+                    k: v
+                    for k, v in intent.items()
+                    if k
+                    not in {
+                        "work",
+                        "task_deletion",
+                        "plan_capture",
+                        "plan_update",
+                        "correction_changes",
+                        "correction_audits",
+                        "correction_guard",
+                    }
+                }
             )
             self.db.add(receipt)
             self.db.commit()

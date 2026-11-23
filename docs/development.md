@@ -108,7 +108,12 @@ The root app is the runtime entry point, not the separate unused `interfaces/api
 
 The [core timer workspace contract and verification](timer-workspace-60.md) documents Agenda's
 selected current card, device-local pins, bounded discovery, grouped history, note-only timer/work
-mutations, keyboard bindings and the intentionally unavailable #61 correction integration points.
+mutations, keyboard bindings and the intentionally unavailable #61 correction UI integration points.
+The [#61 backend checkpoints](timer-corrections-61.md) cover explicit initialization, signed interval
+approval/commit and saved-work lineage/replay guards. These use `MultipleTimerService`'s existing
+receipt funnel and `SessionService.stage_work_corrections`, not generic legacy updates. Startup now
+requires migration `0018_work_corrections`; controller/browser delivery and complete #61 acceptance
+remain pending.
 
 ### Implementation notes and historical adoption checkpoints
 

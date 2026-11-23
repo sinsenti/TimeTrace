@@ -29,8 +29,13 @@ def step_start(start, end, delta, boundary):
         if type(delta) is not int or delta not in (-300, 300):
             raise ValueError("Choose an elapsed five-minute step")
         return move_start(start.isoformat(), end.isoformat(), (start - timedelta(seconds=delta)).isoformat(), boundary)
-    except (ValueError, TypeError, KeyError) as exc:
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
         raise TimerError(str(exc)) from exc
+
+
+def elapsed_value(seconds):
+    seconds = round(seconds, 6)
+    return int(seconds) if seconds.is_integer() else seconds
 
 
 def covered_seconds(intervals, left, right):
@@ -43,9 +48,9 @@ def covered_seconds(intervals, left, right):
     for start, end in clipped:
         start = max(start, cursor)
         if start < end:
-            total += int((end - start).total_seconds())
+            total += (end - start).total_seconds()
             cursor = end
-    return total
+    return elapsed_value(float(total))
 
 
 def subtract_interval(start, end, left, right, cutoff):
@@ -62,7 +67,7 @@ def subtract_interval(start, end, left, right, cutoff):
         kept = [(s.isoformat(), e.isoformat()) for s, e in [(start, a), (b, end)] if s < e]
         if not kept:
             raise ValueError("Each selected interval must retain positive work; complete removal is unsupported")
-        return kept, int((b - a).total_seconds())
+        return kept, elapsed_value((b - a).total_seconds())
     except (ValueError, TypeError) as exc:
         raise TimerError(str(exc)) from exc
 
@@ -91,6 +96,10 @@ def move_start(start, end, proposed, boundary):
         for gap in boundary["forbidden_ranges"]:
             if proposed < datetime.fromisoformat(gap["end_utc"]) and end > datetime.fromisoformat(gap["start_utc"]):
                 raise ValueError("Correction would restore excluded work")
-        return proposed.astimezone(UTC).isoformat(), int((end - proposed).total_seconds())
-    except (ValueError, TypeError, KeyError) as exc:
+        seconds = (end - proposed).total_seconds()
+        # Preserve every previously valid v1 integer display/hash while allowing
+        # genuinely positive subsecond work instead of issuing an uncommittable zero.
+        duration = int(seconds) if seconds >= 1 else seconds
+        return proposed.astimezone(UTC).isoformat(), duration
+    except (ValueError, TypeError, KeyError, OverflowError) as exc:
         raise TimerError(str(exc)) from exc

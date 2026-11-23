@@ -3,7 +3,7 @@
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, FiniteFloat, field_validator
 from sqlmodel import Session
 
 from timetrace.db.session import get_session
@@ -92,9 +92,11 @@ class CorrectionSetStart(BaseModel):
 class CorrectionSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     kind: Literal["selection"]
-    targets: list[Annotated[CorrectionRunningTarget | CorrectionBufferedTarget, Field(discriminator="kind")]] = Field(
-        min_length=1, max_length=64
-    )
+    targets: list[
+        Annotated[
+            CorrectionRunningTarget | CorrectionBufferedTarget | CorrectionSavedTarget, Field(discriminator="kind")
+        ]
+    ] = Field(min_length=1, max_length=64)
 
 
 class CorrectionExclude(BaseModel):
@@ -137,7 +139,7 @@ class CorrectionEnvelope(BaseModel):
     dependency_digest: str = Field(pattern="^[0-9a-f]{64}$")
     before: CorrectionInterval
     after: CorrectionInterval
-    duration_seconds: int = Field(ge=1)
+    duration_seconds: int | FiniteFloat = Field(gt=0)
     warnings: list[Annotated[str, Field(max_length=512)]] = Field(max_length=16)
     signature: str = Field(pattern="^[0-9a-f]{64}$")
 
@@ -177,17 +179,51 @@ class ExclusionEnvelope(BaseModel):
     dependency_digest: str = Field(pattern="^[0-9a-f]{64}$")
     before: list[CorrectionFragment] = Field(max_length=64)
     after: list[CorrectionFragment] = Field(max_length=128)
-    removed_seconds: int = Field(gt=0)
-    already_uncredited_seconds: int = Field(ge=0)
-    unselected_covered_seconds: int = Field(ge=0)
+    removed_seconds: int | FiniteFloat = Field(gt=0)
+    already_uncredited_seconds: int | FiniteFloat = Field(ge=0)
+    unselected_covered_seconds: int | FiniteFloat = Field(ge=0)
     warnings: list[Annotated[str, Field(max_length=512)]] = Field(max_length=16)
+    signature: str = Field(pattern="^[0-9a-f]{64}$")
+
+
+class SavedCorrectionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    schema_version: int = Field(ge=3, le=3)
+    resource: str = Field(min_length=1, max_length=256)
+    action: Literal["step_start", "set_start", "exclude"]
+    request: CorrectionPreviewRequest
+    cutoff: str = Field(min_length=1, max_length=64)
+    plan: CorrectionEnvelope | DatedCorrectionEnvelope | ExclusionEnvelope
+    timer_state: Literal["running", "paused", "stopped"] | None
+    warnings: list[Annotated[str, Field(max_length=512)]] = Field(max_length=16)
+    dependency_digest: str = Field(pattern="^[0-9a-f]{64}$")
     signature: str = Field(pattern="^[0-9a-f]{64}$")
 
 
 class CorrectionCommitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     operation_id: str = Field(min_length=1, max_length=128)
-    preview: CorrectionEnvelope | DatedCorrectionEnvelope | ExclusionEnvelope
+    preview: CorrectionEnvelope | DatedCorrectionEnvelope | ExclusionEnvelope | SavedCorrectionEnvelope
+
+
+class SavedPreviewRequest(CorrectionPreviewRequest):
+    target: CorrectionSavedTarget
+
+
+class SavedCommitRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    preview: SavedCorrectionEnvelope
+
+
+@router.post("/recorded-work/{work_id}/correction-preview")
+def saved_preview(work_id: str, req: SavedPreviewRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).correction_preview("/recorded-work/" + work_id, req.model_dump())
+
+
+@router.post("/recorded-work/{work_id}/correction")
+def saved_commit(work_id: str, req: SavedCommitRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("correction", "/recorded-work/" + work_id, req.model_dump())
 
 
 @router.post("/timers/{timer_id}/correction")

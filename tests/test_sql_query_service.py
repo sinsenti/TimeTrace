@@ -18,6 +18,8 @@ def sql_service(tmp_path, monkeypatch, db):
         connection.executemany("INSERT INTO task (title) VALUES (?)", [("alpha",), ("beta",), ("gamma",)])
         connection.execute("CREATE TABLE aiproviderconfig (api_key_encrypted TEXT)")
         connection.execute("INSERT INTO aiproviderconfig VALUES ('secret-value')")
+        connection.execute("CREATE TABLE work_correction (before_json TEXT)")
+        connection.execute("INSERT INTO work_correction VALUES ('private synthetic history')")
 
     monkeypatch.setattr(readonly, "_readonly_engine", None)
     monkeypatch.setattr(settings, "db_file", db_path)
@@ -45,6 +47,8 @@ def test_sql_service_clamps_requested_limit_and_reports_truncation(sql_service):
     "sql",
     [
         "SELECT api_key_encrypted FROM aiproviderconfig",
+        "SELECT before_json FROM work_correction",
+        "SELECT count(*) FROM work_correction",
         "SELECT name FROM sqlite_master",
         "SELECT value FROM json_each('[1,2]')",
     ],
