@@ -164,7 +164,7 @@ const agendaPage = (() => {
             if (!row.task_id) start.title = 'Assign a task before linking a plan timer. Unassigned timers are available above.';
             start.addEventListener('click', async () => {
                 const capturedOwner = owner;
-                if (!window.multipleTimers || capturedOwner?.pending) return;
+                if (!window.multipleTimers || capturedOwner?.pending || capturedOwner?.removalPending) return;
                 start.disabled = true;
                 const payload = {task_id:row.task_id, tags:row.tags || '', notes:row.notes || '', scheduled_session_id:row.id};
                 if (row.is_virtual) payload.expected_projection_revision = row.projection_revision;
@@ -187,6 +187,20 @@ const agendaPage = (() => {
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);
+            const capturedDraft = owner;
+            window.planRemoval?.mount(root, row, {
+                api,
+                available: () => owner === capturedDraft && !owner?.pending && !owner?.removalPending && switchAllowed(),
+                lock: pending => { if (owner === capturedDraft) { owner.removalPending = pending; controls(); } },
+                ack: async result => {
+                    generation++;
+                    if (owner === capturedDraft) {
+                        if (result.action === 'delete_everything') open(null);
+                        else open({...row, ...result.plan}); // Adopt fixed ACK before any refresh read.
+                    }
+                    await refresh();
+                },
+            });
         } else {
             add('Interval', interval(row.start_time, row.end_time));
             if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');
@@ -200,7 +214,7 @@ const agendaPage = (() => {
         add('Notes', row.notes || 'None');
     }
 
-    const saveUnavailable = () => Boolean(owner?.pending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
+    const saveUnavailable = () => Boolean(owner?.pending || owner?.removalPending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
         (!owner?.row && (createPending || unconfirmedCreate)));
 
     function controls() {
@@ -208,7 +222,8 @@ const agendaPage = (() => {
         get('form').hidden = !owner || Boolean(row && row.kind !== 'scheduled_session' && !owner.retainedWorkDraft);
         get('attachment').hidden = !owner?.work || !owner?.context;
         get('attach').disabled = Boolean(row || owner?.pending);
-        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft);
+        for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft || owner?.removalPending);
+        get('cancel').disabled = Boolean(owner?.removalPending);
         get('metadata').hidden = Boolean(row);
         get('metadata').disabled = Boolean(row || owner?.pending);
         get('save').textContent = owner?.work ? 'Save recorded work' : row ? 'Save current schedule' : 'Add to schedule';
@@ -241,6 +256,7 @@ const agendaPage = (() => {
     }
 
     function switchAllowed() {
+        if (owner?.removalPending) return false;
         const dirty = owner && !get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline);
         return !dirty || window.confirm('Leave these unsaved schedule edits?');
     }
