@@ -34,31 +34,41 @@ class FocusEvaluator:
         self.monotonic_clock = monotonic_clock or time.monotonic
         self.suspend_clock = suspend_clock or boot_seconds
         self.previous = None
+        self.tokens = {}
 
     def evaluate(self):
         from timetrace.services.multiple_timer_service import MultipleTimerService
 
         samples = []
+        contexts = []
 
         def observe_locked():
             sample = (self.wall_clock(), self.monotonic_clock(), self.suspend_clock())
             samples.append(sample)
             continuous = False
             previous = self.previous
+            rollback_shift = 0
             if previous and sample[2] is not None and previous[2] is not None:
                 wall = (sample[0] - previous[0]).total_seconds()
                 mono, boot = sample[1] - previous[1], sample[2] - previous[2]
                 continuous = 0 <= wall <= 2 and abs(wall - mono) <= 0.25 and abs(boot - mono) <= 0.25
-            return {
+                if mono >= 0 and abs(boot - mono) <= 0.25 and mono - wall > 0.25:
+                    rollback_shift = mono - wall
+            context = {
                 "cutoff": sample[0].isoformat(),
                 "continuous": continuous,
                 "previous_wall": previous[0].isoformat() if previous else None,
+                "rollback_shift": rollback_shift,
+                "previous_tokens": self.tokens,
             }
+            contexts.append(context)
+            return context
 
         result = MultipleTimerService(self.db).mutate(
             "focus_evaluate", None, {"operation_id": str(uuid7())}, _evaluation=observe_locked
         )
         self.previous = samples[-1]
+        self.tokens = contexts[-1].get("observed_tokens", {})
         return result
 
 
@@ -91,6 +101,19 @@ def evaluate_state(service, state, cutoff, continuity):
             if timer["state"] != "running":
                 timer["focus"]["recording_anchor"] = None
         focus = timer["focus"]
+        token = (focus["generation"], focus.get("recording_anchor"), timer["state"], timer["revision"])
+        shift = continuity.get("rollback_shift", 0)
+        if (
+            shift
+            and focus["phase"] == "work"
+            and timer["state"] == "running"
+            and token[:3] == continuity.get("previous_tokens", {}).get(timer["id"], ())[:3]
+        ):
+            # Rebase only this independent clock, never credited intervals/creation anchor.
+            focus["recording_anchor"] = (
+                datetime.fromisoformat(focus["recording_anchor"]) - timedelta(seconds=shift)
+            ).isoformat()
+            timer["revision"] += 1
 
         def emit(kind, generation, due, timer_id=timer["id"]):
             existing = service.db.exec(
@@ -129,6 +152,7 @@ def evaluate_state(service, state, cutoff, continuity):
                 live = (
                     focus["active_seconds"] < duration
                     and continuity["continuous"]
+                    and token == continuity.get("previous_tokens", {}).get(timer["id"])
                     and continuity["previous_wall"] is not None
                     and datetime.fromisoformat(continuity["previous_wall"]) <= boundary <= now
                     and (now - boundary).total_seconds() <= 1
@@ -152,6 +176,11 @@ def evaluate_state(service, state, cutoff, continuity):
             emit("break_due", focus["generation"], focus["break_deadline"])
             focus["phase"] = "break_due"
             timer["revision"] += 1
+    continuity["observed_tokens"] = {
+        t["id"]: (t["focus"]["generation"], t["focus"].get("recording_anchor"), t["state"], t["revision"])
+        for t in state["timers"].values()
+        if t.get("focus") and t["state"] != "stopped"
+    }
     return events
 
 

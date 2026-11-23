@@ -54,6 +54,49 @@ def focus_world(client, db, monkeypatch):
     return Clock, evaluator, start
 
 
+@pytest.mark.parametrize("action", ["note", "pause", "stop"])
+def test_intervening_writer_wins_before_live_boundary(client, focus_world, action):
+    clock, factory, start = focus_world
+    path = start("automatic_break")
+    evaluator = factory()
+    evaluator.evaluate()
+    clock.advance(59)
+    evaluator.evaluate()
+    clock.advance(0.5)
+    timer = client.get(path).json()
+    payload = {"operation_id": "race-" + action, "expected_revision": timer["revision"]}
+    if action == "note":
+        payload.update(new_notes="Independent note", expected_note_segment_id=None)
+    assert client.post(path + "/" + action, json=payload).status_code == 200
+    clock.advance(0.5)
+    evaluator.evaluate()
+    if action == "stop":
+        assert not client.get("/timers").json()["timers"]
+    else:
+        current = client.get(path).json()
+        assert current["state"] == ("running" if action == "note" else "paused")
+        assert current["focus"]["phase"] == ("work_due" if action == "note" else "work")
+    assert not any(n["kind"] == "break_due" for n in client.get("/timer-notifications").json()["notices"])
+
+
+def test_live_wall_rollback_does_not_rewind_active_focus(client, focus_world):
+    clock, factory, start = focus_world
+    path = start()
+    evaluator = factory()
+    evaluator.evaluate()
+    clock.advance(30)
+    evaluator.evaluate()
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 30
+    anchor = client.get(path).json()["identity_started_at"]
+    clock.at -= timedelta(seconds=20)
+    clock.tick += 1
+    clock.boot += 1
+    evaluator.evaluate()
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 29
+    assert client.get(path).json()["identity_started_at"] == anchor
+    assert client.get(path).json()["segments"] == []
+
+
 def test_settings_are_next_period_snapshots_not_silent_retiming(client, focus_world):
     clock, factory, start = focus_world
     path = start()

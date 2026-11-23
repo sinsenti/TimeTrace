@@ -166,7 +166,8 @@ def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recover
         assert response.status_code == 200
         html = response.text
         assert html.count('src="/static/js/timer_control.js?v=timers4"') == 1
-        assert html.count('src="/static/js/multiple_timers.js?v=idle5"') == 1
+        assert html.count('src="/static/js/multiple_timers.js?v=focus63"') == 1
+        assert html.count('src="/static/js/timer_focus.js?v=focus63"') == 1
         assert html.count('aria-label="Per-timer idle review"') == 1
         assert html.count('id="multiple_timers"') == 1
         assert html.count('id="idle_resolution_modal"') == 1

@@ -45,6 +45,8 @@ class LinuxNotifications:
         reason = None
         if not self.enabled:
             reason = "Native delivery disabled; in-app fallback."
+        elif hasattr(os, "geteuid") and os.geteuid() == 0:
+            reason = "Root/system desktop delivery is not supported; in-app fallback."
         elif self.platform != "linux":
             reason = "Native adapter supports Linux interactive sessions only."
         elif self.environment.get("WSL_DISTRO_NAME") or self.environment.get("SSH_CONNECTION"):

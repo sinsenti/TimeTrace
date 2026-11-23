@@ -133,8 +133,19 @@ Actual red/green: missing native adapter module -> fake transport green; missing
 -> selected identity/generation/draft green; stale editor test exposed silently rebased revision5
 instead of captured4 -> minimal draft-revision retention green. Fake delivery/root-lifespan/process
 fault and migration group passed32; actual root startup and in-flight cancellation are tested.
-Complete candidate Node run:887 passed,0 failures/skips,in3.50s; final Python/format evidence follows
-only after source freeze.
+Complete candidate Node run:887 passed,0 failures/skips,in3.50s. First full Python candidate:
+1143 passed/1 failed (357.26s); the sole failure was the existing page-include assertion still
+expecting the old `?v=idle5` asset tag. Updated it to require exactly one new-version shared
+controller and focus include on all thirteen pages/aliases; focused page proof passes.
+
+Final clock proof exposed a real red before due: a live UTC rollback rewound remaining time
+50s instead of29s. The evaluator now compares suspend-aware monotonic/UTC deltas and reanchors
+only the independent focus clock when the prior identity/generation/recording-state token still
+matches; immutable creation and work intervals remain untouched. Automatic boundary proof also
+requires the prior timer revision, so an intervening Note/Pause/Stop wins rather than an old
+sample forcing an autonomous pause. Focus/root-lifespan/page group:22 passed after the first fix;
+final full-source suites follow below. No-op steady ticks still write no receipt/file.
+
 
 Actual isolated Orca browser with synthetic profile/fake-clock daemon18463: both policies,
 Take break/break wait/Resume, independent taskless timers, dirty note and focus editor retention,

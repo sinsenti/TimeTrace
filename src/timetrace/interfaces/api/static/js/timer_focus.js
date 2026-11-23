@@ -20,9 +20,11 @@ function createFocusController({control,api,notifications=typeof Notification===
             try {
                 const [events,cap,defaults]=await Promise.all([api.get('/timer-notifications'),api.get('/timer-notifications/capability'),api.get('/timer-focus/defaults')]);
                 notices=events.notices;capability=cap;
+                if(defaults.sound_enabled&&cap.available&&!cap.sound_supported)deliveryMessage='This desktop server does not advertise sound support; visible notification only.';
                 for(const n of notices.filter(n=>n.status==='pending'&&!n.acknowledged)){
                     if(cap.available)continue;
                     const browser=notifications?.permission==='granted';
+                    if(defaults.sound_enabled&&!browser)deliveryMessage='Sound unavailable for in-app fallback; desktop/browser permission is required. Recording unchanged.';
                     let claim;
                     try {claim=await api.post(`/timer-notifications/${encodeURIComponent(n.id)}/claim`,{operation_id:operationId(),channel:browser?'browser':'in_app'});}catch(_){continue;}
                     if(!claim.send_authorized)continue;
