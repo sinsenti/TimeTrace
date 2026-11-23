@@ -50,6 +50,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 try { storage.setItem(key, JSON.stringify(receipt)); }
                 catch (_) { receipt = {outcome:'storage'}; message = 'Safety storage unavailable; no write sent.'; return false; }
             }
+            publish();
             let result;
             try { result = await api.post(receipt.url, receipt.payload); }
             catch (error) {
@@ -123,7 +124,54 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     };
 }
 
-if (typeof module !== 'undefined') module.exports = {createTimerController};
+function createTimerStartFocus({interaction, guarded, focus}) {
+    let intent = null;
+    return state => {
+        const receipt = state.receipt;
+        if (receipt?.url !== '/timers') return;
+        const id = receipt.payload?.operation_id;
+        if (state.pending && receipt.outcome === 'uncertain' && intent?.id !== id) intent = {id, interaction:interaction()};
+        if (receipt.outcome === 'acknowledged' && intent?.id === id) {
+            const safe = intent.interaction === interaction() && !guarded();
+            intent = null;
+            if (safe) focus();
+        }
+    };
+}
+
+function renderTimerWorkspaceCard(root, state, control) {
+    const create = (tag, text) => {
+        const node = root.ownerDocument.createElement(tag); node.textContent = text; return node;
+    };
+    const timer = state.timers.find(timer => timer.id === state.selectedTimerId);
+    const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
+    if (root.dataset.workspaceSignature === signature && timer) {
+        root.querySelector('.workspace-clock').textContent = `${Math.floor((timer.elapsed_seconds || 0) / 60)}:${String(Math.floor(timer.elapsed_seconds || 0) % 60).padStart(2, '0')} live · ${timer.state}`;
+        return;
+    }
+    root.dataset.workspaceSignature = signature;
+    root.replaceChildren();
+    if (!timer) { root.append(create('p', 'Choose an activity or start unassigned recording.')); return; }
+    const title = create('h2', timer.task_title || 'Unassigned recording');
+    const seconds = Math.floor(timer.elapsed_seconds || 0);
+    const clock = create('p', `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')} live · ${timer.state}`);
+    clock.className = 'workspace-clock';
+    const row = create('div', ''); row.className = 'workspace-actions';
+    if (timer.task_id && control?.editTask) {
+        const edit = create('button', 'Edit task'); edit.type = 'button';
+        edit.addEventListener('click', () => control.editTask(timer.task_id)); row.append(edit);
+    }
+    row.dataset.timerCorrectionActions = ''; // #61 owns reviewed Adjust time wiring.
+    const blocked = state.pending || Boolean(state.receipt) || !state.fresh || timer.state === 'frozen';
+    for (const [label, action] of [[timer.state === 'running' ? 'Pause' : 'Resume', timer.state === 'running' ? 'pause' : 'resume'], ['Stop & record', 'stop']]) {
+        const button = create('button', label); button.type = 'button'; button.disabled = blocked;
+        button.addEventListener('click', () => control.act(timer.id, action, {expected_revision:timer.revision}));
+        row.append(button);
+    }
+    root.append(title, clock, row);
+}
+
+if (typeof module !== 'undefined') module.exports = {createTimerController, renderTimerWorkspaceCard, createTimerStartFocus};
 
 if (typeof window !== 'undefined') {
     let ready;
@@ -132,6 +180,13 @@ if (typeof window !== 'undefined') {
         const region = document.getElementById('multiple_timers');
         if (!region || window.multipleTimers) { ready(); return; }
         const list = region.querySelector('[data-timer-list]');
+        const currentCard = document.getElementById('workspace-current-timer');
+        let interaction = 0;
+        for (const event of ['pointerdown', 'keydown', 'focusin']) document.addEventListener(event, () => { interaction++; }, true);
+        const startFocus = createTimerStartFocus({interaction:()=>interaction,
+            guarded:()=> Boolean(document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]')) ||
+                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()),
+            focus:()=> { currentCard?.scrollIntoView({block:'nearest'}); currentCard?.focus({preventScroll:true}); }});
         const notice = region.querySelector('[data-timer-message]');
         const tasks = region.querySelector('[data-timer-task]');
         const reviewPanel = region.querySelector('[data-idle-review]');
@@ -150,11 +205,13 @@ if (typeof window !== 'undefined') {
         };
         function render(state) {
             notice.textContent = state.message;
+            if (currentCard) renderTimerWorkspaceCard(currentCard, state, window.multipleTimers);
+            startFocus(state);
             const focused = region.contains(document.activeElement) ? document.activeElement.dataset.timerFocus : null;
             if (focused) restoreFocus = focused;
             const blocked = state.pending || Boolean(state.receipt) || !state.fresh;
             region.querySelector('[data-timer-start]').disabled = blocked;
-            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome,
+            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {
                 for (const label of list.querySelectorAll('[data-timer-label]')) {
@@ -176,6 +233,11 @@ if (typeof window !== 'undefined') {
                 label.dataset.timerLabel = timer.id;
                 label.textContent = timerLabel(timer);
                 row.append(label);
+                if (currentCard) {
+                    const select = button('Select timer', () => { window.multipleTimers.select(timer.id); currentCard.scrollIntoView({block:'nearest'}); }, false, `${timer.id}/select`);
+                    select.setAttribute('aria-pressed', String(state.selectedTimerId === timer.id));
+                    row.append(select);
+                }
                 if (timer.scheduled_session_id && document.getElementById('agenda-extension')) {
                     row.append(button('Extend selected plan', () => window.dispatchEvent(new CustomEvent('extend-selected-plan',
                         {detail:{planId:timer.scheduled_session_id, timerId:timer.id}})), blocked, `${timer.id}/extend-plan`));
@@ -221,7 +283,7 @@ if (typeof window !== 'undefined') {
                 list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : 'Retry same operation',
                     () => window.multipleTimers.retry(), state.pending, 'receipt/retry'));
             }
-            if (restoreFocus && !state.pending) {
+            if (restoreFocus && !state.pending && region.contains(document.activeElement)) {
                 const next = [...region.querySelectorAll('[data-timer-focus]')].find(b => b.dataset.timerFocus === restoreFocus && !b.disabled);
                 (next || region.querySelector('[data-timer-refresh]')).focus({preventScroll:true});
                 restoreFocus = null;
@@ -229,6 +291,7 @@ if (typeof window !== 'undefined') {
         }
         const control = createTimerController({api, storage:sessionStorage, onState:render});
         window.multipleTimers = control;
+        control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };
         ready();
         control.perform = async (operation, payload, stillCurrent = () => true) => {
             await control.refresh();

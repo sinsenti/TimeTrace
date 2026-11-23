@@ -14,6 +14,7 @@ from timetrace.interfaces.api.schemas import (
     PlanRemovalRequest,
     RecordedWorkCreate,
     RecordedWorkCreated,
+    RecordedWorkNoteUpdate,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
@@ -54,6 +55,11 @@ def recorded_work_progress(
 @router.post("/recorded-work", response_model=RecordedWorkCreated, status_code=status.HTTP_201_CREATED)
 def create_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
     return SessionService(db).create_recorded_work(req)
+
+
+@router.patch("/recorded-work/{work_id}/note", response_model=AgendaRecordedWorkRead)
+def update_work_note(work_id: str, req: RecordedWorkNoteUpdate, db: DBSession = Depends(get_session)):
+    return SessionService(db).update_recorded_work_note(work_id, req.notes, req.expected_revision)
 
 
 @router.get("/recorded-work/{work_id}", response_model=AgendaRecordedWorkRead)

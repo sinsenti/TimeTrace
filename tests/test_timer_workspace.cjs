@@ -1,6 +1,23 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {createTimerController} = require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
+const {createTimerController, createTimerStartFocus} = require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
+
+test('start focus never interrupts newer interaction or dirty editors', () => {
+    let interactions = 0, dirty = false, focused = 0;
+    const observe = createTimerStartFocus({interaction:()=>interactions, guarded:()=>dirty, focus:()=>focused++});
+    const pending = {pending:true,receipt:{url:'/timers',payload:{operation_id:'one'},outcome:'uncertain'}};
+    const ack = {pending:false,receipt:{...pending.receipt,outcome:'acknowledged'}};
+    observe(pending); interactions++; observe(ack);
+    assert.equal(focused,0);
+    observe({...pending,receipt:{...pending.receipt,payload:{operation_id:'two'}}});
+    dirty = true;
+    observe({...ack,receipt:{...ack.receipt,payload:{operation_id:'two'}}});
+    assert.equal(focused,0);
+    dirty = false;
+    observe({...pending,receipt:{...pending.receipt,payload:{operation_id:'three'}}});
+    observe({...ack,receipt:{...ack.receipt,payload:{operation_id:'three'}}});
+    assert.equal(focused,1);
+});
 
 test('selecting a paused timer is local and Start ACK selects existing identity before refresh', async () => {
     const values = new Map();

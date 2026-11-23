@@ -66,6 +66,9 @@ def list_tasks(
     assigned_date: str | None = Query(None, alias="assigned_date"),
     due_before: str | None = Query(None, alias="due_before"),
     sort_by: str | None = Query("smart_gap_filler", alias="sort"),
+    title_contains: str | None = Query(None, max_length=200),
+    tag_contains: str | None = Query(None, max_length=200),
+    limit: int | None = Query(None, ge=1, le=200),
     db: DBSession = Depends(get_session)
 ):
     return TaskService(db).list_tasks(
@@ -73,7 +76,10 @@ def list_tasks(
         sort_by=sort_by or "smart_gap_filler",
         category_filter=category_filter,
         assigned_date=assigned_date,
-        due_before=due_before
+        due_before=due_before,
+        title_contains=title_contains,
+        tag_contains=tag_contains,
+        limit=limit,
     )
 
 

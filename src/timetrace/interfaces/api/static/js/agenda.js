@@ -42,11 +42,72 @@ const agendaPage = (() => {
         ? entryParams.get('date') : localDay(new Date());
     date.value = activeDate;
 
+    let pins = null;
+    try { pins = createWorkspacePins(localStorage); } catch (error) { get('pin-status').textContent = error.message; }
+    const queryText = id => (get(id)?.value || '').trim().toLocaleLowerCase();
+    async function startActivity(taskId) {
+        await taskKnowledge.load(true);
+        if (taskId && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(taskId))) {
+            get('pin-status').textContent = 'Task unavailable or metadata stale. Refresh before starting.'; return;
+        }
+        // Repeat activities never inherit an old plan association, note or timestamp.
+        await window.multipleTimers?.start({task_id:taskId || null});
+    }
+    let discoveryGeneration = 0;
+    async function discovery() {
+        const read = ++discoveryGeneration;
+        const pinned = get('pins'), activities = get('activities');
+        clear(pinned); clear(activities);
+        const fresh = taskKnowledge.state().status === 'fresh';
+        const action = (label, fn, disabled = false) => {
+            const button = make('button', label); button.type = 'button'; button.disabled = disabled;
+            button.addEventListener('click', fn); return button;
+        };
+        const toggle = (id, remove) => {
+            try { remove ? pins.unpin(id) : pins.pin(id); get('pin-status').textContent = ''; discovery(); }
+            catch (error) { get('pin-status').textContent = `Pins not saved: ${error.message}`; }
+        };
+        for (const id of pins?.ids() || []) {
+            const task = taskKnowledge.get(id);
+            const item = make('div', task ? `${task.title} · ${id.slice(-8)} ` : `Unavailable task · ${id.slice(-8)} `);
+            item.append(action('Start', () => startActivity(id), !fresh || !task), action('Unpin', () => toggle(id, true)));
+            pinned.append(item);
+        }
+        const search = queryText('search'), tag = queryText('filter-tag');
+        let matches;
+        try {
+            matches = await api.get(`/api/tasks?${new URLSearchParams({status:'all',title_contains:search,tag_contains:tag,limit:'50'})}`);
+            if (read !== discoveryGeneration) return;
+            if (!Array.isArray(matches)) throw Error('Unknown task response');
+        } catch {
+            if (read !== discoveryGeneration) return;
+            activities.append(make('p', 'Task search unavailable. Refresh agenda to retry; no mutation was sent.')); return;
+        }
+        clear(activities);
+        if (matches.length === 50) activities.append(make('p', 'Showing at most 50 matches in stable ID order; narrow the search for more.'));
+        for (const task of matches) {
+            const item = make('div', `${task.title} · ${task.id.slice(-8)} `);
+            item.append(action('Start', () => startActivity(task.id), !fresh),
+                action(pins?.ids().includes(task.id) ? 'Unpin' : 'Pin', () => toggle(task.id, pins.ids().includes(task.id)), !pins));
+            activities.append(item);
+        }
+    }
+
     function ledger() {
         const root = get('ledger');
         const focused = document.activeElement?.dataset?.agendaRow;
         clear(root);
-        for (const row of rows) {
+        const search = queryText('search'), tag = queryText('filter-tag'), note = queryText('filter-note');
+        const visible = rows.filter(row => (!search || taskTitle(row).toLocaleLowerCase().includes(search)) &&
+            (!tag || (row.tags || '').toLocaleLowerCase().includes(tag)) && (!note || (row.notes || '').toLocaleLowerCase().includes(note)));
+        const parents = new Map();
+        for (const group of groupWorkspaceHistory(visible)) {
+            const details = make('details', '');
+            details.append(make('summary', `${group.day} · ${group.taskId ? taskTitle(group.rows[0]) + ' · ' + group.taskId.slice(-8) : 'Unassigned work'} · ${group.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy'} · ${group.rows.length} interval(s)`));
+            root.append(details);
+            for (const row of group.rows) parents.set(row.id, details);
+        }
+        for (const row of visible) {
             const button = make('button', '', 'agenda-entry');
             button.type = 'button';
             button.dataset.agendaRow = row.id;
@@ -61,7 +122,14 @@ const agendaPage = (() => {
             button.addEventListener('click', () => {
                 if (switchAllowed()) open(row, true);
             });
-            root.appendChild(button);
+            (parents.get(row.id) || root).appendChild(button);
+            if (row.kind !== 'scheduled_session') {
+                const metadata = make('p', `${interval(row.start_time,row.end_time)} · ${row.provenance || 'Uncertain legacy provenance'} · ${row.notes || 'No work note'}`);
+                parents.get(row.id).append(metadata);
+                const again = make('button', 'Start again'); again.type = 'button';
+                again.disabled = Boolean(row.task_id && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(row.task_id)));
+                again.addEventListener('click', () => startActivity(row.task_id)); parents.get(row.id).append(again);
+            }
             if (focused === row.id) button.focus();
         }
     }
@@ -122,7 +190,7 @@ const agendaPage = (() => {
             requestedEntry = null;
             if (row) open(row);
         }
-        ledger();
+        ledger(); discovery();
         const taskFailed = taskKnowledge.state().failed;
         get('retry').hidden = !rangeFailed && !taskFailed && !unconfirmedCreate;
         get('status').textContent = rangeFailed ? 'Could not refresh the day. Showing last known entries, if any.'
@@ -198,7 +266,26 @@ const agendaPage = (() => {
             });
         } else {
             add('Interval', interval(row.start_time, row.end_time));
-            if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');
+            if (row.kind === 'recorded_work') {
+                add('Provenance', row.provenance || 'Not specified');
+                const captured = owner;
+                const label = make('label', 'Work-entry note (not task description)');
+                const input = make('textarea', ''); input.value = row.notes || ''; label.append(input);
+                const save = make('button', 'Save work note'); save.type = 'button'; save.disabled = true;
+                const retry = make('button', 'Refresh saved note (read only)'); retry.type = 'button';
+                const status = make('p', ''); status.setAttribute('role','status');
+                const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),onState(state) {
+                    if (owner !== captured) return;
+                    captured.notePending = state.pending;
+                    captured.noteDirty = input.value !== (state.saved.notes || '');
+                    save.disabled = state.pending || state.blocked || !captured.noteDirty;
+                    status.textContent = state.message;
+                    if (state.saved.revision !== row.revision) captured.row = state.saved;
+                }});
+                input.addEventListener('input',()=> { captured.noteDirty = input.value !== (editor.state().saved.notes || ''); save.disabled = editor.state().pending || editor.state().blocked || !captured.noteDirty; });
+                save.addEventListener('click',()=>editor.save(input.value)); retry.addEventListener('click',editor.retry);
+                root.append(label,save,retry,status);
+            }
             else add('Basis', 'Legacy meaning is uncertain. Not included in plan-versus-record comparisons.');
         }
         const calendarLink = make('a', 'Open this day in Calendar');
@@ -318,9 +405,9 @@ const agendaPage = (() => {
     }
 
     function switchAllowed() {
-        if (owner?.removalPending || owner?.extensionPending) return false;
+        if (owner?.removalPending || owner?.extensionPending || owner?.notePending) return false;
         const dirty = owner && !get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline);
-        return !dirty || window.confirm('Leave these unsaved schedule edits?');
+        return !(dirty || owner?.noteDirty) || window.confirm('Leave these unsaved entry edits?');
     }
 
     async function review() {
@@ -454,7 +541,7 @@ const agendaPage = (() => {
     function refreshTaskLabels() {
         updateTaskOptions();
         if (owner?.row) get('inspector-title').textContent = taskTitle(owner.row);
-        ledger();
+        ledger(); void discovery();
     }
 
     window.addEventListener('timetrace:timer-mutated', event => {
@@ -467,5 +554,8 @@ const agendaPage = (() => {
         }
     });
     void refresh();
-    return { refresh, refreshTaskLabels };
+    for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
+    return { refresh, refreshTaskLabels,
+        hasDraft: () => Boolean(owner && (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline) || owner.pending || owner.extensionPending || owner.removalPending || owner.noteDirty || owner.notePending))
+    };
 })();
