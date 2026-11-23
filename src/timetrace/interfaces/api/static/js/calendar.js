@@ -205,7 +205,11 @@ function calendarOccurrenceId(id, seriesTaskId, occurrenceStart) {
 function calendarScheduleNeedsReview(row) {
     if (!row) return false;
     const occurrence = calendarOccurrenceId(row.id, row.series_task_id, row.occurrence_start);
-    return calendarNeedsReview.has(occurrence || row.id) ||
+    const key = occurrence || row.id;
+    const editor = typeof sessionModalOwner !== 'undefined' ? sessionModalOwner : null;
+    const editing = editor?.session;
+    const editingKey = editing && (calendarOccurrenceId(editing.id, editing.series_task_id, editing.occurrence_start) || editing.id);
+    return calendarWrites.has(key) || (editor?.pending && editingKey === key) || calendarNeedsReview.has(key) ||
         [...calendarNeedsReview.values()].some(attempt => attempt.latest?.id === row.id);
 }
 

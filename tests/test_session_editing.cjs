@@ -11,6 +11,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 function sessionPage(http = async () => ({ id: 'real-session' })) {
     const elements = new Map(), alerts = [], writes = [], listeners = new Map();
     let context;
+    const safetyStorage = new Map();
     function element(id = '', tag = 'div') {
         const classes = new Set(['hidden']);
         const el = { id, tagName: tag.toUpperCase(), type: '', value: '', textContent: '', children: [], dataset: {}, style: {}, isConnected: true,
@@ -27,6 +28,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     const document = { getElementById: id => elements.get(id) || null, createElement: tag => element('', tag),
         addEventListener() {}, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
     context = vm.createContext({ document, Date, setTimeout: () => {}, console: { error() {} },
+        sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
         addEventListener(name, fn) { listeners.set(name, fn); },
         async fetch(url, options) {
@@ -348,6 +350,23 @@ test('Calendar shows overlap plans and one typed projection without changing its
     assert.deepEqual(Array.from(p.context.allSessions, row => row.id), ['legacy', recurring.id]);
 });
 
+test('a pending Calendar plan modal prevents a second drag writer without losing later input', async () => {
+    const held = deferred();
+    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] :
+        (await held.promise, {id:'held-plan', kind:'scheduled_session', revision:2, ...JSON.parse(options.body)}));
+    p.run(`rememberSavedSession({id:'held-plan', kind:'scheduled_session', revision:1, start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'}); openEditSessionModal('held-plan')`);
+    const saving = p.run('saveSessionFromModal()');
+    p.elements.get('session_modal_end').value = '2099-01-04T13:00';
+    let reverted = false;
+    p.context.revertHeldDrag = () => { reverted = true; };
+    await p.run(`handleCalendarEventUpdate({id:'held-plan', start:new Date('2099-01-04T11:00Z'), end:new Date('2099-01-04T12:00Z'), extendedProps:{kind:'scheduled_session', revision:1}}, 'move', {revert:revertHeldDrag})`);
+    assert.equal(reverted, true);
+    assert.equal(p.writes.length, 1);
+    held.resolve(); await saving;
+    assert.equal(p.elements.get('session_modal_end').value, '2099-01-04T13:00');
+    assert.equal(p.elements.get('session_modal').classList.contains('hidden'), false);
+});
+
 test('Calendar modal conflict remains blocked after reopening and through a drag', async () => {
     const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : new Response(JSON.stringify({detail:'stale'}), {status:409}));
     p.run(`rememberSavedSession({id:'conflicted', kind:'scheduled_session', revision:1, start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'}); openEditSessionModal('conflicted')`);
@@ -365,6 +384,8 @@ test('manual recording uncertainty blocks Calendar reopen and navigation to anot
     p.run('closeSessionModal(); openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
     await p.run('saveSessionFromModal()');
     assert.equal(p.writes.length, 1, 'uncertain manual work must not be replayed by reopening');
+    await assert.rejects(p.run('new ApiClient().saveRecordedWork({start_time:"2000-01-04T09:00Z", end_time:"2000-01-04T10:00Z"})'), /unconfirmed/);
+    assert.equal(p.writes.length, 1, 'the navigation client consumes the same persisted journal');
 });
 
 test('Calendar targeted timer ACK adopts captured plan UUID and revision before a failed read', async () => {

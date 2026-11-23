@@ -28,6 +28,7 @@
                 done.type = 'button';
                 done.textContent = 'Reviewed — allow a new recording (does not retry)';
                 done.addEventListener('click', () => {
+                    if (api.workPending) { notice.textContent = 'Recording is still pending. Wait for its outcome before reviewing.'; return; }
                     if (!window.confirm('I reviewed saved work. Release this uncertain attempt without replaying it?')) return;
                     try { api.rememberRecordedWorkAttempt(null); render(); }
                     catch (_) { notice.textContent = 'Could not release safety journal. Recording remains blocked.'; }

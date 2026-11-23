@@ -326,6 +326,12 @@ function showSessionModalPlan(row) {
         term.textContent = label; description.textContent = value;
         detail.appendChild(term); detail.appendChild(description);
     }
+    const link = document.createElement('a');
+    const at = new Date(row.start_time);
+    const day = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+    link.href = `/agenda-view?${new URLSearchParams({date:day, entry:row.id})}`;
+    link.textContent = 'Open this entry in Agenda';
+    detail.appendChild(link);
     sessionModalFeedback(row.kind === 'recorded_work' ? 'Recorded work is read-only here.' : row.is_virtual
         ? 'Save captures this occurrence. Deletion uses the existing recurrence choices, where available.'
         : 'Only the current schedule is editable here. Deletion is not available for saved plans.');

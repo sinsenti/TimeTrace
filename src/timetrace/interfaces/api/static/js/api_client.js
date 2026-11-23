@@ -79,6 +79,7 @@ class ApiClient {
     async saveRecordedWork(payload) {
         if (this.recordedWorkAttempt()) throw new Error('Previous manual recording is unconfirmed. Review recorded work recovery before starting a new entry.');
         this.rememberRecordedWorkAttempt({payload});
+        this.workPending = true;
         let saved;
         try {
             saved = await this.post('/recorded-work', payload);
@@ -86,6 +87,8 @@ class ApiClient {
         } catch (error) {
             if (error.status && error.status < 500) this.rememberRecordedWorkAttempt(null);
             throw error;
+        } finally {
+            this.workPending = false;
         }
         // ACK wins over fallible cleanup/display: never report a committed recording as failed.
         try { this.rememberRecordedWorkAttempt(null); } catch (_) { /* Retained journal safely blocks a duplicate. */ }
