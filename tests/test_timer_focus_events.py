@@ -54,6 +54,85 @@ def focus_world(client, db, monkeypatch):
     return Clock, evaluator, start
 
 
+def test_settings_are_next_period_snapshots_not_silent_retiming(client, focus_world):
+    clock, factory, start = focus_world
+    path = start()
+    clock.advance(30)
+    current = client.get(path).json()
+    updated = client.post(
+        path + "/focus-settings",
+        json={
+            "operation_id": "next-period",
+            "expected_revision": current["revision"],
+            "enabled": True,
+            "work_minutes": 2,
+            "break_minutes": 3,
+            "behavior": "automatic_break",
+        },
+    )
+    assert updated.status_code == 200
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 30
+    clock.advance(30)
+    factory().evaluate()
+    current = client.get(path).json()
+    assert current["state"] == "running"
+    assert current["focus"]["period"]["behavior"] == "notify_only"
+    response = client.post(
+        path + "/focus-action",
+        json={
+            "operation_id": "new-period",
+            "expected_revision": current["revision"],
+            "expected_generation": current["focus"]["generation"],
+            "action": "keep_working",
+        },
+    )
+    assert response.status_code == 200
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 120
+    assert client.get(path).json()["focus"]["period"]["behavior"] == "automatic_break"
+
+
+def test_idle_refuses_actions_and_claimed_credit_does_not_add_focus(client, db, focus_world, monkeypatch):
+    from timetrace.services import multiple_timer_service as module
+
+    clock, factory, start = focus_world
+    monkeypatch.setattr(module.settings, "idle_detection_enabled", True)
+    monkeypatch.setattr(module.settings, "idle_threshold_seconds", 60)
+    path = start("automatic_break")
+    clock.advance(90)
+    module.MultipleTimerService(db).observe_activity(60)
+    current = client.get(path).json()
+    assert current["state"] == "frozen"
+    assert current["focus"]["remaining_seconds"] == 30
+    gaps = current["idle_gaps"]
+    for action in ("take_break", "keep_working", "resume_work"):
+        assert (
+            client.post(
+                path + "/focus-action",
+                json={
+                    "operation_id": action,
+                    "expected_revision": current["revision"],
+                    "expected_generation": current["focus"]["generation"],
+                    "action": action,
+                },
+            ).status_code
+            == 409
+        )
+    clock.advance(7200)
+    factory().evaluate()
+    current = client.get(path).json()
+    assert current["idle_gaps"] == gaps
+    assert [n["kind"] for n in client.get("/timer-notifications").json()["notices"]] == ["two_hour"]
+    module.MultipleTimerService(db).observe_activity(0)
+    current = client.get(path).json()
+    result = client.post(
+        path + "/resolve",
+        json={"operation_id": "claim-idle", "gap_id": current["idle_gaps"][0]["id"], "decision": "claim"},
+    )
+    assert result.status_code == 200, result.text
+    assert client.get(path).json()["state"] == "paused"
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 30
+
+
 def test_unknown_old_anchor_is_initialized_prospectively_not_on_get(client, db, focus_world):
     import json
     import os

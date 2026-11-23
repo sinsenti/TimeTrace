@@ -90,6 +90,9 @@ Committed events backend checkpoint `c3e202f`; merged completed #62 integration 
 without conflict at `9af55e4`, preserving its volatile display-only `observed_at`. Post-merge
 focused regression: **284 Python passed**,231 warnings,in202.43s; related public JS controller/
 correction/workspace/history/Calendar tests: **25 passed**,zero failures/skips,in98.34ms.
+Final additional public proofs explicitly verify next-period settings snapshots (no silent retiming),
+unresolved-idle action refusal, frozen wall warning, byte-preserved unresolved gaps and unchanged focus
+credit after Claim idle. Focus/evaluator/process-recovery group: **16 passed** in35.62s.
 Scoped Ruff on every changed Python file and `git diff --check` pass. Syntax checks pass for
 all four JS files brought by the #62 merge; no #63 JS was changed. Full Python/Node are deliberately
 not rerun/claimed for this backend milestone; they remain required after final #63 production work.
