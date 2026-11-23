@@ -12,15 +12,20 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         }
     }
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId});
-    const publish = () => onState(snapshot());
+    let observedAt = null;
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, observed_at:observedAt});
+    const publish = () => {
+        const state = snapshot();
+        onState(state);
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-state', {detail:state}));
+    };
     async function refresh() {
         const generation = ++readGeneration;
         try {
             const data = await api.get('/timers');
             if (generation !== readGeneration) return null;
             if (!Array.isArray(data?.timers)) throw Error('Unknown timer response');
-            timers = data.timers; revision = data.revision; fresh = true;
+            timers = data.timers; revision = data.revision; fresh = true; observedAt = data.observed_at;
             if (!timers.some(timer => timer.id === selectedTimerId)) selectedTimerId = timers[0]?.id || null;
             if (receipt?.outcome === 'legacy' && !storage.getItem('timetrace_timer_receipt')) receipt = null;
             if (receipt?.outcome === 'acknowledged') { storage.removeItem(key); receipt = null; }
@@ -77,6 +82,8 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 message = 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
             }
             if (result?.operation_id !== receipt.payload.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
+            ++readGeneration;
+            observedAt = null;
             receipt.outcome = 'acknowledged';
             lastResult = result;
             if (selectResult && !receipt.url.endsWith('/correction') && result.timer && result.timer.state !== 'stopped' && selectionAtStart === selectionGeneration) selectedTimerId = result.timer.id;
@@ -105,6 +112,8 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (receipt !== recovering || pending) return;
             if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
             if (result.status === 'finalized') {
+                ++readGeneration;
+                observedAt = null;
                 lastResult = result.result;
                 if (lastResult?.correction) { informationNotice = 'Saved correction acknowledged from authoritative operation status; subsequent recovery retries are reads only.'; message = informationNotice; }
                 if (!recovering.url.endsWith('/correction') && lastResult?.timer && lastResult.timer.state !== 'stopped' && selectionGeneration === 0) selectedTimerId = lastResult.timer.id;

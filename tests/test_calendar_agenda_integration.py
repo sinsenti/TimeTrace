@@ -1,6 +1,15 @@
 """Calendar and Agenda consume one root HTTP dataset, never infer performed work."""
 
 
+def test_live_status_has_authoritative_observation_cutoff(client):
+    from datetime import datetime
+
+    status = client.get('/timers')
+    assert status.status_code == 200
+    assert datetime.fromisoformat(status.json()['observed_at']).tzinfo is not None
+
+
+
 def test_calendar_keeps_layout_and_exposes_explicit_manual_recording(client):
     page = client.get("/dashboard")
     assert page.status_code == 200

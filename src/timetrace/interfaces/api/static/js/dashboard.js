@@ -191,6 +191,11 @@ document.addEventListener('DOMContentLoaded', async function() {
             },
             
             eventClick: function(info) {
+                if (info.event.extendedProps.kind === 'live_work') {
+                    window.multipleTimers?.select(info.event.extendedProps.timer_id);
+                    document.getElementById('multiple_timers')?.scrollIntoView({block:'nearest'});
+                    return;
+                }
                 openEditSessionModal(info.event.id, info.el);
             },
 

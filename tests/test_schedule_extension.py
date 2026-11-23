@@ -47,6 +47,7 @@ def test_overlap_running_timers_and_work_remain_independent_and_both_bases_refre
     after = client.get("/timers").json()
     # elapsed is a read-time presentation; every durable segment/context/revision is unchanged.
     for status in (before, after):
+        status.pop("observed_at", None)
         for timer in status["timers"]:
             timer.pop("elapsed_seconds", None)
             timer.pop("remaining_seconds", None)
