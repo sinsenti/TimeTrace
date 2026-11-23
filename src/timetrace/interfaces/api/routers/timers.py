@@ -33,6 +33,36 @@ def set_focus_defaults(req: FocusDefaultsRequest, db: Session = Depends(get_sess
     return MultipleTimerService(db).mutate("focus_defaults", None, req.model_dump())
 
 
+class FocusSettingsRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+    enabled: bool
+    work_minutes: int = Field(ge=1, le=1440)
+    break_minutes: int = Field(ge=1, le=1440)
+    behavior: Literal["notify_only", "automatic_break"]
+
+
+class FocusActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+    expected_generation: int = Field(ge=1)
+    action: Literal["take_break", "keep_working", "resume_work"]
+
+
+@router.post("/timers/{timer_id}/focus-settings")
+def focus_settings(timer_id: str, req: FocusSettingsRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("focus_settings", timer_id, req.model_dump())
+
+
+@router.post("/timers/{timer_id}/focus-action")
+def focus_action(timer_id: str, req: FocusActionRequest, db: Session = Depends(get_session)):
+    payload = req.model_dump()
+    payload["focus_action"] = payload.pop("action")
+    return MultipleTimerService(db).mutate("focus_action", timer_id, payload)
+
+
 class StartTimer(BaseModel):
     model_config = ConfigDict(extra="forbid")
     operation_id: str = Field(min_length=1, max_length=128)

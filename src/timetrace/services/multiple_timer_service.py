@@ -25,7 +25,7 @@ from timetrace.core.correction_step import (
     subtract_interval,
 )
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
-from timetrace.core.focus import DEFAULTS, new_focus, update_defaults
+from timetrace.core.focus import DEFAULTS, checkpoint, configure, display, new_focus, update_defaults
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
 from timetrace.core.timezones import daemon_tzinfo, validate_local_instant
@@ -568,6 +568,7 @@ class MultipleTimerService:
                 timer["remaining_seconds"] = (
                     max(0, target * 60 - elapsed) if timer["mode"] == "pomodoro" and target else None
                 )
+                display(timer, now.isoformat())
                 timers.append(timer)
             return {
                 "revision": state["revision"],
@@ -764,7 +765,48 @@ class MultipleTimerService:
                     if action != "resolve" and any(g.get("decision") is None for g in timer["idle_gaps"]):
                         raise ConflictError("Resolve idle gaps first.", code="idle_gap_unresolved")
                     continue_running = timer["state"] == "running"
-                    if action in ("pause", "stop", "split"):
+                    if action not in ("correction", "note", "idle_preference"):
+                        checkpoint(timer, cutoff)
+                    if action == "focus_settings":
+                        configure(timer, payload, cutoff)
+                    elif action == "focus_action":
+                        focus = timer.get("focus")
+                        if (
+                            not focus
+                            or focus["phase"] == "disabled"
+                            or focus["generation"] != payload["expected_generation"]
+                        ):
+                            raise ConflictError("Focus generation changed.", code="revision_stale")
+                        choice = payload["focus_action"]
+                        if choice == "take_break":
+                            if focus["phase"] not in ("work", "work_due") or timer["state"] != "running":
+                                raise TimerError("Choose a recording work period.")
+                            self._close_segment(timer, cutoff)
+                            timer["state"] = "paused"
+                            timer["manual_pause_note_segment_id"] = None
+                            focus["phase"] = "break"
+                            focus["generation"] += 1
+                            focus["recording_anchor"] = None
+                            focus["break_deadline"] = (
+                                datetime.fromisoformat(cutoff) + timedelta(minutes=focus["settings"]["break_minutes"])
+                            ).isoformat()
+                        else:
+                            if choice == "resume_work" and focus["phase"] not in ("break", "break_due"):
+                                raise TimerError("No break to end.")
+                            if choice == "keep_working" and (
+                                focus["phase"] not in ("work", "work_due") or timer["state"] != "running"
+                            ):
+                                raise TimerError("Choose a recording work period.")
+                            if timer["state"] != "running":
+                                timer["running_start"] = cutoff
+                                timer["running_segment_id"] = str(uuid7())
+                                timer["running_evidence"] = evidence(cutoff, "resume")
+                                timer["manual_pause_note_segment_id"] = None
+                                timer["state"] = "running"
+                            fresh = new_focus(focus["settings"], cutoff)
+                            fresh["generation"] = focus["generation"] + 1
+                            timer["focus"] = fresh
+                    elif action in ("pause", "stop", "split"):
                         closed_id = self._close_segment(timer, cutoff)
                         timer["manual_pause_note_segment_id"] = closed_id if action == "pause" else None
                         timer["state"] = "paused"
@@ -802,8 +844,20 @@ class MultipleTimerService:
                         timer["running_evidence"] = evidence(cutoff, "resume")
                         timer["manual_pause_note_segment_id"] = None
                         timer["state"] = "running"
+                        focus = timer.get("focus")
+                        if focus and focus["phase"] in ("break", "break_due"):
+                            fresh = new_focus(focus["settings"], cutoff)
+                            fresh["generation"] = focus["generation"] + 1
+                            timer["focus"] = fresh
                     else:
                         raise TimerError("Unknown timer action.")
+                    if action in ("pause", "stop", "split", "resolve", "resume") and timer.get("focus"):
+                        focus = timer["focus"]
+                        if focus["phase"] in ("work", "work_due"):
+                            focus["recording_anchor"] = cutoff if timer["state"] == "running" else None
+                        if action == "stop":
+                            focus["phase"] = "disabled"
+                            focus["recording_anchor"] = None
                     timer["revision"] += 1
                 work = []
                 if action in ("stop", "split"):
@@ -1015,6 +1069,9 @@ class MultipleTimerService:
         for timer in after["timers"].values():
             if timer["state"] == "running" and timer["pause_when_idle"] and idle_seconds >= threshold:
                 onset = max(last_activity, timer["running_start"])
+                checkpoint(timer, onset)
+                if timer.get("focus"):
+                    timer["focus"]["recording_anchor"] = None
                 self._close_segment(timer, onset)
                 timer["manual_pause_note_segment_id"] = None
                 timer["idle_gaps"].append(

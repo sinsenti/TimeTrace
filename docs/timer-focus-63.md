@@ -17,8 +17,8 @@ whole minutes. No external adapter or live notification has been invoked.
 | Cell | Evidence |
 | --- | --- |
 | Initial defaults, future timer snapshot, exact replay, invalid boolean length | Public HTTP red 404 then green 1 passed (`tests/test_timer_focus.py`) |
-| Overrides, next-period settings and disable | Not implemented |
-| Independent active clock, pause/idle/correction and actions | Not implemented |
+| Overrides, next-period settings and disable | HTTP routes and period snapshots implemented; bounded evidence only |
+| Independent active clock, pause/idle/correction and actions | Public fake-clock pause/Take break/early Resume/replay/observed-idle test passes; correction/race matrix not yet proved |
 | Automatic boundary continuity and catch-up | Not implemented |
 | Immutable warning evaluation | Creation anchor only; evaluation not implemented |
 | Durable event claims, adapters and bounded daemon lifecycle | Not implemented |
@@ -27,6 +27,14 @@ whole minutes. No external adapter or live notification has been invoked.
 | Final Python/Node/scoped lint/browser | Not yet run |
 
 ## Exact initial red/green
+
+Second slice: settings POST initially 422 (legacy generic mutation rejected extra fields), then
+2 focused tests passed in 0.26s. Third red: ordinary Resume retained break phase; minimal green
+adds explicit break-to-work restart and idle checkpoint at observation onset. The focused pair
+then passed in 0.33s with idle enabled explicitly in the idle test (not globally disabled).
+A preliminary full Python run after slice two passed 1114 tests in 339.43s, with 4877 warnings;
+this predates the last idle/ordinary-resume change and is not final-source acceptance.
+
 
 2026-11-23: isolated external HOME/TMPDIR/DB; `uv run python -P -m pytest tests/test_timer_focus.py -q`.
 Red: 1 failed, GET `/timer-focus/defaults` returned 404. Green after minimal defaults slice: 1 passed

@@ -1,5 +1,94 @@
 """Focus policy through the public daemon HTTP interface."""
 
+from datetime import UTC, datetime, timedelta
+
+
+def test_focus_pause_actions_and_next_period_settings(client, db, monkeypatch):
+    from timetrace.services import multiple_timer_service as module
+
+    class Clock(datetime):
+        at = datetime(2026, 11, 23, 10, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz=None):
+            return cls.at
+
+    monkeypatch.setattr(module, "datetime", Clock)
+    monkeypatch.setattr(module.settings, "idle_detection_enabled", True)
+    monkeypatch.setattr(module.settings, "idle_threshold_seconds", 300)
+    timer = client.post("/timers", json={"operation_id": "start"}).json()["timer"]
+    path = "/timers/" + timer["id"]
+    configured = client.post(
+        path + "/focus-settings",
+        json={
+            "operation_id": "enable",
+            "expected_revision": timer["revision"],
+            "enabled": True,
+            "work_minutes": 1,
+            "break_minutes": 2,
+            "behavior": "notify_only",
+        },
+    )
+    assert configured.status_code == 200, configured.text
+    Clock.at += timedelta(seconds=20)
+    paused = client.post(path + "/pause", json={"operation_id": "pause"}).json()["timer"]
+    Clock.at += timedelta(minutes=10)
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 40
+    client.post(path + "/resume", json={"operation_id": "resume"})
+    Clock.at += timedelta(seconds=40)
+    due = client.get(path).json()
+    assert due["focus"]["remaining_seconds"] == 0
+    assert due["state"] == "running"
+    request = {
+        "operation_id": "take",
+        "expected_revision": due["revision"],
+        "expected_generation": due["focus"]["generation"],
+        "action": "take_break",
+    }
+    broken = client.post(path + "/focus-action", json=request)
+    assert broken.status_code == 200, broken.text
+    assert broken.json()["timer"]["state"] == "paused"
+    assert broken.json()["timer"]["manual_pause_note_segment_id"] is None
+    assert client.post(path + "/focus-action", json=request).json() == broken.json()
+    Clock.at += timedelta(seconds=30)
+    current = client.get(path).json()
+    resumed = client.post(
+        path + "/focus-action",
+        json={
+            "operation_id": "resume-work",
+            "expected_revision": current["revision"],
+            "expected_generation": current["focus"]["generation"],
+            "action": "resume_work",
+        },
+    )
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["timer"]["focus"]["phase"] == "work"
+    assert client.get(path).json()["focus"]["remaining_seconds"] == 60
+    assert paused["focus"]["active_seconds"] == 20
+    # Ordinary Resume also ends an early break; idle freezes at observation onset.
+    timer = resumed.json()["timer"]
+    client.post(
+        path + "/focus-action",
+        json={
+            "operation_id": "break-again",
+            "expected_revision": timer["revision"],
+            "expected_generation": timer["focus"]["generation"],
+            "action": "take_break",
+        },
+    )
+    ordinary = client.post(path + "/resume", json={"operation_id": "ordinary-resume"}).json()["timer"]
+    assert ordinary["focus"]["phase"] == "work"
+    Clock.at += timedelta(seconds=360)
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    # The service observation is the daemon's public idle ingress.
+    service = MultipleTimerService(db)
+    service.observe_activity(300)
+    frozen = client.get(path).json()
+    assert frozen["state"] == "frozen"
+    Clock.at += timedelta(seconds=600)
+    assert client.get(path).json()["focus"]["active_seconds"] == 60
+
 
 def test_focus_defaults_are_durable_receipted_and_future_timer_only(client):
     initial = client.get("/timer-focus/defaults")

@@ -1,6 +1,7 @@
 """Correction-independent focus policy and period snapshots (no persistence or IO)."""
 
 from copy import deepcopy
+from datetime import datetime
 
 from timetrace.core.exceptions import ConflictError, TimerError
 
@@ -32,6 +33,53 @@ def update_defaults(state, payload):
     policy = {key: payload[key] for key in DEFAULTS if key != "revision"}
     validate_policy(policy)
     state["focus_defaults"] = {**policy, "revision": current["revision"] + 1}
+
+
+def elapsed(focus, cutoff):
+    seconds = focus["active_seconds"]
+    if focus.get("recording_anchor"):
+        seconds += max(
+            0, (datetime.fromisoformat(cutoff) - datetime.fromisoformat(focus["recording_anchor"])).total_seconds()
+        )
+    return seconds
+
+
+def checkpoint(timer, cutoff):
+    focus = timer.get("focus")
+    if focus and focus["phase"] in ("work", "work_due"):
+        focus["active_seconds"] = elapsed(focus, cutoff)
+        focus["recording_anchor"] = cutoff if timer["state"] == "running" else None
+
+
+def display(timer, cutoff):
+    focus = timer.get("focus")
+    if not focus:
+        return
+    if focus["phase"] in ("work", "work_due"):
+        focus["remaining_seconds"] = max(0, focus["period"]["work_minutes"] * 60 - elapsed(focus, cutoff))
+    elif focus["phase"] in ("break", "break_due"):
+        focus["remaining_seconds"] = max(
+            0, (datetime.fromisoformat(focus["break_deadline"]) - datetime.fromisoformat(cutoff)).total_seconds()
+        )
+    else:
+        focus["remaining_seconds"] = None
+
+
+def configure(timer, payload, cutoff):
+    policy = {key: payload[key] for key in ("enabled", "work_minutes", "break_minutes", "behavior")}
+    validate_policy({**policy, "sound_enabled": False})
+    old = timer.get("focus")
+    if old is None or old["phase"] == "disabled":
+        timer["focus"] = new_focus(policy, cutoff)
+        timer["focus"]["generation"] = old["generation"] + 1 if old else 1
+        if timer["state"] != "running":
+            timer["focus"]["recording_anchor"] = None
+    else:
+        old["settings"] = policy
+        if not policy["enabled"]:
+            old["phase"] = "disabled"
+            old["generation"] += 1
+            old["recording_anchor"] = None
 
 
 def new_focus(policy, cutoff):
