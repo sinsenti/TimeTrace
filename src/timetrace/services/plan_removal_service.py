@@ -137,7 +137,13 @@ class PlanRemovalService:
                 plan.end_time = max(row.end_time for row in rows)
                 plan.revision += 1
                 self.db.add(plan)
-                result = {"action": request.action, "plan_id": plan_id, "plan": plan.model_dump(mode="json")}
+                from timetrace.services.session_service import SessionService
+
+                result = {
+                    "action": request.action,
+                    "plan_id": plan_id,
+                    "plan": SessionService(self.db).get_scheduled_session(plan_id).model_dump(mode="json"),
+                }
             else:
                 for anchor in manifest["recurrence"]:
                     row = self.db.get(RecurrenceException, anchor["id"])

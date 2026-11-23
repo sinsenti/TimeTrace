@@ -99,6 +99,7 @@ def test_stale_work_refuses_without_partial_write(client, db):
 
 def test_unrelated_timer_and_append_only_audit_survive(client, db, tmp_path):
     from uuid import uuid4
+
     from timetrace.db.models import AIAudit
 
     plan, work = seed(db)

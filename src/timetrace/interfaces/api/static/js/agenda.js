@@ -188,10 +188,7 @@ const agendaPage = (() => {
                     generation++;
                     if (owner === capturedDraft) {
                         if (result.action === 'delete_everything') open(null);
-                        else {
-                            const latest = await api.get(`/scheduled-sessions/${encodeURIComponent(row.id)}`);
-                            if (owner === capturedDraft) open({...row, ...latest});
-                        }
+                        else open({...row, ...result.plan}); // Adopt fixed ACK before any refresh read.
                     }
                     await refresh();
                 },
