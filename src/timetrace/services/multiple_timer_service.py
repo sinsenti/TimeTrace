@@ -15,10 +15,18 @@ from sqlmodel import or_, select
 
 from timetrace.config import settings
 from timetrace.core.correction_identity import evidence, initialize_identities, signing_key
-from timetrace.core.correction_step import fingerprint, signature, step_start
+from timetrace.core.correction_step import (
+    covered_seconds,
+    fingerprint,
+    move_start,
+    signature,
+    step_start,
+    subtract_interval,
+)
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, TimerError
 from timetrace.core.recurrence import is_occurrence_id
 from timetrace.core.timer_store import TimerStore
+from timetrace.core.timezones import validate_local_instant
 from timetrace.db.models import (
     AIDraftItem,
     MutationOperation,
@@ -70,7 +78,11 @@ class MultipleTimerService:
             code="correction_initialization_required",
         )
 
-    def _step_preview(self, state, timer_id, request, cutoff):
+    def _step_preview(self, state, timer_id, request, cutoff, allocated=None):
+        if request["change"]["kind"] == "exclude":
+            return self._exclusion_preview(state, timer_id, request, cutoff, allocated)
+        if request["target"]["kind"] == "selection":
+            raise TimerError("Multiple targets are only supported for explicit exclusions.")
         key = signing_key(settings.db_file.parent / "correction-signing.key")
         timer = state["timers"].get(timer_id)
         if timer is None:
@@ -93,7 +105,61 @@ class MultipleTimerService:
             )
         if datetime.fromisoformat(end) > datetime.fromisoformat(cutoff):
             raise TimerError("Future work cannot be corrected.")
-        proposed, duration = step_start(start, end, request["change"]["credited_delta_seconds"], bound)
+        change = request["change"]
+        if change["kind"] == "set_start":
+            try:
+                proposed = validate_local_instant(
+                    change["start_utc"], change["local_datetime"], change["timezone"], change["offset_seconds"]
+                )
+            except (ValueError, KeyError) as exc:
+                raise TimerError(
+                    "Choose a valid explicit local time, IANA zone, offset and matching UTC instant."
+                ) from exc
+            request = deepcopy(request)
+            request["change"]["start_utc"] = proposed
+            proposed, duration = move_start(start, end, proposed, bound)
+        else:
+            proposed, duration = step_start(start, end, change["credited_delta_seconds"], bound)
+        dependencies = self._correction_dependencies(timer)
+        envelope = {
+            "schema_version": 1,
+            "resource": f"/timers/{timer_id}",
+            "action": "step_start",
+            "request": request,
+            "cutoff": cutoff,
+            "timer_revision": timer["revision"],
+            "dependency_digest": fingerprint(dependencies),
+            "before": {"start_utc": start, "end_utc": end},
+            "after": {"start_utc": proposed, "end_utc": end},
+            "duration_seconds": duration,
+            "warnings": ["Running work continues after this preview cutoff."] if target["kind"] == "running" else [],
+        }
+        if change["kind"] == "set_start":
+            from zoneinfo import ZoneInfo
+
+            zone = ZoneInfo(change["timezone"])
+            before_local = datetime.fromisoformat(start).astimezone(zone)
+            after_local = datetime.fromisoformat(proposed).astimezone(zone)
+            envelope.update(
+                schema_version=2,
+                action="set_start",
+                presentation={
+                    "timezone": change["timezone"],
+                    "before_local": before_local.isoformat(),
+                    "after_local": after_local.isoformat(),
+                    "before_local_day": before_local.date().isoformat(),
+                    "after_local_day": after_local.date().isoformat(),
+                    "day_rebucket": str(before_local.date() != after_local.date()),
+                    "before_duration_seconds": str(
+                        int((datetime.fromisoformat(end) - datetime.fromisoformat(start)).total_seconds())
+                    ),
+                    "after_duration_seconds": str(duration),
+                },
+            )
+        envelope["signature"] = signature(envelope, key)
+        return envelope
+
+    def _correction_dependencies(self, timer):
         contexts = [timer, *timer["segments"]]
         task_ids = sorted({c["task_id"] for c in contexts if c.get("task_id")})
         plan_ids = sorted({c["scheduled_session_id"] for c in contexts if c.get("scheduled_session_id")})
@@ -131,21 +197,7 @@ class MultipleTimerService:
             for rating in manifest["ratings"]:
                 definition = self.db.get(RatingDefinition, rating["rating_definition_id"])
                 dependencies["rating_definitions"].append(definition.model_dump(mode="json") if definition else None)
-        envelope = {
-            "schema_version": 1,
-            "resource": f"/timers/{timer_id}",
-            "action": "step_start",
-            "request": request,
-            "cutoff": cutoff,
-            "timer_revision": timer["revision"],
-            "dependency_digest": fingerprint(dependencies),
-            "before": {"start_utc": start, "end_utc": end},
-            "after": {"start_utc": proposed, "end_utc": end},
-            "duration_seconds": duration,
-            "warnings": ["Running work continues after this preview cutoff."] if target["kind"] == "running" else [],
-        }
-        envelope["signature"] = signature(envelope, key)
-        return envelope
+        return dependencies
 
     def _accept_step(self, after, timer_id, envelope):
         key = signing_key(settings.db_file.parent / "correction-signing.key")
@@ -155,12 +207,22 @@ class MultipleTimerService:
             raise ConflictError("Correction approval belongs to another resource.", code="correction_preview_invalid")
         self.db.expire_all()
         try:
-            rebuilt = self._step_preview(after, timer_id, envelope["request"], envelope["cutoff"])
+            rebuilt = self._step_preview(
+                after,
+                timer_id,
+                envelope["request"],
+                envelope["cutoff"],
+                envelope.get("after") if envelope["action"] == "exclude" else None,
+            )
         except (TimerError, EntityNotFoundError, ConflictError) as exc:
             raise ConflictError("Correction target changed; preview again.", code="correction_preview_stale") from exc
         if rebuilt != envelope:
             raise ConflictError("Correction dependencies changed; preview again.", code="correction_preview_stale")
         timer = after["timers"][timer_id]
+        if envelope["action"] == "exclude":
+            self._install_exclusion(timer, envelope)
+            timer["revision"] += 1
+            return timer
         target = envelope["request"]["target"]
         if target["kind"] == "running":
             timer["running_start"] = envelope["after"]["start_utc"]
@@ -169,6 +231,154 @@ class MultipleTimerService:
             segment["start_time"] = envelope["after"]["start_utc"]
         timer["revision"] += 1
         return timer
+
+    def _exclusion_preview(self, state, timer_id, request, cutoff, allocated=None):
+        key = signing_key(settings.db_file.parent / "correction-signing.key")
+        timer = state["timers"].get(timer_id)
+        if timer is None:
+            raise EntityNotFoundError("Timer", timer_id)
+        if timer["state"] in ("stopped", "frozen") or any(g.get("decision") is None for g in timer["idle_gaps"]):
+            raise ConflictError("Resolve idle before correcting work.", code="idle_gap_unresolved")
+        request = deepcopy(request)
+        change = request["change"]
+        try:
+            for side in ("start", "end"):
+                change[side + "_utc"] = validate_local_instant(
+                    change[side + "_utc"],
+                    change[side + "_local_datetime"],
+                    change["timezone"],
+                    change[side + "_offset_seconds"],
+                )
+        except (ValueError, KeyError) as exc:
+            raise TimerError("Choose matching explicit dates, zone, offsets and UTC exclusion endpoints.") from exc
+        target = request["target"]
+        targets = target["targets"] if target["kind"] == "selection" else [target]
+        identities = [t.get("segment_id") for t in targets]
+        if len(set(identities)) != len(identities):
+            raise TimerError("Duplicate exclusion targets are not allowed.")
+        targets = sorted(targets, key=lambda t: (t["kind"], t.get("segment_id", "")))
+        if target["kind"] == "selection":
+            request["target"]["targets"] = targets
+        before, after = [], []
+        removed = 0
+        all_ids = {s["id"] for t in state["timers"].values() for s in t["segments"]}
+        all_ids.update(t.get("running_segment_id") for t in state["timers"].values())
+        new_ids = set()
+        for selected in targets:
+            identity = selected.get("segment_id")
+            running = selected["kind"] == "running"
+            if running:
+                if timer["state"] != "running" or identity != timer.get("running_segment_id"):
+                    raise ConflictError("Running target changed.", code="correction_target_stale")
+                start, end = timer["running_start"], cutoff
+                boundary = timer.get("running_evidence")
+            elif selected["kind"] == "buffered":
+                segment = next((s for s in timer["segments"] if s["id"] == identity), None)
+                if segment is None or segment.get("recorded_work_id"):
+                    raise ConflictError("Select owned uncommitted work.", code="correction_target_stale")
+                start, end = segment["start_time"], segment["end_time"]
+                boundary = segment.get("correction_evidence")
+            else:
+                raise ConflictError("Saved corrections require lineage staging.", code="unsupported_work_kind")
+            move_start(start, end, start, boundary)
+            kept, coverage = subtract_interval(start, end, change["start_utc"], change["end_utc"], cutoff)
+            removed += coverage
+            before.append(
+                {
+                    "source_segment_id": identity,
+                    "segment_id": identity,
+                    "start_utc": start,
+                    "end_utc": end,
+                    "running": running,
+                }
+            )
+            if running and kept[-1][1] != end:
+                kept.append((end, end))  # Ongoing continuation after the pinned cutoff; never saved as zero work.
+            for index, (left, right) in enumerate(kept):
+                fragment_id = identity
+                if index:
+                    candidates = [f for f in (allocated or []) if f["source_segment_id"] == identity]
+                    fragment_id = (
+                        candidates[index]["segment_id"]
+                        if allocated is not None and len(candidates) > index
+                        else str(uuid7())
+                    )
+                    if fragment_id in all_ids or fragment_id in new_ids:
+                        raise ConflictError("Fragment identity collision.", code="correction_preview_invalid")
+                    new_ids.add(fragment_id)
+                after.append(
+                    {
+                        "source_segment_id": identity,
+                        "segment_id": fragment_id,
+                        "start_utc": left,
+                        "end_utc": right,
+                        "running": running and index == len(kept) - 1,
+                    }
+                )
+        total_range = int(
+            (datetime.fromisoformat(change["end_utc"]) - datetime.fromisoformat(change["start_utc"])).total_seconds()
+        )
+        intervals = [(s["start_time"], s["end_time"]) for s in timer["segments"]]
+        if timer["state"] == "running":
+            intervals.append((timer["running_start"], cutoff))
+        existing_coverage = covered_seconds(intervals, change["start_utc"], change["end_utc"])
+        result = {
+            "schema_version": 2,
+            "resource": f"/timers/{timer_id}",
+            "action": "exclude",
+            "request": request,
+            "cutoff": cutoff,
+            "timer_revision": timer["revision"],
+            "dependency_digest": fingerprint(self._correction_dependencies(timer)),
+            "before": before,
+            "after": after,
+            "removed_seconds": removed,
+            "already_uncredited_seconds": max(0, total_range - existing_coverage),
+            "unselected_covered_seconds": max(0, existing_coverage - removed),
+            "warnings": [
+                "Every selected interval must retain positive work; complete removal is unsupported.",
+                "Already-uncredited gaps and unselected covered work are unchanged.",
+                "Splitting the current paused note target clears its pointer; choose an explicit description target.",
+            ],
+        }
+        result["signature"] = signature(result, key)
+        return result
+
+    @staticmethod
+    def _install_exclusion(timer, envelope):
+        change = envelope["request"]["change"]
+        for source in envelope["before"]:
+            identity = source["segment_id"]
+            running = source["running"]
+            original = timer if running else next(s for s in timer["segments"] if s["id"] == identity)
+            boundary = deepcopy(original["running_evidence"] if running else original["correction_evidence"])
+            boundary["forbidden_ranges"].append({"start_utc": change["start_utc"], "end_utc": change["end_utc"]})
+            fragments = [f for f in envelope["after"] if f["source_segment_id"] == identity]
+            if not running:
+                timer["segments"].remove(original)
+            for fragment in fragments:
+                if fragment["running"]:
+                    timer["running_segment_id"] = fragment["segment_id"]
+                    timer["running_start"] = fragment["start_utc"]
+                    timer["running_evidence"] = deepcopy(boundary)
+                else:
+                    snapshot = (
+                        {k: deepcopy(original.get(k)) for k in ("task_id", "scheduled_session_id", "tags", "notes")}
+                        if running
+                        else deepcopy(original)
+                    )
+                    timer["segments"].append(
+                        {
+                            **snapshot,
+                            "id": fragment["segment_id"],
+                            "start_time": fragment["start_utc"],
+                            "end_time": fragment["end_utc"],
+                            "correction_evidence": deepcopy(boundary),
+                        }
+                    )
+            if len(fragments) > 1 and timer.get("manual_pause_note_segment_id") == identity:
+                timer["manual_pause_note_segment_id"] = None
+        timer["segments"].sort(key=lambda s: (s["start_time"], s["id"]))
 
     def unfinished_for_plan(self, plan_id):
         """Read while holding SQLite's writer lock for a destructive/extension manifest.

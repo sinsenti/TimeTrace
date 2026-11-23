@@ -1,0 +1,48 @@
+{
+  "source_commit": "7a3a37e437b434f178e75d0ad572b5b5d240fe5e",
+  "path": "/timers/01a2089d-b64e-741d-ae2d-5754b6fc6c05",
+  "request": {
+    "operation_id": "historical-correction",
+    "preview": {
+      "schema_version": 1,
+      "resource": "/timers/01a2089d-b64e-741d-ae2d-5754b6fc6c05",
+      "action": "step_start",
+      "request": {
+        "target": {
+          "kind": "running",
+          "segment_id": "01a2089d-b64e-741d-ae2d-57557382ead8"
+        },
+        "change": {
+          "kind": "step_start",
+          "credited_delta_seconds": -300
+        }
+      },
+      "cutoff": "2026-11-23T10:10:00+00:00",
+      "timer_revision": 1,
+      "dependency_digest": "6c73f095f6c3c60bc4d934316c45144c6c7ceb62a533df90bb312a052bec4d78",
+      "before": {
+        "start_utc": "2026-11-23T10:00:00+00:00",
+        "end_utc": "2026-11-23T10:10:00+00:00"
+      },
+      "after": {
+        "start_utc": "2026-11-23T10:05:00+00:00",
+        "end_utc": "2026-11-23T10:10:00+00:00"
+      },
+      "duration_seconds": 300,
+      "warnings": [
+        "Running work continues after this preview cutoff."
+      ],
+      "signature": "2ac8ba65ce249e646369257d3552b635b8ca497023f0a5cf11343d3ba67fd37a"
+    }
+  },
+  "receipt": {
+    "before_revision": 2,
+    "cutoff": "2026-11-23T10:10:00+00:00",
+    "result_json": "{\"timer\": {\"id\": \"01a2089d-b64e-741d-ae2d-5754b6fc6c05\", \"idle_gaps\": [], \"mode\": \"flowtime\", \"notes\": \"\", \"pause_when_idle\": true, \"revision\": 2, \"running_evidence\": {\"forbidden_ranges\": [], \"lower_bound\": null, \"provenance\": \"uninterrupted\", \"version\": 1}, \"running_segment_id\": \"01a2089d-b64e-741d-ae2d-57557382ead8\", \"running_start\": \"2026-11-23T10:05:00+00:00\", \"scheduled_session_id\": null, \"segments\": [], \"state\": \"running\", \"tags\": \"\", \"target_minutes\": null, \"task_id\": null, \"task_title\": null}, \"selected_existing\": false, \"information\": [], \"operation_id\": \"historical-correction\", \"recorded_work_ids\": [], \"correction\": {\"before\": {\"start_utc\": \"2026-11-23T10:00:00+00:00\", \"end_utc\": \"2026-11-23T10:10:00+00:00\"}, \"after\": {\"start_utc\": \"2026-11-23T10:05:00+00:00\", \"end_utc\": \"2026-11-23T10:10:00+00:00\"}, \"target\": {\"kind\": \"running\", \"segment_id\": \"01a2089d-b64e-741d-ae2d-57557382ead8\"}, \"timer_revision\": 2}}",
+    "after_revision": 3,
+    "payload_hash": "6f59153236fe8775f13131f597b5ea908ac34873fcb69513b14513ae93ca12e4",
+    "id": "historical-correction",
+    "after_state_json": "{\"correction_initialized\": true, \"pending_operation\": null, \"revision\": 3, \"timers\": {\"01a2089d-b64e-741d-ae2d-5754b6fc6c05\": {\"id\": \"01a2089d-b64e-741d-ae2d-5754b6fc6c05\", \"idle_gaps\": [], \"mode\": \"flowtime\", \"notes\": \"\", \"pause_when_idle\": true, \"revision\": 2, \"running_evidence\": {\"forbidden_ranges\": [], \"lower_bound\": null, \"provenance\": \"uninterrupted\", \"version\": 1}, \"running_segment_id\": \"01a2089d-b64e-741d-ae2d-57557382ead8\", \"running_start\": \"2026-11-23T10:05:00+00:00\", \"scheduled_session_id\": null, \"segments\": [], \"state\": \"running\", \"tags\": \"\", \"target_minutes\": null, \"task_id\": null, \"task_title\": null}}, \"version\": 2}",
+    "file_finalized": true
+  }
+}

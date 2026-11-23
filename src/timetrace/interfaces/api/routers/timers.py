@@ -80,14 +80,44 @@ class CorrectionStartStep(BaseModel):
         return value
 
 
+class CorrectionSetStart(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["set_start"]
+    start_utc: str = Field(min_length=1, max_length=64)
+    timezone: str = Field(min_length=1, max_length=128)
+    local_datetime: str = Field(min_length=1, max_length=64)
+    offset_seconds: int = Field(ge=-86400, le=86400)
+
+
+class CorrectionSelection(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["selection"]
+    targets: list[Annotated[CorrectionRunningTarget | CorrectionBufferedTarget, Field(discriminator="kind")]] = Field(
+        min_length=1, max_length=64
+    )
+
+
+class CorrectionExclude(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["exclude"]
+    start_utc: str = Field(min_length=1, max_length=64)
+    end_utc: str = Field(min_length=1, max_length=64)
+    timezone: str = Field(min_length=1, max_length=128)
+    start_local_datetime: str = Field(min_length=1, max_length=64)
+    end_local_datetime: str = Field(min_length=1, max_length=64)
+    start_offset_seconds: int = Field(ge=-86400, le=86400)
+    end_offset_seconds: int = Field(ge=-86400, le=86400)
+
+
 class CorrectionPreviewRequest(BaseModel):
-    """Initial strict preparation interface; no successful approval is issued yet."""
+    """Strict explicit target/change request; old step dumps gain no defaults."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
     target: Annotated[
-        CorrectionRunningTarget | CorrectionBufferedTarget | CorrectionSavedTarget, Field(discriminator="kind")
+        CorrectionRunningTarget | CorrectionBufferedTarget | CorrectionSavedTarget | CorrectionSelection,
+        Field(discriminator="kind"),
     ]
-    change: CorrectionStartStep
+    change: Annotated[CorrectionStartStep | CorrectionSetStart | CorrectionExclude, Field(discriminator="kind")]
 
 
 class CorrectionInterval(BaseModel):
@@ -112,10 +142,52 @@ class CorrectionEnvelope(BaseModel):
     signature: str = Field(pattern="^[0-9a-f]{64}$")
 
 
+class CorrectionPresentation(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    timezone: Annotated[str, Field(min_length=1, max_length=128)]
+    before_local: Annotated[str, Field(min_length=1, max_length=64)]
+    after_local: Annotated[str, Field(min_length=1, max_length=64)]
+    before_local_day: Annotated[str, Field(min_length=1, max_length=16)]
+    after_local_day: Annotated[str, Field(min_length=1, max_length=16)]
+    day_rebucket: Literal["True", "False"]
+    before_duration_seconds: Annotated[str, Field(min_length=1, max_length=32)]
+    after_duration_seconds: Annotated[str, Field(min_length=1, max_length=32)]
+
+
+class DatedCorrectionEnvelope(CorrectionEnvelope):
+    schema_version: int = Field(ge=2, le=2)
+    action: Literal["set_start"]
+    presentation: CorrectionPresentation
+
+
+class CorrectionFragment(CorrectionInterval):
+    source_segment_id: str = Field(min_length=1, max_length=128)
+    segment_id: str = Field(min_length=1, max_length=128)
+    running: bool
+
+
+class ExclusionEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    schema_version: int = Field(ge=2, le=2)
+    resource: str = Field(min_length=1, max_length=256)
+    action: Literal["exclude"]
+    request: CorrectionPreviewRequest
+    cutoff: str = Field(min_length=1, max_length=64)
+    timer_revision: int = Field(ge=1)
+    dependency_digest: str = Field(pattern="^[0-9a-f]{64}$")
+    before: list[CorrectionFragment] = Field(max_length=64)
+    after: list[CorrectionFragment] = Field(max_length=128)
+    removed_seconds: int = Field(gt=0)
+    already_uncredited_seconds: int = Field(ge=0)
+    unselected_covered_seconds: int = Field(ge=0)
+    warnings: list[Annotated[str, Field(max_length=512)]] = Field(max_length=16)
+    signature: str = Field(pattern="^[0-9a-f]{64}$")
+
+
 class CorrectionCommitRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     operation_id: str = Field(min_length=1, max_length=128)
-    preview: CorrectionEnvelope
+    preview: CorrectionEnvelope | DatedCorrectionEnvelope | ExclusionEnvelope
 
 
 @router.post("/timers/{timer_id}/correction")

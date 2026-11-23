@@ -4,8 +4,8 @@ Authority: [#61 finalized contract](https://github.com/sinsenti/TimeTrace/issues
 This checkpoint is **not delivery of #61**; the finalized contract remains required.
 Existing #60 evidence in `timer-workspace-60.md` is unchanged.
 
-Latest checkpoint: signed five-minute start steps below supersede earlier blanket preview
-refusals **only** for initialized explicit running/uncommitted-buffered targets. Earlier
+Latest checkpoint: signed steps, dated starts and exact exclusions below supersede earlier
+blanket preview refusals **only** for initialized explicit running/uncommitted-buffered targets. Earlier
 checkpoint sections retain their historical evidence; this is still not full #61 delivery.
 
 ## Non-writing preview preparation gate
@@ -51,7 +51,8 @@ own onset-bound evidence. Closing copies `running_evidence` to segment `correcti
 Both evidence forms use `{version: 1, lower_bound: UTC instant or null, provenance,
 forbidden_ranges: []}`. Provenance is `uninterrupted`, `resume`, `context_split`, `idle_claim`
 or `legacy_unknown`. Forbidden exclusion ranges will be added by the later correction module;
-this checkpoint refuses unknown/nonempty evidence rather than extrapolating it.
+the initialization checkpoint refused unknown/nonempty evidence rather than extrapolating it.
+The exclusion checkpoint now validates and retains explicitly recorded forbidden UTC ranges.
 
 Initialization classifies old shapes conservatively: only a validated plain open timer without
 segments, idle gaps or opaque legacy payload receives an unbounded floor. Old closed work and
@@ -110,10 +111,55 @@ A subprocess dies before file replacement after correction DB commit, then two p
 recover the fixed correction and idempotent Stop with one exact saved interval. Other crash
 points/full concurrency remain delivery checks, not passing claims for this checkpoint.
 
+## Dated-start and exact-exclusion checkpoint
+
+Dated starts use `{kind: 'set_start', start_utc, timezone, local_datetime, offset_seconds}`.
+The IANA zone must exist; explicit naive local date/time and chosen offset must roundtrip from
+aware zero-offset UTC. Nonexistent DST times refuse; both fall-back folds are selectable only
+with their correct explicit offsets. There is no same-day restriction. Version-2 signed dated
+envelopes include local dates/offsets on both sides, absolute durations and rebucketing consequence.
+Running and paused identity-preserving trims keep state and eligible note pointer; real context
+floors and forbidden coverage remain immutable through trim/restore.
+
+Exclusions use `{kind: 'exclude', start_utc, end_utc, timezone, start_local_datetime,
+end_local_datetime, start_offset_seconds, end_offset_seconds}`. Target may be one explicit
+running/buffered target, or `{kind: 'selection', targets: [...]}` for up to 64 explicitly chosen
+running/buffered targets. Duplicate targets refuse; selection order is normalized. Saved targets
+remain unsupported. Every selected interval must intersect positively and retain positive work;
+zero/reversed/future/touching/no-op and complete removal refuse atomically. End exactly at signed
+cutoff is allowed. No subtraction spills into an unselected interval.
+
+Version-2 exclusion approval authenticates every retained fragment's source/allocated identity,
+UTC endpoints and running status, exact removed coverage, already-uncredited gap duration,
+unselected-covered duration and positive-work warnings. Allocation during preview is nonpersistent;
+commit authenticates and reconstructs with those server-signed allocations, rejects collisions,
+then fixes server-owned after-state through existing receipts. A real pause gap is labeled as
+already uncredited, not treated as removed work; unselected covered work is disclosed separately.
+
+11:00–11:30 minus 11:10–11:15 retains 11:00–11:10 and 11:15–11:30. Earliest retained work keeps
+original ID. Running middle split closes left and continues right with a new stable ID; paused
+stays paused. For tail exclusion ending at running cutoff, the positive left is closed and a new
+open continuation starts at cutoff with zero previewed work, never persisted as a zero row.
+All snapshots are preserved; forbidden coverage is appended to each affected fragment and survives
+reinitialization so later step/date edits cannot resurrect the break. Pointer clearing is scoped
+to splitting its own eligible interval; splitting an older interval preserves untouched pointer.
+
+Version-1 step wire dumps/hashes gain no defaults. A genuine accepted request/hash/result fixture
+from `7a3a37e` is replayed unchanged through two fresh processes, without its historical signing key.
+Version-2 date/exclusion envelopes coexist explicitly rather than changing v1 receipt meaning.
+Public tests also cover overnight/DST, exact edge/middle/multi-target gaps, invalid atomic selection,
+pointer scope, forged allocations/ranges/cutoffs, stale/unrelated state and post-DB/pre-file process
+crash followed by fixed fragment IDs and idempotent exact Stop rows across two restarts.
+
+Focused related suites passed 123 tests before final gap-disclosure hardening; final correction/
+initialization/gate suites passed 89 tests after it, followed by 35 interval-specific tests
+including final presentation-schema hardening and mixed buffer/running selection. Other durability/concurrency, SQL lineage,
+UI/browser and full-delivery suites remain unrun. The immutable focus/warning clock origins of
+neighboring features are not edited or implemented here.
+
 ## Next milestone
 
-Implement explicit dated/DST start edits and exact buffered exclusions, then saved interval
-lineage/staging and replay guards,
-lineage migration, writer guards, durability/recovery, controller/browser UI and complete #61
-acceptance. Do not enable correction controls based on this gate. Full Python/Node, migration,
+Implement saved interval lineage/staging, CAS and replay guards with migration verification,
+then complete durability/recovery, controller/browser UI and complete #61 acceptance. Do not
+enable correction controls based on these backend checkpoints. Full Python/Node, migration,
 crash/concurrency and real-browser acceptance remain required at eventual complete delivery.

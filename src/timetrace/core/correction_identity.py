@@ -44,11 +44,16 @@ def initialize_identities(timer):
                 or item["version"] != 1
                 or item["provenance"]
                 not in {"uninterrupted", "legacy_unknown", "resume", "context_split", "idle_claim"}
-                or item["forbidden_ranges"] != []
+                or not isinstance(item["forbidden_ranges"], list)
             ):
                 raise ValueError("Unknown correction evidence")
             if item["lower_bound"] is not None:
                 datetime.fromisoformat(item["lower_bound"])
+            for gap in item["forbidden_ranges"]:
+                if set(gap) != {"start_utc", "end_utc"} or datetime.fromisoformat(
+                    gap["start_utc"]
+                ) >= datetime.fromisoformat(gap["end_utc"]):
+                    raise ValueError("Invalid forbidden evidence")
     except (ValueError, TypeError, KeyError) as exc:
         raise ConflictError(
             "Correction identity/evidence is corrupt; preserve it for recovery.", code="reconciliation_required"
