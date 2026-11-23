@@ -22,8 +22,10 @@
         <div class="folio-strip">
             <label>Local date <input id="agenda-date" type="date" required></label>
             <button id="agenda-new" type="button">+ Plan session</button>
+            <button id="agenda-record" type="button">Add recorded work</button>
         </div>
         <p id="agenda-status" role="status"></p>
+        <div id="agenda-progress" aria-live="polite"></div>
         <button id="agenda-retry" type="button" hidden>Refresh agenda</button>
         <div class="folio-columns">
             <section aria-labelledby="agenda-ledger-title">
@@ -34,6 +36,7 @@
                 <span class="folio-eyebrow" id="agenda-kind">Inspector</span>
                 <h2 id="agenda-inspector-title" tabindex="-1">Select a ledger entry</h2>
                 <dl id="agenda-detail"></dl>
+                <section id="agenda-extension" aria-label="Explicit schedule extension"></section>
                 <p id="agenda-edit-status" role="status"></p>
                 <button id="agenda-review" type="button" hidden>Review saved schedule</button>
                 <div id="agenda-latest"></div>
@@ -44,6 +47,7 @@
                         <label>Tags <input id="agenda-tags" type="text"></label>
                         <label>Notes <textarea id="agenda-notes"></textarea></label>
                     </fieldset>
+                    <label id="agenda-attachment" hidden><input id="agenda-attach" type="checkbox"> Explicitly attach this whole work record to the selected plan (same assigned task required)</label>
                     <label>Start <input id="agenda-start" type="datetime-local" step="0.001" required></label>
                     <label>End <input id="agenda-end" type="datetime-local" step="0.001" required></label>
                     <div class="folio-actions">
@@ -56,11 +60,15 @@
     </main>
     {% include "components/settings_modal.html" %}
     {% include "components/ai_drawer.html" %}
+    <section id="manual_work_recovery" role="region" aria-label="Manual recording recovery" hidden></section>
     <script src="/static/js/api_client.js"></script>
+    <script src="/static/js/recorded_work_recovery.js"></script>
     <script src="/static/js/task_knowledge.js"></script>
     <script src="/static/js/utils.js"></script>
-    <script src="/static/js/timer_control.js"></script>
+    <script src="/static/js/timer_control.js?v=timers4"></script>
     <script src="/static/js/settings.js"></script>
+    <script src="/static/js/plan_extension.js"></script>
+    <script src="/static/js/plan_removal.js"></script>
     <script src="/static/js/agenda.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>

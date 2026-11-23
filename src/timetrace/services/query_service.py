@@ -20,7 +20,7 @@ from sqlmodel import Session, select, text
 from timetrace.config import settings
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_compiler import CompiledQuery, QueryContext, compile_query
-from timetrace.core.query_registry import SOURCES
+from timetrace.core.query_registry import SOURCES, recorded_measure_capability
 from timetrace.core.query_spec import (
     AnalyticsQuery,
     ComparisonMode,
@@ -29,9 +29,11 @@ from timetrace.core.query_spec import (
     Dimension,
     RangePreset,
     SortKey,
+    TagAttribution,
 )
 from timetrace.core.timezones import daemon_timezone_name
 from timetrace.db.models import Habit, Task
+from timetrace.db.session import sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import (
     AnalyticsQueryBatchRequest,
     AnalyticsQueryBatchResponse,
@@ -266,6 +268,44 @@ class QueryService:
     def __init__(self, db: Session):
         self.db = db
 
+    def recorded_progress(self, start_date: str, end_date: str, plan_ids: list[str]) -> dict:
+        """Folio's bounded read; every metric shares one snapshot and measurement instant."""
+        measurement = datetime.now(UTC)
+        result = {
+            "measurement_at": measurement,
+            "cohort": (
+                "Whole typed work intervals by local record-start date; legacy and live buffers excluded. "
+                "Task, elapsed, unassigned and plan groups are non-additive."
+            ),
+        }
+        with sqlite_read_snapshot(self.db) as reader:
+            service = QueryService(reader)
+
+            def run(measure, group_by=None, basis=None):
+                query = AnalyticsQuery.model_validate(
+                    {
+                        "source": "recorded_work",
+                        "measure": measure,
+                        "group_by": group_by or [],
+                        "date_range": {"preset": "custom", "start_date": start_date, "end_date": end_date},
+                        "plan_ids": plan_ids if basis else [],
+                        "plan_basis": basis,
+                    }
+                )
+                return service._run(query, QueryContextRequest(), measurement.replace(tzinfo=None))
+
+            for measure in ("recorded_task_time", "elapsed_recorded_time", "unassigned_recorded_time"):
+                result[measure] = run(measure)
+            result["tasks"] = run("recorded_task_time", ["task"])
+            if plan_ids:
+                for basis in ("original", "current"):
+                    result[basis] = {
+                        "fill": run("plan_fill", ["plan_id"], basis),
+                        "inside": run("inside_scheduled_task_time", basis=basis),
+                        "outside": run("outside_scheduled_task_time", basis=basis),
+                    }
+        return result
+
     def capabilities(self) -> QueryCapabilitiesResponse:
         sources = []
         for source_spec in SOURCES.values():
@@ -273,7 +313,14 @@ class QueryService:
                 SourceCapabilities(
                     source=source_spec.source,
                     measures=[
-                        CapabilityMeasure(value=m.measure, label=m.label, unit=m.unit)
+                        CapabilityMeasure(
+                            value=m.measure,
+                            label=m.label,
+                            unit=m.unit,
+                            capabilities=recorded_measure_capability(m.measure)
+                            if source_spec.source.value == "recorded_work"
+                            else None,
+                        )
                         for m in source_spec.measures.values()
                     ],
                     dimensions=[
@@ -288,6 +335,14 @@ class QueryService:
         return QueryCapabilitiesResponse(sources=sources, sql_enabled=settings.sql_widgets_enabled)
 
     def run(self, query: AnalyticsQuery, context: QueryContextRequest) -> AnalyticsQueryResponse:
+        if query.source.value == "recorded_work":
+            with sqlite_read_snapshot(self.db) as reader:
+                return QueryService(reader)._run(query, context)
+        return self._run(query, context)
+
+    def _run(
+        self, query: AnalyticsQuery, context: QueryContextRequest, measurement_at: datetime | None = None
+    ) -> AnalyticsQueryResponse:
         start = time_module.monotonic()
         warnings: list[str] = []
 
@@ -300,10 +355,15 @@ class QueryService:
                 "results may be reported in UTC rather than local time."
             )
 
-        rows, resolved_range, compiled, truncated = self._execute(query, tz, tz_name, first_day_of_week)
+        rows, resolved_range, compiled, truncated = self._execute(query, tz, tz_name, first_day_of_week, measurement_at)
 
         columns = self._build_columns(query)
         total = rows[0].value if not query.group_by and rows else None
+        if query.source.value == "recorded_work" and query.group_by and query.measure.value != "plan_fill":
+            scalar_query = query.model_copy(update={"group_by": []})
+            scalar_ctx = compiled.context
+            scalar = compile_query(scalar_query, scalar_ctx)
+            total = self.db.exec(text(scalar.sql), params=scalar.params).first()[0]
 
         comparison_meta: ComparisonMeta | None = None
         comparison_total: float | None = None
@@ -326,6 +386,20 @@ class QueryService:
             warnings=warnings,
         )
 
+        if query.source.value == "recorded_work":
+            meta.measurement_at = compiled.params["measurement"].replace(tzinfo=UTC)
+            meta.basis = query.plan_basis or "recorded_work_union"
+            meta.cohort = "Whole typed intervals by local record-start range; legacy/live/future-ended rows excluded"
+            meta.non_additive = bool(query.group_by)
+            meta.cohort_predicate = [f.model_dump(mode="json") for f in query.filters]
+            if query.measure.value != "plan_fill":
+                physical_query = query.model_copy(update={"group_by": [], "tag_attribution": TagAttribution.FAN_OUT})
+                physical = compile_query(physical_query, compiled.context)
+                physical_result = self.db.exec(text(physical.sql), params=physical.params).first()
+                meta.physical_cohort_seconds = physical_result[0] * 3600
+                meta.cohort_count = physical_result[1]
+                meta.attributed_total_seconds = total * 3600
+
         return AnalyticsQueryResponse(
             columns=columns,
             rows=rows,
@@ -337,7 +411,12 @@ class QueryService:
         )
 
     def _execute(
-        self, query: AnalyticsQuery, tz: ZoneInfo, tz_name: str, first_day_of_week: int
+        self,
+        query: AnalyticsQuery,
+        tz: ZoneInfo,
+        tz_name: str,
+        first_day_of_week: int,
+        measurement_at: datetime | None = None,
     ) -> tuple[list[_QueryRow], _ResolvedRange, CompiledQuery, bool]:
         """Compile and run one query pass, returning fully post-processed rows.
 
@@ -371,8 +450,19 @@ class QueryService:
             range_end_utc=resolved_range.end_utc,
             range_start_local=resolved_range.start_date.isoformat() if resolved_range.start_date else None,
             range_end_local=resolved_range.end_date.isoformat() if resolved_range.end_date else None,
-            now_utc=datetime.now(UTC).replace(tzinfo=None),
+            now_utc=measurement_at or datetime.now(UTC).replace(tzinfo=None),
         )
+
+        if query.source.value == "recorded_work":
+            compile_query(query, ctx)  # Reject unsupported capabilities before looking up any plans.
+        if query.source.value == "recorded_work" and query.plan_ids:
+            from timetrace.services.session_service import SessionService
+
+            for plan_id in dict.fromkeys(query.plan_ids):
+                plan = SessionService(self.db).get_scheduled_session(plan_id)
+                start = plan.original_start if query.plan_basis == "original" else plan.start_time
+                end = plan.original_end if query.plan_basis == "original" else plan.end_time
+                ctx.plan_windows.append((plan.id, plan.task_id, start, end))
 
         compiled = compile_query(query, ctx)
         raw_rows = self.db.exec(text(compiled.sql), params=compiled.params).all()
@@ -389,6 +479,8 @@ class QueryService:
         elif query.group_by and query.group_by[0] == Dimension.WEEKDAY and query.sort.value.startswith("dimension"):
             rows = self._reorder_weekday(rows, first_day_of_week, query.sort.value.endswith("desc"))
 
+        if query.source.value == "recorded_work":
+            compiled.context = ctx
         return rows, resolved_range, compiled, truncated
 
     def _run_comparison(
@@ -571,7 +663,11 @@ class QueryService:
                 if dim == Dimension.TASK:
                     raw_key = keys[i]
                     if not raw_key or raw_key == "__none__":
-                        labels.append("Direct Session Log")
+                        labels.append(
+                            "Unassigned recorded work"
+                            if query.source.value == "recorded_work"
+                            else "Direct Session Log"
+                        )
                     else:
                         labels.append(task_titles.get(raw_key, raw_key))
                 elif dim == Dimension.HABIT:
@@ -580,6 +676,9 @@ class QueryService:
                     labels.append(_label_for(dim, keys[i]))
 
             row = _QueryRow(keys=keys, labels=labels, value=float(value) if value is not None else None, count=count)
+            if query.source.value == "recorded_work":
+                row.value_seconds = row.value * 3600 if row.value is not None else None
+                row.physical_cohort_seconds = float(r[n_dims + 2]) if len(r) > n_dims + 2 else row.value_seconds
             row._source_identity = tuple(r[i] for i in range(n_dims))
             rows.append(row)
         return rows

@@ -7,13 +7,13 @@ from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlmodel import Session
 
 from timetrace import __version__
 from timetrace.config import settings
 from timetrace.core.exceptions import AIProviderError, ConflictError, EntityNotFoundError, TimerError, ValidationError
 from timetrace.core.idle_detector import get_idle_seconds
-from timetrace.core.timer import timer_manager
-from timetrace.db.session import init_db
+from timetrace.db.session import engine, init_db
 from timetrace.interfaces.api.routers import api_router
 from timetrace.interfaces.api.routers.web import router as web_router
 from timetrace.services.timer_service import TimerService
@@ -30,17 +30,26 @@ async def idle_checker_loop():
     while True:
         await asyncio.sleep(10)
         try:
-            if settings.idle_detection_enabled and timer_manager.idle_detection_enabled and timer_manager.is_running:
+            if settings.idle_detection_enabled:
                 idle_secs = get_idle_seconds()
-                if idle_secs >= timer_manager.idle_threshold_seconds:
-                    await asyncio.to_thread(TimerService(None).freeze_for_idle, idle_secs)
+                await asyncio.to_thread(observe_timer_activity, idle_secs)
         except Exception as exc:
             logger.warning(f"Idle loop error: {exc}")
+
+
+def observe_timer_activity(idle_seconds):
+    # Frozen timers still need return observations; every tick crosses reconciliation first.
+    with Session(engine) as db:
+        TimerService(db).freeze_for_idle(idle_seconds)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    with Session(engine) as db:
+        MultipleTimerService(db).reconcile()
     # init_db() -> run_migrations() -> alembic's env.py calls logging.config.fileConfig() against
     # alembic.ini, which sets the ROOT logger to level=WARN with its own handler+formatter
     # (alembic.ini's [logger_root]/[handler_console] sections) -- silently overriding the INFO

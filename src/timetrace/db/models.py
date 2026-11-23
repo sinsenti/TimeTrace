@@ -30,6 +30,20 @@ def generate_uuid7() -> str:
     return str(uuid.uuid7())
 
 
+class MutationOperation(SQLModel, table=True):
+    """Private recovery receipt; not an analytics source."""
+
+    __tablename__ = "mutation_operation"
+    id: str = Field(primary_key=True)
+    payload_hash: str
+    before_revision: int
+    after_revision: int
+    cutoff: str
+    after_state_json: str
+    result_json: str
+    file_finalized: bool = False
+
+
 class TaskStatus(SQLModel, table=True):
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     name: str = Field(unique=True, index=True)
@@ -120,6 +134,8 @@ class Session(SQLModel, table=True):
             name="ck_session_kind",
         ),
         Index("ix_session_task_interval", "task_id", "start_time", "end_time"),
+        Index("ix_session_kind_interval", "kind", "start_time", "end_time", "task_id"),
+        UniqueConstraint("timer_operation_id", "timer_segment_id", name="uq_timer_operation_segment"),
     )
 
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
@@ -141,6 +157,10 @@ class Session(SQLModel, table=True):
     provenance: str | None = None
     scheduled_session_id: str | None = Field(default=None, foreign_key="scheduled_session.id", index=True)
     revision: int = Field(default=1, sa_column_kwargs={"server_default": "1"})
+
+    timer_id: str | None = None
+    timer_operation_id: str | None = None
+    timer_segment_id: str | None = None
 
     task: Optional[Task] = Relationship(back_populates="sessions")  # noqa: UP045
 

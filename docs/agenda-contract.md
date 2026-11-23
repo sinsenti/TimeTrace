@@ -8,6 +8,31 @@ Owner decisions [1–5](https://github.com/sinsenti/TimeTrace/issues/2#issuecomm
 [Q10–12](https://github.com/sinsenti/TimeTrace/issues/2#issuecomment-6959931616) are owner-approved.
 See [accepted boundaries](adr/0001-explicit-recorded-work-boundaries.md).
 
+## Implemented exact removal interface (#7)
+
+`GET /scheduled-sessions/{id}/removal-preview` returns an immutable-scope manifest and
+`consent_token` fingerprint, plus per-action refusal reasons. The manifest includes the whole
+selected plan, exact `scheduled_session_id`-owned work (including outside portions), revisions,
+metadata, recurrence anchors, rating/draft dependencies and unfinished timer contexts. Opening or
+canceling persists nothing. The token is a scope fingerprint, not an authentication credential.
+
+`POST /scheduled-sessions/{id}/removal` accepts `action` (`delete_everything` or `squeeze`),
+`consent_token` and a fresh `operation_id`. One explicit choice confirms the displayed whole
+manifest. Under SQLite writer ownership the server rebuilds and compares the manifest and reads
+`MultipleTimerService.unfinished_for_plan` without taking its advisory lock. Changed scope and
+unfinished timers refuse both actions. Squeeze changes only the current envelope, retaining gaps,
+originals and work timestamps; empty associated work refuses. Delete removes whole owned work and
+the selected plan atomically, converting its recurrence override to a skip. Work with live rating,
+AI draft restoration or legacy recurrence dependencies currently safely refuses deletion; metadata
+and append-only audit history are never silently discarded. Existing typed AI/legacy delete guards
+remain in force, as do task-completion, detachment and series-history protections.
+
+The existing private `MutationOperation` table stores database-only finalized receipts in the
+`plan-removal:` namespace (no timer recovery state). The returned namespaced `operation_id` can be
+read at `/operations/{operation_id}` after a lost acknowledgement. Same key/payload returns the
+original result even after deletion; a different payload refuses. Browser recovery only reads;
+a new preview/action is a new approval, not an automatic replay. No migration is required.
+
 ## 1. Settled boundaries and remaining owner choice
 
 Retain Folio B/Calendar, multiple initial timers, warning-only same-task overlap, no cross-task
@@ -381,3 +406,60 @@ bounded verification found the repairs addressed all concrete technical findings
 and test-seam agreement. The owner has now accepted Q14 and confirmed all six seam groups; the
 first test-first #2 foundation slice is authorized in its isolated worktree. No downstream ticket
 completion, push or merge is implied. AI wrapper bug #57 is separate.
+
+## #3 implemented query capability boundary
+
+`recorded_work` queries require a finite local start-date range (maximum 400 days).
+Initial measures: recorded_task_time, elapsed_recorded_time, unassigned_recorded_time,
+inside_scheduled_task_time, outside_scheduled_task_time and plan_fill. Values are hours.
+Only scalar and task grouping are enabled initially; plan_fill uses plan_id only.
+Only task eq/in filters and independent explicit plan_ids selection (up to 500 persisted or virtual IDs)
+are enabled. Plan lookup is independent of work-start dates. Comparisons require
+`plan_basis: original|current`. Tags, tag attribution, time grouping, other filters, baseline
+comparisons and gap filling are rejected, not approximated. Existing sources are unchanged.
+Work is whole closed typed intervals selected by local start day at one captured instant.
+SQL interval arithmetic uses integer UTC microseconds; fractional endpoints are not rounded away.
+Plan matching does not establish association. Task/plan groups are non-additive; totals are
+independently calculated. This bounded interface is not the downstream custom-widget UI.
+
+
+The real Folio `/agenda-view` has distinct **Plan session** and **Add recorded work** actions.
+The latter creates via strict `POST /recorded-work`, with manual provenance, and can be reread at
+`GET /recorded-work/{id}`. Same-task warnings list each intersecting raw record and seconds;
+touching endpoints and different tasks are silent. Work is read-only after creation. A selected
+plan prefills task context, but its explicit attachment checkbox starts unchecked. Attached
+creates require `expected_plan_revision` or `expected_projection_revision`, invalidate the plan
+revision and capture virtual originals in the same locked transaction. Unattached work never
+captures projections. No task reassignment, timer protocol change or destructive work control is offered.
+
+`GET /recorded-work-progress?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD&plan_ids=ID` provides
+Folio's shared-snapshot, shared-measurement read. Folio selects plans visible in that day's ledger;
+its comparison label explicitly describes this plan cohort, not all plans for all dates. The
+query interface can explicitly select other plan IDs regardless of their start day. Plans with
+no matching work report zero fill. Original/current comparisons do not imply ownership. Raw
+legacy-inclusive task accounting and old saved queries remain unchanged. Tags and full custom
+union widgets remain downstream; unsupported query combinations return validation errors.
+
+Schema `0016_recorded_work_index` adds only the `(kind,start_time,end_time,task_id)` index for
+bounded cross-task work reads. It transforms no rows or JSON; fresh-chain and synthetic copied
+0015 data tests check index use, FKs and retained IDs, recurrence, ratings, audit/draft JSON and widgets.
+
+
+### Explicit extension capability
+
+See [schedule-extension-contract.md](schedule-extension-contract.md) for the implemented #6
+root HTTP action, fixed DB receipt, shared browser controller and Calendar consumer interface.
+Only Apply after the displayed CURRENT-interval preview extends the explicitly selected plan;
+running timers do not block it and overlap does not trigger warning or another confirmation.
+
+### Shared recording producer interface
+
+`SessionService.stage_recorded_work(RecordedWorkCreate(...), provenance="manual"|"timer")`
+stages a closed positive past interval, explicit association/revision validation, overlap warnings,
+and any projected-plan capture under the shared SQLite writer transaction. It flushes and returns
+stable work UUID/revision/kind/provenance, but **does not commit or roll back**. The caller must
+commit once or roll back the entire transaction on any failure; until commit the returned identity
+is staged, not an ACK. The HTTP manual adapter wraps it with commit/rollback and always supplies
+`manual`; the strict request DTO refuses a user-supplied provenance. Timer producers may pass
+`timer` only server-internally. Timer v1 is intentionally not switched. This primitive provides no
+operation receipts, file durability, replay or multi-timer policy; those remain #4 responsibilities.

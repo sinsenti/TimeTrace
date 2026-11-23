@@ -220,6 +220,36 @@ in these retained adoption notes; implementation details and original evidence l
 - **Deferred:** external integrations, multi-user scoping, Tauri/mobile clients, and native tray/
   hotkey services are not implemented. Existing external-sync columns are not a sync feature.
 
+## Explicit recorded-work widgets
+
+The existing Statistics widget editor offers the `recorded_work` source and six union measures.
+Capabilities publish per-measure dimensions, predicate operators, units and plan-basis choices.
+Use a bounded local **record-start** range (at most 400 days); selected intervals remain whole.
+The daemon timezone and explicit week-start context follow the existing query conventions.
+The independent full-range scalar is not a sum of overlapping day/category/task/tag groups.
+
+- Recorded task time unions within each assigned task, then credits tasks independently.
+  Elapsed time unions across tasks, including taskless work; unassigned time unions taskless work
+  separately. Unassigned and task-credit totals are not additive elapsed time.
+- Fan-out tags select distinct matching records and label overlapping group totals. Split-evenly
+  allocates atomic interval segments among distinct active tags **before** filtering, independently
+  per task (task credit), across tasks (elapsed), or taskless-only (unassigned). Hidden shares are
+  not redistributed. Responses distinguish attributed seconds from physical cohort seconds and
+  expose record counts, predicates, measurement instant and basis for inspection.
+- Inside/outside measures require **Original plan** or **Current schedule**. Optional comma-separated
+  plan IDs select plans independently of work dates; leaving IDs empty uses all same-task matching
+  windows, unioned before aggregation. Plan fill requires explicit plan IDs and groups only by plan;
+  overlapping fills have no additive scalar. Matching never changes a work record's association.
+- Unsupported negative tag predicates, comparison tags, period baselines and gap filling fail
+  capability validation rather than approximating results. Existing saved `sessions` queries,
+  stored-duration accounting, SQL widgets and AI allowlists retain their meanings and restrictions.
+  Scheduled/remaining/live values are not completed union credit; legacy history remains excluded.
+
+No schema change is required for these widgets; the existing typed-record interval index and
+minimum schema revision `0016_recorded_work_index` remain in place.
+Regression coverage: `tests/test_recorded_work_widgets.py`, `tests/test_recorded_work.py`, and
+`tests/test_performed_time_widget.cjs` (owned DOM adapter, not physical browser input).
+
 ## Task post-mortems
 
 Dedicated task details (`/task-inspector/{id}` and `/tasks-detail/{id}`) and Revision’s Task
@@ -690,7 +720,7 @@ behavior for live timer context. Legacy mutations still create uncertain history
 
 ## Migration verification
 
-The source tree currently ends at `0015_typed_recurrence`; inspect revision ids and
+The source tree currently ends at `0017_timer_receipts`; inspect revision ids and
 `down_revision` links when adding a migration rather than choosing a number from an old plan.
 `uv run timetrace db revision -m "description"` autogenerates a revision against the configured DB;
 review the result, including data movement and SQLite table rebuilds, before applying it.
@@ -706,7 +736,7 @@ review the result, including data movement and SQLite table rebuilds, before app
    Keep migration failures visible. A successful metadata `create_all` test is **not** a migration test.
 
 Startup and `timetrace db migrate` use Alembic only. Before opening SQLite, they check the
-Alembic entrypoints and resolve the required schema revision (`0015_typed_recurrence`) in the
+Alembic entrypoints and resolve the required schema revision (`0017_timer_receipts`) in the
 migration graph. An incomplete installation cannot pass by reporting an older `head`; use a
 complete TimeTrace checkout or installation. Update `MINIMUM_SCHEMA_REVISION` in `db/session.py`
 when the application starts depending on a later schema revision.
@@ -887,3 +917,38 @@ shared native workflows, explicit owner acceptance and whole25 gates remain open
 Candidate15completed/10open adds18 only; authoritative integratione0c6989 remains14/11 pending
 TWO fresh closure metadata axes, parent disposition and integration. Historical checkpoints remain;
 spec stays Approved, not Built. No new tests/runtime/Git writes/provider/personalDB/cleanup operations.
+
+
+### Manual recorded work (Agenda #3)
+
+The Folio Agenda at `/agenda-view` supports explicit manual work separately from plans, including
+past plans. See [the capability contract](agenda-contract.md#3-implemented-query-capability-boundary)
+for typed routes, validation/warnings, explicit association and bounded union progress. Existing
+Persisted historical Timer v1/session rows remain uncertain; the new source excludes them. New
+v2 timer recordings use explicit timer provenance through the same staging interface. Task accounting
+is unchanged alongside the new labels. Work edits/reassignment are not enabled; #9's explicit union
+widgets have their own capability boundary above. Query cohorts are whole intervals selected by
+local start day, never midnight clipping.
+
+### Independent timers (Agenda #4)
+
+See [the concrete timer contract/runbook](timer-v2-contract.md#implemented-4-interface-and-recovery-runbook).
+Agenda, Calendar and the shared navbar list independent timers from the server. Start selects an
+assigned task's existing unfinished timer without Resume or reassociation; taskless starts remain
+independent. Pause/Resume/Stop and minimal idle-gap Claim/Discard are targeted. Still-running and
+paused buffers never enter completed totals; stopping/splitting records their positive segments.
+Navigation/reload/restart retain identities, elapsed segments and gaps. Start from an ended plan
+shows information without changing original/current endpoints.
+
+`timetrace status` lists unfinished IDs and states. Use `pause|resume|stop|split --timer <unique suffix>`;
+ambiguous calls list candidates and send no mutation. Add `--operation <stable ID>` when retrying;
+retain the original full timer ID after Stop because unfinished-list suffix lookup no longer finds
+stopped tombstones. `start --operation <stable ID>` likewise prevents duplicate taskless retries.
+
+Migration `0017_timer_receipts` adds only private operation receipts and nullable work identity
+columns/uniqueness; it reclassifies no historical rows or JSON. Old singleton HTTP adapters remain
+available for zero/one target, refusing ambiguity. Old direct core-v1 writes refuse a v2 file.
+The background observer crosses the same reconciliation barrier, including while frozen and when
+OS activity is unknown. An unknown observation is never proof of return. The original v1 payload
+and backup survive conversion; uncertain legacy gaps stay explicitly uncertain, never auto-resumed.
+These controls do not implement #5's review screen, #6 extension, or #7 destructive UI.

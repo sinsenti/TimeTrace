@@ -491,9 +491,9 @@ def list_rating_entries(
 
 @tool
 def get_timer_status(runtime: ToolRuntime[AIAgentContext, Any]) -> dict[str, Any]:
-    """Returns the current running timer, task, tags, notes, elapsed/remaining time, idle state,
-    pending idle gap, and next scheduled session. It cannot start, stop, split, or resolve a
-    timer.
+    """Returns independent unfinished timers, task/context, elapsed/remaining time and idle gaps,
+    plus the next scheduled session when none is running. Live buffers are not completed work.
+    This read cannot start, pause, resume, stop, split, or resolve a timer.
     """
     _log_call("get_timer_status")
     return _log_result("get_timer_status", runtime.context.gateway.get_timer_status())

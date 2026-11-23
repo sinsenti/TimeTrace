@@ -21,7 +21,6 @@ from sqlmodel import Session, select
 
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
 from timetrace.core.recurrence import is_occurrence_id
-from timetrace.core.timer import timer_manager
 from timetrace.db.models import (
     AIDraftBatch,
     AIDraftItem,
@@ -853,8 +852,10 @@ class AIDraftService:
         self._require_no_ratings("task", task_id)
         if self.db.exec(select(RecurrenceException.id).where(RecurrenceException.task_id == task_id).limit(1)).first():
             raise ConflictError("AI v1 cannot restore recurrence exceptions after deleting their task.")
-        if timer_manager.task_id == task_id:
-            raise ConflictError("AI cannot delete a task used by the current timer.")
+        from timetrace.services.multiple_timer_service import MultipleTimerService
+
+        if MultipleTimerService(self.db).has_task_context({task_id}):
+            raise ConflictError("AI cannot delete a task used by an unfinished timer or buffered context.")
         parent = self.db.get(Task, task.parent_id) if task.parent_id else None
         rederived_status = self.db.exec(select(TaskStatus.id).where(TaskStatus.name == task.status)).first()
         if (

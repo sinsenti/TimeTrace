@@ -125,6 +125,8 @@ function _wbResetForm() {
     _wbSetValue('wb_comparison', 'none');
     _wbSetValue('wb_comparison_start', '');
     _wbSetValue('wb_comparison_end', '');
+    if (document.getElementById('wb_plan_basis')) _wbSetValue('wb_plan_basis', '');
+    if (document.getElementById('wb_plan_ids')) _wbSetValue('wb_plan_ids', '');
     _wbSetValue('wb_filter_op', 'eq');
     _wbSetValue('wb_filter_value', '');
     _wbSetValue('wb_sql', '');
@@ -171,6 +173,9 @@ function _wbHydrateStructuredQuery(q) {
     _wbSetValue('wb_chart', q.chart || 'bar');
     _wbSetValue('wb_date_range', (q.date_range && q.date_range.preset) || 'all_time');
     _wbSetValue('wb_tag_attribution', q.tag_attribution || 'fan_out');
+    if (document.getElementById('wb_plan_basis')) _wbSetValue('wb_plan_basis', q.plan_basis || '');
+    if (document.getElementById('wb_plan_ids')) _wbSetValue('wb_plan_ids', (q.plan_ids || []).join(', '));
+    wbOnMeasureChange();
     if (q.comparison) {
         _wbSetValue('wb_comparison', q.comparison.mode || 'none');
         _wbSetValue('wb_comparison_start', q.comparison.start_date || '');
@@ -362,7 +367,35 @@ function _onWidgetBuilderSourceChange() {
     const fields = spec.filter_fields.map(f => ({ value: f.value, label: f.label }));
     document.querySelectorAll('#wb_filters .wb-filter-row').forEach(row => refill(row.querySelector('select').id, fields, 'No filter'));
     wbSyncFilters();
+    wbOnMeasureChange();
+}
 
+function wbOnMeasureChange() {
+    const recorded = _wbValue('wb_source') === 'recorded_work';
+    const measure = capabilitiesBySource?.[_wbValue('wb_source')]?.measures.find(m => m.value === _wbValue('wb_measure'));
+    const caps = measure?.capabilities;
+    const hint = document.getElementById('wb_recorded_capabilities');
+    if (hint) hint.textContent = caps ? `Supported dimensions: ${caps.dimensions.join(', ')}. Filters: ${Object.entries(caps.filter_operators || {}).map(([field, ops]) => `${field} (${ops.join('/')})`).join('; ')}. Unassigned accepts has_task=false only. Plan fill requires explicit plan IDs; aggregate inside/outside may leave IDs empty to use all matching windows.` : '';
+    document.getElementById('wb_recorded_basis')?.classList.toggle('hidden', !recorded);
+    document.getElementById('wb_plan_options')?.classList.toggle('hidden', !caps?.plan_selection);
+    ['wb_group_by_1', 'wb_group_by_2'].forEach(id => {
+        const select = document.getElementById(id);
+        if (select?.options) Array.from(select.options).forEach(option => {
+            option.disabled = !!(caps && option.value && !caps.dimensions.includes(option.value));
+        });
+    });
+    const attribution = document.getElementById('wb_tag_attribution');
+    if (attribution?.options) Array.from(attribution.options).forEach(option => {
+        option.disabled = !!(caps && !caps.tag_attributions.includes(option.value));
+    });
+    const comparison = document.getElementById('wb_comparison');
+    if (comparison?.options) {
+        comparison.disabled = false;
+        Array.from(comparison.options).forEach(option => { option.disabled = recorded && option.value !== 'none'; });
+    }
+    // Keep incompatible saved/source-switched drafts correctable rather than trapping a checked control.
+    const fill = document.getElementById('wb_fill_gaps');
+    if (fill) fill.disabled = false;
 }
 
 function wbOnGroupByChange() {
@@ -615,6 +648,19 @@ function _wbStructuredQuery() {
         date_range: { ...wbOriginalQuery?.date_range, preset: _wbValue('wb_date_range') },
         filters: []
     };
+    if (source === 'recorded_work') {
+        const caps = capabilitiesBySource?.[source]?.measures.find(m => m.value === measure)?.capabilities;
+        if (query.date_range.preset === 'all_time') {
+            _wbShowError('Recorded unions require a bounded local record-start range (up to 400 days).'); return null;
+        }
+        if (caps?.plan_selection) {
+            query.plan_basis = _wbValue('wb_plan_basis');
+            query.plan_ids = _wbValue('wb_plan_ids').split(',').map(id => id.trim()).filter(Boolean);
+        } else { query.plan_basis = null; query.plan_ids = []; }
+        if (query.fill_gaps || _wbValue('wb_comparison') !== 'none') {
+            _wbShowError('Recorded unions do not support gap filling or period baselines. Select original plan or current schedule for plan comparisons.'); return null;
+        }
+    }
     if (query.fill_gaps && query.group_by.length > 1 &&
         ['day', 'week', 'month', 'hour_of_day', 'weekday'].includes(query.group_by[0])) {
         _wbShowError('Fill empty buckets supports one time dimension only. Uncheck Fill empty buckets or remove the second group-by dimension.');
@@ -686,7 +732,9 @@ async function wbRunStructuredPreview() {
             box.appendChild(baseline);
         }
         const notes = [...result.meta.warnings];
-        if (result.meta.totals_overlap) notes.push('Fan-out: totals overlap across tags.');
+        if (result.meta.totals_overlap) notes.push(result.meta.basis ? 'Non-additive unions: group/day/plan totals may overlap.' : 'Fan-out: totals overlap across tags.');
+        if (result.meta.basis) notes.push(`Basis: ${result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union'}. ${result.meta.cohort}`);
+        if (result.meta.physical_cohort_seconds !== undefined) notes.push(`Attributed: ${result.meta.attributed_total_seconds} seconds; physical cohort: ${result.meta.physical_cohort_seconds} seconds (${result.meta.cohort_count} records).`);
         if (result.meta.truncated) notes.push('Results truncated at the row limit.');
         notes.forEach(text => { const note = document.createElement('p'); note.textContent = text; box.appendChild(note); });
         const table = document.createElement('table');

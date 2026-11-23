@@ -205,7 +205,11 @@ function calendarOccurrenceId(id, seriesTaskId, occurrenceStart) {
 function calendarScheduleNeedsReview(row) {
     if (!row) return false;
     const occurrence = calendarOccurrenceId(row.id, row.series_task_id, row.occurrence_start);
-    return calendarNeedsReview.has(occurrence || row.id) ||
+    const key = occurrence || row.id;
+    const editor = typeof sessionModalOwner !== 'undefined' ? sessionModalOwner : null;
+    const editing = editor?.session;
+    const editingKey = editing && (calendarOccurrenceId(editing.id, editing.series_task_id, editing.occurrence_start) || editing.id);
+    return calendarWrites.has(key) || (editor?.pending && editingKey === key) || calendarNeedsReview.has(key) ||
         [...calendarNeedsReview.values()].some(attempt => attempt.latest?.id === row.id);
 }
 
@@ -389,6 +393,24 @@ function rememberSavedSession(savedSession, previousId, event = null) {
         if (typed && savedSession.start_time && savedSession.end_time) event.setDates?.(savedSession.start_time, savedSession.end_time);
     }
 }
+
+// Timer receipts own recording. Adopt their plan identity before any fallible range GET.
+window.addEventListener('timetrace:timer-mutated', async event => {
+    const result = event.detail;
+    const previousId = result?.requested_scheduled_session_id || result?.timer?.scheduled_session_id;
+    const row = calendarSessionRows().find(row => row.id === previousId && row.kind === 'scheduled_session');
+    if (row && result.plan_revision) {
+        const saved = {...row, id: result.captured_plan_id || row.id, revision: result.plan_revision,
+            is_virtual: false, projection_revision: null};
+        rememberSavedSession(saved, previousId);
+        if (typeof sessionModalOwner !== 'undefined' && sessionModalOwner?.session?.id === previousId) {
+            sessionModalOwner.session = saved;
+            document.getElementById('edit_session_id').value = saved.id;
+            showSessionModalPlan(saved);
+        }
+    }
+    await refreshSessionDisplay();
+});
 
 // Refresh-only recovery uses the shared notice; it must never replay a session mutation.
 async function refreshSessionDisplay() {

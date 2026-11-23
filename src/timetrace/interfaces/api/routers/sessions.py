@@ -9,21 +9,56 @@ from timetrace.interfaces.api.schemas import (
     AgendaLegacyRead,
     AgendaProjectedPlanRead,
     AgendaRead,
+    AgendaRecordedWorkRead,
     LegacySessionRead,
+    PlanRemovalRequest,
+    RecordedWorkCreate,
+    RecordedWorkCreated,
     RecurrenceScope,
     ReflectionCreate,
     RetroSessionCreate,
     ScheduledOccurrenceUpdate,
     ScheduledSessionCreate,
+    ScheduledSessionExtension,
     ScheduledSessionRead,
     ScheduledSessionUpdate,
     SessionCreate,
     SessionEditScope,
     SessionUpdate,
 )
-from timetrace.services import SessionService
+from timetrace.services import PlanRemovalService, QueryService, SessionService
 
 router = APIRouter(prefix="", tags=["Sessions"])
+
+
+@router.get("/scheduled-sessions/{plan_id}/removal-preview")
+def preview_plan_removal(plan_id: str, db: DBSession = Depends(get_session)):
+    return PlanRemovalService(db).preview(plan_id)
+
+
+@router.post("/scheduled-sessions/{plan_id}/removal")
+def apply_plan_removal(plan_id: str, req: PlanRemovalRequest, db: DBSession = Depends(get_session)):
+    return PlanRemovalService(db).apply(plan_id, req)
+
+
+@router.get("/recorded-work-progress")
+def recorded_work_progress(
+    start_date: str,
+    end_date: str,
+    plan_ids: list[str] = Query(default=[], max_length=500),
+    db: DBSession = Depends(get_session),
+):
+    return QueryService(db).recorded_progress(start_date, end_date, plan_ids)
+
+
+@router.post("/recorded-work", response_model=RecordedWorkCreated, status_code=status.HTTP_201_CREATED)
+def create_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
+    return SessionService(db).create_recorded_work(req)
+
+
+@router.get("/recorded-work/{work_id}", response_model=AgendaRecordedWorkRead)
+def get_recorded_work(work_id: str, db: DBSession = Depends(get_session)):
+    return SessionService(db).get_recorded_work(work_id)
 
 
 @router.get("/agenda", response_model=AgendaRead)
@@ -52,6 +87,11 @@ def create_scheduled_session(req: ScheduledSessionCreate, db: DBSession = Depend
 @router.get("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead | AgendaProjectedPlanRead)
 def get_scheduled_session(plan_id: str, db: DBSession = Depends(get_session)):
     return SessionService(db).get_scheduled_session(plan_id)
+
+
+@router.post("/scheduled-sessions/{plan_id}/extend", response_model=ScheduledSessionRead)
+def extend_scheduled_session(plan_id: str, req: ScheduledSessionExtension, db: DBSession = Depends(get_session)):
+    return SessionService(db).extend_scheduled_session(plan_id, req)
 
 
 @router.put("/scheduled-sessions/{plan_id}", response_model=ScheduledSessionRead)

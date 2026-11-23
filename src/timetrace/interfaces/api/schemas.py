@@ -15,6 +15,13 @@ from timetrace.core.query_spec import (
 )
 
 
+class PlanRemovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["delete_everything", "squeeze"]
+    consent_token: str = Field(min_length=64, max_length=64)
+    operation_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class TaskStatusCreate(BaseModel):
     name: str
     is_completed: bool = False
@@ -114,6 +121,15 @@ class ScheduledSessionCreate(BaseModel):
     end_time: datetime
     tags: str = ""
     notes: str | None = None
+
+
+class ScheduledSessionExtension(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    end_time: datetime
+    operation_id: str = Field(min_length=1, max_length=200)
+    expected_revision: StrictInt | None = Field(default=None, ge=1)
+    expected_projection_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class ScheduledSessionUpdate(BaseModel):
@@ -244,6 +260,26 @@ class AgendaRecordedWorkRead(AgendaLegacyRead):
     kind: Literal["recorded_work"] = "recorded_work"
     provenance: Literal["manual", "timer"]
     scheduled_session_id: str | None
+    timer_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    timer_segment_id: str | None = Field(default=None, exclude_if=lambda value: value is None)
+
+
+class RecordedWorkCreate(ScheduledSessionCreate):
+    """Explicit manual work; legacy session input deliberately stays separate."""
+
+    scheduled_session_id: str | None = None
+    expected_plan_revision: StrictInt | None = Field(default=None, ge=1)
+    expected_projection_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+
+class RecordedWorkWarning(BaseModel):
+    code: Literal["same_task_overlap"] = "same_task_overlap"
+    record_ids: list[str]
+    overlap_seconds: float
+
+
+class RecordedWorkCreated(AgendaRecordedWorkRead):
+    warnings: list[RecordedWorkWarning] = []
 
 
 class AgendaRead(BaseModel):
@@ -409,6 +445,8 @@ class ColumnSpec(BaseModel):
 
 
 class QueryRow(BaseModel):
+    value_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    physical_cohort_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
     keys: list[str]
     labels: list[str]
     value: float | None
@@ -434,6 +472,14 @@ class ComparisonMeta(BaseModel):
 
 
 class QueryMeta(BaseModel):
+    attributed_total_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    physical_cohort_seconds: float | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort_count: int | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort_predicate: list[dict] | None = Field(default=None, exclude_if=lambda value: value is None)
+    non_additive: bool | None = Field(default=None, exclude_if=lambda value: value is None)
+    measurement_at: datetime | None = Field(default=None, exclude_if=lambda value: value is None)
+    basis: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    cohort: str | None = Field(default=None, exclude_if=lambda value: value is None)
     timezone: str
     first_day_of_week: int
     range_start_utc: datetime | None
@@ -461,6 +507,7 @@ class AnalyticsQueryBatchResponse(BaseModel):
 
 
 class CapabilityMeasure(BaseModel):
+    capabilities: dict | None = Field(default=None, exclude_if=lambda value: value is None)
     value: Measure
     label: str
     unit: str

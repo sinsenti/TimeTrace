@@ -53,9 +53,12 @@ def client_fixture(db):
 
 
 @pytest.fixture(autouse=True)
-def reset_timer():
+def reset_timer(tmp_path, monkeypatch):
     """timer_manager is a module-level singleton persisted to disk; without this
     a started timer leaks into every later test."""
+    private_file = tmp_path / "active_timer.json"
+    monkeypatch.setenv("TIMETRACE_TIMER_STATE_FILE", str(private_file))
+    monkeypatch.setattr(timer_manager, "state_file", private_file)
     timer_manager.is_running = False
     timer_manager.task_id = None
     timer_manager.task_title = None
