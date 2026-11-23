@@ -9,7 +9,7 @@ const deferred = () => { let resolve; const promise = new Promise(r => { resolve
 
 // Caller seam: shipped handlers + ApiClient, with only HTTP, clock and browser DOM boundaries controlled.
 function sessionPage(http = async () => ({ id: 'real-session' })) {
-    const elements = new Map(), alerts = [], writes = [], listeners = new Map();
+    const elements = new Map(), alerts = [], writes = [], listeners = new Map(), documentListeners = new Map();
     let context;
     const safetyStorage = new Map();
     function element(id = '', tag = 'div') {
@@ -20,6 +20,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
             addEventListener(name, fn) { this[name] = fn; }, removeEventListener() {},
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); },
             append(...children) { for (const child of children) this.appendChild(child); },
+            replaceChildren(...children) { this.children = []; this.append(...children); },
             querySelectorAll() { return []; }, contains(child) { return this === child || this.children.includes(child); },
             insertBefore(child) { this.children.unshift(child); }, remove() { elements.delete(this.id); },
             focus() { context.document.activeElement = this; }, select() {} };
@@ -27,7 +28,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
         return el;
     }
     const document = { getElementById: id => elements.get(id) || null, createElement: tag => element('', tag),
-        addEventListener() {}, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
+        addEventListener(name, fn) { documentListeners.set(name, fn); }, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
     context = vm.createContext({ document, Date, setTimeout: () => {}, console: { error() {} },
         sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
@@ -52,7 +53,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     for (const name of ['api_client.js', 'task_knowledge.js', 'utils.js', 'task_attach.js', 'tags_engine.js', 'session_modal.js', 'calendar.js']) load(name);
     context.allSessions = [];
     const open = () => run('openCreateSessionModal(new Date("2026-11-10T23:45:00Z"), new Date("2026-11-11T00:30:00Z"))');
-    return { context, elements, alerts, writes, listeners, run, load, open, element };
+    return { context, elements, alerts, writes, listeners, documentListeners, run, load, open, element };
 }
 
 test('pending Session Save ignores double activation and retains failed mutation draft for explicit retry', async () => {
@@ -305,6 +306,134 @@ function loadFolio(p) {
     return p.run('agendaPage.refresh()');
 }
 
+for (const intent of ['same-row typing', 'other-row', 'date', 'late failure', 'unchanged']) {
+    test(`Folio extension lookup respects newer intent: ${intent}`, async () => {
+        const held = deferred(), requested = deferred();
+        const plan = {id:'old-plan', kind:'scheduled_session', revision:1,
+            start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',
+            original_start:'2000-01-04T09:00:00Z', original_end:'2000-01-04T10:00:00Z'};
+        const p = sessionPage(async url => {
+            if (url === '/api/tasks?status=all') return [];
+            if (url === '/scheduled-sessions/old-plan') { requested.resolve(); return held.promise; }
+            return {items:[plan, {...plan,id:'new-plan'}]};
+        });
+        await loadFolio(p);
+        const select = id => p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===id).click();
+        select('old-plan');
+        p.context.dispatchEvent = event => p.listeners.get(event.type)?.(event);
+        const lookup = p.context.dispatchEvent({type:'extend-selected-plan', detail:{planId:'old-plan'}});
+        try {
+            await requested.promise;
+            if (intent === 'other-row') select('new-plan');
+            if (intent === 'date') {
+                p.elements.get('agenda-date').value = '2000-01-05';
+                await p.elements.get('agenda-date').change();
+            }
+            if (intent !== 'unchanged') {
+                p.elements.get('agenda-notes').value = 'newer input';
+                p.elements.get('agenda-notes').focus();
+            }
+        } finally {
+            held.resolve(intent === 'late failure' ? new Response(JSON.stringify({detail:'offline'}),{status:503}) : plan);
+            await lookup;
+        }
+        if (intent === 'unchanged') assert.ok(p.elements.get('agenda-extension').children.some(e=>e.textContent==='Preview extension'));
+        else {
+            assert.equal(p.elements.get('agenda-notes').value, 'newer input');
+            assert.equal(p.context.document.activeElement, p.elements.get('agenda-notes'));
+            assert.equal(p.elements.get('agenda-extension').children.length, 0);
+            assert.doesNotMatch(p.elements.get('agenda-edit-status').textContent, /Could not read/);
+        }
+    });
+}
+
+test('actual Agenda Start keeps the early capture revision through its continuation and the next form Save', async () => {
+    const status = deferred(), statusRequested = deferred(), planRead = deferred();
+    const projection = {id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task',
+        is_virtual:true, projection_revision:'token', start_time:'2099-01-04T09:00:00Z',
+        end_time:'2099-01-04T10:00:00Z', original_start:'2099-01-04T09:00:00Z', original_end:'2099-01-04T10:00:00Z'};
+    const saved = {...projection, id:'captured', is_virtual:false, revision:2, projection_revision:null};
+    let captured = false, redundantReads = 0;
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') return [{id:'task',title:'Task'}];
+        if (url === '/timers' && options.method === 'POST') {
+            captured = true;
+            return {operation_id:'start-op', requested_scheduled_session_id:projection.id, captured_plan_id:'captured',
+                plan_revision:2, timer:{id:'timer-a',state:'running',scheduled_session_id:'captured'}};
+        }
+        if (url === '/timers') { statusRequested.resolve(); return status.promise; }
+        if (url === '/scheduled-sessions/captured' && options.method === 'GET') { redundantReads++; return planRead.promise; }
+        if (options.method === 'PUT') return {...saved, revision:3};
+        return {items:[captured ? saved : projection]};
+    });
+    await loadFolio(p);
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
+    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===projection.id).click();
+    const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
+    try {
+        await statusRequested.promise;
+        assert.match(p.elements.get('agenda-kind').textContent, /Scheduled session/i);
+        p.elements.get('agenda-notes').value = 'newer draft';
+        status.resolve({timers:[],revision:2});
+        await new Promise(resolve=>setImmediate(resolve));
+        // The status read is done, but any obsolete plan hydration remains truly held.
+        p.elements.get('agenda-end').value = '2099-01-04T11:00';
+        await p.elements.get('agenda-form').submit({preventDefault(){}});
+        const save = p.writes.find(w=>w.method==='PUT');
+        assert.equal(save.url, '/scheduled-sessions/captured?scope=only_this');
+        assert.equal(save.payload.expected_revision, 2);
+        assert.equal(save.payload.end_time, new Date('2099-01-04T11:00').toISOString());
+        assert.equal(redundantReads, 0, 'the authoritative capture needs no owner-replacing plan hydration');
+    } finally { status.resolve({timers:[],revision:2}); planRead.resolve(saved); await start; }
+});
+
+for (const intent of ['other row', 'same-owner typing', 'new date']) test(`Agenda Start cannot report a late plan-read error over ${intent}`, async () => {
+    const status = deferred(), requested = deferred(), planRead = deferred();
+    const plan = {id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task', is_virtual:true,
+        projection_revision:'token', start_time:'2099-01-04T09:00:00Z',end_time:'2099-01-04T10:00:00Z',
+        original_start:'2099-01-04T09:00:00Z',original_end:'2099-01-04T10:00:00Z'};
+    const saved = {...plan,id:'captured',is_virtual:false,revision:2};
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks?status=all') return [];
+        if (url === '/timers' && options.method === 'POST') return {operation_id:'start-op',
+            requested_scheduled_session_id:plan.id,captured_plan_id:'captured',plan_revision:2,
+            timer:{id:'a',state:'running',scheduled_session_id:'captured'}};
+        if (url === '/timers') { requested.resolve(); return status.promise; }
+        if (url === '/scheduled-sessions/captured') return planRead.promise;
+        return {items:[plan,{...saved,id:'other'}]};
+    });
+    await loadFolio(p);
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
+    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
+    const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
+    try {
+        await requested.promise;
+        status.resolve({timers:[],revision:2});
+        await new Promise(resolve=>setImmediate(resolve));
+        if (intent === 'other row') p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow==='other').click();
+        if (intent === 'new date') {
+            p.elements.get('agenda-date').value = '2099-01-05';
+            await p.elements.get('agenda-date').change();
+        }
+        p.elements.get('agenda-notes').value = 'new input';
+        p.elements.get('agenda-notes').focus();
+        const previousStatus = p.elements.get('agenda-edit-status').textContent;
+        planRead.resolve(new Response(JSON.stringify({detail:'late failure'}),{status:503}));
+        await start;
+        assert.equal(p.elements.get('agenda-edit-status').textContent, previousStatus);
+        assert.equal(p.elements.get('agenda-notes').value, 'new input');
+        assert.equal(p.context.document.activeElement, p.elements.get('agenda-notes'));
+    } finally {
+        status.resolve({timers:[],revision:2}); planRead.resolve(saved); await start;
+    }
+});
+
 test('Folio explicit extension retains stale attempt and offers read-only review', async () => {
     const plan = {id:'plan-stale', kind:'scheduled_session', revision:1,
         start_time:'2000-01-04T09:00:00Z', end_time:'2000-01-04T10:00:00Z',
@@ -417,6 +546,87 @@ test('manual recording uncertainty blocks Calendar reopen and navigation to anot
     assert.equal(p.writes.length, 1, 'uncertain manual work must not be replayed by reopening');
     await assert.rejects(p.run('new ApiClient().saveRecordedWork({start_time:"2000-01-04T09:00Z", end_time:"2000-01-04T10:00Z"})'), /unconfirmed/);
     assert.equal(p.writes.length, 1, 'the navigation client consumes the same persisted journal');
+});
+
+for (const recovery of [false, true]) test(`Calendar receives production timer capture ACK before pending status (${recovery ? 'receipt recovery after reload' : 'POST'})`, async () => {
+    const held = deferred(), requested = deferred();
+    const ack = {operation_id:'capture-op', requested_scheduled_session_id:'virt:task:20990104T090000Z',
+        captured_plan_id:'captured', plan_revision:2,
+        timer:{id:'timer-a', state:'running', scheduled_session_id:'captured'}};
+    const p = sessionPage(async (url, options) => {
+        if (url === '/operations/capture-op') return {status:'finalized', result:ack};
+        if (url === '/timers' && options.method === 'POST') {
+            if (recovery) throw Error('lost ACK');
+            return ack;
+        }
+        if (url === '/timers') { requested.resolve(); return held.promise; }
+        return {items:[]};
+    });
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.run(`rememberSavedSession({id:'virt:task:20990104T090000Z', kind:'scheduled_session', task_id:'task',
+        is_virtual:true, projection_revision:'projection', start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'});
+        openEditSessionModal('virt:task:20990104T090000Z');
+        window.control = createTimerController({api, storage:sessionStorage, onState() {}, operationId:()=> 'capture-op'});`);
+    let start = p.run(`control.start({scheduled_session_id:'virt:task:20990104T090000Z'})`);
+    if (recovery) {
+        await start;
+        p.run(`window.control = createTimerController({api, storage:sessionStorage, onState() {}})`);
+        start = p.run('control.recover()');
+    }
+    try {
+        await requested.promise;
+        assert.equal(p.elements.get('edit_session_id').value, 'captured');
+        assert.equal(p.run('sessionModalOwner.session.kind'), 'scheduled_session');
+        assert.equal(p.run('sessionModalOwner.session.revision'), 2);
+        assert.equal(p.run('control.snapshot().pending'), false);
+        assert.equal(p.run('control.snapshot().fresh'), false, 'partial ACK is not a full read');
+        assert.equal(p.run('control.snapshot().receipt.outcome'), 'acknowledged');
+        p.elements.get('session_modal_notes').value = 'newer draft';
+        assert.equal(p.writes.length, 1);
+    } finally { held.resolve({timers:[], revision:2}); await start; }
+    assert.equal(p.elements.get('session_modal_notes').value, 'newer draft');
+    p.run(`openCreateSessionModal(new Date('2099-01-05T09:00Z'), new Date('2099-01-05T10:00Z'))`);
+    p.elements.get('session_modal_notes').value = 'new selection';
+    await p.run('control.recover()');
+    assert.equal(p.elements.get('edit_session_id').value, '');
+    assert.equal(p.elements.get('session_modal_notes').value, 'new selection');
+});
+
+test('visible acknowledged timer retry reads status without replaying the POST', async () => {
+    let fail = false, reads = 0;
+    const p = sessionPage(async (url, options) => {
+        if (url === '/api/tasks') return [];
+        if (options.method === 'POST') {
+            fail = true;
+            return {operation_id:JSON.parse(options.body).operation_id, timer:{id:'timer-a', state:'running'}};
+        }
+        if (url === '/timers') { reads++; if (fail) throw Error('offline'); return {timers:[], revision:2}; }
+        return {items:[]};
+    });
+    const region = p.element('multiple_timers'), nodes = new Map();
+    for (const name of ['timer-list','timer-message','timer-task','idle-review','idle-review-list',
+        'timer-start','idle-apply','timer-refresh','timer-idle']) nodes.set(`[data-${name}]`, p.element());
+    region.querySelector = selector => nodes.get(selector);
+    p.context.setInterval = () => {};
+    p.context.crypto = {randomUUID:()=> 'visible-op'};
+    p.context.CustomEvent = class { constructor(type, options) { this.type = type; this.detail = options.detail; } };
+    p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
+    p.load('multiple_timers.js');
+    p.documentListeners.get('DOMContentLoaded')();
+    await p.run('multipleTimers.refresh()');
+    await p.run('multipleTimers.start({})');
+    const retry = nodes.get('[data-timer-list]').children.find(child => child.textContent === 'Retry status refresh');
+    assert.ok(retry, 'ACK recovery is visibly a read-only refresh');
+    const before = reads;
+    await retry.click();
+    assert.ok(reads > before);
+    assert.equal(p.writes.length, 1);
+    fail = false;
+    await p.run('multipleTimers.retry()');
+    assert.equal(p.writes.length, 1);
+    assert.equal(p.run('multipleTimers.snapshot().receipt'), null);
 });
 
 test('Calendar targeted timer ACK adopts captured plan UUID and revision before a failed read', async () => {

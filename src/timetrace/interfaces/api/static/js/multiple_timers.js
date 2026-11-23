@@ -41,6 +41,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         if (pending || (receipt && !retry)) return false;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
         pending = true; publish();
+        let acknowledged = false;
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
@@ -74,13 +75,14 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             message = (result.information || []).map(i => i.code === 'association_not_changed'
                 ? 'Selected existing timer; its association and paused/frozen state were not changed.'
                 : i.code === 'scheduled_session_ended' ? 'This plan has ended. Work will be recorded without extending it.' : i.code).join(' ');
-            const information = message;
-            informationNotice = information;
-            await refresh();
-            if (information) message = information;
+            informationNotice = message;
+            // ACK is a writer checkpoint, not a status read. Release the request phase
+            // and notify owners before a display GET can fail or remain pending forever.
+            acknowledged = true; pending = false; fresh = false; publish();
             if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:result}));
+            await refresh();
             return true;
-        } finally { pending = false; publish(); }
+        } finally { if (!acknowledged) pending = false; publish(); }
     }
     async function recover() {
         if (!receipt?.payload?.operation_id || pending) return;
@@ -89,10 +91,11 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (result.status === 'finalized') {
                 lastResult = result.result;
                 receipt.outcome = 'acknowledged';
-                storage.setItem(key, JSON.stringify(receipt));
+                try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* Retain the original journal, as for a direct ACK. */ }
                 if (lastResult?.timer) timers = [...timers.filter(t => t.id !== lastResult.timer.id), lastResult.timer].filter(t => t.state !== 'stopped');
-                await refresh();
+                fresh = false; publish();
                 if (typeof window !== 'undefined' && lastResult) window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:lastResult}));
+                await refresh();
             } else { message = 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
         } catch (_) { message = 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
     }
@@ -107,7 +110,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         return {acknowledged, remaining:choices.map(c => c.gap_id).filter(id => !acknowledged.includes(id))};
     }
     return {snapshot, refresh, recover, review,
-        retry: () => receipt?.payload && write(receipt.url, receipt.payload, true),
+        retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
         start: payload => write('/timers', payload),
         act: (id, action, payload = {}) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload)
     };
@@ -208,7 +211,8 @@ if (typeof window !== 'undefined') {
             }
             if (state.receipt?.payload) {
                 list.append(button('Check saved operation', () => window.multipleTimers.recover(), state.pending, 'receipt/check'));
-                list.append(button('Retry same operation', () => window.multipleTimers.retry(), state.pending, 'receipt/retry'));
+                list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : 'Retry same operation',
+                    () => window.multipleTimers.retry(), state.pending, 'receipt/retry'));
             }
             if (restoreFocus && !state.pending) {
                 const next = [...region.querySelectorAll('[data-timer-focus]')].find(b => b.dataset.timerFocus === restoreFocus && !b.disabled);

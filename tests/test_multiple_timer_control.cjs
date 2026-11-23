@@ -2,7 +2,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {createTimerController} = require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
 
-test('taskless start journals stable operation, ACK survives held refresh, retry only reads', async () => {
+test('taskless start journals stable operation, ACK survives failed refresh, retry only reads', async () => {
     const storage = new Map();
     let failRefresh = false;
     const posts = [];
@@ -23,7 +23,9 @@ test('taskless start journals stable operation, ACK survives held refresh, retry
     assert.equal(posts.length, 1);
     assert.equal(control.snapshot().receipt.outcome, 'acknowledged');
     failRefresh = false;
-    await control.refresh();
+    const postCount = posts.length;
+    await control.retry();
+    assert.equal(posts.length, postCount, 'acknowledged retry must not POST');
     assert.equal(control.snapshot().receipt, null);
     assert.equal(posts.length, 1);
 });
@@ -57,7 +59,7 @@ test('migration cannot bypass an uncertain legacy timer verification hold', asyn
     assert.equal(posts, 1);
 });
 
-test('uncertain capture recovery adopts committed identities before a held refresh without another POST', async () => {
+test('uncertain capture recovery retains committed identities after a failed refresh without another POST', async () => {
     const values = new Map();
     let posts = 0;
     const ack = {operation_id:'capture-op', captured_plan_id:'real-plan', requested_scheduled_session_id:'virt:plan', timer:{id:'timer-a',state:'running',scheduled_session_id:'real-plan'}};
@@ -75,6 +77,26 @@ test('uncertain capture recovery adopts committed identities before a held refre
     assert.equal(control.snapshot().timers[0].id, 'timer-a');
     assert.equal(control.snapshot().receipt.outcome, 'acknowledged');
     assert.equal(posts, 1);
+});
+
+test('uncertain retry after reload keeps the saved operation and leaves the other timer untouched', async () => {
+    const values = new Map(), posts = [];
+    const storage = {getItem:k=>values.get(k), setItem:(k,v)=>values.set(k,v), removeItem:k=>values.delete(k)};
+    const other = {id:'b', state:'frozen', scheduled_session_id:'other-plan'};
+    const api = {get:async () => ({timers:[{id:'a',state:'paused'}, other], revision:5}),
+        post:async (url,payload) => {
+            posts.push([url, JSON.stringify(payload)]);
+            if (posts.length === 1) throw Error('lost ACK');
+            return {operation_id:payload.operation_id, timer:{id:'a',state:'paused'}};
+        }};
+    const first = createTimerController({api,storage,operationId:()=> 'fixed-key',onState(){}});
+    await first.act('a','pause',{expected_revision:4});
+    const reloaded = createTimerController({api,storage,operationId:()=> 'must-not-use',onState(){}});
+    assert.equal(await reloaded.start({scheduled_session_id:'another-plan'}), false);
+    assert.equal(await reloaded.retry(), true);
+    assert.deepEqual(posts, [['/timers/a/pause','{"expected_revision":4,"operation_id":"fixed-key"}'],
+        ['/timers/a/pause','{"expected_revision":4,"operation_id":"fixed-key"}']]);
+    assert.deepEqual(reloaded.snapshot().timers.find(t=>t.id==='b'), other);
 });
 
 test('targeted pause never falls back to a global action', async () => {

@@ -535,7 +535,7 @@ class MultipleTimerService:
             capture = intent.get("plan_capture")
             if capture:
                 occurrence = SessionService(self.db).recurrence.projected_occurrence(
-                    capture["projection_id"], planning=True
+                    capture["projection_id"], planning=True, accepted_at=datetime.fromisoformat(intent["cutoff"])
                 )
                 if occurrence.projection_revision != capture["projection_revision"]:
                     raise ConflictError("Pending projection capture changed.", code="reconciliation_required")
