@@ -59,6 +59,42 @@ class ApiClient {
         });
     }
 
+    recordedWorkAttempt() {
+        if (typeof sessionStorage === 'undefined') return this.workAttempt || null;
+        // Storage errors fail closed: no recording may be sent without a journal.
+        return JSON.parse(sessionStorage.getItem('timetrace_manual_work_attempt') || 'null');
+    }
+
+    rememberRecordedWorkAttempt(attempt) {
+        if (typeof sessionStorage !== 'undefined') {
+            if (attempt) sessionStorage.setItem('timetrace_manual_work_attempt', JSON.stringify(attempt));
+            else sessionStorage.removeItem('timetrace_manual_work_attempt');
+        }
+        this.workAttempt = attempt;
+        if (typeof window?.dispatchEvent === 'function' && typeof CustomEvent !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('timetrace:manual-work-journal'));
+        }
+    }
+
+    async saveRecordedWork(payload) {
+        if (this.recordedWorkAttempt()) throw new Error('Previous manual recording is unconfirmed. Review recorded work recovery before starting a new entry.');
+        this.rememberRecordedWorkAttempt({payload});
+        this.workPending = true;
+        let saved;
+        try {
+            saved = await this.post('/recorded-work', payload);
+            if (!saved?.id || saved.kind !== 'recorded_work') throw new Error('Missing recorded work acknowledgement');
+        } catch (error) {
+            if (error.status && error.status < 500) this.rememberRecordedWorkAttempt(null);
+            throw error;
+        } finally {
+            this.workPending = false;
+        }
+        // ACK wins over fallible cleanup/display: never report a committed recording as failed.
+        try { this.rememberRecordedWorkAttempt(null); } catch (_) { /* Retained journal safely blocks a duplicate. */ }
+        return saved;
+    }
+
     put(url, body = null, headers = {}) {
         return this.request(url, {
             method: 'PUT',
