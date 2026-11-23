@@ -50,6 +50,8 @@ class QueryContext:
     range_end_local: str | None = None  # YYYY-MM-DD, inclusive (LOCAL_DATE_STRING sources)
     plan_windows: list[tuple[str, str | None, datetime, datetime]] = field(default_factory=list)
     now_utc: datetime | None = None  # naive UTC, used by relative session-time filters
+    recorded_work_ids: tuple[str, ...] | None = None  # internal exact cohort; () selects nothing
+    recorded_work_seconds: bool = False  # internal evidence only; public widgets stay hours
 
 
 @dataclass
@@ -947,6 +949,11 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             operator = {FilterOp.EQ: "=", FilterOp.CONTAINS: "LIKE", FilterOp.GTE: ">=", FilterOp.LTE: "<="}[f.op]
             conditions.append(f"{col} {operator} {names[0]}")
     predicate = "".join(" AND " + condition for condition in conditions)
+    if ctx.recorded_work_ids is not None:
+        import json
+
+        params["cohort_ids"] = json.dumps(ctx.recorded_work_ids)
+        predicate += " AND s.id IN (SELECT value FROM json_each(:cohort_ids))"
     task = query.measure in (
         Measure.RECORDED_TASK_TIME,
         Measure.INSIDE_SCHEDULED_TASK_TIME,
@@ -976,6 +983,26 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         # Storage is naive UTC with six fractional digits. Integer arithmetic preserves
         # microsecond intervals that SQLite's millisecond-resolution julianday would lose.
         return f"(unixepoch(substr({expression},1,19))*1000000 + CAST(substr({expression},21,6) AS INTEGER))"
+
+    if query.measure == Measure.SUMMED_RECORDED_WORK:
+        if tagged or query.tag_attribution == TagAttribution.SPLIT_EVENLY:
+            raise ValidationError("Summed recorded work does not support tag attribution.")
+        columns = ", ".join(group_names) + "," if group_names else ""
+        group = " GROUP BY " + ", ".join(group_names) if group_names else ""
+        return CompiledQuery(
+            sql=f"""WITH selected AS (
+                SELECT s.id,{microseconds("s.start_time")} AS a,{microseconds("s.end_time")} AS b
+                {group_select} FROM session s LEFT JOIN task t ON t.id=s.task_id
+                WHERE s.kind='recorded_work' AND s.end_time<=:measurement
+                  AND s.start_time>=:start AND s.start_time<:end {predicate}
+            ) SELECT {columns}COALESCE(SUM(MAX(b-a,0)),0)/1000000.0/{1 if ctx.recorded_work_seconds else 3600} AS value,
+                COUNT(*) FROM selected{group}""",
+            params=params,
+            source=query.source,
+            measure=query.measure,
+            group_by=query.group_by,
+            totals_overlap=False,
+        )
 
     if tagged:
         from timetrace.core.recorded_attribution import tag_union_sql
@@ -1040,7 +1067,7 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         )"""
 
     ctes = merged_ctes("credit", pieces, key)
-    expression = "ROUND(COALESCE(SUM(b-a)/1000000.0,0),6)/3600"
+    expression = f"ROUND(COALESCE(SUM(b-a)/1000000.0,0),6)/{1 if ctx.recorded_work_seconds else 3600}"
     if query.measure == Measure.OUTSIDE_SCHEDULED_TASK_TIME:
         ctes += "," + merged_ctes("whole", f"SELECT task_id,a,b,id AS identity{group_keys} FROM selected", partition)
         ctes += f""", whole_totals AS (

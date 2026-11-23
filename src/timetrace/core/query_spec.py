@@ -25,6 +25,7 @@ class Measure(StrEnum):
     INSIDE_SCHEDULED_TASK_TIME = "inside_scheduled_task_time"
     OUTSIDE_SCHEDULED_TASK_TIME = "outside_scheduled_task_time"
     PLAN_FILL = "plan_fill"
+    SUMMED_RECORDED_WORK = "summed_recorded_work"
     RECORDED_TASK_TIME = "recorded_task_time"
     ELAPSED_RECORDED_TIME = "elapsed_recorded_time"
     UNASSIGNED_RECORDED_TIME = "unassigned_recorded_time"

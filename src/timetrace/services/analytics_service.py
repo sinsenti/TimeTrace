@@ -45,6 +45,155 @@ class AnalyticsService:
             for row in result.rows
         ]
 
+    def preview_history_export(self, request) -> dict:
+        """Freeze bounded evidence and both artifacts in one read snapshot, without writes."""
+        from uuid import UUID
+        from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+        from timetrace.core.exceptions import ValidationError
+        from timetrace.core.history_report import render_history
+        from timetrace.core.query_compiler import QueryContext
+        from timetrace.core.timezones import daemon_timezone_name
+
+        if not 0 <= (request.end_date - request.start_date).days < 400:
+            raise ValidationError("Choose between 1 and 400 local start days.")
+        try:
+            ZoneInfo(request.timezone)
+            for identifier in [*request.selected_ids, *([request.task_id] if request.task_id is not None else [])]:
+                UUID(identifier)
+        except (ValueError, ZoneInfoNotFoundError) as error:
+            raise ValidationError("Invalid timezone or saved ID.") from error
+        if request.mode == "filtered" and request.selected_ids:
+            raise ValidationError("Filtered mode cannot include selected IDs.")
+        if request.taskless and request.task_id:
+            raise ValidationError("Task and taskless filters cannot be combined.")
+        zone_name = daemon_timezone_name()
+        warnings = []
+        try:
+            zone = ZoneInfo(zone_name)
+        except ZoneInfoNotFoundError, ValueError:
+            warnings.append(f"Daemon timezone {zone_name!r} is unavailable; effective fallback is UTC.")
+            zone_name, zone = "UTC", ZoneInfo("UTC")
+        if zone_name != request.timezone:
+            warnings.append(f"Requested {request.timezone}; effective daemon zone is {zone_name}.")
+        try:
+            start = datetime.combine(request.start_date, datetime.min.time(), zone).astimezone(UTC).replace(tzinfo=None)
+            end = (
+                datetime.combine(request.end_date + timedelta(days=1), datetime.min.time(), zone)
+                .astimezone(UTC)
+                .replace(tzinfo=None)
+            )
+        except (OverflowError, ValueError) as error:
+            raise ValidationError("Local date bounds cannot be represented in the effective timezone.") from error
+        measurement = datetime.now(UTC)
+        with sqlite_read_snapshot(self.db) as reader:
+            statement = (
+                select(SessionModel, Task)
+                .join(Task, Task.id == SessionModel.task_id, isouter=True)
+                .where(
+                    SessionModel.start_time >= start,
+                    SessionModel.start_time < end,
+                    SessionModel.kind.in_(
+                        ["recorded_work", "legacy_uncertain"] if request.include_uncertain else ["recorded_work"]
+                    ),
+                )
+                .order_by(SessionModel.start_time, SessionModel.id)
+                .limit(10001)
+            )
+            if request.mode == "selected":
+                import json
+
+                from sqlalchemy import text
+
+                statement = statement.where(text("session.id IN (SELECT value FROM json_each(:selected_ids))"))
+                candidates = reader.exec(statement, params={"selected_ids": json.dumps(request.selected_ids)}).all()
+            else:
+                candidates = reader.exec(statement).all()
+            if len(candidates) > 10000:
+                raise ValidationError(
+                    "History scan exceeds 10,000 candidates; narrow dates/filters. No truncated export produced."
+                )
+            rows = []
+            for record, task in candidates:
+                if record.kind == "recorded_work" and (
+                    not record.end_time
+                    or ensure_utc(record.end_time) > measurement
+                    or record.end_time <= record.start_time
+                ):
+                    continue
+                if request.task_id and record.task_id != request.task_id:
+                    continue
+                if request.taskless and record.task_id is not None:
+                    continue
+                if any(
+                    needle.lower() not in (value or "").lower()
+                    for needle, value in (
+                        (
+                            request.title,
+                            task.title if task else ("No task" if record.task_id is None else "Task unavailable"),
+                        ),
+                        (request.tag, record.tags),
+                        (request.note, record.notes),
+                    )
+                ):
+                    continue
+                rows.append(
+                    {
+                        "id": record.id,
+                        "classification": record.kind,
+                        "task_id": record.task_id,
+                        "task_name": task.title
+                        if task
+                        else ("Taskless" if record.task_id is None else "Missing task metadata"),
+                        "start": ensure_utc(record.start_time).astimezone(zone).isoformat(),
+                        "end": ensure_utc(record.end_time).astimezone(zone).isoformat() if record.end_time else None,
+                        "duration_seconds": (record.end_time - record.start_time).total_seconds()
+                        if record.kind == "recorded_work"
+                        else None,
+                        "note": record.notes or "",
+                        "source": record.provenance,
+                        "timezone": zone_name,
+                    }
+                )
+            if len(rows) > 2000:
+                raise ValidationError("More than 2,000 eligible rows; narrow dates/filters.")
+            if request.mode == "selected":
+                selected = set(request.selected_ids)
+                if selected - {row["id"] for row in rows}:
+                    raise ValidationError(
+                        "Stale selection: saved IDs missing or outside current filters; refresh/reselect."
+                    )
+                rows = [row for row in rows if row["id"] in selected]
+            work_ids = tuple(row["id"] for row in rows if row["classification"] == "recorded_work")
+            context = QueryContext(
+                timezone=zone_name,
+                first_day_of_week=1,
+                range_start_utc=start,
+                range_end_utc=end,
+                now_utc=measurement.replace(tzinfo=None),
+            )
+            totals = QueryService(reader).summarize_recorded_cohort(work_ids, context)
+            artifacts = render_history(
+                rows, measurement.isoformat(), zone_name, totals, request.model_dump(mode="json")
+            )
+            for artifact in artifacts.values():
+                artifact["byte_count"] = len(artifact["content"].encode("utf-8"))
+            size = sum(artifact["byte_count"] for artifact in artifacts.values())
+            if size > 4 * 1024 * 1024:
+                raise ValidationError("Combined artifacts exceed 4 MiB; narrow dates/filters.")
+            return {
+                "snapshot_at": measurement.isoformat(),
+                "timezone": zone_name,
+                "warnings": warnings,
+                "request": request.model_dump(mode="json"),
+                "rows": rows,
+                "work_count": len(work_ids),
+                "legacy_count": len(rows) - len(work_ids),
+                "artifact_bytes": size,
+                **totals,
+                **artifacts,
+            }
+
     def export_markdown(self) -> str:
         sessions = self.db.exec(select(SessionModel)).all()
         session_dicts = []
