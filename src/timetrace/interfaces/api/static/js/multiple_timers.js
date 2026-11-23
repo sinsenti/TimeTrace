@@ -2,7 +2,7 @@
 function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID()}) {
     const key = 'timetrace_timer_v2_operation';
     let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '', lastResult = null;
-    let informationNotice = '', readGeneration = 0;
+    let informationNotice = '', readGeneration = 0, selectedTimerId = null;
     try {
         receipt = JSON.parse(storage.getItem(key) || 'null');
         const legacy = JSON.parse(storage.getItem('timetrace_timer_receipt') || 'null');
@@ -12,7 +12,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         }
     }
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult});
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId});
     const publish = () => onState(snapshot());
     async function refresh() {
         const generation = ++readGeneration;
@@ -21,6 +21,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (generation !== readGeneration) return null;
             if (!Array.isArray(data?.timers)) throw Error('Unknown timer response');
             timers = data.timers; revision = data.revision; fresh = true;
+            if (!timers.some(timer => timer.id === selectedTimerId)) selectedTimerId = timers[0]?.id || null;
             if (receipt?.outcome === 'legacy' && !storage.getItem('timetrace_timer_receipt')) receipt = null;
             if (receipt?.outcome === 'acknowledged') { storage.removeItem(key); receipt = null; }
             if (!receipt) {
@@ -70,6 +71,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (result?.operation_id !== receipt.payload.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
             receipt.outcome = 'acknowledged';
             lastResult = result;
+            if (result.timer && result.timer.state !== 'stopped') selectedTimerId = result.timer.id;
             try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* The original fixed request remains retry-safe. */ }
             if (result.timer) timers = [...timers.filter(t => t.id !== result.timer.id), result.timer].filter(t => t.state !== 'stopped');
             message = (result.information || []).map(i => i.code === 'association_not_changed'
@@ -90,6 +92,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             const result = await api.get(`/operations/${encodeURIComponent(receipt.payload.operation_id)}`);
             if (result.status === 'finalized') {
                 lastResult = result.result;
+                if (lastResult?.timer && lastResult.timer.state !== 'stopped') selectedTimerId = lastResult.timer.id;
                 receipt.outcome = 'acknowledged';
                 try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* Retain the original journal, as for a direct ACK. */ }
                 if (lastResult?.timer) timers = [...timers.filter(t => t.id !== lastResult.timer.id), lastResult.timer].filter(t => t.state !== 'stopped');
@@ -110,6 +113,10 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         return {acknowledged, remaining:choices.map(c => c.gap_id).filter(id => !acknowledged.includes(id))};
     }
     return {snapshot, refresh, recover, review,
+        select: id => {
+            if (!timers.some(timer => timer.id === id)) return false;
+            selectedTimerId = id; publish(); return true;
+        },
         retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
         start: payload => write('/timers', payload),
         act: (id, action, payload = {}) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload)
