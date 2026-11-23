@@ -162,7 +162,12 @@ mode=os.environ['CRASH_MODE']
 with TimerStore(Path(os.environ['TIMETRACE_TIMER_STATE_FILE'])).locked():
     note=c.patch(s['path']+'/note',json={'expected_revision':s['work']['revision']+(mode=='post_db'),
         'notes':'legal after DB' if mode=='post_db' else 'must refuse'})
+    association=c.post('/recorded-work',json={'task_id':s['task']['id'],'scheduled_session_id':s['plan']['id'],
+        'expected_plan_revision':s['plan']['revision'],'start_time':'2026-11-23T11:35:00Z',
+        'end_time':'2026-11-23T11:40:00Z','notes':'Independent association after DB'})
+    assert association.status_code==(409 if mode=='pre_db' else 201),association.text
     if mode=='pre_db':
+        assert association.json()['code']=='correction_pending'
         assert note.status_code==409,note.text
         assert note.json()['code']=='correction_pending'
         with Session(engine) as db:
@@ -211,7 +216,8 @@ rows=[c.get('/recorded-work/'+i).json() for i in ids]
 assert [(w['start_time'][11:19],w['end_time'][11:19]) for w in rows]==[('11:00:00','11:10:00'),('11:15:00','11:30:00')]
 assert rows[0]['notes']==('legal after DB' if os.environ['CRASH_MODE']=='post_db' else 'keep')
 assert rows[1]['notes']=='keep'
-assert c.get('/scheduled-sessions/'+s['plan']['id']).json()==s['plan']
+expected_plan={**s['plan'],'revision':s['plan']['revision']+(os.environ['CRASH_MODE']=='post_db')}
+assert c.get('/scheduled-sessions/'+s['plan']['id']).json()==expected_plan
 ratings=c.get('/rating-entries',params={'target_type':'session','target_id':s['work']['id']}).json()
 assert len(ratings)==1 and ratings[0]['score']==8
 assert c.get('/rating-entries',params={'target_type':'session','target_id':ids[1]}).json()==[]

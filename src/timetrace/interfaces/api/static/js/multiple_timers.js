@@ -98,12 +98,15 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     }
     async function recover() {
         if (!receipt?.payload?.operation_id || pending) return;
+        if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
         const recovering = receipt;
         try {
             const result = await api.get(`/operations/${encodeURIComponent(recovering.payload.operation_id)}`);
             if (receipt !== recovering || pending) return;
+            if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
             if (result.status === 'finalized') {
                 lastResult = result.result;
+                if (lastResult?.correction) { informationNotice = 'Saved correction acknowledged from authoritative operation status; subsequent recovery retries are reads only.'; message = informationNotice; }
                 if (!recovering.url.endsWith('/correction') && lastResult?.timer && lastResult.timer.state !== 'stopped' && selectionGeneration === 0) selectedTimerId = lastResult.timer.id;
                 receipt.outcome = 'acknowledged';
                 try { storage.setItem(key, JSON.stringify(receipt)); } catch (_) { /* Retain the original journal, as for a direct ACK. */ }

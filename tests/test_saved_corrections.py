@@ -104,6 +104,36 @@ def test_manual_saved_start_variants_are_receipted(client, clock, change, expect
     assert client.post(path + "/correction", json=payload).json()["code"] == "operation_payload_mismatch"
 
 
+def test_saved_result_labels_actual_daemon_start_day_rebucketing_not_stored_metadata_zone(client, clock, monkeypatch):
+    from timetrace.core import timezones
+
+    monkeypatch.setenv("TZ", "Europe/Warsaw")
+    timezones._reset_caches()
+    row = client.post(
+        "/recorded-work", json={"start_time": "2026-11-22T21:30:00Z", "end_time": "2026-11-22T23:15:00Z"}
+    ).json()
+    assert row["timezone"] == "UTC"
+    assert client.post("/timers/correction-initialize", json={"operation_id": "init"}).status_code == 200
+    path = "/recorded-work/" + row["id"]
+    request = {
+        "target": saved_target(row),
+        "change": {
+            "kind": "set_start",
+            "start_utc": "2026-11-22T23:00:00Z",
+            "timezone": "Europe/Warsaw",
+            "local_datetime": "2026-11-23T00:00:00",
+            "offset_seconds": 3600,
+        },
+    }
+    preview = client.post(path + "/correction-preview", json=request)
+    assert preview.status_code == 200, preview.text
+    result = client.post(path + "/correction", json={"operation_id": "rebucket", "preview": preview.json()})
+    assert result.status_code == 200, result.text
+    assert result.json()["correction"]["affected_local_dates"] == ["2026-11-22", "2026-11-23"]
+    assert result.json()["correction"]["timezone"] == "Europe/Warsaw"
+    assert client.get(path).json()["timezone"] == "UTC"
+
+
 def test_saved_overlap_warning_is_signed_without_changing_union_policy(client, clock):
     task = client.post("/api/tasks", json={"title": "Overlap"}).json()
     row, path = manual(client, clock, task["id"])

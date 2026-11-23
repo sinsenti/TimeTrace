@@ -35,6 +35,28 @@ test('correction preview is read-only; strict signed commit journals exact resou
     await control.initializeCorrections();
     assert.deepEqual(posts[2],{url:'/timers/correction-initialize',payload:{operation_id:'operation'}});
 });
+test('rechecking an acknowledged correction after display failure is reads-only without republishing old ACK',async()=>{
+    let operations=0,posts=0;
+    const {control}=setup({post:async()=>{posts++;throw Error('lost ACK');},get:async path=>{
+        if(path.startsWith('/operations/')){operations++;return {status:'finalized',result:{operation_id:'operation',correction:{changed_work_ids:[]}}};}
+        throw Error('display offline');
+    }});
+    await control.commitCorrection('/timers/a',{resource:'/timers/a'});
+    await control.recover(); await new Promise(setImmediate);
+    assert.equal(control.snapshot().receipt.outcome,'acknowledged');
+    await control.recover();
+    assert.equal(posts,1);assert.equal(operations,1);
+});
+test('late pending status cannot regress an already recovered correction ACK',async()=>{
+    const finish=[];
+    const {control}=setup({post:async()=>{throw Error('lost ACK');},get:path=>path.startsWith('/operations/')?new Promise(resolve=>finish.push(resolve)):Promise.reject(Error('display unavailable'))});
+    await control.commitCorrection('/timers/a',{resource:'/timers/a'});
+    const first=control.recover(),late=control.recover();
+    finish[0]({status:'finalized',result:{operation_id:'operation',correction:{changed_work_ids:[]}}});await first;
+    finish[1]({status:'pending_reconciliation'});await late;
+    assert.equal(control.snapshot().receipt.outcome,'acknowledged');
+    assert.doesNotMatch(control.snapshot().message,/needs reconciliation/);
+});
 test('a late uncertain-status lookup cannot release a newer same-operation retry',async()=>{
     let rejectLookup,acceptRetry,posts=0;
     const {control,records}=setup({get:path=>path.startsWith('/operations/') ? new Promise((_,reject)=>rejectLookup=reject) : Promise.resolve({timers:[]}),post:async(url,payload)=>{

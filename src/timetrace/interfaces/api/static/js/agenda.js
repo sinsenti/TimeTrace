@@ -578,7 +578,7 @@ const agendaPage = (() => {
     window.addEventListener('timetrace:timer-mutated', event => {
         const result = event.detail;
         if (result?.correction?.changed_work_ids?.includes(owner?.row?.id)) {
-            owner.invalidateWorkNote?.(`Actual time changed. Your typing is retained, but this note snapshot is stale. Reopen the interval from refreshed history before writing. Affected local days: ${result.correction.affected_local_dates.join(', ')}.`);
+            owner.invalidateWorkNote?.(`Actual time changed. Your typing is retained, but this note snapshot is stale. Reopen the interval from refreshed history before writing. Affected start days (${result.correction.timezone || 'historical receipt context'}): ${result.correction.affected_local_dates.join(', ')}.`);
         }
         if (result?.captured_plan_id && owner?.row?.id === result.requested_scheduled_session_id) {
             owner.row = {...owner.row, id:result.captured_plan_id, is_virtual:false, revision:result.plan_revision};

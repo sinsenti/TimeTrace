@@ -52,7 +52,7 @@ class MultipleTimerService:
         )
 
     def correction_preview(self, timer_id, request):
-        """Non-writing preparation gate; signed corrections are not enabled yet.
+        """Inspect and sign explicit corrections without filesystem or database writes.
 
         Do not use get/list/read or take the store lock here: those paths can
         reconcile receipts, migrate legacy JSON or create directory entries.

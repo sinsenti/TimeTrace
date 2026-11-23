@@ -15,7 +15,7 @@ from timetrace.config import settings
 from timetrace.core.correction_identity import evidence, signing_key
 from timetrace.core.correction_step import fingerprint, signature
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError
-from timetrace.core.timezones import daemon_tzinfo, resolve_timezone
+from timetrace.core.timezones import daemon_tzinfo
 from timetrace.db.models import (
     AIDraftItem,
     DayReview,
@@ -356,15 +356,10 @@ class SavedCorrectionService:
                 "timezone": row["timezone"],
             }
 
+        zone = daemon_tzinfo()
         all_rows = [c["before"] for c in staged] + [r for c in staged for r in c["rows"]]
         dates = sorted(
-            {
-                ensure_utc(datetime.fromisoformat(r["start_time"]))
-                .astimezone(resolve_timezone(r["timezone"]))
-                .date()
-                .isoformat()
-                for r in all_rows
-            }
+            {ensure_utc(datetime.fromisoformat(r["start_time"])).astimezone(zone).date().isoformat() for r in all_rows}
         )
         buffer_before = (
             [f for f in plan["before"] if not f["source_segment_id"].startswith("saved:")]
@@ -379,7 +374,7 @@ class SavedCorrectionService:
         dates = sorted(
             set(dates)
             | {
-                datetime.fromisoformat(f["start_utc"]).astimezone(daemon_tzinfo()).date().isoformat()
+                datetime.fromisoformat(f["start_utc"]).astimezone(zone).date().isoformat()
                 for f in buffer_before + buffer_after
             }
         )
@@ -392,7 +387,8 @@ class SavedCorrectionService:
             ],
             "buffer_before": buffer_before,
             "buffer_after": buffer_after,
-            "buffer_timezone": daemon_tzinfo().key,
+            "buffer_timezone": zone.key,
+            "timezone": zone.key,
             "before": [geometry(c["before"]) for c in staged],
             "after": [geometry(r) for c in staged for r in c["rows"]],
             "affected_local_dates": dates,

@@ -247,12 +247,20 @@ entrypoints, original-rating links, and ACK-only existing-data refresh integrati
 results add exact `work_fragments` source-to-retained-ID mappings so known #65 export selections
 can invalidate old bytes and remap only selected sources without duplicating SUM logic. Old receipts
 without this additive result field remain unchanged and require explicit fragment reselection.
+New results label affected start days with the daemon's actual read-cohort timezone while preserving
+the stored descriptive timezone on every work row.
 
 Public red/green checks cover strict payloads, hung display reads, newer mutation ownership,
-selection retention, B controls, export identity mapping and saved-note invalidation. Initial real
-isolated Orca browser checks observed explicit initialization, positive-work refusal and one signed
-running correction ACK. These are development evidence only: full combined suites, remaining real
-browser/durability cases and final review are still pending; **this is not completed #61 delivery**.
+selection retention, B controls, export identity mapping, saved-note invalidation and stale status
+replies after recovered ACK. Real isolated Orca DOM/module assertions now cover running/paused,
+saved/mixed exclusions, DST, overnight/day rebucketing, independent note/task drafts, exact retry,
+lost ACK/reload, hung display with a valid new Stop, frozen review, existing Calendar ACK/refetch,
+and actual UTF-8 #65 corrected-fragment download. Desktop/narrow geometry passes; screenshot attempts
+both failed with the headless no-frame capture timeout, so no pixel certification is claimed.
+The full Node run passed **878 tests**. New backend evidence includes **121** fault/process cases,
+**3** genuine checkpoint-v3 receipt cases and strengthened separate-process association guards.
+Full Python and inherited-Ruff comparison remain pending at this checkpoint; final review is still
+required and **this is not completed #61 delivery**.
 
 ### Remaining final acceptance
 
