@@ -274,6 +274,9 @@ action rows respectively. Both screenshot attempts failed with `Page.captureScre
 headless page did not draw a frame. DOM/layout assertions are passing; pixel/visual certification
 is explicitly unavailable. Actual UTF-8 CSV download bytes match the accepted corrected-fragment
 report. The existing Calendar renders DB identities/geometry and refetches its actual source on ACK.
+After the full suite, both upgraded copied-old-DB phases also passed a normal-startup exact-ID
+#65 export read with preserved session rows, shared SUM, integrity and FKs;
+`/tmp/timetrace-61-migrated-export.log` records these two additional checks.
 
 ### Review/publication gate
 
