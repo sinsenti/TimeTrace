@@ -17,8 +17,8 @@ This is the engineering/verification ledger, not a duplicate product specificati
   monotonic and suspend-inclusive clocks, sampled again under serialization. First sample/restart,
   missing BOOTTIME, late dispatch, sleep or clock discontinuity cannot authorize a missed break.
   A live boundary must be bracketed, within one second, with unchanged prior generation/revision.
-  An intervening Note/Pause/Stop wins. UTC rollback with proven live monotonic continuity rebases
-  only the focus anchor; work intervals and immutable creation anchor never move. Due remains zero.
+  An intervening Note/Pause/Stop wins. Signed UTC discontinuities with matching monotonic and
+  BOOTTIME elapsed evidence rebase only the focus anchor; work intervals and immutable creation anchor never move. Due remains zero.
 - Warning generation is constant zero, uniquely per unfinished identity. Old initialization uses
   a trustworthy retained creation receipt, otherwise explicitly labels a prospective unknown-history
   anchor. No UUID timestamp/corrected earliest-start reconstruction; GET never initializes/emits.
@@ -136,6 +136,35 @@ Historical partial checkpoints `4274e58`/`531b1e6`/`e7d8310` and events checkpoi
 were explicitly incomplete. Their1114Python/878Node or284-focused results were never full #63
 acceptance. Final scheduler/UI checkpoint `f1dd0c6` plus clock ownership repair `0534853` supersede
 those incomplete status statements.
+
+## Independent review repair — signed UTC adjustment
+
+Independent Standards review reported **zero findings**; independent Spec review reported **one P2**:
+forward UTC jumps prematurely exhausted active focus. This is a verified repair of that finding,
+not a new zero-finding full Spec review. Matching monotonic/BOOTTIME elapsed now compensates
+both signs of UTC discontinuity under the existing generation/anchor ownership check. The
+transition continuity guard remains false on adjustment; later real deadlines work normally.
+No interval, schedule, warning origin, schema, request hash or receipt protocol changed.
+
+Public root-HTTP/service regression first failed both policies (`work_due` instead of `work` after
+UTC +3600s/runtime +1s). After repair it proves 1499s remaining for a 25-minute focus, wall-warning
+crossing without focus expiry, once-only warning and subsequent real boundary for both policies.
+Additional suspend/missing-clock contrasts catch up once without automatic pause; due stays latched
+on rollback. Existing backward, ownership, pause, break, restart and crash tests remain green.
+
+Final repair checks (isolated external DB/HOME/TMPDIR, safe-path Python, native delivery disabled):
+- Full Python: **1152 passed**, 4879 warnings, 372.07s.
+- Full Node (`node --test tests/*.cjs`): **887 passed**, zero failures/skips, 4938.15ms.
+- Focused focus/events/recovery/delivery/send-recovery: **38 passed**, 3 warnings, 61.75s.
+- Scoped Ruff and format: pass (2 files); `git diff --check`: pass.
+- Repository Ruff: **17 inherited findings**; migration0002, CLI commands and analytics service
+  remain byte-unchanged against `e96497a`. No new scoped findings.
+- Two focused command attempts named nonexistent delivery globs/files and collected no tests;
+  corrected explicit file list produced the 38-test pass above.
+
+Frontend unchanged: prior actual-browser normal-flow evidence above is reused, not rerun or claimed
+as new proof. Targeted fake-clock browser rerun, actual OS alerts/sound and platform certification
+are unrun; the public-service regression and complete suites supply this repair's evidence.
 
 ## Remaining review / certification limits
 
