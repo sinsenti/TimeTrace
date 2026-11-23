@@ -277,7 +277,7 @@ const agendaPage = (() => {
         get('edit-status').textContent = 'Saving entry…';
         let saved;
         try {
-            saved = draft.work ? await api.post('/recorded-work', payload) : await api.saveScheduledSession(row, payload);
+            saved = draft.work ? await api.saveRecordedWork(payload) : await api.saveScheduledSession(row, payload);
         } catch (err) {
             const uncertain = !err.status || err.status >= 500;
             draft.blocked = uncertain || err.status === 409;

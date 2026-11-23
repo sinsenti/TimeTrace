@@ -348,6 +348,49 @@ test('Calendar shows overlap plans and one typed projection without changing its
     assert.deepEqual(Array.from(p.context.allSessions, row => row.id), ['legacy', recurring.id]);
 });
 
+test('Calendar modal conflict remains blocked after reopening and through a drag', async () => {
+    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : new Response(JSON.stringify({detail:'stale'}), {status:409}));
+    p.run(`rememberSavedSession({id:'conflicted', kind:'scheduled_session', revision:1, start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'}); openEditSessionModal('conflicted')`);
+    await p.run('saveSessionFromModal()');
+    p.run(`closeSessionModal(); openEditSessionModal('conflicted')`);
+    await p.run('saveSessionFromModal()');
+    await p.run(`handleCalendarEventUpdate({id:'conflicted', start:new Date('2099-01-04T11:00Z'),end:new Date('2099-01-04T12:00Z'), extendedProps:{kind:'scheduled_session', revision:1}}, 'move', {revert(){}})`);
+    assert.equal(p.writes.length, 1, 'review latches all writers, not just one modal owner');
+});
+
+test('manual recording uncertainty blocks Calendar reopen and navigation to another client until explicit review', async () => {
+    const p = sessionPage(async (url, options) => { if (options.method === 'GET') return {items:[]}; throw Error('lost response'); });
+    p.run('openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
+    await p.run('saveSessionFromModal()');
+    p.run('closeSessionModal(); openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes.length, 1, 'uncertain manual work must not be replayed by reopening');
+});
+
+test('Calendar targeted timer ACK adopts captured plan UUID and revision before a failed read', async () => {
+    const p = sessionPage(async () => { throw Error('offline read'); });
+    const id = 'virt:task:20990104T090000Z';
+    p.run(`rememberSavedSession({id:${JSON.stringify(id)}, kind:'scheduled_session', task_id:'task', is_virtual:true, projection_revision:'projection', start_time:'2099-01-04T09:00Z', end_time:'2099-01-04T10:00Z'})`);
+    p.run(`openEditSessionModal(${JSON.stringify(id)})`);
+    await p.listeners.get('timetrace:timer-mutated')({detail:{requested_scheduled_session_id:id, captured_plan_id:'captured', plan_revision:2, timer:{scheduled_session_id:'captured'}}});
+    assert.equal(p.elements.get('edit_session_id').value, 'captured');
+    p.elements.get('session_modal_end').value = '2099-01-04T11:00';
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes[0].url, '/scheduled-sessions/captured?scope=only_this');
+    assert.equal(p.writes[0].payload.expected_revision, 2);
+});
+
+test('Calendar explicit manual recording creates typed work and never falls back to legacy edits', async () => {
+    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] :
+        {id:'manual-work', kind:'recorded_work', provenance:'manual', ...JSON.parse(options.body)});
+    p.run('openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes[0].url, '/recorded-work');
+    p.run('openEditSessionModal("manual-work")');
+    await p.run('saveSessionFromModal()');
+    assert.equal(p.writes.length, 1, 'typed recorded work is read-only, including repeat Save');
+});
+
 test('explicit Calendar scheduling writes a plan, but an existing legacy edit keeps its old route', async () => {
     const p = sessionPage(async (url, options) => {
         if (url.startsWith('/agenda?')) return { items: [] };
