@@ -19,6 +19,8 @@ from timetrace.main import create_daemon_app
 from timetrace.services.timer_focus_service import FocusEvaluator
 from timetrace.services.multiple_timer_service import MultipleTimerService
 init_db()
+with TestClient(create_daemon_app()) as started:
+ assert started.get('/health').status_code==200
 c = TestClient(create_daemon_app())
 """
 SEED = """

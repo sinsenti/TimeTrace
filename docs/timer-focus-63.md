@@ -24,7 +24,7 @@ whole minutes. No external adapter or live notification has been invoked.
 | Durable event claims, adapters and bounded daemon lifecycle | SQLite events and exclusive conservative-unknown claims implemented; adapters and daemon loop pending |
 | Browser settings, countdown, actions, drafts and narrow layout | Not implemented |
 | Migration 0019 fresh/copied-synthetic/fault acceptance | Normal fresh chain, copied old pending creation receipt and repeated restart pass; related #61 migration suite passes |
-| Final Python/Node/scoped lint/browser | Partial-source Python 1114/Node 878 pass; scoped Ruff passes; browser unrun |
+| Final Python/Node/scoped lint/browser | Events milestone post-merge focused Python284/Node25 pass; scoped Ruff and merged-JS syntax pass; full-ticket suites/browser deferred |
 
 ## Exact initial red/green
 
@@ -81,8 +81,27 @@ Definite failure/unknown exposes durable passive fallback status, not a second n
 POST `/timer-notifications/{id}/ack` independently dismisses a passive card, idempotently,
 without authorizing any send or losing an already accepted/unknown delivery result. Concurrent
 real processes prove one due event and one successful exclusive claim (200/409). Claim
- tokens/operation IDs are omitted from notice reads; the table is outside SQL-widget allowlist
+tokens/operation IDs are omitted from notice reads; the table is outside SQL-widget allowlist
 and has no work/task FK, so deleting history cannot cascade/block notification recovery.
+
+### Events milestone final-source evidence
+
+Committed events backend checkpoint `c3e202f`; merged completed #62 integration tip `5aabcba`
+without conflict at `9af55e4`, preserving its volatile display-only `observed_at`. Post-merge
+focused regression: **284 Python passed**,231 warnings,in202.43s; related public JS controller/
+correction/workspace/history/Calendar tests: **25 passed**,zero failures/skips,in98.34ms.
+Scoped Ruff on every changed Python file and `git diff --check` pass. Syntax checks pass for
+all four JS files brought by the #62 merge; no #63 JS was changed. Full Python/Node are deliberately
+not rerun/claimed for this backend milestone; they remain required after final #63 production work.
+
+Own recovery tests now use actual daemon lifespan startup in each subprocess, including both
+pre-DB and post-DB automatic-break crash cases. They assert one retained closed interval and event,
+fixed IDs through two restarts, all accepted receipts finalized, normal fresh0019 chain and copied
+old0018 pending receipt integrity/FK/result/hash/creation-provenance preservation. Concurrent actual
+process evaluators/claimants prove one event/one claim winner. Existing copied #61 migration fixture
+also passes under0019, retaining its plans/work lineage/ratings/query/export evidence. Native OS,
+real browser, scheduler lifecycle, permission/sound and external-send adapter fault cells are not
+implemented or claimed at this milestone. No personal data or external notification was used.
 
 **Incomplete: do not publish/close #63 or describe these checkpoints as the whole implementation.**
 Delivery adapter, daemon scheduling loop, UI and platform acceptance remain pending. Backend
