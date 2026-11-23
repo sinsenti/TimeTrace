@@ -396,6 +396,7 @@ function rememberSavedSession(savedSession, previousId, event = null) {
 
 // Timer receipts own recording. Adopt their plan identity before any fallible range GET.
 window.addEventListener('timetrace:timer-mutated', async event => {
+    ++calendarReadVersion; // Fence in-flight ranges at the authoritative ACK, before any fallible GET.
     const result = event.detail;
     const previousId = result?.requested_scheduled_session_id || result?.timer?.scheduled_session_id;
     const row = calendarSessionRows().find(row => row.id === previousId && row.kind === 'scheduled_session');

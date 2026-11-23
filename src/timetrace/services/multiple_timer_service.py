@@ -573,6 +573,7 @@ class MultipleTimerService:
                 timers.append(timer)
             return {
                 "revision": state["revision"],
+                "observed_at": now.isoformat(),
                 "timers": timers,
                 "idle_detection_enabled": state.get("idle_detection_enabled", settings.idle_detection_enabled),
                 "idle_threshold_seconds": state.get("idle_threshold_seconds", settings.idle_threshold_seconds),
