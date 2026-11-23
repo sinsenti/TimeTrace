@@ -9,6 +9,7 @@ from timetrace.services.analytics_service import AnalyticsService
 from timetrace.services.dashboard_service import DashboardService
 from timetrace.services.habit_service import HabitService
 from timetrace.services.multiple_timer_service import MultipleTimerService
+from timetrace.services.plan_removal_service import PlanRemovalService
 from timetrace.services.query_service import QueryService
 from timetrace.services.rating_service import RatingService
 from timetrace.services.recurrence_service import RecurrenceService
@@ -21,6 +22,7 @@ from timetrace.services.timer_service import TimerService
 __all__ = [
     "TaskService",
     "SessionService",
+    "PlanRemovalService",
     "TimerService",
     "MultipleTimerService",
     "RevisionService",

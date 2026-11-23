@@ -15,6 +15,13 @@ from timetrace.core.query_spec import (
 )
 
 
+class PlanRemovalRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    action: Literal["delete_everything", "squeeze"]
+    consent_token: str = Field(min_length=64, max_length=64)
+    operation_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
+
+
 class TaskStatusCreate(BaseModel):
     name: str
     is_completed: bool = False

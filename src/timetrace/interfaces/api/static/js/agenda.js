@@ -179,6 +179,23 @@ const agendaPage = (() => {
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);
+            const capturedDraft = owner;
+            window.planRemoval?.mount(root, row, {
+                api,
+                available: () => owner === capturedDraft && !owner?.pending && !owner?.removalPending && switchAllowed(),
+                lock: pending => { if (owner === capturedDraft) { owner.removalPending = pending; controls(); } },
+                ack: async result => {
+                    generation++;
+                    if (owner === capturedDraft) {
+                        if (result.action === 'delete_everything') open(null);
+                        else {
+                            const latest = await api.get(`/scheduled-sessions/${encodeURIComponent(row.id)}`);
+                            if (owner === capturedDraft) open({...row, ...latest});
+                        }
+                    }
+                    await refresh();
+                },
+            });
         } else {
             add('Interval', interval(row.start_time, row.end_time));
             if (row.kind === 'recorded_work') add('Provenance', row.provenance || 'Not specified');
@@ -188,7 +205,7 @@ const agendaPage = (() => {
         add('Notes', row.notes || 'None');
     }
 
-    const saveUnavailable = () => Boolean(owner?.pending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
+    const saveUnavailable = () => Boolean(owner?.pending || owner?.removalPending || owner?.blocked || owner?.row?.kind === 'recorded_work' ||
         (!owner?.row && (createPending || unconfirmedCreate)));
 
     function controls() {
@@ -229,6 +246,7 @@ const agendaPage = (() => {
     }
 
     function switchAllowed() {
+        if (owner?.removalPending) return false;
         const dirty = owner && !get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline);
         return !dirty || window.confirm('Leave these unsaved schedule edits?');
     }
