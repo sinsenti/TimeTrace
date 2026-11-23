@@ -11,7 +11,7 @@ from sqlmodel import Session, create_engine, text
 from timetrace.config import settings
 
 # The models depend on this schema even if an incomplete installation reports an older head.
-MINIMUM_SCHEMA_REVISION = "0019_timer_focus"
+MINIMUM_SCHEMA_REVISION = "0020_personal_goals"
 
 settings.db_file.parent.mkdir(parents=True, exist_ok=True)
 

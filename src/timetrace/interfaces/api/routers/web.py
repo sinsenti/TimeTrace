@@ -24,6 +24,13 @@ def get_agenda_page(request: Request):
     return templates.TemplateResponse(request=request, name="agenda.html", context={"active_page": "agenda"})
 
 
+@router.get("/weekly-review-view")
+def get_weekly_review_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="weekly_review.html", context={"active_page": "weekly_review"}
+    )
+
+
 @router.get("/tasks")
 @router.get("/kanban")
 @router.get("/tasks-view")

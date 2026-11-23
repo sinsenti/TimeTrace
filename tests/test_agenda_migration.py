@@ -15,7 +15,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 OLD = "0013_ai_data_scope"
 FOUNDATION = "0014_agenda_foundation"
-HEAD = "0019_timer_focus"
+HEAD = "0020_personal_goals"
 TASK = "00000000-0000-7000-8000-000000000001"
 LOG = "00000000-0000-7000-8000-000000000002"
 WHEN = "2000-01-04 14:00:00.000000"
@@ -266,7 +266,7 @@ try:
         health = client.get('/health')
         raise AssertionError(f'daemon started with truncated migrations: /health {health.status_code}')
 except RuntimeError as exc:
-    assert '0019_timer_focus' in str(exc), str(exc)
+    assert '0020_personal_goals' in str(exc), str(exc)
     assert 'complete TimeTrace' in str(exc), str(exc)
 assert opened_databases == [], opened_databases
 """

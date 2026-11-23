@@ -28,12 +28,12 @@ Recursive descendant membership uses bound SQL and UNION identity deduplication/
 | Effective reporting context epochs and complete settings validation | Pending |
 | Full legacy/live/plan/lineage, DST and week-start coverage | Pending |
 | Task deletion/history integrity and concurrency restart coverage | Pending |
-| Weekly A/C and compact workspace/task UI | Pending |
+| Weekly A/C and compact workspace/task UI | Initial public HTTP/Node slices; real DOM A→C and explicit goal save exercised, remaining matrix pending |
 | Existing/new atomic ID-preserving assignment, strict manifest, retries, stale multi-record rollback | Public HTTP tests |
 | Pre/post DB file-boundary failure, exact recovery, later-note preservation | Public HTTP tests with injected filesystem failure |
 | Optional post-Stop assignment prompt and subprocess crash/concurrency proof | Pending |
-| Fresh/copied synthetic migrations and repeated startup | Pending |
-| Real browser desktop/narrow and integration | Pending |
+| Fresh/copied synthetic migrations and repeated startup | Normal fresh0020 chain and20 focused migration tests passed, including rich copied0019 pre/postDB receipts and two starts |
+| Real browser desktop/narrow and integration | Desktop actual Stop→optional create/assign worked; remainder pending. Both bounded raster captures failed (no frame); coordinator explicitly deferred raster/manual visual only, DOM acceptance remains required |
 | Final full Python/Node, lint comparison and independent reviews | Pending |
 
 Migration `0020_personal_goals` follows `0019_timer_focus`, adds empty settings/receipt tables

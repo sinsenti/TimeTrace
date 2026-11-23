@@ -285,6 +285,29 @@ def test_assignment_recovers_lost_ack_and_protects_only_precommit_targets(client
     assert client.get(f"/operations/{operation_id}").json()["status"] == "finalized"
 
 
+def test_weekly_overview_uses_whole_start_day_sum_and_separate_unions(client):
+    task = client.post("/api/tasks", json={"title": "Weekly task"}).json()["id"]
+    for start, end, owner in [("10:00", "11:00", task), ("10:30", "11:30", task), ("11:00", "12:00", None)]:
+        assert (
+            client.post(
+                "/recorded-work",
+                json={"task_id": owner, "start_time": f"2000-01-04T{start}:00Z", "end_time": f"2000-01-04T{end}:00Z"},
+            ).status_code
+            == 201
+        )
+    result = client.get("/weekly-review?week_start=2000-01-03&timezone=UTC&first_day_of_week=1")
+    assert result.status_code == 200, result.text
+    report = result.json()
+    assert report["week_start"] == "2000-01-03"
+    assert report["summed_recorded_work"]["total"] == 3
+    assert report["elapsed_recorded_time"]["total"] == 2
+    assert report["recorded_task_time"]["total"] == 1.5
+    assert report["taskless_summed_recorded_work"]["total"] == 1
+    assert report["daily"]["rows"][0]["keys"] == ["2000-01-04"]
+    assert report["tasks"]["rows"][0]["value"] == 2
+    assert client.get("/weekly-review?week_start=2000-01-10").json()["summed_recorded_work"]["total"] == 0
+
+
 def test_goals_are_absent_until_configured(client):
     assert client.get("/goals").json() == {"goals": []}
 
