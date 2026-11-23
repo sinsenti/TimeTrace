@@ -8,6 +8,7 @@ from timetrace.services.ai_tool_gateway import DbAIToolGateway
 from timetrace.services.analytics_service import AnalyticsService
 from timetrace.services.dashboard_service import DashboardService
 from timetrace.services.focus_runtime import FocusRuntime
+from timetrace.services.goal_service import GoalService
 from timetrace.services.habit_service import HabitService
 from timetrace.services.multiple_timer_service import MultipleTimerService
 from timetrace.services.notification_delivery import LinuxNotifications
@@ -37,6 +38,7 @@ __all__ = [
     "RevisionService",
     "RatingService",
     "HabitService",
+    "GoalService",
     "RecurrenceService",
     "AnalyticsService",
     "QueryService",

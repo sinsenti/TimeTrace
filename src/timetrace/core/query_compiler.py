@@ -51,6 +51,8 @@ class QueryContext:
     plan_windows: list[tuple[str, str | None, datetime, datetime]] = field(default_factory=list)
     now_utc: datetime | None = None  # naive UTC, used by relative session-time filters
     recorded_work_ids: tuple[str, ...] | None = None  # internal exact cohort; () selects nothing
+    recorded_work_descendant_root: str | None = None  # bound current-hierarchy cohort with cycle defense
+    recorded_work_all_time_scalar: bool = False  # trusted internal scalar SUM only, never a public widget flag
     recorded_work_seconds: bool = False  # internal evidence only; public widgets stay hours
 
 
@@ -867,7 +869,10 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         if ctx.range_end_local
         else (ctx.range_end_utc.replace(tzinfo=UTC) - timedelta(microseconds=1)).astimezone(zone).date()
     )
-    if (end_day - start_day).days >= 400:
+    all_time_scalar = (
+        ctx.recorded_work_all_time_scalar and query.measure == Measure.SUMMED_RECORDED_WORK and not query.group_by
+    )
+    if (end_day - start_day).days >= 400 and not all_time_scalar:
         raise ValidationError("Recorded-work ranges cannot exceed 400 local days.")
     if query.fill_gaps or query.comparison:
         raise ValidationError("Recorded work does not support gap filling, baselines or tag attribution.")
@@ -954,6 +959,13 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
 
         params["cohort_ids"] = json.dumps(ctx.recorded_work_ids)
         predicate += " AND s.id IN (SELECT value FROM json_each(:cohort_ids))"
+    if ctx.recorded_work_descendant_root is not None:
+        params["descendant_root"] = ctx.recorded_work_descendant_root
+        predicate += """ AND s.task_id IN (
+            WITH RECURSIVE cohort(id) AS (
+                SELECT id FROM task WHERE id=:descendant_root
+                UNION SELECT t.id FROM task t JOIN cohort c ON t.parent_id=c.id
+            ) SELECT id FROM cohort)"""
     task = query.measure in (
         Measure.RECORDED_TASK_TIME,
         Measure.INSIDE_SCHEDULED_TASK_TIME,

@@ -350,6 +350,50 @@ class QueryService:
             result[measure.value + "_seconds"] = seconds
         return result
 
+    def summed_work_total(
+        self,
+        task_id: str,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        include_descendants: bool = False,
+    ) -> dict:
+        """Internal all-time task scalar; retain public recorded-work date-cap policy."""
+        warnings = []
+        tz, name = _resolve_timezone(None, warnings)
+        lower = (
+            datetime.combine(start_date, time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            if start_date
+            else datetime.min
+        )
+        cutoff = datetime.now(UTC).replace(tzinfo=None)
+        from timetrace.core.query_spec import FilterField, QueryFilter
+
+        query = AnalyticsQuery(
+            source=QuerySource.RECORDED_WORK,
+            measure=Measure.SUMMED_RECORDED_WORK,
+            filters=[] if include_descendants else [QueryFilter(field=FilterField.TASK, values=[task_id])],
+        )
+        upper = (
+            datetime.combine(end_date + timedelta(days=1), time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            if end_date
+            else datetime.max
+        )
+        ctx = QueryContext(
+            timezone=name,
+            first_day_of_week=1,
+            range_start_utc=lower,
+            range_end_utc=upper,
+            recorded_work_descendant_root=task_id if include_descendants else None,
+            range_start_local=(start_date or date.min).isoformat(),
+            range_end_local=date.max.isoformat(),
+            now_utc=cutoff,
+            recorded_work_seconds=True,
+            recorded_work_all_time_scalar=True,
+        )
+        compiled = compile_query(query, ctx)
+        seconds = self.db.exec(text(compiled.sql), params=compiled.params).first()[0]
+        return {"seconds": seconds, "timezone": name, "warnings": warnings, "measurement_at": cutoff.isoformat()}
+
     def run(self, query: AnalyticsQuery, context: QueryContextRequest) -> AnalyticsQueryResponse:
         if query.source.value == "recorded_work":
             with sqlite_read_snapshot(self.db) as reader:

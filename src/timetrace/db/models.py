@@ -30,6 +30,42 @@ def generate_uuid7() -> str:
     return str(uuid.uuid7())
 
 
+class GoalDefinition(SQLModel, table=True):
+    """Optional personal goal identity, separate from estimates and timer receipts."""
+
+    __tablename__ = "goal_definition"
+    __table_args__ = (UniqueConstraint("owner_key", "cadence"),)
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    owner_key: str
+    cadence: str
+    revision: int = 1
+
+
+class GoalSettingsVersion(SQLModel, table=True):
+    """Append-only effective settings; reads never persist progress counters."""
+
+    __tablename__ = "goal_settings_version"
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    goal_id: str = Field(index=True)
+    revision: int
+    effective_period_start: str
+    target_seconds: float
+    enabled: bool = True
+    include_descendants: bool = False
+    timezone: str
+    first_day_of_week: int
+    start_date: str | None = None
+
+
+class GoalSettingsReceipt(SQLModel, table=True):
+    """DB-only operation receipts must never enter timer file recovery."""
+
+    __tablename__ = "goal_settings_receipt"
+    operation_id: str = Field(primary_key=True)
+    payload: str
+    response: str
+
+
 class TimerNotification(SQLModel, table=True):
     """Install-local delivery state; never an analytics source or work-row parent."""
 
