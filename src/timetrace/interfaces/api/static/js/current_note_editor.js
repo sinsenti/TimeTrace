@@ -10,13 +10,18 @@ function createCurrentNoteDraft(timer, control) {
             if (pending || !state().dirty) return false;
             const submitted = value, captured = baseline;
             pending = true;
+            let acknowledged = false;
             try {
                 return await control.act(captured.id,'note',{
                     expected_revision:captured.revision,
                     expected_note_segment_id:captured.state === 'paused' ? captured.manual_pause_note_segment_id || null : null,
                     new_notes:submitted
-                }, result => { baseline = result.timer; });
-            } finally { pending = false; }
+                }, result => {
+                    baseline = result.timer;
+                    // Release mutation ownership at ACK, not after the display read.
+                    acknowledged = true; pending = false;
+                });
+            } finally { if (!acknowledged) pending = false; }
         }
     };
 }

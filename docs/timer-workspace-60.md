@@ -1,5 +1,30 @@
 # Core timer workspace (#60)
 
+## Independent review repair receipt
+
+Initial independent review at `cad577b`: Standards **0** actionable findings; Spec **1 P2**:
+acknowledged current-note saves retained draft mutation-pending ownership while an obsolete display
+GET remained unresolved. The focused repair releases that ownership in the ACK callback, with a
+per-save ACK flag preventing an older display-read completion from clearing a newer mutation's pending
+state. Controller freshness/receipt gates, captured revisions/paused targets and late typing remain intact.
+
+Fresh public controller/draft regressions failed before the change (`pending: true` after successful
+independent recovery) for running and paused timers, then passed after it. Both also cover an older
+read completing during a newer pending save. Focused Node: **11 passed**; full Node: **866 passed**;
+full isolated Python: **824 passed**, 4326 warnings, 359.16 seconds. Changed production/test JS and
+browser probe syntax checks and `git diff --check` passed. No Python files changed, so scoped Python
+lint is inapplicable; broad Ruff still reports the **17 inherited untouched errors** documented below.
+No JS lint suite is configured.
+
+Real Orca browser, fresh isolated profile and synthetic daemon on **18063**, external DB/HOME/TMPDIR:
+`tests/browser_workspace_note_ack_60.js` verified running and manually paused note POST ACK, deliberately
+unresolved first display GET, successful independent polling recovery, then immediate Stop recording
+the saved description. The first probe attempt raced Start freshness and timed out before sending
+Save; the probe now waits for fresh state, and the corrected replay passed both assertions. Only the
+owned scratch daemon was stopped. Prior receipts below remain historical evidence, not rerun claims;
+human/platform-wide accessibility and visual certification remain outside this bounded repair.
+
+
 Scope: [#60](https://github.com/sinsenti/TimeTrace/issues/60), parent [#59](https://github.com/sinsenti/TimeTrace/issues/59). This is not delivery of corrections (#61), Calendar enhancements (#62), notifications, goals or export. Confirmed seams: public HTTP/service interfaces, public JS controller interactions, and an isolated real browser. Node/syntax checks are not browser acceptance.
 
 ## Engineering decisions (recorded before their implementation)
