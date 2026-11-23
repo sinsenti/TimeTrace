@@ -239,7 +239,7 @@ both feature descriptions were preserved.
 - Scoped Ruff/format and whitespace checks pass. This is not a full Python/Node run, browser proof,
   complete crash/fsync matrix, or final independent review. #61 correction controls remain unavailable.
 
-## Final implementation phase (in progress)
+## Final implementation: ready for independent review
 
 The working branch now includes strict controller initialization/preview/commit transport, exact
 journal recovery, B-style clock controls and an explicit dated/offset/interval picker, saved-history
@@ -259,12 +259,25 @@ and actual UTF-8 #65 corrected-fragment download. Desktop/narrow geometry passes
 both failed with the headless no-frame capture timeout, so no pixel certification is claimed.
 The full Node run passed **878 tests**. New backend evidence includes **121** fault/process cases,
 **3** genuine checkpoint-v3 receipt cases and strengthened separate-process association guards.
-Full Python and inherited-Ruff comparison remain pending at this checkpoint; final review is still
-required and **this is not completed #61 delivery**.
+The final full Python run passed **1,112 tests**, with 4,877 warnings, in 290.54 seconds;
+`/tmp/timetrace-61-final-python.log` records the result. The first full run was interrupted by the
+Orca restart near 54% and is retained separately, not counted as passing. Full Node evidence is
+`/tmp/timetrace-61-final-node.log`. Full Ruff comparison against archived `bed2237` verified exactly
+**17 unchanged inherited findings** in three untouched files; no unrelated lint was swept.
+Changed JS syntax, scoped Python Ruff/format and whitespace checks pass.
 
-### Remaining final acceptance
+The real browser assertions are reproducible in `tests/browser_timer_corrections_61.js` against an
+explicitly isolated non-8002 synthetic daemon/profile. They test real module/DOM boundaries and
+actual HTTP responses, including transport faults, rather than counting Node/source checks as
+browser proof. Desktop 1280×900 and narrow 390×844 checks observe 32px circular controls and one/two
+action rows respectively. Both screenshot attempts failed with `Page.captureScreenshot`: the
+headless page did not draw a frame. DOM/layout assertions are passing; pixel/visual certification
+is explicitly unavailable. Actual UTF-8 CSV download bytes match the accepted corrected-fragment
+report. The existing Calendar renders DB identities/geometry and refetches its actual source on ACK.
 
-Complete controller/B-style UI wiring, authoritative read invalidation, full durability/concurrency/
-fsync verification and independent final #61 review. Do not
-enable correction controls based on these backend checkpoints. Full Python/Node, migration,
-crash/concurrency and real-browser acceptance remain required at eventual complete delivery.
+### Review/publication gate
+
+Implementation and combined automated/DOM acceptance are ready for the coordinator's fresh merger
+and independent Standards/Spec reviews. **This is not independent review, publication, delivery or
+issue closure.** No push or merge into integration/dev was performed, and #62/#63/#64 remain outside
+this work. Raster screenshot certification and other-platform/manual OS behavior are not claimed.

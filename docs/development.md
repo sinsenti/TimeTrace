@@ -112,8 +112,10 @@ mutations, keyboard bindings and the intentionally unavailable #61 correction UI
 The [#61 backend checkpoints](timer-corrections-61.md) cover explicit initialization, signed interval
 approval/commit and saved-work lineage/replay guards. These use `MultipleTimerService`'s existing
 receipt funnel and `SessionService.stage_work_corrections`, not generic legacy updates. Startup now
-requires migration `0018_work_corrections`; controller/browser delivery and complete #61 acceptance
-remain pending.
+requires migration `0018_work_corrections`. The signed controller and B-style correction picker live
+in `static/js/multiple_timers.js` and `timer_corrections.js`; finalized/recovered ACK refreshes existing
+Agenda, Calendar and #65 export consumers. Combined suite and real isolated DOM acceptance are
+recorded in that checkpoint document; independent review/publication remain pending.
 
 [Selected-history export](timer-history-export-65.md) adds a separate bounded start-day selection view,
 frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserving summed-work measure.
