@@ -1,5 +1,6 @@
 """Public goal behavior, independent of the existing union/estimate accounting."""
 
+import json
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -437,6 +438,20 @@ def test_reporting_context_changes_start_a_new_epoch_without_rebucketing_old_wee
     assert overview["context_revision"] == 2
     assert overview["summed_recorded_work"]["meta"]["first_day_of_week"] == 0
     assert overview["week_start"] == "2000-01-09"
+    for selected, start in [("2000-01-09", "2000-01-09"), ("2000-01-16", "2000-01-16")]:
+        current = client.get(f"/weekly-review?week_start={selected}&context_revision=2").json()
+        assert current["available"] and current["week_start"] == start
+    for suffix in ("", "&context_revision=1"):
+        old = client.get(f"/weekly-review?week_start=2000-01-08{suffix}").json()
+        assert old["available"] and old["context_revision"] == 1
+        assert (old["week_start"], old["week_end"]) == ("2000-01-03", "2000-01-09")
+    baseline = client.get("/weekly-review?week_start=1999-12-30&context_revision=1").json()
+    assert baseline["available"] and baseline["goals"] == []
+    unavailable = client.get("/weekly-review?week_start=2000-01-08&context_revision=2").json()
+    assert not unavailable["available"] and unavailable["summed_recorded_work"]["total"] is None
+    assert any("not yet effective" in text for text in unavailable["warnings"])
+    assert unavailable["plans"] == unavailable["uncertain_legacy"]["items"] == []
+    assert client.get("/goals?period_start=2000-01-08&context_revision=2").json()["goals"] == []
     assert (
         client.put(
             "/goals/" + goal["id"], json={"operation_id": str(uuid4()), "expected_revision": 1, "target_seconds": 7200}
@@ -488,6 +503,30 @@ def test_changed_daemon_timezone_does_not_silently_rebucket_frozen_goal_context(
         monkeypatch.undo()
         time.tzset()
         timezones._reset_caches()
+
+
+@pytest.mark.parametrize("method", ["POST", "PUT"])
+def test_raw_invalid_target_does_not_poison_goal_settings_or_receipt(client, method):
+    create = {"operation_id": "saved-goal", "owner_kind": "global", "cadence": "day", "target_seconds": 3600}
+    if method == "PUT":
+        response = client.post("/goals", json=create)
+        assert response.status_code == 201
+        path = "/goals/" + response.json()["id"]
+        draft = {"operation_id": "draft-edit", "expected_revision": 1, "target_seconds": 1800}
+    else:
+        path, draft = "/goals", create
+    before = client.get("/goals").json()
+    for number in ("1e309", "-1e309", "NaN", "-1", "null", "{"):
+        raw = json.dumps({**draft, "target_seconds": "TARGET"}).replace('"TARGET"', number)
+        invalid = client.request(method, path, content=raw, headers={"content-type": "application/json"})
+        assert invalid.status_code == 422, invalid.text
+        assert any(e["loc"][-1] == "target_seconds" or e["type"] == "json_invalid" for e in invalid.json()["detail"])
+        assert client.get("/goals").json() == before
+    valid = client.request(method, path, json=draft)
+    assert valid.status_code == (201 if method == "POST" else 200), valid.text
+    assert client.request(method, path, json=draft).json() == valid.json()
+    if method == "PUT":
+        assert client.post("/goals", json=create).json() == response.json()
 
 
 @pytest.mark.parametrize("target", [0, -1, True, "Infinity", "NaN", None])

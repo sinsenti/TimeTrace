@@ -148,9 +148,11 @@ def create_daemon_app(*, notification_adapter=None, focus_runtime_factory=None) 
         logger.error("=" * 60)
 
         errors = exc.errors()
-        if request.url.path.endswith(("/correction", "/correction-preview", "/correction-initialize")):
-            # JSON permits some parsers to produce Infinity/NaN. Do not echo raw
-            # untrusted correction input or exception context into strict JSON.
+        path = request.url.path
+        goal_write = request.method in {"POST", "PUT"} and (path == "/goals" or path.startswith("/goals/"))
+        if goal_write or path.endswith(("/correction", "/correction-preview", "/correction-initialize")):
+            # Parsers can produce Infinity/NaN. Keep diagnostics without echoing raw
+            # input or exception context into a strict JSON response.
             errors = [{key: error[key] for key in ("type", "loc", "msg")} for error in errors]
         return JSONResponse(
             status_code=422,

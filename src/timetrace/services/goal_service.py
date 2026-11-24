@@ -51,6 +51,19 @@ class GoalService:
         )
         return result
 
+    @staticmethod
+    def _period_context_warning(epoch, start, cadence, tz):
+        field = "effective_week_start" if cadence == "week" else "effective_day_start"
+        # The baseline context can describe periods before any goal was configured.
+        if epoch["revision"] > 1 and start.isoformat() < epoch[field]:
+            return "This reporting epoch was not yet effective for the selected period; select its historical epoch."
+        if epoch.get("closed_at"):
+            closed_day = datetime.fromisoformat(epoch["closed_at"]).astimezone(tz).date()
+            boundary = _week_start(closed_day, epoch["first_day_of_week"]) if cadence == "week" else closed_day
+            if start >= boundary:
+                return "This reporting epoch is closed for the selected period; select the current epoch."
+        return None
+
     def change_context(self, request):
         lock_sqlite_writer(self.db)
         payload = json.dumps({"resource": "goal-reporting-context", **request.model_dump(mode="json")}, sort_keys=True)
@@ -268,12 +281,10 @@ class GoalService:
         warnings.extend(epoch.get("warnings", []))
         start = _week_start(selected_date or datetime.now(tz).date(), first)
         end = start + timedelta(days=6)
-        available = name == tz.key
-        if epoch.get("closed_at"):
-            boundary = _week_start(datetime.fromisoformat(epoch["closed_at"]).astimezone(tz).date(), first)
-            if start >= boundary:
-                available = False
-                warnings.append("This reporting epoch is closed for the selected period; select the current epoch.")
+        period_warning = self._period_context_warning(epoch, start, "week", tz)
+        available = name == tz.key and period_warning is None
+        if period_warning:
+            warnings.append(period_warning)
         cutoff = datetime.now(UTC).replace(tzinfo=None)
         with sqlite_read_snapshot(self.db) as reader:
             service = QueryService(reader)
@@ -355,15 +366,21 @@ class GoalService:
                 if ids
                 else {}
             )
-            plans = SessionService(reader).list_review_plans(
-                datetime.combine(start, time.min, tz).astimezone(UTC).replace(tzinfo=None),
-                datetime.combine(end + timedelta(days=1), time.min, tz).astimezone(UTC).replace(tzinfo=None),
-            )
             from timetrace.interfaces.api.utils import ensure_utc
 
             lower = datetime.combine(start, time.min, tz).astimezone(UTC)
             upper = datetime.combine(end + timedelta(days=1), time.min, tz).astimezone(UTC)
-            result["uncertain_legacy"] = SessionService(reader).list_uncertain_history(lower, upper)
+            sessions = SessionService(reader)
+            plans = (
+                []
+                if period_warning
+                else sessions.list_review_plans(lower.replace(tzinfo=None), upper.replace(tzinfo=None))
+            )
+            result["uncertain_legacy"] = (
+                {"items": [], "truncated": False, "basis": period_warning}
+                if period_warning
+                else sessions.list_uncertain_history(lower, upper)
+            )
             result["plans"] = []
             for plan in plans[:200]:
                 original_start = getattr(plan, "original_start", None)
@@ -416,14 +433,9 @@ class GoalService:
                 tz = ZoneInfo(epoch["timezone"])
                 today = period_start or datetime.now(tz).date()
                 start = _week_start(today, epoch["first_day_of_week"]) if goal.cadence == "week" else today
-                if epoch.get("closed_at") and goal.cadence != "total":
-                    closed_day = datetime.fromisoformat(epoch["closed_at"]).astimezone(tz).date()
-                    boundary = (
-                        _week_start(closed_day, epoch["first_day_of_week"]) if goal.cadence == "week" else closed_day
-                    )
-                    if start >= boundary:
-                        continue
                 if goal.cadence != "total":
+                    if self._period_context_warning(epoch, start, goal.cadence, tz):
+                        continue
                     version = reader.exec(
                         select(GoalSettingsVersion)
                         .where(

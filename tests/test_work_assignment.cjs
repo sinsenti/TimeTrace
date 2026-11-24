@@ -24,6 +24,41 @@ test('a second Stop cannot replace an active assignment draft or silently enlarg
  reloaded.dismiss();assert.equal(reloaded.snapshot().prompt.stop_id,'second-stop');
  assert.deepEqual(reloaded.snapshot().prompt.works.map(w=>w.id),['three']);
 });
+for (const fails of [false,true]) test(`obsolete target ${fails?'error':'success'} cannot cross queued Stops`,async()=>{
+    const store=storage(),reads=[],writes=[];let finishWrite;
+    const api={get:url=>new Promise((resolve,reject)=>reads.push({url,resolve,reject})),
+        post:(url,payload)=>{writes.push([url,payload]);return new Promise(resolve=>{finishWrite=resolve;});}};
+    const make=()=>createWorkAssignmentController({api,storage:store,onState:()=>{},operationId:()=> 'assign-B'});
+    const c=make();
+    c.offer({operation_id:'A',saved_taskless_work:[{id:'a',revision:1}]});
+    const stale=c.refetchTargets();
+    c.offer({operation_id:'B',saved_taskless_work:[{id:'b1',revision:2},{id:'b2',revision:3}]});
+    c.dismiss();
+    assert.equal(c.snapshot().pending,false);
+    c.select(['b2']);c.edit({kind:'existing',task_id:'destination'});
+    const fresh=c.refetchTargets();
+    assert.deepEqual(reads.map(r=>r.url),['/recorded-work/a','/recorded-work/b1','/recorded-work/b2']);
+    const row=(id,revision)=>({id,revision,task_id:null,scheduled_session_id:null});
+    if (fails) reads[0].reject(Error('A unavailable')); else reads[0].resolve(row('a',5));
+    assert.equal(await stale,false);
+    assert.equal(c.snapshot().pending,true);
+    assert.doesNotMatch(c.snapshot().message,/unavailable|Exact listed IDs refreshed/);
+    reads[1].resolve(row('b1',2));reads[2].resolve(row('b2',4));
+    assert.equal(await fresh,true);
+    const reloaded=make();
+    assert.equal(reloaded.snapshot().prompt.stop_id,'B');
+    assert.deepEqual(reloaded.snapshot().prompt.works.map(w=>w.id),['b1','b2']);
+    assert.deepEqual(reloaded.snapshot().prompt.selected_ids,['b2']);
+    const committing=reloaded.assign(reloaded.snapshot().prompt.selected_ids);
+    reloaded.dismiss();
+    assert.equal(reloaded.snapshot().pending,true);
+    assert.deepEqual(writes,[['/recorded-work/assignment',{
+        operation_id:'assign-B',works:[{id:'b2',expected_revision:4}],destination:{kind:'existing',task_id:'destination'}
+    }]]);
+    finishWrite({operation_id:'assign-B'});
+    assert.equal(await committing,true);
+    assert.equal(make().snapshot().journal.outcome,'acknowledged');
+});
 test('lost assignment ACK looks up receipt before any exact retry, never repeats Stop/create',async()=>{
     const calls=[]; const store=storage(); let lost=true;
     const api={post:async(url,payload)=>{calls.push([url,payload]); if(lost) throw Error('lost response'); return {operation_id:'assign',task_id:'task',works:[{id:'work',revision:2}]};},

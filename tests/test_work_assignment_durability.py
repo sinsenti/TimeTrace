@@ -144,3 +144,70 @@ print(json.dumps(r.json()))
 """
     )
     assert json.loads(run(replay, env).splitlines()[-1]) == first
+
+
+@pytest.mark.parametrize("scope", ["all_future", "all", "following"])
+def test_series_writers_cannot_strand_an_accepted_assignment(tmp_path, scope):
+    env = environment(tmp_path)
+    env.update(PHASE="intent", SCOPE=scope, TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED="false")
+    run(
+        CORE
+        + """
+init_db()
+series={'is_recurring':True,'recurrence_rule':'daily','recurrence_dtstart':'2099-01-04T09:00:00Z',
+        'recurrence_duration_minutes':60,'recurrence_timezone':'UTC'}
+for title in ('Destination','Independent'):
+ c.post('/api/tasks',json={**series,'title':title}).raise_for_status()
+plans=c.get('/agenda',params={'start':'2099-01-04T00:00:00Z','end':'2099-01-05T00:00:00Z'}).json()['items']
+assert len(plans)==2,plans
+tasks={t['title']:t['id'] for t in c.get('/api/tasks').json()}
+w=c.post('/recorded-work',json={'start_time':'2000-01-04T10:00:00Z','end_time':'2000-01-04T11:00:00Z'}).json()
+r={'operation_id':'series-assignment','works':[{'id':w['id'],'expected_revision':w['revision']}],
+   'destination':{'kind':'existing','task_id':tasks['Destination']}}
+fixture_path.write_text(json.dumps({'request':r,'plans':plans,'tasks':tasks,'work':c.get('/recorded-work/'+w['id']).json()}))
+""",
+        env,
+    )
+    run(CRASH, env, expected=77)
+    run(
+        CORE
+        + """
+from timetrace.core.timer_store import TimerStore
+s=json.loads(fixture_path.read_text());scope=os.environ['SCOPE']
+def mutate(plan):
+ if scope=='all_future':
+  return c.put('/scheduled-sessions/'+plan['id'],params={'scope':scope},json={
+      'expected_projection_revision':plan['projection_revision'],'start_time':plan['start_time'],
+      'end_time':'2099-01-04T11:00:00Z'})
+ return c.delete('/sessions/'+plan['id'],params={'scope':scope})
+plans={p['task_id']:p for p in s['plans']}
+# The TestClient handles HTTP on another thread. If it tries to acquire the timer lock
+# while holding SQLite, it cannot finish before the existing subprocess timeout.
+with TimerStore(Path(os.environ['TIMETRACE_TIMER_STATE_FILE'])).locked():
+ for name in ('Independent','Destination'):
+  task=s['tasks'][name]
+  response=mutate(plans[task]);print(response.status_code,response.text)
+  if name=='Independent':
+   assert response.status_code==(200 if scope=='all_future' else 204),response.text
+   c.put('/api/tasks/'+task,json={'title':'Independent renamed'}).raise_for_status()
+  else:
+   assert response.status_code==409,(response.status_code,response.text)
+   assert response.json()['code']=='assignment_pending',response.text
+   saved=c.get('/api/tasks/'+task).json()
+   assert saved['is_recurring'] and saved['recurrence_duration_minutes']==60,saved
+""",
+        env,
+    )
+    run(
+        CORE
+        + """
+s=json.loads(fixture_path.read_text());r=s['request'];before=s['work']
+first=c.post('/recorded-work/assignment',json=r);first.raise_for_status()
+assert c.get('/operations/series-assignment').json()['status']=='finalized'
+with TestClient(create_daemon_app()) as started:
+ assert started.post('/recorded-work/assignment',json=r).json()==first.json()
+work=c.get('/recorded-work/'+before['id']).json()
+assert work=={**before,'task_id':s['tasks']['Destination'],'revision':before['revision']+1},work
+""",
+        env,
+    )

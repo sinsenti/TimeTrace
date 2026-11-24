@@ -17,6 +17,47 @@ test('focus action carries exact selected identity/generation and settings draft
     assert.equal(sent[1][2].expected_revision,4);
 });
 
+test('a held focus ACK advances only its own timer draft, not newer typing or another timer',async()=>{
+    const settings={enabled:true,work_minutes:25,break_minutes:5,behavior:'notify_only'};
+    const timer=(id,revision,work=25)=>({id,revision,focus:{settings:{...settings,work_minutes:work}}});
+    const state={selectedTimerId:'a',timers:[timer('a',1),timer('b',7)]};
+    const requests=[];const control={snapshot:()=>state,act:(id,action,payload,ack)=>new Promise(resolve=>{
+        requests.push({id,payload,finish(revision){ack?.({timer:timer(id,revision,payload.work_minutes)});resolve(true);}});
+    })};
+    const focus=createFocusController({control,api:{}});
+    focus.edit('a',{work_minutes:30});const saving=focus.saveTimer();
+    assert.equal(requests[0].payload.work_minutes,30);
+    focus.edit('a',{work_minutes:45});state.selectedTimerId='b';focus.edit('b',{work_minutes:60});
+    requests[0].finish(2);state.timers=[timer('a',5,50),timer('b',8,55)];await saving;
+    assert.equal(focus.draft('a').work_minutes,45);assert.equal(focus.draft('b').work_minutes,60);
+    state.selectedTimerId='a';const next=focus.saveTimer();
+    assert.equal(requests[1].payload.work_minutes,45);assert.equal(requests[1].payload.expected_revision,2);
+    focus.reset('a');focus.edit('a',{work_minutes:65});
+    requests[1].finish(3);await next;
+    const afterReset=focus.saveTimer();
+    assert.equal(requests[2].payload.expected_revision,5);assert.equal(requests[2].payload.work_minutes,65);
+    requests[2].finish(6);await afterReset;
+    assert.equal(focus.draft('b').work_minutes,60);assert.equal(focus.hasDraft(),true);
+});
+
+test('held defaults ACK does not release a newer defaults draft or a timer override',async()=>{
+    const settings={enabled:true,work_minutes:25,break_minutes:5,behavior:'notify_only',revision:1};
+    const requests=[];const control={snapshot:()=>({timers:[{id:'a',revision:8,focus:{settings}}]}),
+        saveFocusDefaults:(payload,ack)=>new Promise(resolve=>requests.push({payload,finish(){ack({focus_defaults:{...payload,revision:2}});resolve(true);}}))};
+    const focus=createFocusController({control,api:{}});
+    focus.editDefaults({work_minutes:30},settings);const saving=focus.saveDefaults(settings);
+    focus.editDefaults({work_minutes:45},settings);focus.edit('a',{work_minutes:70});
+    requests[0].finish();await saving;
+    assert.equal(focus.defaultsDraft().work_minutes,45);
+    assert.equal(focus.draft('a').work_minutes,70);
+    const next=focus.saveDefaults({...settings,revision:9});
+    assert.equal(requests[1].payload.expected_revision,2);
+    assert.equal(requests[1].payload.work_minutes,45);
+    requests[1].finish();await next;
+    assert.equal(focus.defaultsDraft(),undefined);
+    assert.equal(focus.hasDraft(),true);
+});
+
 test('native acceptance preference prevents browser fanout and sound stays single-channel',async()=>{
     let native=true,status='pending';const alerts=[];
     class Fake {static permission='granted';constructor(title,options){alerts.push(options);}}

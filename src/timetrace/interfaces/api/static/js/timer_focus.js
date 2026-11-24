@@ -1,15 +1,36 @@
 /** Focus is server-authoritative; this controller only edits drafts and claims delivery. */
 function createFocusController({control,api,notifications=typeof Notification==='undefined'?null:Notification,operationId=()=>crypto.randomUUID()}) {
-    const drafts=new Map(),draftRevisions=new Map(); let notices=[],capability=null,busy=false,deliveryMessage='';
-    const selected=()=>control.snapshot().timers.find(t=>t.id===control.snapshot().selectedTimerId);
-    const draft=id=>drafts.get(id)||control.snapshot().timers.find(t=>t.id===id)?.focus?.settings;
+    const drafts=new Map(),defaultsKey=Symbol('focus defaults'); let notices=[],capability=null,busy=false,deliveryMessage='';
+    const timer=id=>control.snapshot().timers.find(t=>t.id===id);
+    const selected=()=>timer(control.snapshot().selectedTimerId);
+    const draft=id=>drafts.get(id)?.values||timer(id)?.focus?.settings;
+    function edit(id,values,baseline,revision){
+        const current=drafts.get(id);
+        drafts.set(id,{lineage:current?.lineage??{},revision:current?.revision??revision,values:{...(current?.values||baseline),...values}});
+    }
+    function acknowledgeDraft(id,submitted,revision){
+        const current=drafts.get(id);
+        if(!submitted||current?.lineage!==submitted.lineage||!Number.isInteger(revision))return;
+        if(current===submitted)drafts.delete(id);
+        else current.revision=revision; // Rebase newer typing only on this write's ACK, never a polling revision.
+    }
     return {
         selected,draft,hasDraft:()=>drafts.size>0,
-        reset(id){drafts.delete(id);draftRevisions.delete(id);},
-        edit(id,values){if(!draftRevisions.has(id))draftRevisions.set(id,control.snapshot().timers.find(t=>t.id===id)?.revision);drafts.set(id,{...draft(id),...values});},
-        async saveTimer(){const t=selected(); if(!t)return false; const p=draft(t.id); const ok=await control.act(t.id,'focus-settings',{
-            expected_revision:draftRevisions.get(t.id)??t.revision,enabled:p.enabled,work_minutes:p.work_minutes,break_minutes:p.break_minutes,behavior:p.behavior});
-            if(ok){drafts.delete(t.id);draftRevisions.delete(t.id);} return ok;},
+        reset:id=>drafts.delete(id),
+        edit(id,values){const t=timer(id);edit(id,values,t?.focus?.settings,t?.revision);},
+        saveTimer(){const t=selected(); if(!t)return false; const p=draft(t.id),submitted=drafts.get(t.id);
+            return control.act(t.id,'focus-settings',{
+                expected_revision:submitted?.revision??t.revision,enabled:p.enabled,work_minutes:p.work_minutes,break_minutes:p.break_minutes,behavior:p.behavior
+            },result=>{if(result.timer?.id===t.id)acknowledgeDraft(t.id,submitted,result.timer.revision);});},
+        defaultsDraft:()=>drafts.get(defaultsKey)?.values,
+        resetDefaults:()=>drafts.delete(defaultsKey),
+        editDefaults(values,baseline){edit(defaultsKey,values,baseline,baseline?.revision);},
+        saveDefaults(baseline,onAcknowledged=()=>{}){const submitted=drafts.get(defaultsKey);
+            return control.saveFocusDefaults({...baseline,...submitted?.values,expected_revision:submitted?.revision??baseline.revision},result=>{
+                if(!result.focus_defaults)return;
+                acknowledgeDraft(defaultsKey,submitted,result.focus_defaults.revision);
+                onAcknowledged(result.focus_defaults);
+            });},
         action(action){const t=selected(); if(!t?.focus)return false; return control.act(t.id,'focus-action',{
             expected_revision:t.revision,expected_generation:t.focus.generation,action});},
         async requestPermission(){if(!notifications){deliveryMessage='Browser notifications unavailable; in-app fallback.';return;}
@@ -65,29 +86,49 @@ if(typeof window!=='undefined')document.addEventListener('DOMContentLoaded',asyn
     const save=document.createElement('button');save.type='submit';save.textContent='Save focus settings';form.append(save);
     const message=document.createElement('p');region.append(message);
     function button(label,handler){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',handler);return b;}
-    const focus=createFocusController({control,api});let loaded=null,defaults=null,defaultsDraft=false,defaultsEdit=null;
-    const previousDraft=control.hasFocusDraft;control.hasFocusDraft=()=>focus.hasDraft()||defaultsDraft||Boolean(previousDraft?.());
+    const focus=createFocusController({control,api});let loaded=null,defaults=null,scopeRead=0;
+    const previousDraft=control.hasFocusDraft;control.hasFocusDraft=()=>focus.hasDraft()||Boolean(previousDraft?.());
     window.addEventListener('beforeunload',event=>{if(control.hasFocusDraft()){event.preventDefault();event.returnValue='';}});
     function values(){return {enabled:enabled.checked,work_minutes:Number(work.value),break_minutes:Number(pause.value),behavior:behavior.value,sound_enabled:sound.checked};}
     function load(p){enabled.checked=Boolean(p?.enabled);work.value=p?.work_minutes??25;pause.value=p?.break_minutes??5;behavior.value=p?.behavior||'notify_only';sound.checked=Boolean(scope.value==='defaults'?(p?.sound_enabled??defaults?.sound_enabled):defaults?.sound_enabled);sound.disabled=scope.value!=='defaults';}
-    form.addEventListener('input',()=>{if(scope.value==='timer'&&focus.selected())focus.edit(focus.selected().id,values());else {defaultsDraft=true;defaultsEdit=values();}});
-    scope.addEventListener('change',async()=>{defaults=await api.get('/timer-focus/defaults');loaded=null;load(scope.value==='defaults'?(defaultsEdit||defaults):focus.draft(focus.selected()?.id));});
+    function adoptDefaults(saved){if(!defaults||saved.revision>=defaults.revision)defaults=saved;}
+    function loadScope(){loaded=focus.selected()?.id;load(scope.value==='defaults'?(focus.defaultsDraft()||defaults):focus.draft(loaded));}
+    form.addEventListener('input',event=>{
+        if(event.target===scope)return;
+        if(scope.value==='timer'){const t=focus.selected();if(t)focus.edit(t.id,values());}
+        else focus.editDefaults(values(),defaults);
+    });
+    scope.addEventListener('change',async()=>{
+        const own=++scopeRead;loadScope();render();
+        if(scope.value!=='defaults')return;
+        const saved=await api.get('/timer-focus/defaults').catch(()=>null);
+        if(!saved||own!==scopeRead)return;
+        adoptDefaults(saved);if(!focus.defaultsDraft())loadScope();render();
+    });
     form.addEventListener('submit',async event=>{event.preventDefault();if(!form.reportValidity())return;try{
-        defaults=defaults||await api.get('/timer-focus/defaults');
         if(scope.value==='defaults'){
-            const ok=await control.saveFocusDefaults({...values(),expected_revision:defaults.revision});if(!ok)return;defaultsDraft=false;defaultsEdit=null;defaults=await api.get('/timer-focus/defaults');
+            if(!defaults)return;
+            focus.editDefaults(values(),defaults);
+            if(!await focus.saveDefaults(defaults,adoptDefaults))return;
         }else{
             const t=focus.selected();if(!t)return;focus.edit(t.id,values());
             if(!await focus.saveTimer())return;
         }
         message.textContent='Settings acknowledged. Existing period timing is unchanged.';
     }catch(_){message.textContent='Settings status unavailable. Recover the shared saved operation; do not submit a new request blindly.';}render();});
-    form.append(button('Use current saved focus settings',async()=>{const t=focus.selected();if(scope.value==='timer'&&t){focus.reset(t.id);load(t.focus?.settings);}else{defaults=await api.get('/timer-focus/defaults');defaultsDraft=false;defaultsEdit=null;load(defaults);}}));
+    form.append(button('Use current saved focus settings',async()=>{
+        const t=focus.selected();
+        if(scope.value==='timer'){if(t){focus.reset(t.id);load(t.focus?.settings);}return;}
+        const own=++scopeRead,draft=focus.defaultsDraft();
+        const saved=await api.get('/timer-focus/defaults').catch(()=>null);
+        if(!saved||scope.value!=='defaults'||scopeRead!==own||focus.defaultsDraft()!==draft)return;
+        adoptDefaults(saved);focus.resetDefaults();loadScope();
+    }));
     region.append(button('Allow browser notifications (open page only)',async()=>{await focus.requestPermission();message.textContent='Browser permission: '+(typeof Notification==='undefined'?'unavailable':Notification.permission)+'. Closed-page delivery requires the daemon desktop adapter.';}));
     region.append(notices);
     function render(){const state=control.snapshot(),t=focus.selected(),f=t?.focus;const blocked=state.pending||Boolean(state.receipt)||!state.fresh;
         if(loaded!==t?.id&&scope.value==='timer'){loaded=t?.id;load(focus.draft(t?.id));}
-        save.disabled=blocked||(scope.value==='timer'&&!t);actions.replaceChildren();
+        save.disabled=blocked||(scope.value==='timer'?!t:!defaults);actions.replaceChildren();
         clock.textContent=f?`${f.phase.replaceAll('_',' ')} · ${f.remaining_seconds==null?'off':Math.ceil(f.remaining_seconds/60)+'m '+Math.ceil(f.remaining_seconds%60)+'s remaining'} (server focus clock)`:'Focus not initialized.';
         warning.textContent=t?.identity_started_at_provenance==='prospective_unknown_history'?'Historical creation time unknown: two-hour warning uses the explicitly initialized prospective anchor.':'Two-hour warning includes pauses, once per unfinished timer; it never stops recording.';
         if(t&&!f)actions.append(button('Initialize retained focus state',()=>control.initializeFocus()));
@@ -99,6 +140,6 @@ if(typeof window!=='undefined')document.addEventListener('DOMContentLoaded',asyn
             card.append(button('Dismiss notice',async()=>{await focus.acknowledge(n.id);await update();}));notices.append(card);}
     }
     window.addEventListener('timetrace:timer-state',render);
-    async function update(){await focus.refreshNotices();if(!defaults){defaults=await api.get('/timer-focus/defaults').catch(()=>null);if(!focus.hasDraft()&&!defaultsDraft)load(focus.draft(focus.selected()?.id));}render();}
+    async function update(){await focus.refreshNotices();if(!defaults){const saved=await api.get('/timer-focus/defaults').catch(()=>null);if(saved){adoptDefaults(saved);if(!focus.hasDraft())loadScope();}}render();}
     await update();const interval=setInterval(()=>void update(),3000);window.addEventListener('pagehide',()=>clearInterval(interval),{once:true});
 });
