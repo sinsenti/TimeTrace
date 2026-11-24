@@ -63,7 +63,7 @@ Final full runs on this implementation, with an absolute temporary database and 
 | Assignment crash/recovery | Actual subprocess existing/new destinations at intent, DB commit, file installation and finalized phases; independent notes/ratings writers; two restarts |
 | Assignment validation/staleness | Public HTTP boolean revision, unknown/blank/null draft, invalid status, stale multi-record atomic refusal and correction fragment selection tests |
 | Migration preservation | Fresh full chain and rich copied0019 synthetic installation, stopped timer, old pre/postDB receipts, two starts, integrity/FK checks, append-only triggers and persisted target constraints |
-| A/C, desktop/narrow and navigation | Actual Orca DOM at desktop and390×844; A→C→A, previous/next week, blank settings, explicit save and no horizontal overflow on narrow A/C/settings/assignment |
+| A/C, desktop/narrow and navigation | Actual Orca DOM at desktop and390×844; A→C→A, previous/next week, blank settings, explicit save and no horizontal overflow on narrow A/C/settings/assignment; real Enter toggled A→C and retained focus, real typing survived a read refresh and Enter saved its captured revision |
 | Assignment UI and lost ACK | Actual taskless Start→Stop→new task with `#synthetic [45m]`; real committed assignment response dropped, receipt lookup recovered same task; second Stop assigned to existing task; separate dismissal left work taskless |
 | Existing task/Calendar/focus/correction/export integration | Actual full task editor retained45m estimate and own work history; Calendar rendered; enabled25/5 focus remained running at8665.3% goal; signed five-minute saved correction refreshed goal from11.951556s to311.951556s; bounded four-row CSV preview and browser download |
 
@@ -84,4 +84,7 @@ merge and publication remain coordinator-owned.
 Migration `0020_personal_goals` follows `0019_timer_focus`, adds initially empty goal settings/context/
 receipt tables, and never backfills targets or reclassifies work. Startup requires0020. Downgrade
 permanently removes these settings and receipts: back up/export first. Existing work and timer receipt
-tables are unchanged. Never test against the personal database; follow the isolated-development recipe.
+tables are unchanged. A database downgrade is not an operational rollback: stop writers and reconcile
+pending assignment intents before running an older binary, which cannot interpret the new assignment
+action. Preserve a consistent database plus timer files; do not mask recovery failures by stamping or
+`create_all`. Never test against the personal database; follow the isolated-development recipe.
