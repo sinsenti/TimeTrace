@@ -208,7 +208,7 @@ with Session(engine) as db:
  from sqlalchemy import text
  assert db.exec(text('PRAGMA integrity_check')).all()==[('ok',)]
  assert db.exec(text('PRAGMA foreign_key_check')).all()==[]
- assert db.exec(text('SELECT version_num FROM alembic_version')).one()[0]=='0019_timer_focus'
+ assert db.exec(text('SELECT version_num FROM alembic_version')).one()[0]=='0020_personal_goals'
  print(json.dumps({'receipt':replay.json(),'hash':r.payload_hash,'timer':c.get('/timers').json()['timers'][0]}))
 """
     )

@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, status
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from sqlmodel import Session as DBSession
 
 from timetrace.db.session import get_session
@@ -26,6 +27,7 @@ from timetrace.interfaces.api.schemas import (
     SessionCreate,
     SessionEditScope,
     SessionUpdate,
+    TaskCreate,
 )
 from timetrace.services import PlanRemovalService, QueryService, SessionService
 
@@ -55,6 +57,63 @@ def recorded_work_progress(
 @router.post("/recorded-work", response_model=RecordedWorkCreated, status_code=status.HTTP_201_CREATED)
 def create_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
     return SessionService(db).create_recorded_work(req)
+
+
+class AssignmentWork(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    id: str = Field(min_length=1)
+    expected_revision: int = Field(ge=1, strict=True)
+
+
+class AssignmentDestination(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["existing"]
+    task_id: str = Field(min_length=1)
+
+
+class AssignmentTaskDraft(TaskCreate):
+    model_config = ConfigDict(extra="forbid")
+
+    @field_validator("title")
+    @classmethod
+    def nonempty_title(cls, value):
+        if not value.strip():
+            raise ValueError("New assignment task title cannot be blank")
+        return value
+
+
+    @field_validator("created_at")
+    @classmethod
+    def nonnull_supplied_created_at(cls, value):
+        if value is None:
+            raise ValueError("Omit created_at to use the normal creation time; explicit null is not a timestamp")
+        return value
+
+
+class NewAssignmentDestination(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    kind: Literal["new"]
+    task_draft: AssignmentTaskDraft
+
+
+class WorkAssignment(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    operation_id: str = Field(min_length=1, max_length=128)
+    works: list[AssignmentWork] = Field(min_length=1, max_length=2000)
+    destination: AssignmentDestination | NewAssignmentDestination = Field(discriminator="kind")
+
+    @model_validator(mode="after")
+    def unique_work_ids(self):
+        if len({item.id for item in self.works}) != len(self.works):
+            raise ValueError("Assignment work IDs must be unique")
+        return self
+
+
+@router.post("/recorded-work/assignment")
+def assign_recorded_work(req: WorkAssignment, db: DBSession = Depends(get_session)):
+    from timetrace.services.multiple_timer_service import MultipleTimerService
+
+    return MultipleTimerService(db).mutate("assignment", None, req.model_dump(mode="json", exclude_unset=True))
 
 
 @router.patch("/recorded-work/{work_id}/note", response_model=AgendaRecordedWorkRead)

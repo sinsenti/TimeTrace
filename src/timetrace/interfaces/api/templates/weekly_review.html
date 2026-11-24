@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+ <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+ <title>TimeTrace Weekly overview and review</title>
+ <script src="https://cdn.tailwindcss.com"></script>
+ <link rel="stylesheet" href="/static/css/appearance.css">
+ <link rel="stylesheet" href="/static/css/ai.css">
+ <link rel="stylesheet" href="/static/css/weekly_review.css">
+</head>
+<body>
+ <header>{% include "components/navbar.html" %}</header>
+ <main data-weekly-review aria-label="Weekly overview and optional focused review"></main>
+ {% include "components/settings_modal.html" %}
+ {% include "components/confirm_modal.html" %}
+ <script src="/static/js/api_client.js"></script>
+ <script src="/static/js/utils.js"></script>
+ <script src="/static/js/settings.js"></script>
+ <script src="/static/js/weekly_review.js"></script>
+</body>
+</html>

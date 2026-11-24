@@ -29,4 +29,5 @@ def test_recorded_work_compiler_accepts_bounded_utc_context_without_presentation
             now_utc=datetime(2001, 1, 1),
         ),
     )
-    assert compiled.params["start"] == datetime(2000, 1, 4)
+    # Text execution must retain SQLite's six fractional digits at exact-second boundaries.
+    assert compiled.params["start"] == "2000-01-04 00:00:00.000000"

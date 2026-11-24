@@ -350,11 +350,75 @@ class QueryService:
             result[measure.value + "_seconds"] = seconds
         return result
 
-    def run(self, query: AnalyticsQuery, context: QueryContextRequest) -> AnalyticsQueryResponse:
+    def summed_work_total(
+        self,
+        task_id: str | None,
+        start_date: date | None = None,
+        end_date: date | None = None,
+        include_descendants: bool = False,
+        *,
+        measurement_at: datetime | None = None,
+        timezone: str | None = None,
+        first_day_of_week: int = 1,
+    ) -> dict:
+        """Internal all-time task scalar; retain public recorded-work date-cap policy."""
+        warnings = []
+        tz, name = _resolve_timezone(timezone, warnings)
+        if not _check_localtime_support(self.db):
+            warnings.append("This SQLite build does not support localtime; frozen goal context is unavailable.")
+        lower = (
+            datetime.combine(start_date, time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            if start_date
+            else datetime.min
+        )
+        cutoff = measurement_at or datetime.now(UTC).replace(tzinfo=None)
+        from timetrace.core.query_spec import FilterField, QueryFilter
+
+        query = AnalyticsQuery(
+            source=QuerySource.RECORDED_WORK,
+            measure=Measure.SUMMED_RECORDED_WORK,
+            filters=[]
+            if task_id is None or include_descendants
+            else [QueryFilter(field=FilterField.TASK, values=[task_id])],
+        )
+        upper = (
+            datetime.combine(end_date + timedelta(days=1), time.min, tz).astimezone(UTC).replace(tzinfo=None)
+            if end_date
+            else datetime.max
+        )
+        ctx = QueryContext(
+            timezone=name,
+            first_day_of_week=first_day_of_week,
+            range_start_utc=lower,
+            range_end_utc=upper,
+            recorded_work_descendant_root=task_id if include_descendants else None,
+            range_start_local=(start_date or date.min).isoformat(),
+            range_end_local=(end_date or date.max).isoformat(),
+            now_utc=cutoff,
+            recorded_work_seconds=True,
+            recorded_work_all_time_scalar=True,
+        )
+        compiled = compile_query(query, ctx)
+        seconds = self.db.exec(text(compiled.sql), params=compiled.params).first()[0]
+        return {
+            "seconds": seconds,
+            "timezone": name,
+            "warnings": warnings,
+            "measurement_at": cutoff.isoformat(),
+            "first_day_of_week": first_day_of_week,
+            "range_start_utc": lower.isoformat() if start_date else None,
+            "range_end_utc": upper.isoformat() if end_date else None,
+            "basis": "summed_recorded_work",
+            "cohort": "Whole explicit physical intervals by local start; no clipping, legacy/live/plans excluded",
+        }
+
+    def run(
+        self, query: AnalyticsQuery, context: QueryContextRequest, *, measurement_at: datetime | None = None
+    ) -> AnalyticsQueryResponse:
         if query.source.value == "recorded_work":
             with sqlite_read_snapshot(self.db) as reader:
-                return QueryService(reader)._run(query, context)
-        return self._run(query, context)
+                return QueryService(reader)._run(query, context, measurement_at)
+        return self._run(query, context, measurement_at)
 
     def _run(
         self, query: AnalyticsQuery, context: QueryContextRequest, measurement_at: datetime | None = None
@@ -403,7 +467,7 @@ class QueryService:
         )
 
         if query.source.value == "recorded_work":
-            meta.measurement_at = compiled.params["measurement"].replace(tzinfo=UTC)
+            meta.measurement_at = compiled.context.now_utc.replace(tzinfo=UTC)
             meta.basis = query.plan_basis or (
                 "summed_recorded_work" if query.measure == Measure.SUMMED_RECORDED_WORK else "recorded_work_union"
             )

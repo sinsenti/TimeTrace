@@ -236,6 +236,9 @@ async function loadTaskDetailTree(preserveEdits = false) {
     if (!taskIdEl || !taskIdEl.value) return;
 
     const taskId = taskIdEl.value;
+    if (typeof CustomEvent === 'function' && typeof window.dispatchEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('timetrace:task-selected', {detail:{task_id:taskId}}));
+    }
     const postmortemRoot = document.getElementById('details_task_postmortem');
     if (postmortemRoot && typeof createTaskPostmortemEditor === 'function') {
         createTaskPostmortemEditor(postmortemRoot).begin(taskId);

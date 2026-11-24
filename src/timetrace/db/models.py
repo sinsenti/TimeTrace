@@ -30,6 +30,64 @@ def generate_uuid7() -> str:
     return str(uuid.uuid7())
 
 
+class GoalDefinition(SQLModel, table=True):
+    """Optional personal goal identity, separate from estimates and timer receipts."""
+
+    __tablename__ = "goal_definition"
+    __table_args__ = (
+        UniqueConstraint("owner_key", "cadence"),
+        CheckConstraint("cadence IN ('day', 'week', 'total')", name="ck_goal_cadence"),
+        CheckConstraint("owner_key != 'global' OR cadence != 'total'", name="ck_no_global_total_goal"),
+    )
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    owner_key: str
+    cadence: str
+    revision: int = 1
+
+
+class GoalReportingContext(SQLModel, table=True):
+    """Append-only single-device reporting epochs; historical periods keep their context."""
+
+    __tablename__ = "goal_reporting_context"
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    revision: int = Field(unique=True)
+    timezone: str
+    first_day_of_week: int
+    effective_at: str
+    effective_day_start: str
+    effective_week_start: str
+
+
+class GoalSettingsVersion(SQLModel, table=True):
+    """Append-only effective settings; reads never persist progress counters."""
+
+    __tablename__ = "goal_settings_version"
+    __table_args__ = (
+        UniqueConstraint("goal_id", "revision"),
+        CheckConstraint("target_seconds > 0 AND target_seconds <= 1.7976931348623157e308", name="ck_goal_target"),
+    )
+    id: str = Field(default_factory=generate_uuid7, primary_key=True)
+    goal_id: str = Field(index=True)
+    revision: int
+    effective_period_start: str
+    context_revision: int = 1
+    target_seconds: float
+    enabled: bool = True
+    include_descendants: bool = False
+    timezone: str
+    first_day_of_week: int
+    start_date: str | None = None
+
+
+class GoalSettingsReceipt(SQLModel, table=True):
+    """DB-only operation receipts must never enter timer file recovery."""
+
+    __tablename__ = "goal_settings_receipt"
+    operation_id: str = Field(primary_key=True)
+    payload: str
+    response: str
+
+
 class TimerNotification(SQLModel, table=True):
     """Install-local delivery state; never an analytics source or work-row parent."""
 

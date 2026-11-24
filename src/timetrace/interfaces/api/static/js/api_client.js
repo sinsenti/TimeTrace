@@ -17,6 +17,17 @@ class ApiClient {
         try {
             const response = await fetch(url, config);
 
+            // Task/hierarchy ACKs invalidate goal evidence; observers only reread and never credit counters.
+            if (response.ok && !['GET','HEAD'].includes((options.method || 'GET').toUpperCase()) &&
+                /^\/api\/tasks(?:\/|$)/.test(url) && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('timetrace:tasks-mutated', {detail:{url}}));
+            }
+            if (response.ok && !['GET','HEAD'].includes((options.method || 'GET').toUpperCase()) &&
+                (url === '/recorded-work' || /^\/recorded-work\/[^/]+\/note(?:\?|$)/.test(url) ||
+                 /^\/scheduled-sessions(?:\/|$)/.test(url)) &&
+                typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+                window.dispatchEvent(new CustomEvent('timetrace:work-mutated', {detail:{url}}));
+            }
             if (response.status === 204) {
                 return null;
             }

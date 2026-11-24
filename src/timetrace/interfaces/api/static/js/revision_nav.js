@@ -23,7 +23,17 @@ const HASH_TAB_MAP = {
     '#ratings': 'ratings_config'
 };
 
-document.addEventListener('DOMContentLoaded', () => {
+function revisionEntryDate(search, today) {
+    const value = new URLSearchParams(search).get('date');
+    if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return today;
+    const date = new Date(`${value}T12:00:00Z`);
+    if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1) return today;
+    const canonical = `${String(date.getUTCFullYear()).padStart(4,'0')}-${String(date.getUTCMonth()+1).padStart(2,'0')}-${String(date.getUTCDate()).padStart(2,'0')}`;
+    return canonical === value ? value : today;
+}
+if (typeof module !== 'undefined') module.exports = {revisionEntryDate};
+
+if (typeof document !== 'undefined') document.addEventListener('DOMContentLoaded', () => {
     setupRevisionKeyboardShortcuts();
     setupTaskInspectorSearchListeners();
 
@@ -31,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const dateInput = document.getElementById('day_review_date_input');
     if (dateInput && !dateInput.value) {
-        dateInput.value = localDayToday();
+        dateInput.value = revisionEntryDate(window.location.search || '', localDayToday());
     }
 
     const initialHash = window.location.hash || '#day';
