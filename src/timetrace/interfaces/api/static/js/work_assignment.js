@@ -1,22 +1,25 @@
 /** Optional post-save assignment owns a journal separate from the acknowledged Stop. */
 function createWorkAssignmentController({api,storage,onState,operationId=()=>crypto.randomUUID()}) {
     const key='timetrace_work_assignment_v1';
-    let prompt=null,journal=null,pending=false,message='',blocked=false,generation=0;
-    try { const saved=JSON.parse(storage.getItem(key)||'null'); prompt=saved?.prompt||null;journal=saved?.journal||null; }
+    let prompt=null,journal=null,queued=[],pending=false,message='',blocked=false,generation=0;
+    try { const saved=JSON.parse(storage.getItem(key)||'null'); prompt=saved?.prompt||null;journal=saved?.journal||null;queued=saved?.queued||[]; }
     catch (_) {blocked=true;message='Assignment safety storage unavailable. Saved work remains taskless.';}
-    const snapshot=()=>({prompt,journal,pending,message,blocked});
+    const snapshot=()=>({prompt,journal,queued,pending,message,blocked});
     const publish=()=>onState(snapshot());
-    function persist() {try {storage.setItem(key,JSON.stringify({prompt,journal}));return true;}catch(_){blocked=true;message='Assignment safety storage unavailable; no new request sent.';return false;}}
+    function persist() {try {storage.setItem(key,JSON.stringify({prompt,journal,queued}));return true;}catch(_){blocked=true;message='Assignment safety storage unavailable; no new request sent.';return false;}}
     function offer(result) {
         if (!result?.operation_id || !Array.isArray(result.saved_taskless_work) || !result.saved_taskless_work.length) return false;
-        if (prompt?.stop_id===result.operation_id || (journal && journal.outcome!=='acknowledged')) return false;
-        prompt={stop_id:result.operation_id,works:result.saved_taskless_work.map(w=>({...w})),destination:{kind:'existing',task_id:''},hidden:false};
+        if (prompt?.stop_id===result.operation_id || queued.some(p=>p.operation_id===result.operation_id)) return false;
+        if(prompt&&(!prompt.hidden||journal?.outcome==='uncertain')){
+            queued.push({operation_id:result.operation_id,saved_taskless_work:result.saved_taskless_work.map(w=>({...w}))});persist();message='Another Stop is saved. Its separate assignment choices are queued, not added to this manifest.';publish();return true;
+        }
+        prompt={stop_id:result.operation_id,works:result.saved_taskless_work.map(w=>({...w})),selected_ids:result.saved_taskless_work.map(w=>w.id),destination:{kind:'existing',task_id:''},hidden:false};
         journal=null;persist();publish();return true;
     }
     function acknowledge(result) {
         if(result?.operation_id!==journal?.payload?.operation_id) throw Error('Unrecognized assignment acknowledgement');
         journal.outcome='acknowledged';journal.result=result;
-        prompt.hidden=true;message='Saved work assigned. Refresh reads cannot repeat this assignment.';
+        prompt.hidden=true;message='Saved work assigned. Refresh reads cannot repeat this assignment.'+(queued.length?' Other saved Stop batches are queued; dismiss to show the next explicit batch.':'');
         persist();publish();
         if(typeof window!=='undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-mutated',{detail:result}));
     }
@@ -64,14 +67,16 @@ function createWorkAssignmentController({api,storage,onState,operationId=()=>cry
         finally{pending=false;publish();}
     }
     return {snapshot,offer,assign,retry,refetchTargets,
-        dismiss(){if(prompt){prompt.hidden=true;persist();publish();}},
+        select(ids){if(!prompt||pending||journal?.outcome==='uncertain')return false;const allowed=new Set(prompt.works.map(w=>w.id));if(ids.some(id=>!allowed.has(id)))return false;prompt.selected_ids=[...new Set(ids)];persist();publish();return true;},
+        dismiss(){if(prompt){prompt.hidden=true;persist();if(queued.length&&journal?.outcome!=='uncertain'){const next=queued.shift();offer(next);}publish();}},
         reopen(){if(prompt){prompt.hidden=false;persist();publish();}},
-        edit(destination){if(pending||journal?.outcome==='uncertain')return false;prompt.destination=JSON.parse(JSON.stringify(destination));persist();publish();return true;}
+        edit(destination){if(!prompt||pending||journal?.outcome==='uncertain')return false;prompt.destination=JSON.parse(JSON.stringify(destination));persist();publish();return true;}
     };
 }
 if(typeof module!=='undefined')module.exports={createWorkAssignmentController};
 if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',()=>{
     const root=document.querySelector('[data-work-assignment]');if(!root)return;
+    document.querySelector('main')?.before(root);
     let shown=null;const selected=new Set();
     const status=document.createElement('p');status.setAttribute('role','status');
     const body=document.createElement('div');root.append(status,body);
@@ -85,8 +90,9 @@ if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',(
             const heading=document.createElement('h3');heading.textContent='Saved taskless work — optional assignment';body.append(heading);
             const info=document.createElement('p');info.textContent='Stop is already saved. Assign only the explicitly listed records, or leave them taskless.';body.append(info);
             for(const w of state.prompt.works){
-                selected.add(w.id);const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=true;
-                check.addEventListener('change',()=>check.checked?selected.add(w.id):selected.delete(w.id));
+                const checked=(state.prompt.selected_ids||state.prompt.works.map(w=>w.id)).includes(w.id);
+                if(checked)selected.add(w.id);const label=document.createElement('label'),check=document.createElement('input');check.type='checkbox';check.checked=checked;
+                check.addEventListener('change',()=>{check.checked?selected.add(w.id):selected.delete(w.id);controller.select([...selected]);});
                 label.append(check,document.createTextNode(` ${w.id} · ${w.start_time||''} → ${w.end_time||''} `));body.append(label,document.createElement('br'));
             }
             const mode=document.createElement('select');mode.setAttribute('aria-label','Assignment destination type');

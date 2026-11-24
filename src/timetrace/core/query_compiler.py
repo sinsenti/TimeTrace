@@ -899,7 +899,14 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         d not in _TIME_DIMENSIONS and d != Dimension.TAG for d in query.group_by
     ):
         raise ValidationError("Unassigned work does not support task grouping.")
-    params = {"start": ctx.range_start_utc, "end": ctx.range_end_utc, "measurement": ctx.now_utc}
+    # SQLite stores SQLAlchemy datetimes with six fractional digits. Untyped text()
+    # datetime binds otherwise omit .000000 at exact seconds and wrongly exclude an
+    # interval ending exactly at the inclusive measurement cutoff.
+    params = {
+        "start": ctx.range_start_utc.isoformat(sep=" ", timespec="microseconds"),
+        "end": ctx.range_end_utc.isoformat(sep=" ", timespec="microseconds"),
+        "measurement": ctx.now_utc.isoformat(sep=" ", timespec="microseconds") if ctx.now_utc else None,
+    }
     conditions = []
     tag_conditions = []
     for i, f in enumerate(query.filters):

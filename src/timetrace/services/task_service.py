@@ -144,6 +144,10 @@ class TaskService:
         return st
 
     def delete_status(self, status_id: str) -> None:
+        lock_sqlite_writer(self.db)
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, status_ids=[status_id], assignment_only=True)
         st = self.db.get(TaskStatus, status_id)
         if not st:
             raise EntityNotFoundError("TaskStatus", status_id)
@@ -176,6 +180,7 @@ class TaskService:
         self, req: TaskCreate, parse_title_syntax: bool = True, *, allow_title_schedule: bool = True
     ) -> Task:
         """Normal task creation in the caller's transaction, including title syntax."""
+        lock_sqlite_writer(self.db)
         task_dict = req.model_dump(exclude_unset=True)
         schedule_session_at = None
         # `parse_title_syntax=False` is for the AI draft engine restoring an exact prior
@@ -203,6 +208,10 @@ class TaskService:
             if st:
                 task_dict["status"] = st.name
 
+        for field, model in (("parent_id", Task), ("status_id", TaskStatus)):
+            identifier = task_dict.get(field)
+            if identifier and self.db.get(model, identifier) is None:
+                raise EntityNotFoundError("Task" if field == "parent_id" else "TaskStatus", identifier)
         db_task = Task.model_validate(task_dict)
         if db_task.created_at:
             db_task.created_at = ensure_utc(db_task.created_at).replace(tzinfo=None)

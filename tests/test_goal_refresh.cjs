@@ -8,4 +8,8 @@ test('acknowledged hierarchy writes and deletion notify authoritative goal reade
  success=false;await assert.rejects(vm.runInContext("api.delete('/api/tasks/task')",context));
  assert.equal(events.length,1);
  await vm.runInContext("api.get('/api/tasks')",context).catch(()=>{});assert.equal(events.length,1);
+ success=true;await vm.runInContext("api.post('/recorded-work',{notes:'saved'})",context);
+ await vm.runInContext("api.post('/recorded-work/work/correction-preview',{})",context);
+ await vm.runInContext("api.put('/scheduled-sessions/plan',{})",context);
+ assert.deepEqual(events,['timetrace:tasks-mutated','timetrace:work-mutated','timetrace:work-mutated']);
 });

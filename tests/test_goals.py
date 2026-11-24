@@ -5,6 +5,31 @@ from uuid import uuid4
 
 import pytest
 
+FIXED_GOAL_DAY = "2002-01-04"
+
+
+@pytest.fixture(autouse=True)
+def deterministic_goal_period(monkeypatch):
+    import time
+
+    import timetrace.services.goal_service as goals
+    from timetrace.core import timezones
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2002, 1, 4, 12, tzinfo=UTC).astimezone(tz)
+
+    monkeypatch.setenv("TZ", "UTC")
+    monkeypatch.setattr(goals, "datetime", Clock)
+    time.tzset()
+    timezones._reset_caches()
+    yield
+    # Unwind caller clock/zone patches before restoring process-local TZ caches.
+    monkeypatch.undo()
+    time.tzset()
+    timezones._reset_caches()
+
 
 def test_goal_settings_retry_stale_and_disable_reenable(client):
     request = {"operation_id": str(uuid4()), "owner_kind": "global", "cadence": "day", "target_seconds": 3600}
@@ -80,7 +105,7 @@ def test_nested_descendants_credit_each_goal_once_not_global_rollups(client):
     parent = client.post("/api/tasks", json={"title": "Parent"}).json()["id"]
     child = client.post("/api/tasks", json={"title": "Child", "parent_id": parent}).json()["id"]
     leaf = client.post("/api/tasks", json={"title": "Leaf", "parent_id": child}).json()["id"]
-    today = datetime.now(UTC).date().isoformat()
+    today = FIXED_GOAL_DAY
     assert (
         client.post(
             "/recorded-work",
@@ -422,6 +447,7 @@ def test_reporting_context_changes_start_a_new_epoch_without_rebucketing_old_wee
 
 def test_changed_daemon_timezone_does_not_silently_rebucket_frozen_goal_context(client, monkeypatch):
     import time
+
     from timetrace.core import timezones
 
     try:
@@ -444,6 +470,20 @@ def test_changed_daemon_timezone_does_not_silently_rebucket_frozen_goal_context(
         assert goal["context"]["requested_timezone"] == "UTC"
         assert goal["context"]["reliable"] is False
         assert goal["context"]["warnings"]
+        weekly = client.get("/weekly-review?context_revision=1").json()
+        assert weekly["available"] is False
+        assert weekly["summed_recorded_work"]["total"] is None
+        edit = client.put(
+            "/goals/" + goal["id"], json={"operation_id": str(uuid4()), "expected_revision": 1, "target_seconds": 7200}
+        )
+        assert edit.status_code == 409
+        epoch = client.put(
+            "/goal-reporting-context",
+            json={"operation_id": str(uuid4()), "expected_revision": 1, "first_day_of_week": 1},
+        )
+        assert epoch.status_code == 200, epoch.text
+        assert epoch.json()["timezone"] == "America/New_York"
+        assert client.get("/goals").json()["goals"][0]["context"]["reliable"] is True
     finally:
         monkeypatch.undo()
         time.tzset()
@@ -466,8 +506,8 @@ def test_goal_evidence_keeps_physical_microseconds_instead_of_legacy_integer_dur
         "/recorded-work",
         json={
             "task_id": task,
-            "start_time": datetime.now(UTC).date().isoformat() + "T10:00:00.000000Z",
-            "end_time": datetime.now(UTC).date().isoformat() + "T10:00:00.000007Z",
+            "start_time": FIXED_GOAL_DAY + "T10:00:00.000000Z",
+            "end_time": FIXED_GOAL_DAY + "T10:00:00.000007Z",
         },
     )
     assert saved.status_code == 201
@@ -497,13 +537,159 @@ def test_goal_hierarchy_rejects_new_cycles_through_normal_task_writes(client):
     assert client.put("/api/tasks/" + parent, json={"parent_id": parent}).status_code == 400
 
 
+@pytest.mark.parametrize("invalid", ["boolean_revision", "unknown_draft_field", "blank_title", "null_created_at"])
+def test_assignment_request_is_strict_and_invalid_creation_never_loses_saved_work(client, invalid):
+    work = client.post(
+        "/recorded-work", json={"start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"}
+    ).json()
+    work = client.get("/recorded-work/" + work["id"]).json()
+    request = {
+        "operation_id": str(uuid4()),
+        "works": [{"id": work["id"], "expected_revision": work["revision"]}],
+        "destination": {"kind": "new", "task_draft": {"title": "Valid"}},
+    }
+    if invalid == "boolean_revision":
+        request["works"][0]["expected_revision"] = True
+    if invalid == "unknown_draft_field":
+        request["destination"]["task_draft"]["unknown"] = "refuse"
+    if invalid == "blank_title":
+        request["destination"]["task_draft"]["title"] = "   "
+    if invalid == "null_created_at":
+        request["destination"]["task_draft"]["created_at"] = None
+    response = client.post("/recorded-work/assignment", json=request)
+    assert response.status_code == 422, response.text
+    assert client.get("/api/tasks").json() == []
+    assert client.get("/recorded-work/" + work["id"]).json() == work
+
+
+def test_pending_new_assignment_protects_status_foreign_key_until_recovery(client, monkeypatch):
+    from timetrace.core.timer_store import TimerStore
+
+    status = client.post("/api/tasks/statuses", json={"name": "Assignment status"}).json()
+    work = client.post(
+        "/recorded-work", json={"start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"}
+    ).json()
+    request = {
+        "operation_id": "status-guard-assignment",
+        "works": [{"id": work["id"], "expected_revision": work["revision"]}],
+        "destination": {"kind": "new", "task_draft": {"title": "Status preserved", "status_id": status["id"]}},
+    }
+    write = TimerStore.write
+
+    def fail(store, state):
+        write(store, state)
+        if (state.get("pending_operation") or {}).get("id") == request["operation_id"]:
+            raise OSError("synthetic accepted intent before DB commit")
+
+    monkeypatch.setattr(TimerStore, "write", fail)
+    assert client.post("/recorded-work/assignment", json=request).status_code == 409
+    monkeypatch.setattr(TimerStore, "write", write)
+    refused = client.delete("/api/tasks/statuses/" + status["id"])
+    assert refused.status_code == 409, refused.text
+    result = client.post("/recorded-work/assignment", json=request)
+    assert result.status_code == 200, result.text
+    task = client.get("/api/tasks/" + result.json()["task_id"]).json()
+    assert task["status_id"] == status["id"]
+
+
+def test_finite_positive_tiny_target_does_not_overflow_public_progress_json(client):
+    task = client.post("/api/tasks", json={"title": "Tiny target"}).json()["id"]
+    assert (
+        client.post(
+            "/recorded-work",
+            json={"task_id": task, "start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"},
+        ).status_code
+        == 201
+    )
+    assert (
+        client.post(
+            "/goals",
+            json={
+                "operation_id": str(uuid4()),
+                "owner_kind": "task",
+                "task_id": task,
+                "cadence": "total",
+                "target_seconds": 5e-324,
+            },
+        ).status_code
+        == 201
+    )
+    response = client.get("/goals")
+    assert response.status_code == 200, response.text
+    goal = response.json()["goals"][0]
+    assert goal["summed_recorded_work_seconds"] == 3600
+    assert goal["percentage"] is None
+    assert "E+" in goal["percentage_display"] and goal["percentage_display"].endswith("%")
+
+
+def test_assignment_invalid_status_reference_refuses_before_accepting_an_intent(client):
+    work = client.post(
+        "/recorded-work", json={"start_time": "2000-01-04T10:00:00Z", "end_time": "2000-01-04T11:00:00Z"}
+    ).json()
+    request = {
+        "operation_id": "invalid-status-assignment",
+        "works": [{"id": work["id"], "expected_revision": work["revision"]}],
+        "destination": {"kind": "new", "task_draft": {"title": "No orphan", "status_id": "missing-status"}},
+    }
+    response = client.post("/recorded-work/assignment", json=request)
+    assert response.status_code == 404, response.text
+    assert client.get("/operations/invalid-status-assignment").status_code == 404
+    assert client.get("/api/tasks").json() == []
+    assert client.get("/recorded-work/" + work["id"]).json()["task_id"] is None
+
+
+def test_target_only_edit_preserves_independent_enabled_scope_and_total_start_settings(client):
+    parent = client.post("/api/tasks", json={"title": "Preserved settings"}).json()["id"]
+    child = client.post("/api/tasks", json={"title": "Child evidence", "parent_id": parent}).json()["id"]
+    for date in ["2000-01-04", "2000-01-05"]:
+        assert (
+            client.post(
+                "/recorded-work",
+                json={"task_id": child, "start_time": date + "T10:00:00Z", "end_time": date + "T11:00:00Z"},
+            ).status_code
+            == 201
+        )
+    created = client.post(
+        "/goals",
+        json={
+            "operation_id": str(uuid4()),
+            "owner_kind": "task",
+            "task_id": parent,
+            "cadence": "total",
+            "target_seconds": 3600,
+            "enabled": False,
+            "include_descendants": True,
+            "start_date": "2000-01-05",
+        },
+    ).json()
+    target = {"operation_id": str(uuid4()), "expected_revision": 1, "target_seconds": 7200}
+    changed = client.put("/goals/" + created["id"], json=target)
+    assert changed.status_code == 200, changed.text
+    settings = client.get("/goals?include_disabled=true").json()["goals"][0]
+    assert (
+        settings["enabled"] is False
+        and settings["include_descendants"] is True
+        and settings["start_date"] == "2000-01-05"
+    )
+    assert client.get("/goals").json() == {"goals": []}
+    enabled = client.put(
+        "/goals/" + created["id"],
+        json={"operation_id": str(uuid4()), "expected_revision": 2, "target_seconds": 7200, "enabled": True},
+    )
+    assert enabled.status_code == 200
+    progress = client.get("/goals").json()["goals"][0]
+    assert progress["summed_recorded_work_seconds"] == 3600 and progress["percentage"] == 50
+    assert client.put("/goals/" + created["id"], json=target).json() == changed.json()
+    assert client.put("/goals/" + created["id"], json={**target, "include_descendants": False}).status_code == 409
+
+
 def test_goals_are_absent_until_configured(client):
     assert client.get("/goals").json() == {"goals": []}
 
 
 def test_global_week_and_task_day_goals_coexist(client):
     task = client.post("/api/tasks", json={"title": "Goal task"}).json()["id"]
-    today = datetime.now(UTC).date().isoformat()
+    today = FIXED_GOAL_DAY
     for task_id in [task, None]:
         assert (
             client.post(
@@ -537,7 +723,7 @@ def test_global_week_and_task_day_goals_coexist(client):
 
 
 def test_create_global_day_goal_reads_saved_overlap_progress(client):
-    today = datetime.now(UTC).date().isoformat()
+    today = FIXED_GOAL_DAY
     for start, end in [("01:00", "02:00"), ("01:30", "02:30")]:
         response = client.post(
             "/recorded-work", json={"start_time": f"{today}T{start}:00Z", "end_time": f"{today}T{end}:00Z"}

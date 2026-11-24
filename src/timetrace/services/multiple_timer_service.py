@@ -675,6 +675,24 @@ class MultipleTimerService:
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         with _writes, self.store.locked():
             try:
+                # A task-removal request must not implicitly complete and then destroy an
+                # accepted pre-DB assignment's fixed destination/dependency context.
+                if action == "delete_tasks" and (self.store.inspect().get("pending_operation") or {}).get("assignment"):
+                    lock_sqlite_writer(self.db)
+                    if self.db.get(MutationOperation, operation_id) is None:
+                        from timetrace.services.correction_guards import check_correction_guard
+
+                        roots = payload["root_ids"]
+                        if roots is None:
+                            roots = [
+                                t.id
+                                for t in self.db.exec(
+                                    select(Task).where(Task.status.in_(["Done", "completed", "done"]))
+                                ).all()
+                            ]
+                        check_correction_guard(self.db, task_ids=roots, assignment_only=True)
+                        scope = self._prepare_task_deletion(deepcopy(self.store.read()), payload)["scope"]
+                        check_correction_guard(self.db, task_ids=scope, assignment_only=True)
                 state = self._reconcile()
                 lock_sqlite_writer(self.db)
                 receipt = self.db.get(MutationOperation, operation_id)

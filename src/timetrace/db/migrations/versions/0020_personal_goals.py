@@ -27,6 +27,8 @@ def upgrade():
         sa.Column("cadence", sa.String(), nullable=False),
         sa.Column("revision", sa.Integer(), nullable=False),
         sa.UniqueConstraint("owner_key", "cadence"),
+        sa.CheckConstraint("cadence IN ('day', 'week', 'total')", name="ck_goal_cadence"),
+        sa.CheckConstraint("owner_key != 'global' OR cadence != 'total'", name="ck_no_global_total_goal"),
     )
     op.create_table(
         "goal_settings_version",
@@ -41,6 +43,8 @@ def upgrade():
         sa.Column("timezone", sa.String(), nullable=False),
         sa.Column("first_day_of_week", sa.Integer(), nullable=False),
         sa.Column("start_date", sa.String(), nullable=True),
+        sa.UniqueConstraint("goal_id", "revision"),
+        sa.CheckConstraint("target_seconds > 0 AND target_seconds <= 1.7976931348623157e308", name="ck_goal_target"),
     )
     op.create_index("ix_goal_settings_version_goal_id", "goal_settings_version", ["goal_id"])
     op.create_table(
@@ -49,6 +53,12 @@ def upgrade():
         sa.Column("payload", sa.String(), nullable=False),
         sa.Column("response", sa.String(), nullable=False),
     )
+    for table in ("goal_settings_version", "goal_reporting_context", "goal_settings_receipt"):
+        for action in ("UPDATE", "DELETE"):
+            op.execute(
+                f"CREATE TRIGGER {table}_no_{action.lower()} BEFORE {action} ON {table} "
+                "BEGIN SELECT RAISE(ABORT, 'Personal goal history is append-only'); END"
+            )
 
 
 def downgrade():

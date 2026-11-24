@@ -11,6 +11,19 @@ test('Stop ACK precedes optional assignment; dismissal performs no write', async
     assert.equal(controller.snapshot().prompt.hidden,true);
     assert.deepEqual(writes,[]);
 });
+test('a second Stop cannot replace an active assignment draft or silently enlarge its manifest',()=>{
+ const store=storage();const c=createWorkAssignmentController({api:{},storage:store,onState:()=>{}});
+ c.offer({operation_id:'first-stop',saved_taskless_work:[{id:'one',revision:1},{id:'two',revision:1}]});
+ c.edit({kind:'new',task_draft:{title:'Keep this draft'}});c.select(['two']);
+ c.offer({operation_id:'second-stop',saved_taskless_work:[{id:'three',revision:1}]});
+ const reloaded=createWorkAssignmentController({api:{},storage:store,onState:()=>{}});
+ assert.equal(reloaded.snapshot().prompt.stop_id,'first-stop');
+ assert.equal(reloaded.snapshot().prompt.destination.task_draft.title,'Keep this draft');
+ assert.deepEqual(reloaded.snapshot().prompt.selected_ids,['two']);
+ assert.equal(reloaded.snapshot().queued.length,1);
+ reloaded.dismiss();assert.equal(reloaded.snapshot().prompt.stop_id,'second-stop');
+ assert.deepEqual(reloaded.snapshot().prompt.works.map(w=>w.id),['three']);
+});
 test('lost assignment ACK looks up receipt before any exact retry, never repeats Stop/create',async()=>{
     const calls=[]; const store=storage(); let lost=true;
     const api={post:async(url,payload)=>{calls.push([url,payload]); if(lost) throw Error('lost response'); return {operation_id:'assign',task_id:'task',works:[{id:'work',revision:2}]};},

@@ -1,7 +1,9 @@
 """Personal targets over the shared structured summed-recorded-work evidence."""
 
 import json
+import math
 from datetime import UTC, date, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from sqlmodel import Session, select
@@ -42,6 +44,8 @@ class GoalService:
         result = epoch.model_dump(mode="json")
         following = next((e for e in epochs if e.revision > epoch.revision), None)
         result["closed_at"] = following.effective_at if following else None
+        result["daemon_timezone"] = _resolve_timezone(None, [])[1]
+        result["epochs"] = [e.model_dump(mode="json") for e in epochs]
         result["warnings"] = (
             ["Context epochs are incomparable; never add totals across epochs."] if len(epochs) > 1 else []
         )
@@ -176,7 +180,9 @@ class GoalService:
 
     def edit(self, goal_id, request):
         lock_sqlite_writer(self.db)
-        payload = json.dumps({"goal_id": goal_id, **request.model_dump(mode="json")}, sort_keys=True)
+        payload = json.dumps(
+            {"goal_id": goal_id, **request.model_dump(mode="json", exclude_unset=True)}, sort_keys=True
+        )
         receipt = self.db.get(GoalSettingsReceipt, request.operation_id)
         if receipt:
             if receipt.payload != payload:
@@ -198,7 +204,11 @@ class GoalService:
             .where(GoalSettingsVersion.goal_id == goal_id)
             .order_by(GoalSettingsVersion.revision.desc())
         ).first()
-        tz, _ = _resolve_timezone(previous.timezone, [])
+        tz, effective_timezone = _resolve_timezone(previous.timezone, [])
+        if effective_timezone != previous.timezone:
+            raise ConflictError(
+                "Daemon timezone changed; explicitly start a new reporting epoch before editing targets"
+            )
         today = datetime.now(tz).date()
         start = _week_start(today, previous.first_day_of_week) if goal.cadence == "week" else today
         goal.revision += 1
@@ -208,9 +218,13 @@ class GoalService:
                 "revision": goal.revision,
                 "effective_period_start": start.isoformat(),
                 "target_seconds": request.target_seconds,
-                "enabled": request.enabled,
-                "include_descendants": request.include_descendants,
-                "start_date": request.start_date.isoformat() if request.start_date else None,
+                "enabled": request.enabled if "enabled" in request.model_fields_set else previous.enabled,
+                "include_descendants": request.include_descendants
+                if "include_descendants" in request.model_fields_set
+                else previous.include_descendants,
+                "start_date": (request.start_date.isoformat() if request.start_date else None)
+                if "start_date" in request.model_fields_set
+                else previous.start_date,
             }
         )
         response = {"id": goal.id, "revision": goal.revision}
@@ -254,12 +268,18 @@ class GoalService:
         warnings.extend(epoch.get("warnings", []))
         start = _week_start(selected_date or datetime.now(tz).date(), first)
         end = start + timedelta(days=6)
+        available = name == tz.key
+        if epoch.get("closed_at"):
+            boundary = _week_start(datetime.fromisoformat(epoch["closed_at"]).astimezone(tz).date(), first)
+            if start >= boundary:
+                available = False
+                warnings.append("This reporting epoch is closed for the selected period; select the current epoch.")
         cutoff = datetime.now(UTC).replace(tzinfo=None)
         with sqlite_read_snapshot(self.db) as reader:
             service = QueryService(reader)
 
             def query(measure, groups=None, filters=None):
-                return service._run(
+                response = service.run(
                     AnalyticsQuery(
                         source=QuerySource.RECORDED_WORK,
                         measure=measure,
@@ -270,8 +290,21 @@ class GoalService:
                         ),
                     ),
                     context,
-                    cutoff,
+                    measurement_at=cutoff,
                 )
+                if any("does not support" in warning for warning in response.meta.warnings):
+                    result["available"] = False
+                if not result["available"]:
+                    response.total = None
+                    response.rows = []
+                    response.row_count = 0
+                    response.meta.physical_cohort_seconds = None
+                    response.meta.attributed_total_seconds = None
+                    response.meta.cohort_count = None
+                    response.meta.warnings.append(
+                        "Selected frozen context is unavailable; no fallback totals are credited."
+                    )
+                return response
 
             result = {
                 "week_start": start.isoformat(),
@@ -281,7 +314,7 @@ class GoalService:
                 "basis": "summed_recorded_work",
                 "context_revision": epoch["revision"],
                 "reporting_context": epoch,
-                "available": name == tz.key,
+                "available": available,
             }
             for measure in [
                 Measure.SUMMED_RECORDED_WORK,
@@ -299,9 +332,21 @@ class GoalService:
                 Measure.SUMMED_RECORDED_WORK, [Dimension.TASK], [QueryFilter(field=FilterField.HAS_TASK, values=[True])]
             )
             result["goals"] = GoalService(reader).read(
-                start, measurement_at=cutoff, context_revision=epoch["revision"] or None
+                start,
+                measurement_at=cutoff,
+                context_revision=epoch["revision"] or None,
+                cadences=("week", "total"),
             )["goals"]
-            ids = [row.keys[0] for row in result["tasks"].rows]
+            result["daily_goals"] = {}
+            for offset in range(7):
+                day = start + timedelta(days=offset)
+                result["daily_goals"][day.isoformat()] = GoalService(reader).read(
+                    day, measurement_at=cutoff, context_revision=epoch["revision"] or None, cadences=("day",)
+                )["goals"]
+            configured = result["goals"] + [g for day_goals in result["daily_goals"].values() for g in day_goals]
+            ids = sorted(
+                {row.keys[0] for row in result["tasks"].rows} | {g["task_id"] for g in configured if g["task_id"]}
+            )
             result["estimate_accounting"] = (
                 {
                     task.id: TaskService(reader).get_work_accounting(task)
@@ -310,23 +355,53 @@ class GoalService:
                 if ids
                 else {}
             )
-            plans = SessionService(reader).list_planning_plans(
+            plans = SessionService(reader).list_review_plans(
                 datetime.combine(start, time.min, tz).astimezone(UTC).replace(tzinfo=None),
                 datetime.combine(end + timedelta(days=1), time.min, tz).astimezone(UTC).replace(tzinfo=None),
             )
-            result["plans"] = [plan.model_dump(mode="json") for plan in plans[:200]]
+            from timetrace.interfaces.api.utils import ensure_utc
+
+            lower = datetime.combine(start, time.min, tz).astimezone(UTC)
+            upper = datetime.combine(end + timedelta(days=1), time.min, tz).astimezone(UTC)
+            result["uncertain_legacy"] = SessionService(reader).list_uncertain_history(lower, upper)
+            result["plans"] = []
+            for plan in plans[:200]:
+                original_start = getattr(plan, "original_start", None)
+                original_end = getattr(plan, "original_end", None)
+                result["plans"].append(
+                    {
+                        **plan.model_dump(mode="json"),
+                        "original_in_week": bool(
+                            original_start
+                            and original_end
+                            and ensure_utc(original_start) < upper
+                            and ensure_utc(original_end) > lower
+                        ),
+                        "current_in_week": ensure_utc(plan.start_time) < upper and ensure_utc(plan.end_time) > lower,
+                    }
+                )
+            result["plan_cohort"] = (
+                "Original or current plan overlaps selected week; projections have no archived original. "
+                "Plans never credit goals."
+            )
             if len(plans) > 200:
                 warnings.append(
                     "Plan display truncated at 200; recorded global totals are independent of displayed rows."
                 )
             return result
 
-    def read(self, period_start=None, include_disabled=False, *, measurement_at=None, context_revision=None):
+    def read(
+        self, period_start=None, include_disabled=False, *, measurement_at=None, context_revision=None, cadences=None
+    ):
         cutoff = measurement_at or datetime.now(UTC).replace(tzinfo=None)
         with sqlite_read_snapshot(self.db) as reader:
             goals = []
-            for goal in reader.exec(select(GoalDefinition)).all():
-                if goal.owner_key != "global" and reader.get(Task, goal.owner_key) is None:
+            definitions = select(GoalDefinition)
+            if cadences is not None:
+                definitions = definitions.where(GoalDefinition.cadence.in_(cadences))
+            for goal in reader.exec(definitions).all():
+                owner_task = reader.get(Task, goal.owner_key) if goal.owner_key != "global" else None
+                if goal.owner_key != "global" and owner_task is None:
                     continue
                 version = reader.exec(
                     select(GoalSettingsVersion)
@@ -383,8 +458,14 @@ class GoalService:
                 context["first_day_of_week"] = version.first_day_of_week
                 if not context["reliable"]:
                     context.setdefault("warnings", []).append(
-                        "Frozen goal context cannot be reliably queried by this daemon; progress is unavailable, not rebucketed. Explicitly start a new reporting epoch for current/future periods."
+                        "Frozen goal context cannot be reliably queried by this daemon; progress is unavailable, "
+                        "not rebucketed. Explicitly start a new reporting epoch for current/future periods."
                     )
+                ratio = Decimal(str(seconds)) / Decimal(str(version.target_seconds)) * 100
+                percentage = float(ratio)
+                display_percentage = f"{percentage:.1f}%" if math.isfinite(percentage) else f"{ratio}%"
+                if not math.isfinite(percentage):
+                    percentage = None
                 goals.append(
                     {
                         "id": goal.id,
@@ -392,18 +473,20 @@ class GoalService:
                         "target_seconds": version.target_seconds,
                         "owner_kind": "global" if goal.owner_key == "global" else "task",
                         "task_id": None if goal.owner_key == "global" else goal.owner_key,
+                        "task_title": owner_task.title if owner_task else None,
                         "cadence": goal.cadence,
                         "enabled": version.enabled,
                         "include_descendants": version.include_descendants,
                         "start_date": version.start_date,
                         "settings_revision": version.revision,
                         "context_revision": version.context_revision,
-                        "period_start": start.isoformat(),
-                        "period_end": end.isoformat(),
+                        "period_start": version.start_date if goal.cadence == "total" else start.isoformat(),
+                        "period_end": None if goal.cadence == "total" else end.isoformat(),
                         "summed_recorded_work_seconds": seconds if version.enabled and context["reliable"] else None,
-                        "percentage": seconds / version.target_seconds * 100
+                        "percentage": percentage if version.enabled and context["reliable"] else None,
+                        "percentage_display": display_percentage
                         if version.enabled and context["reliable"]
-                        else None,
+                        else "unavailable",
                         "basis": "summed_recorded_work",
                         "context": context,
                     }

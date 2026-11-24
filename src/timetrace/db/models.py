@@ -34,7 +34,11 @@ class GoalDefinition(SQLModel, table=True):
     """Optional personal goal identity, separate from estimates and timer receipts."""
 
     __tablename__ = "goal_definition"
-    __table_args__ = (UniqueConstraint("owner_key", "cadence"),)
+    __table_args__ = (
+        UniqueConstraint("owner_key", "cadence"),
+        CheckConstraint("cadence IN ('day', 'week', 'total')", name="ck_goal_cadence"),
+        CheckConstraint("owner_key != 'global' OR cadence != 'total'", name="ck_no_global_total_goal"),
+    )
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     owner_key: str
     cadence: str
@@ -58,6 +62,10 @@ class GoalSettingsVersion(SQLModel, table=True):
     """Append-only effective settings; reads never persist progress counters."""
 
     __tablename__ = "goal_settings_version"
+    __table_args__ = (
+        UniqueConstraint("goal_id", "revision"),
+        CheckConstraint("target_seconds > 0 AND target_seconds <= 1.7976931348623157e308", name="ck_goal_target"),
+    )
     id: str = Field(default_factory=generate_uuid7, primary_key=True)
     goal_id: str = Field(index=True)
     revision: int

@@ -8,6 +8,38 @@ from test_saved_correction_migration import OLD_SETUP, UPGRADE
 from test_saved_correction_recovery import environment, run
 
 
+def test_goal_history_context_and_receipts_are_append_only_in_a_real_migrated_database(tmp_path):
+    env = environment(tmp_path)
+    env["TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED"] = "false"
+    script = """
+import os,sqlite3
+from fastapi.testclient import TestClient
+from timetrace.main import create_daemon_app
+with TestClient(create_daemon_app()) as c:
+ r=c.post('/goals',json={'operation_id':'append-only-goal','owner_kind':'global','cadence':'day','target_seconds':3600})
+ assert r.status_code==201,r.text
+with sqlite3.connect(os.environ['TIMETRACE_DB_FILE']) as db:
+ for table,field in [('goal_settings_version','id'),('goal_reporting_context','id'),
+                     ('goal_settings_receipt','operation_id')]:
+  for statement in ['UPDATE '+table+' SET '+field+'='+field,'DELETE FROM '+table]:
+   try: db.execute(statement)
+   except sqlite3.IntegrityError: db.rollback()
+   else: raise AssertionError('History/receipt was mutable: '+statement)
+ for target in (0,-1,float('inf')):
+  try:
+   db.execute('''INSERT INTO goal_settings_version
+    (id,goal_id,revision,effective_period_start,context_revision,target_seconds,enabled,
+     include_descendants,timezone,first_day_of_week,start_date)
+    SELECT 'invalid-version',goal_id,revision+1,effective_period_start,context_revision,?,enabled,
+     include_descendants,timezone,first_day_of_week,start_date FROM goal_settings_version''',(target,))
+  except sqlite3.IntegrityError: db.rollback()
+  else: raise AssertionError('Invalid persisted target was accepted')
+ assert db.execute('PRAGMA integrity_check').fetchone()[0]=='ok'
+ assert db.execute('PRAGMA foreign_key_check').fetchall()==[]
+"""
+    run(script, env)
+
+
 @pytest.mark.parametrize("old_phase", ["pre_db", "post_db"])
 def test_copied_0019_db_stopped_timer_and_old_receipt_preserve_all_content_twice(tmp_path, old_phase):
     source = tmp_path / "source"

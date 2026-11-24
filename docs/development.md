@@ -112,13 +112,20 @@ mutations, keyboard bindings and the intentionally unavailable #61 correction UI
 The [#61 backend checkpoints](timer-corrections-61.md) cover explicit initialization, signed interval
 approval/commit and saved-work lineage/replay guards. These use `MultipleTimerService`'s existing
 receipt funnel and `SessionService.stage_work_corrections`, not generic legacy updates. Startup now
-requires migration `0019_timer_focus` (including `0018_work_corrections`). The signed controller and B-style correction picker live
+requires migration `0020_personal_goals` (including `0018_work_corrections` and `0019_timer_focus`). The signed controller and B-style correction picker live
 in `static/js/multiple_timers.js` and `timer_corrections.js`; finalized/recovered ACK refreshes existing
 Agenda, Calendar and #65 export consumers. Combined suite and real isolated DOM acceptance are
 recorded in that checkpoint document; independent review/publication remain pending.
 
 [Calendar live coverage](calendar-live-62.md) documents the read-only unfinished-work source,
 shared status cutoffs/ACK fences, guarded selected-timer navigation and isolated acceptance evidence.
+
+[Personal goals and weekly review](personal-goals-64.md) documents optional targets, reporting epochs,
+shared summed-work evidence, A/C navigation and post-Stop assignment. `services/goal_service.py` owns
+settings and weekly composition; `routers/goals.py` exposes the thin API. `personal_goals.js`,
+`weekly_review.js` and `work_assignment.js` retain explicit drafts/receipts and consume authoritative
+reads. Settings receipts are DB-only; assignment uses the existing timer fixed-intent funnel and
+`TaskService.stage_create_task` / `SessionService.stage_work_assignment` in its caller transaction.
 
 [Focus and notification contracts](timer-focus-63.md) cover correction-independent focus clocks,
 immutable warnings, the shared receipt funnel, bounded root-daemon scheduling, Linux session-bus

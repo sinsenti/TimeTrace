@@ -579,6 +579,46 @@ class SessionService:
         with sqlite_read_snapshot(self.db) as reader:
             return SessionService(reader)._planning_plans(start, end)
 
+    def list_uncertain_history(self, start: datetime, end: datetime, *, limit: int = 200):
+        """Bounded legacy visibility, never a source of goal/recorded-work credit."""
+        start, end = self._planning_bounds(start, end)
+        if not 1 <= limit <= 500:
+            raise ValidationError("Uncertain-history display limit must be between 1 and 500")
+        with sqlite_read_snapshot(self.db) as reader:
+            rows = reader.exec(
+                select(SessionModel)
+                .where(
+                    SessionModel.kind == "legacy_uncertain",
+                    SessionModel.start_time >= start,
+                    SessionModel.start_time < end,
+                )
+                .order_by(SessionModel.start_time, SessionModel.id)
+                .limit(limit + 1)
+            ).all()
+            return {
+                "items": [
+                    SessionService(reader)._read_agenda_session(row).model_dump(mode="json") for row in rows[:limit]
+                ],
+                "truncated": len(rows) > limit,
+                "basis": "Uncertain legacy; excluded from all recorded-work goals and unions",
+            }
+
+    def list_review_plans(self, start: datetime, end: datetime):
+        """Current projections plus persisted originals intersecting the bounded review week."""
+        start, end = self._planning_bounds(start, end)
+        with sqlite_read_snapshot(self.db) as reader:
+            service = SessionService(reader)
+            items = {item.id: item for item in service._planning_plans(start, end)}
+            originals = reader.exec(
+                service._plans_with_series().where(
+                    ScheduledSession.original_start < end, ScheduledSession.original_end > start
+                )
+            )
+            for plan, exception in originals:
+                if plan.id not in items:
+                    items[plan.id] = service._read_scheduled_session(plan, exception)
+            return sorted(items.values(), key=lambda item: (item.start_time, item.id))
+
     @staticmethod
     def _plans_with_series():
         return select(ScheduledSession, RecurrenceException).outerjoin(

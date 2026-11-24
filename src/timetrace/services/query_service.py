@@ -393,14 +393,24 @@ class QueryService:
             range_end_utc=upper,
             recorded_work_descendant_root=task_id if include_descendants else None,
             range_start_local=(start_date or date.min).isoformat(),
-            range_end_local=date.max.isoformat(),
+            range_end_local=(end_date or date.max).isoformat(),
             now_utc=cutoff,
             recorded_work_seconds=True,
             recorded_work_all_time_scalar=True,
         )
         compiled = compile_query(query, ctx)
         seconds = self.db.exec(text(compiled.sql), params=compiled.params).first()[0]
-        return {"seconds": seconds, "timezone": name, "warnings": warnings, "measurement_at": cutoff.isoformat()}
+        return {
+            "seconds": seconds,
+            "timezone": name,
+            "warnings": warnings,
+            "measurement_at": cutoff.isoformat(),
+            "first_day_of_week": first_day_of_week,
+            "range_start_utc": lower.isoformat() if start_date else None,
+            "range_end_utc": upper.isoformat() if end_date else None,
+            "basis": "summed_recorded_work",
+            "cohort": "Whole explicit physical intervals by local start; no clipping, legacy/live/plans excluded",
+        }
 
     def run(
         self, query: AnalyticsQuery, context: QueryContextRequest, *, measurement_at: datetime | None = None
@@ -457,7 +467,7 @@ class QueryService:
         )
 
         if query.source.value == "recorded_work":
-            meta.measurement_at = compiled.params["measurement"].replace(tzinfo=UTC)
+            meta.measurement_at = compiled.context.now_utc.replace(tzinfo=UTC)
             meta.basis = query.plan_basis or (
                 "summed_recorded_work" if query.measure == Measure.SUMMED_RECORDED_WORK else "recorded_work_union"
             )
