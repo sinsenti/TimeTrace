@@ -655,6 +655,7 @@ class RecurrenceService:
         disables recurrence instead of persisting an empty rule. Earlier exception rows
         still belong outside the requested deletion scope.
         """
+        lock_sqlite_writer(self.db)
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
@@ -669,8 +670,11 @@ class RecurrenceService:
                 validate_rrule(candidate_rrule, task.recurrence_dtstart, task.recurrence_timezone)
             except ValidationError:
                 candidate_rrule = None
+            changes_rule = candidate_rrule != task.recurrence_rrule
+            if changes_rule:
+                self._guard_series_task_write(task_id)
             deleted = self._drop_exceptions(task_id, at_or_after=anchor)
-            if candidate_rrule != task.recurrence_rrule:
+            if changes_rule:
                 task.recurrence_rrule = candidate_rrule
                 task.recurrence_rule = rrule_to_preset(candidate_rrule) if candidate_rrule else None
                 if candidate_rrule is None:
@@ -685,9 +689,12 @@ class RecurrenceService:
 
     def end_series(self, task_id: str, *, commit: bool = True) -> int:
         """Stop the series entirely ("all"). Past logged rows are never touched."""
+        lock_sqlite_writer(self.db)
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
+        if task.is_recurring or task.recurrence_rrule is not None or task.recurrence_rule is not None:
+            self._guard_series_task_write(task_id)
 
         deleted = self._drop_exceptions(task_id, at_or_after=None)
         task.is_recurring = False
@@ -733,14 +740,22 @@ class RecurrenceService:
         """Stage a series resize in the caller's transaction, leaving existing overrides alone."""
         if duration_minutes <= 0:
             raise ValidationError("Recurrence duration must be a positive number of minutes.")
+        lock_sqlite_writer(self.db)
         task = self.db.get(Task, task_id)
         if not task:
             raise EntityNotFoundError("Task", task_id)
         if not task.is_recurring or not task.recurrence_rrule:
             raise ValidationError("Task is not recurring, so it has no series duration.")
         if task.recurrence_duration_minutes != duration_minutes:
+            self._guard_series_task_write(task_id)
             task.recurrence_duration_minutes = duration_minutes
             self.invalidate_plan_revisions(task_id, exclude_plan_id=exclude_plan_id)
+
+    def _guard_series_task_write(self, task_id: str) -> None:
+        """Under SQLite reservation, protect the full task snapshot needed by assignment replay."""
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, task_ids=[task_id], assignment_only=True)
 
     def invalidate_plan_revisions(self, task_id: str, *, exclude_plan_id: str | None = None) -> None:
         """A linked plan's revision also protects its use as a series-resize target."""

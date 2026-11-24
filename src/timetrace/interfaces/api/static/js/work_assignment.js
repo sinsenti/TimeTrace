@@ -1,10 +1,10 @@
 /** Optional post-save assignment owns a journal separate from the acknowledged Stop. */
 function createWorkAssignmentController({api,storage,onState,operationId=()=>crypto.randomUUID()}) {
     const key='timetrace_work_assignment_v1';
-    let prompt=null,journal=null,queued=[],pending=false,message='',blocked=false,generation=0;
+    let prompt=null,journal=null,queued=[],pending=false,targetRead=null,message='',blocked=false,generation=0;
     try { const saved=JSON.parse(storage.getItem(key)||'null'); prompt=saved?.prompt||null;journal=saved?.journal||null;queued=saved?.queued||[]; }
     catch (_) {blocked=true;message='Assignment safety storage unavailable. Saved work remains taskless.';}
-    const snapshot=()=>({prompt,journal,queued,pending,message,blocked});
+    const snapshot=()=>({prompt,journal,queued,pending,refreshingTargets:targetRead!==null,message,blocked});
     const publish=()=>onState(snapshot());
     function persist() {try {storage.setItem(key,JSON.stringify({prompt,journal,queued}));return true;}catch(_){blocked=true;message='Assignment safety storage unavailable; no new request sent.';return false;}}
     function offer(result) {
@@ -56,19 +56,24 @@ function createWorkAssignmentController({api,storage,onState,operationId=()=>cry
     }
     async function refetchTargets() {
         if(pending||journal?.outcome==='uncertain'||!prompt)return false;
-        pending=true;publish();
+        const owner=prompt,read={};targetRead=read;pending=true;publish();
+        const ownsRead=()=>targetRead===read&&prompt===owner;
         try {
-            const rows=await Promise.all(prompt.works.map(w=>api.get(`/recorded-work/${encodeURIComponent(w.id)}`)));
+            const rows=await Promise.all(owner.works.map(w=>api.get(`/recorded-work/${encodeURIComponent(w.id)}`)));
+            if(!ownsRead())return false;
             if(rows.some(w=>w.task_id!==null||w.scheduled_session_id!==null))throw Error('A listed target is no longer taskless. Leave it unchanged.');
-            prompt.works=rows.map(w=>({id:w.id,revision:w.revision,start_time:w.start_time,end_time:w.end_time}));
+            owner.works=rows.map(w=>({id:w.id,revision:w.revision,start_time:w.start_time,end_time:w.end_time}));
             message='Exact listed IDs refreshed. Review their current intervals; no correction fragments were added.';
             persist();return true;
-        }catch(error){message=error.message||'Target read failed; no assignment repeated.';return false;}
-        finally{pending=false;publish();}
+        }catch(error){if(ownsRead())message=error.message||'Target read failed; no assignment repeated.';return false;}
+        finally{if(ownsRead()){targetRead=null;pending=false;publish();}}
     }
     return {snapshot,offer,assign,retry,refetchTargets,
         select(ids){if(!prompt||pending||journal?.outcome==='uncertain')return false;const allowed=new Set(prompt.works.map(w=>w.id));if(ids.some(id=>!allowed.has(id)))return false;prompt.selected_ids=[...new Set(ids)];persist();publish();return true;},
-        dismiss(){if(prompt){prompt.hidden=true;persist();if(queued.length&&journal?.outcome!=='uncertain'){const next=queued.shift();offer(next);}publish();}},
+        dismiss(){if(prompt){
+            if(targetRead){targetRead=null;pending=false;}
+            prompt.hidden=true;persist();if(queued.length&&journal?.outcome!=='uncertain'){const next=queued.shift();offer(next);}publish();
+        }},
         reopen(){if(prompt){prompt.hidden=false;persist();publish();}},
         edit(destination){if(!prompt||pending||journal?.outcome==='uncertain')return false;prompt.destination=JSON.parse(JSON.stringify(destination));persist();publish();return true;}
     };
@@ -77,7 +82,7 @@ if(typeof module!=='undefined')module.exports={createWorkAssignmentController};
 if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',()=>{
     const root=document.querySelector('[data-work-assignment]');if(!root)return;
     document.querySelector('main')?.before(root);
-    let shown=null;const selected=new Set();
+    let shown=null,leaveTaskless;const selected=new Set();
     const status=document.createElement('p');status.setAttribute('role','status');
     const body=document.createElement('div');root.append(status,body);
     function button(label,action){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',action);return b;}
@@ -85,8 +90,9 @@ if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',(
         status.textContent=state.message;root.hidden=!state.prompt;
         if(!state.prompt)return;
         body.hidden=state.prompt.hidden;
-        if(shown!==JSON.stringify(state.prompt.works)){
-            shown=JSON.stringify(state.prompt.works);selected.clear();body.replaceChildren();
+        const manifest=JSON.stringify([state.prompt.stop_id,state.prompt.works]);
+        if(shown!==manifest){
+            shown=manifest;selected.clear();body.replaceChildren();
             const heading=document.createElement('h3');heading.textContent='Saved taskless work — optional assignment';body.append(heading);
             const info=document.createElement('p');info.textContent='Stop is already saved. Assign only the explicitly listed records, or leave them taskless.';body.append(info);
             for(const w of state.prompt.works){
@@ -101,15 +107,20 @@ if(typeof document!=='undefined') document.addEventListener('DOMContentLoaded',(
             const tasks=document.createElement('select');tasks.setAttribute('aria-label','Assignment existing task');
             const empty=document.createElement('option');empty.value='';empty.textContent='Choose a task';tasks.append(empty);
             const title=document.createElement('input');title.placeholder='New task title';title.setAttribute('aria-label','New assignment task title');title.value=state.prompt.destination.task_draft?.title||'';
-            api.get('/api/tasks').then(rows=>{for(const task of rows){const o=document.createElement('option');o.value=task.id;o.textContent=task.title;tasks.append(o);}tasks.value=state.prompt.destination.task_id||'';}).catch(()=>{status.textContent='Task list unavailable. Saved work remains safe; retry by reopening.';});
+            api.get('/api/tasks').then(rows=>{
+                if(shown!==manifest||!tasks.isConnected)return;
+                for(const task of rows){const o=document.createElement('option');o.value=task.id;o.textContent=task.title;tasks.append(o);}
+                tasks.value=state.prompt.destination.task_id||'';
+            }).catch(()=>{if(shown===manifest&&tasks.isConnected&&!state.prompt.hidden)status.textContent='Task list unavailable. Saved work remains safe; retry by reopening.';});
             function edit(){tasks.hidden=mode.value!=='existing';title.hidden=mode.value!=='new';controller.edit(mode.value==='existing'?{kind:'existing',task_id:tasks.value}:{kind:'new',task_draft:{title:title.value}});}
             mode.addEventListener('change',edit);tasks.addEventListener('change',edit);title.addEventListener('input',edit);
+            leaveTaskless=button('Leave taskless',()=>controller.dismiss());
             tasks.hidden=mode.value!=='existing';title.hidden=mode.value!=='new';body.append(mode,tasks,title,
                 button('Assign selected saved work',()=>controller.assign([...selected])),
-                button('Refresh exact targets',()=>controller.refetchTargets()),
-                button('Leave taskless',()=>controller.dismiss()));
+                button('Refresh exact targets',()=>controller.refetchTargets()),leaveTaskless);
         }
         for(const control of body.querySelectorAll('button,input,select'))control.disabled=state.pending||state.blocked||state.journal?.outcome==='uncertain';
+        if(state.refreshingTargets)leaveTaskless.disabled=false;
         let recovery=root.querySelector('[data-assignment-recovery]');
         if(!recovery){recovery=document.createElement('div');recovery.dataset.assignmentRecovery='';recovery.append(button('Check / retry exact assignment',()=>controller.retry()),button('Show saved assignment choices',()=>controller.reopen()),button('Dismiss assignment prompt',()=>controller.dismiss()));root.append(recovery);}
         recovery.hidden=!state.prompt.hidden&&state.journal?.outcome!=='uncertain';

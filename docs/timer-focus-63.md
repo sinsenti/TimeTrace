@@ -34,8 +34,11 @@ This is the engineering/verification ledger, not a duplicate product specificati
 - `timer_focus.js`: exported controller and shared navbar/current-workspace UI, server countdown,
   default/override forms, next-period explanation, due actions, diagnostics and passive cards.
   All user settings/actions use the existing controller ACK-first mutation journal. Draft revisions
-  remain captured until explicit reset; polling/selection preserve drafts. A best-effort selected
-  identity session preference is display state, not another timer store or mutation journal.
+  remain captured until explicit reset or their own save ACK; polling/selection preserve drafts.
+  A delayed ACK advances only its submitted draft's baseline, retaining newer typing and leaving
+  other timer/default drafts alone. See the [#59 final repair ledger](timer-workspace-final-repair-59.md).
+  A best-effort selected identity session preference is display state, not another timer store or
+  mutation journal.
 
 ### Public interfaces
 

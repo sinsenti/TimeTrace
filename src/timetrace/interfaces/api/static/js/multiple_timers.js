@@ -142,8 +142,8 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     }
     return {snapshot, refresh, recover, review,
         initializeFocus:()=>write('/timer-focus/initialize',{},false,null,false),
-        saveFocusDefaults:({enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision})=>write('/timer-focus/defaults',
-            {enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},false,null,false),
+        saveFocusDefaults:({enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},onAcknowledged=null)=>write('/timer-focus/defaults',
+            {enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},false,onAcknowledged,false),
         select: id => {
             if (!timers.some(timer => timer.id === id)) return false;
             selectionGeneration++; selectedTimerId = id;

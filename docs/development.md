@@ -136,6 +136,9 @@ native sends with `TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false` unless explicit
 [Selected-history export](timer-history-export-65.md) adds a separate bounded start-day selection view,
 frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserving summed-work measure.
 
+The [#59 final repair ledger](timer-workspace-final-repair-59.md) distinguishes the five repairs from
+prior Standards/Spec results and records the combined synthetic one-dataset DOM/API replay.
+
 ### Implementation notes and historical adoption checkpoints
 
 The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording

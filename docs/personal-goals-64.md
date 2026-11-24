@@ -22,8 +22,10 @@ saved intervals ending exactly at the measurement cutoff remain eligible.
 
 `GET/PUT /goal-reporting-context` expose append-only reporting epochs. Explicit changes CAS-increment
 applicable definitions; complete prior periods retain their timezone/week start. Closed epochs cannot
-extend into current/future periods, and epochs must not be merged. If SQLite cannot rebucket a captured
-zone different from the daemon, progress is unavailable with context/warnings, not silently substituted.
+extend into current/future periods, later epochs cannot report periods before their opening day/week,
+and epochs must not be merged. The baseline context can describe history before goals were configured.
+If SQLite cannot rebucket a captured zone different from the daemon, progress is unavailable with
+context/warnings, not silently substituted.
 Weekly composition uses one DB snapshot and measurement cutoff for its goal/query evidence.
 
 `/weekly-review-view` opens overview A, optionally focused review C, retaining the selected week.
@@ -37,9 +39,15 @@ revisions. `POST /recorded-work/assignment` uses the existing timer intent/recei
 Existing/new destination assignment is atomic; normal task staging retains quick-add syntax, tags,
 parent inheritance and schedule parsing. Work identity, notes, tags, provenance, ratings/reviews and null
 plan association survive. Recovery never repeats Stop or independently creates a task. Separate Stop
-batches cannot replace or expand an active selection. Dismissal leaves saved work taskless.
+batches cannot replace or expand an active selection. Dismissal leaves saved work taskless. It may
+cancel a pending target refresh without abandoning an uncertain write; a late read cannot edit the
+promoted batch. Recurrence series changes protect an accepted assignment's destination task snapshot
+under the SQLite writer reservation, without taking the timer lock.
 
 ## Acceptance evidence
+
+The [#59 final repair ledger](timer-workspace-final-repair-59.md) records the later five repairs and
+combined one-dataset acceptance replay. The implementation-era evidence below is retained separately.
 
 Final full runs on this implementation, with an absolute temporary database and isolated HOME/TMPDIR:
 
