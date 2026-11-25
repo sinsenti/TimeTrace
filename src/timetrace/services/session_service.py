@@ -11,6 +11,7 @@ from timetrace.core.exceptions import ConflictError, EntityNotFoundError, Valida
 from timetrace.core.recurrence import MAX_WINDOW_DAYS, is_occurrence_id, parse_occurrence_id
 from timetrace.db.models import (
     MutationOperation,
+    RatingEntry,
     RecurrenceException,
     ScheduledSession,
     Task,
@@ -313,6 +314,31 @@ class SessionService:
         self.db.commit()
         self.db.expire_all()
         return self.get_recorded_work(work_id)
+
+    def delete_recorded_work(self, work_id: str, expected_revision: int) -> None:
+        """Permanently remove exactly one physical entry; never expand its lineage or plan."""
+        from timetrace.services.correction_guards import check_correction_guard
+
+        lock_sqlite_writer(self.db)
+        try:
+            check_correction_guard(self.db, work_ids=[work_id])
+            row = self.db.get(SessionModel, work_id)
+            if row is None or row.kind != "recorded_work":
+                raise EntityNotFoundError("Recorded work", work_id)
+            if row.revision != expected_revision:
+                raise ConflictError("Recorded work changed. Review the saved entry before deleting it.")
+            if self.db.exec(select(RecurrenceException).where(RecurrenceException.session_id == work_id)).first():
+                raise ConflictError("This entry has a recurrence reference; removal requires review.")
+            for rating in self.db.exec(
+                select(RatingEntry).where(RatingEntry.target_type == "session", RatingEntry.target_id == work_id)
+            ).all():
+                self.db.delete(rating)
+            # Immutable correction/operation/AI audit snapshots are deliberately retained.
+            self.db.delete(row)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
 
     def get_recorded_work(self, work_id: str) -> AgendaRecordedWorkRead:
         row = self.db.get(SessionModel, work_id)

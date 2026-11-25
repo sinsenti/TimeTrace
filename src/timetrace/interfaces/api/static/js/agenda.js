@@ -222,6 +222,7 @@ const agendaPage = (() => {
             get('progress').appendChild(make('p', 'Recorded-work progress unavailable. Refresh reads only.'));
             get('retry').hidden = false;
         }
+        if (owner?.refreshSavedWorkNote) void owner.refreshSavedWorkNote();
         if (unconfirmedCreate) {
             if (!rangeFailed && unconfirmedCreate.day === activeDate) unconfirmedCreate.checked = true;
             get('status').textContent += ` A create was not confirmed. Check the ledger for ${unconfirmedCreate.day} before starting another entry.`;
@@ -285,25 +286,47 @@ const agendaPage = (() => {
                 const label = make('label', 'Work-entry note (not task description)');
                 const input = make('textarea', ''); input.value = row.notes || ''; label.append(input);
                 const save = make('button', 'Save work note'); save.type = 'button'; save.disabled = true;
-                const retry = make('button', 'Refresh saved note (read only)'); retry.type = 'button';
+                const retry = make('button', 'Retry note refresh'); retry.type = 'button'; retry.hidden = true;
                 const status = make('p', ''); status.setAttribute('role','status');
                 let exportRevision = row.revision;
-                const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),onState(state) {
-                    if (state.saved.revision !== exportRevision) {
-                        exportRevision = state.saved.revision;
+                const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),isDirty:()=>Boolean(captured.noteDirty||captured.removalPending||captured.removalBlocked||document.activeElement===input),onState(state) {
+                    if (state.ackRevision && state.ackRevision !== exportRevision) {
+                        exportRevision = state.ackRevision;
                         window.dispatchEvent(new CustomEvent('timetrace:history-mutated', {detail:{}}));
                     }
                     if (owner !== captured) return;
+                    if(!captured.noteDirty&&!state.pending)input.value=state.saved.notes||'';
                     captured.notePending = state.pending;
                     captured.noteDirty = input.value !== (state.saved.notes || '');
                     save.disabled = state.pending || state.blocked || !captured.noteDirty;
                     status.textContent = state.message;
+                    retry.hidden = !state.blocked && !state.refreshFailed;
                     if (state.saved.revision !== row.revision) captured.row = state.saved;
                 }});
                 captured.invalidateWorkNote = reason => editor.invalidate(reason);
+                captured.refreshSavedWorkNote=()=>editor.readSaved();void editor.readSaved();
+                input.addEventListener('blur',()=>void editor.readSaved());
                 input.addEventListener('input',()=> { captured.noteDirty = input.value !== (editor.state().saved.notes || ''); save.disabled = editor.state().pending || editor.state().blocked || !captured.noteDirty; });
                 save.addEventListener('click',()=>editor.save(input.value)); retry.addEventListener('click',editor.retry);
-                root.append(label,save,retry,status);
+                const noteEditor=make('div','');noteEditor.className='saved-work-note';noteEditor.append(label,save,retry,status);root.append(noteEditor);
+                const remove=make('button','Delete entry'),check=make('button','Check deletion'),removalStatus=make('p','');remove.type=check.type='button';check.hidden=true;remove.className='recorded-work-delete';removalStatus.setAttribute('role','status');let removal=null;
+                async function removed(){
+                    if(!removal.state().deleted)return;
+                    if(owner===captured)open(null);
+                    window.dispatchEvent(new CustomEvent('timetrace:history-mutated',{detail:{}}));
+                    window.dispatchEvent(new CustomEvent('timetrace:work-mutated',{detail:{}}));
+                    await refresh();
+                }
+                remove.addEventListener('click',async()=>{
+                    if(owner!==captured||captured.notePending||captured.removalPending)return;
+                    if(captured.noteDirty){removalStatus.textContent='Save or discard your note edits before deleting this entry.';return;}
+                    if(!window.confirm(`Permanently delete this recorded entry?\n${taskTitle(captured.row)}\n${interval(captured.row.start_time,captured.row.end_time)}\nIts note and attached ratings will be removed. The task, plans and other entries stay unchanged. This cannot be undone.`))return;
+                    removal ||= createWorkEntryRemoval({api,row:captured.row,onState(state){
+                        if(owner!==captured)return;captured.removalPending=state.pending;captured.removalBlocked=state.blocked;input.readOnly=state.pending||state.blocked||state.deleted;save.disabled=state.pending||state.blocked||state.deleted||editor.state().blocked||!captured.noteDirty;remove.disabled=state.pending||state.blocked||state.deleted;remove.textContent=state.pending?(state.blocked?'Checking…':'Deleting…'):'Delete entry';check.hidden=!state.blocked||state.deleted;check.disabled=state.pending;removalStatus.textContent=state.message;
+                    }});
+                    await removal.remove();await removed();
+                });
+                check.addEventListener('click',async()=>{await removal.read();await removed();});root.append(remove,check,removalStatus);
             }
             else add('Basis', 'Legacy meaning is uncertain. Not included in plan-versus-record comparisons.');
         }
@@ -312,7 +335,7 @@ const agendaPage = (() => {
             ...(row.task_id ? {task:row.task_id} : {})})}`;
         root.appendChild(calendarLink);
         add('Tags', row.tags || 'None');
-        add('Notes', row.notes || 'None');
+        if(row.kind!=='recorded_work')add('Notes', row.notes || 'None');
     }
 
     function showExtension(plan) {
@@ -580,6 +603,9 @@ const agendaPage = (() => {
         if (!agendaPage.hasDraft() && !window.multipleTimers?.hasNoteDraft?.() && !window.multipleTimers?.hasFocusDraft?.()) return;
         event.preventDefault(); event.returnValue = '';
     });
+    const readSelectedNote=()=>{if(document.visibilityState!=='hidden')void owner?.refreshSavedWorkNote?.();};
+    window.addEventListener('focus',readSelectedNote);
+    if(typeof setInterval==='function'){const notePoll=setInterval(readSelectedNote,30000);window.addEventListener('pagehide',()=>clearInterval(notePoll),{once:true});}
     void refresh();
     for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,

@@ -81,7 +81,6 @@ class AssignmentTaskDraft(TaskCreate):
             raise ValueError("New assignment task title cannot be blank")
         return value
 
-
     @field_validator("created_at")
     @classmethod
     def nonnull_supplied_created_at(cls, value):
@@ -119,6 +118,11 @@ def assign_recorded_work(req: WorkAssignment, db: DBSession = Depends(get_sessio
 @router.patch("/recorded-work/{work_id}/note", response_model=AgendaRecordedWorkRead)
 def update_work_note(work_id: str, req: RecordedWorkNoteUpdate, db: DBSession = Depends(get_session)):
     return SessionService(db).update_recorded_work_note(work_id, req.notes, req.expected_revision)
+
+
+@router.delete("/recorded-work/{work_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_recorded_work(work_id: str, expected_revision: int = Query(ge=1), db: DBSession = Depends(get_session)):
+    SessionService(db).delete_recorded_work(work_id, expected_revision)
 
 
 @router.get("/recorded-work/{work_id}", response_model=AgendaRecordedWorkRead)

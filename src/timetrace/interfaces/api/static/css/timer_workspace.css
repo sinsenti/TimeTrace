@@ -155,7 +155,21 @@
                                                                                                                                                                 opacity:.8}
                                                                                                                                                                 .agenda-page #agenda-ledger summary{
                                                                                                                                                                     font:500 13px system-ui}
-                                                                                                                                                                    .work-summary-main{
+                                                                                                                                                                    .saved-work-note {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+}
+.saved-work-note label, .saved-work-note textarea {
+    display: block;
+    width: 100%;
+}
+.saved-work-note [hidden] {
+    display: none !important;
+}
+.work-summary-main{
                                                                                                                                                                         display:flex;
                                                                                                                                                                         align-items:baseline;
                                                                                                                                                                         gap:12px;

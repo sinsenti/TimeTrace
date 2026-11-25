@@ -104,3 +104,35 @@ label selectors were replayed against this polish.
 Raster capture succeeded in this runtime (the earlier prototype runtime timed out). AI-blocking
 and existing Tailwind-CDN warnings are known harness/environment messages, not clean-console proof.
 Screenshots/DOM checks are not manual OS notification, sound, accessibility or platform certification.
+
+## Approved saved-entry feedback follow-up
+
+After testing the implementation, the owner requested background saved-note refresh, Save directly
+below its input, and deletion from the recorded-entry inspector. The owner explicitly approved
+**permanent deletion after confirmation**, for the selected recorded interval only. No Undo or
+bulk/task/plan deletion is added.
+
+- Saved notes quietly read on open, window focus/blur and a visible-page 30-second cadence. Focus,
+  dirty input, pending/blocked writes and newer acknowledgements fence read adoption. A retry control
+  appears only after an error, not as a permanent technical action. Save is grouped below its input;
+  the duplicate read-only note field is removed for recorded entries.
+- The confirmation names the entry and full interval, explains that its note/attached ratings are
+  removed, and preserves tasks, plans and other entries. While deletion is pending, the selected
+  note is read-only. Stale revisions and pending correction/assignment guards refuse mutation.
+  Unknown deletion outcomes use GET-only checking, never automatic DELETE replay.
+- `SessionService.delete_recorded_work` owns the SQLite transaction; the dedicated DELETE route
+  requires `expected_revision`. Immutable correction/operation/AI snapshots are retained. Recurrence
+  references fail closed; the legacy session-removal contract is not widened. Tests cover totals,
+  unrelated ratings/records/plans, held-lock guards, active split buffers and exact Stop replay
+  without resurrecting deleted work.
+- The `5e-324` goal was a synthetic precision fixture, not a default. Only that unchanged demo goal
+  definition was removed from the isolated preview; other data, historical settings and receipts
+  were retained. Production tiny-positive-target support is unchanged.
+
+Focused public gates: 5 Python removal tests and 919 Node tests pass. Actual isolated Orca checks
+confirmed Save placement, hidden normal retry, clean background adoption, preservation of newer
+  typing, Cancel preserving the record, confirmed DELETE returning 404 thereafter, inspector closure,
+  and read-only/disabled controls during a held real deletion ACK. Both disposable verification
+  entries were removed; existing demo entries and the preview database were preserved.
+Follow-up independent review and final full Python results are pending; the earlier 1,236/916 gates
+above remain frozen historical results, not a claim about this new deletion feature.

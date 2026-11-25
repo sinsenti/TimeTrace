@@ -145,7 +145,13 @@ The [approved #59 UI polish](timer-workspace-polish-59.md) moves optional contro
 `workspace_summary.js` presents authoritative union accounting without recomputing it. Agenda keeps
 its selected current card, B-style signed corrections and a collapsed, independently saved work note.
 Urgent focus actions/notices and operation/idle recovery remain available outside settings. Prototype
-scripts are design references only, never production page dependencies.
+scripts are design references only, never production page dependencies. Saved-entry notes refresh
+quietly on open/focus and while visible, without replacing typing or rebasing uncertain writes.
+Confirmed permanent removal uses `DELETE /recorded-work/{id}?expected_revision=N`: the service
+reserves the SQLite writer, checks pending correction/assignment guards and removes only that
+physical entry and its attached ratings. Plans, tasks, other entries, timers and immutable audit
+snapshots stay intact; uncertain deletion recovery reads only. The legacy session-delete API remains
+separate.
 
 ### Implementation notes and historical adoption checkpoints
 
