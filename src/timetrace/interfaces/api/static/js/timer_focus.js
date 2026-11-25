@@ -68,7 +68,11 @@ function renderFocusAlerts(root,focus,control) {
     const node=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element;};
     const button=(text,handler,disabled=false)=>{const element=node('button',text);element.type='button';element.disabled=disabled;element.addEventListener('click',handler);return element;};
     const blocked=state.pending||Boolean(state.receipt)||!state.fresh;
-    for(const timer of state.timers){const phase=timer.focus?.phase;if(!['work_due','break_due','break'].includes(phase))continue;
+    for(const timer of state.timers){
+        if(timer.identity_started_at_provenance==='prospective_unknown_history'){
+            const details=node('details','');details.append(node('summary',`${timer.task_title||'Unassigned timer'} · Legacy warning history`),node('p','The two-hour warning uses a prospective anchor established when focus state was initialized. Earlier creation history is unknown; this is not a known two-hour lifetime total. Pauses after that anchor are included.'));root.append(details);
+        }
+        const phase=timer.focus?.phase;if(!['work_due','break_due','break'].includes(phase))continue;
         const card=node('div',`${timer.task_title||'Unassigned timer'} · ${phase==='work_due'?'Focus period complete':phase==='break_due'?'Break complete':'On a break'}`);
         if(phase==='work_due')for(const [action,label] of [['take_break','Take break'],['keep_working','Keep working']])card.append(button(label,()=>focus.action(action,timer.id),blocked||timer.state==='frozen'));
         else card.append(button('Resume work',()=>focus.action('resume_work',timer.id),blocked||timer.state==='frozen'));

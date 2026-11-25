@@ -233,10 +233,14 @@ function renderTimerWorkspaceCard(root, state, control) {
     root.append(title, clock, row);
 }
 
+function guardTimerWorkspaceNavigation(event) {
+    if(typeof hasSettingsDrafts==='function'&&hasSettingsDrafts()&&!window.confirm('Leave unsaved editor changes to open the timer workspace?'))event.preventDefault();
+}
 const timerStripExpansion=new WeakMap();
 function renderTimerStripStatus(root,state) {
     const selected=root.querySelector('[data-timer-selected]');if(!selected)return;
     const timer=state.timers.find(t=>t.id===state.selectedTimerId);
+    selected.onclick=guardTimerWorkspaceNavigation;
     selected.textContent=timer?`${timer.task_title||'Unassigned'} · ${timerWorkspaceClock(timer,state.fresh)}`:'Open timer workspace';
     selected.href=timer?`/agenda-view?${new URLSearchParams({timer:timer.id})}`:'/agenda-view';
     root.querySelector('[data-timer-count]').textContent=`Other timers · ${state.timers.filter(t=>t.id!==state.selectedTimerId).length}${state.receipt?' · Operation recovery':''}`;
@@ -316,9 +320,7 @@ if (typeof window !== 'undefined') {
             if (!currentCard && state.selectedTimerId) {
                 const link = document.createElement('a'); link.textContent = 'Open selected timer workspace';
                 link.href = `/agenda-view?${new URLSearchParams({timer:state.selectedTimerId})}`;
-                link.addEventListener('click', event => {
-                    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts() && !window.confirm('Leave unsaved editor changes to open the timer workspace?')) event.preventDefault();
-                });
+                link.addEventListener('click',guardTimerWorkspaceNavigation);
                 list.append(link);
             }
             reviewList.replaceChildren();
