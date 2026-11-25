@@ -112,7 +112,7 @@ below its input, and deletion from the recorded-entry inspector. The owner expli
 **permanent deletion after confirmation**, for the selected recorded interval only. No Undo or
 bulk/task/plan deletion is added.
 
-- Saved notes quietly read on open, window focus/blur and a visible-page 30-second cadence. Focus,
+- Saved notes quietly read on open, window focus, note-field blur and a visible-page 30-second cadence. Focus,
   dirty input, pending/blocked writes and newer acknowledgements fence read adoption. A retry control
   appears only after an error, not as a permanent technical action. Save is grouped below its input;
   the duplicate read-only note field is removed for recorded entries.
@@ -129,10 +129,20 @@ bulk/task/plan deletion is added.
   definition was removed from the isolated preview; other data, historical settings and receipts
   were retained. Production tiny-positive-target support is unchanged.
 
-Focused public gates: 5 Python removal tests and 919 Node tests pass. Actual isolated Orca checks
-confirmed Save placement, hidden normal retry, clean background adoption, preservation of newer
-  typing, Cancel preserving the record, confirmed DELETE returning 404 thereafter, inspector closure,
-  and read-only/disabled controls during a held real deletion ACK. Both disposable verification
-  entries were removed; existing demo entries and the preview database were preserved.
-Follow-up independent review and final full Python results are pending; the earlier 1,236/916 gates
-above remain frozen historical results, not a claim about this new deletion feature.
+Final follow-up gates: **1,241 Python tests passed** (1,695 warnings, 8m33s), **919 Node tests
+passed**, and all changed-JS syntax/scoped Ruff/whitespace checks passed. Full Ruff retains the
+same 17 inherited findings. The five focused Python removal tests include both held-lock pending
+operation cases and active/cached timer recovery; no schema changes or migration bypasses were used.
+
+Actual isolated Orca checks confirmed Save placement, hidden normal retry, clean background
+adoption, preservation of newer typing, Cancel preserving the record, confirmed DELETE returning
+404 thereafter, inspector closure, and read-only/disabled controls during a held real deletion ACK.
+Both disposable verification entries were removed; existing demo entries and the preview database
+were preserved.
+
+Independent follow-up review (baseline `9a0f037`, implementation `7a4e533`): **Standards 1 P2**
+documentation mismatch, resolved by clarifying that blur means note-field blur rather than window
+blur; **Spec 0 findings**. No additional baseline smells were identified. The earlier two optional
+maintainability notes remain separately recorded. The previous 1,236/916 gates above remain frozen
+historical results. This follow-up is still local to the implementation branch, not merged/deployed
+to the personal daemon.
