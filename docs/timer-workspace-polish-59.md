@@ -180,5 +180,15 @@ from comparison against raw POST output. Those initial over-broad probe comparis
 not represented as passing checks. Native Cancel was not claimed: the first dialog was already
 accepted before the dismissal command; deterministic controller tests cover Cancel.
 
-Final full gates and independent review for this latest follow-up remain pending. Previous gates
-above remain historical, not a claim about the new direct controls.
+Final direct-control gates: **1,242 Python tests passed** (1,695 warnings, 9m09s), **931 Node tests
+passed**, changed-JS syntax/scoped Python lint/whitespace checks passed. Full Ruff still has exactly
+17 inherited findings. No backend protocol/schema/migration change was required.
+
+Independent review of `fc836fd...c47af93`: **Standards 1 P2** (outdated user-facing Agenda help),
+**Spec 0 findings**, and no new judgement smells. The help now distinguishes one-time-explained
+clock clicks from full Preview/Apply; a public HTTP regression failed before that copy repair and
+passes in the final full gate. Initial review counts are retained rather than rewritten as zero.
+The older optional maintainability notes remain separate. The disposable 18129 server was stopped
+without altering the owner's 18128 preview or its browser preference. Previous gates above remain
+historical. These commits remain local/unmerged, with no personal-daemon deployment or native OS
+notification/sound/platform certification claimed.

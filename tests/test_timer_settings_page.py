@@ -54,6 +54,14 @@ def test_settings_assets_are_served_by_the_actual_app(client, path):
     assert client.get(path).status_code == 200
 
 
+def test_agenda_help_distinguishes_quick_adjustments_from_the_full_editor(client):
+    response = client.get("/agenda-view")
+    assert response.status_code == 200
+    assert "Clock ±5 applies directly after a one-time explanation" in response.text
+    assert "Adjust time keeps Preview and Apply" in response.text
+    assert "Five-minute and exact-interval corrections are previewed before applying" not in response.text
+
+
 def test_focus_and_goals_have_a_dedicated_page(client):
     response = client.get("/timer-settings")
     assert response.status_code == 200
