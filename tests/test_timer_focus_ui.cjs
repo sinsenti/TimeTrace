@@ -2,6 +2,17 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {createTimerController}=require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
 const {createFocusController} = require('../src/timetrace/interfaces/api/static/js/timer_focus.js');
+test('focus view can distinguish retained defaults and timer drafts',()=>{
+ const settings={enabled:false,work_minutes:25,break_minutes:5,behavior:'notify_only'};
+ const f=createFocusController({control:{snapshot:()=>({timers:[{id:'a',revision:1,focus:{settings}}]})},api:{}});
+ assert.equal(f.hasTimerDraft('a'),false);f.edit('a',{work_minutes:30});assert.equal(f.hasTimerDraft('a'),true);assert.equal(f.hasDefaultsDraft(),false);
+ f.editDefaults({work_minutes:40},{...settings,revision:0});assert.equal(f.hasDefaultsDraft(),true);f.reset('a');assert.equal(f.hasTimerDraft('a'),false);assert.equal(f.hasDefaultsDraft(),true);
+});
+test('a removed timer retains an explicitly discardable focus draft',()=>{
+ const settings={enabled:false,work_minutes:25,break_minutes:5,behavior:'notify_only'};const state={timers:[{id:'a',revision:1,focus:{settings}}]};
+ const f=createFocusController({control:{snapshot:()=>state},api:{}});f.edit('a',{work_minutes:40});state.timers=[];
+ assert.deepEqual(f.timerDraftIds(),['a']);assert.equal(f.draft('a').work_minutes,40);f.reset('a');assert.deepEqual(f.timerDraftIds(),[]);assert.equal(f.hasDraft(),false);
+});
 test('focus action carries exact selected identity/generation and settings drafts survive refresh', async () => {
     const sent=[];
     let state={fresh:true,pending:false,receipt:null,selectedTimerId:'timer-a',timers:[{id:'timer-a',revision:4,state:'running',focus:{generation:2,phase:'work_due',settings:{enabled:true,work_minutes:25,break_minutes:5,behavior:'notify_only'}}}]};

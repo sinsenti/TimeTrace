@@ -8,10 +8,12 @@ function calendarLiveEvents(status) {
         });
         return fragments.filter(s => s.id && Date.parse(s.end_time) > Date.parse(s.start_time)).map(s => ({
             id:`live:${timer.id}:${s.id}`, start:s.start_time, end:s.end_time,
-            title:`LIVE · ${timer.state} · ${timer.task_title || 'Taskless work'}${s.notes ? ` · ${s.notes}` : ''}`,
+            title:`LIVE · ${timer.state} · ${timer.task_title || (timer.task_id?'Unavailable task':'Taskless work')}${s.notes ? ` · ${s.notes}` : ''}`,
             editable:false, startEditable:false, durationEditable:false,
             classNames:['calendar-live-work'], backgroundColor:'#0f766e', borderColor:'#5eead4',
-            extendedProps:{kind:'live_work', timer_id:timer.id, segment_id:s.id}
+            extendedProps:{kind:'live_work', timer_id:timer.id, segment_id:s.id,
+                taskTitle:timer.task_title||(timer.task_id?'Unavailable task':'Taskless work'),
+                notes:s.notes||'',timerState:timer.state}
         }));
     });
 }

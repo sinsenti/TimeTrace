@@ -4,6 +4,7 @@ const agendaPage = (() => {
     // Reuse the sole shared controller region, below the prominent current card.
     const unfinished = document.getElementById('multiple_timers');
     if (unfinished) get('unfinished').append(unfinished);
+    get('help-open').addEventListener('click',()=>get('help').showModal());
     const date = get('date');
     const fields = ['task', 'tags', 'notes', 'start', 'end'];
     const values = () => ({...Object.fromEntries(fields.map(key => [key, get(key).value])), attach: Boolean(get('attach').checked)});
@@ -80,11 +81,12 @@ const agendaPage = (() => {
         };
         for (const id of pins?.ids() || []) {
             const task = taskKnowledge.get(id);
-            const item = make('div', task ? `${task.title} · ${id.slice(-8)} ` : `Unavailable task · ${id.slice(-8)} `);
+            const item = make('div', task ? `${task.title} ` : 'Unavailable task ');
             item.append(action('Start', () => startActivity(id), !fresh || !task), action('Unpin', () => toggle(id, true)));
             pinned.append(item);
         }
         const search = queryText('search'), tag = queryText('filter-tag');
+        activities.hidden=!(search||tag);if(activities.hidden)return;
         let matches;
         try {
             matches = await api.get(`/api/tasks?${new URLSearchParams({status:'all',title_contains:search,tag_contains:tag,limit:'50'})}`);
@@ -97,7 +99,7 @@ const agendaPage = (() => {
         clear(activities);
         if (matches.length === 50) activities.append(make('p', 'Showing at most 50 matches in stable ID order; narrow the search for more.'));
         for (const task of matches) {
-            const item = make('div', `${task.title} · ${task.id.slice(-8)} `);
+            const item = make('div', `${task.title} `);
             item.append(action('Start', () => startActivity(task.id), !fresh),
                 action(pins?.ids().includes(task.id) ? 'Unpin' : 'Pin', () => toggle(task.id, pins.ids().includes(task.id)), !pins));
             activities.append(item);
@@ -113,7 +115,7 @@ const agendaPage = (() => {
         const parents = new Map();
         for (const group of groupWorkspaceHistory(visible)) {
             const details = make('details', '');
-            details.append(make('summary', `${group.day} · ${group.taskId ? taskTitle(group.rows[0]) + ' · ' + group.taskId.slice(-8) : 'Unassigned work'} · ${group.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy'} · ${group.rows.length} interval(s)`));
+            details.append(make('summary', `${group.day} · ${group.taskId ? taskTitle(group.rows[0]) : 'Unassigned work'} · ${group.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy'} · ${group.rows.length} interval(s)`));
             root.append(details);
             for (const row of group.rows) parents.set(row.id, details);
         }
@@ -183,21 +185,7 @@ const agendaPage = (() => {
         const root = get('progress');
         clear(root);
         if (!progress) return;
-        const hours = value => `${Number(value || 0).toLocaleString(undefined, {maximumFractionDigits: 3})} h`;
-        root.appendChild(make('p', `Recorded task time: ${hours(progress.recorded_task_time.total)} · Elapsed recorded time: ${hours(progress.elapsed_recorded_time.total)} · Unassigned: ${hours(progress.unassigned_recorded_time.total)}`));
-        root.appendChild(make('p', `${progress.cohort} Measured ${new Date(progress.measurement_at).toLocaleString()}. Zone: ${progress.recorded_task_time.meta?.timezone || 'daemon local'}.`));
-        for (const task of progress.tasks.rows) root.appendChild(make('p', `${task.labels.join(' / ')} — recorded task union ${hours(task.value)}`));
-        for (const basis of ['original', 'current']) {
-            if (!progress[basis]) continue;
-            root.appendChild(make('p', `${basis === 'original' ? 'Original-plan' : 'Current-schedule'} comparison, selected day's visible plans: inside ${hours(progress[basis].inside.total)}, outside ${hours(progress[basis].outside.total)}. Matching does not imply attachment; overlapping plan fills are non-additive.`));
-        }
-        const row = owner?.row;
-        if (row?.kind === 'scheduled_session') {
-            for (const basis of ['original', 'current']) {
-                const fill = progress[basis]?.fill.rows.find(item => item.keys[0] === row.id);
-                if (fill) root.appendChild(make('p', `${basis === 'original' ? 'Original-plan' : 'Current-schedule'} fill for selected plan: ${hours(fill.value)} (matching same-task work, including unattached work).`));
-            }
-        }
+        renderWorkSummary(root,progress,owner?.row?.kind==='scheduled_session'?owner.row.id:null);
     }
 
     async function refresh() {
@@ -241,6 +229,7 @@ const agendaPage = (() => {
     }
 
     function details(row) {
+        const active=Boolean(row||owner);get('inspector-panel').hidden=!active;get('columns').classList.toggle('has-inspector',active);
         const root = get('detail');
         clear(root);
         const add = (label, text) => { root.appendChild(make('dt', label)); root.appendChild(make('dd', text)); };

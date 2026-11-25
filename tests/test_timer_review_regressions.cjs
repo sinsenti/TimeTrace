@@ -171,10 +171,8 @@ async function page(t) {
     for (const name of ['navbar', 'idle_resolution_modal', 'settings_modal', 'confirm_modal']) {
         d.parse(read(`templates/components/${name}.html`));
     }
-    // Use the actual Dashboard secondary-timer fragment, not invented switch controls.
-    const dashboard = read('templates/dashboard.html');
-    const toolbar = dashboard.match(/<div id="active_timer_pill"[^]*?<\/div>/);
-    assert.ok(toolbar, 'actual Dashboard timer toolbar exists'); d.parse(toolbar[0]);
+    // The compact strip replaces the redundant Dashboard pill; Recovery stays shared.
+    d.parse(read('templates/components/timer_workspace_bar.html'));
     const local = new Map([['timetrace_user_settings', JSON.stringify({idleDetectorEnabled: false, unknown: 'retain me'})]]);
     const session = new Map(), storageWrites = [], writes = [], reads = [], confirmations = [], errors = [], unexpected = [], intervals = [];
     const storage = (map, kind) => ({getItem: key => map.get(key) ?? null,

@@ -471,7 +471,10 @@ test('Calendar timer and Vim mode indicators use compact non-button header treat
     assert.match(appearance, /#vim_mode_indicator\s*\{[\s\S]*?background:\s*transparent !important/);
     assert.doesNotMatch(appearance.match(/#vim_mode_indicator\s*\{[^}]+\}/)?.[0] || '', /display:\s*[^;]+!important/);
     assert.match(navbar, /id="vim_mode_indicator"[^>]*role="status"[^>]*aria-live="polite"/);
-    assert.match(navbar, /timer\.css\?v=ui-review2-3/);
+    const strip=fs.readFileSync(path.join(templates,'components/timer_workspace_bar.html'),'utf8');
+    assert.match(strip, /timer\.css\?v=ui-review2-3/);
+    assert.match(strip, /data-timer-selected/);
+    assert.doesNotMatch(dashboard, /id="active_timer_pill"/);
     assert.match(dashboard, /appearance\.css\?v=/);
     assert.match(dashboard, /dashboard\.js\?v=/);
 });

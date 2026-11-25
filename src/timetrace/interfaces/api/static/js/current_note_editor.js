@@ -27,7 +27,7 @@ function createCurrentNoteDraft(timer, control) {
 }
 function createCurrentNoteView(root, control) {
     const drafts = new Map();
-    let visible = null, latest = null;
+    let visible = null, latest = null, fields = null;
     const node = (tag,text) => { const el = document.createElement(tag); el.textContent = text; return el; };
     const render = state => {
         latest = state;
@@ -36,22 +36,33 @@ function createCurrentNoteView(root, control) {
         if (!drafts.has(timer.id)) drafts.set(timer.id,createCurrentNoteDraft(timer,control));
         const draft = drafts.get(timer.id); draft.adopt(timer);
         if (visible !== timer.id) {
-            const label = node('label','Current work-entry note (not task description)');
+            const label = node('label','Work note');
             const input = node('textarea',''); input.value = draft.state().value; label.append(input);
-            const save = node('button','Save current work note'); save.type = 'button';
-            const reload = node('button','Use current saved note'); reload.type = 'button';
+            const save = node('button','Save'); save.type = 'button';
+            const reload = node('button','Discard my changes'); reload.type = 'button';
+            reload.title = 'Discard unsaved typing and restore the latest saved note.';
+            const toolbar = node('div',''); toolbar.className = 'current-note-actions';
+            const indicator = node('span',''); indicator.setAttribute('aria-live','polite');
+            const more = node('details',''); more.className = 'current-note-more';
+            more.append(node('summary','More'),reload); toolbar.append(save,indicator,more);
             const status = node('p',''); status.setAttribute('role','status');
+            fields = {input,save,reload,indicator,more,status};
             input.addEventListener('input',()=> { draft.input(input.value); render(latest); });
             save.addEventListener('click',async()=> { await draft.save(); render(control.snapshot()); });
-            reload.addEventListener('click',()=> { const current = control.snapshot().timers.find(t=>t.id === timer.id); if (current) { draft.reload(current); input.value = draft.state().value; render(latest); } });
-            root.replaceChildren(label,save,reload,status); visible = timer.id;
+            reload.addEventListener('click',()=> { const current = control.snapshot().timers.find(t=>t.id === timer.id); if (current) { draft.reload(current); input.value = draft.state().value; more.open=false; render(latest); } });
+            root.replaceChildren(label,toolbar,status); visible = timer.id;
         }
-        const input = root.querySelector('textarea');
-        if (document.activeElement !== input) input.value = draft.state().value;
+        const {input,save,reload,indicator,more,status} = fields;
+        const current = draft.state();
+        if (document.activeElement !== input) input.value = current.value;
         const eligible = timer.state === 'running' || (timer.state === 'paused' && Boolean(timer.manual_pause_note_segment_id));
-        root.querySelector('button').disabled = !eligible || !state.fresh || state.pending || Boolean(state.receipt) || draft.state().pending || !draft.state().dirty;
-        root.querySelectorAll('button')[1].disabled = !state.fresh || state.pending || Boolean(state.receipt) || draft.state().pending;
-        root.querySelector('p').textContent = !eligible ? 'No eligible current interval. Resolve idle review or resume explicitly before editing a current note; no interval will be guessed.' : state.message;
+        save.disabled = !eligible || !state.fresh || state.pending || Boolean(state.receipt) || current.pending || !current.dirty;
+        save.textContent = current.pending ? 'Saving…' : 'Save';
+        save.className = 'current-note-save' + (current.dirty ? ' is-dirty' : '');
+        indicator.textContent = current.pending ? 'Saving…' : current.dirty ? 'Unsaved changes' : state.fresh ? 'Saved' : 'Last saved state';
+        more.hidden = !current.dirty;
+        reload.disabled = !state.fresh || state.pending || Boolean(state.receipt) || current.pending;
+        status.textContent = !eligible ? 'No eligible current interval. Resolve idle review or resume explicitly before editing a current note; no interval will be guessed.' : state.message;
     };
     return {render,hasDraft:id=> (id ? [drafts.get(id)].filter(Boolean) : [...drafts.values()]).some(draft=>draft.state().dirty || draft.state().pending)};
 }

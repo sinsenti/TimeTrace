@@ -24,6 +24,13 @@ def get_agenda_page(request: Request):
     return templates.TemplateResponse(request=request, name="agenda.html", context={"active_page": "agenda"})
 
 
+@router.get("/timer-settings")
+def get_timer_settings_page(request: Request):
+    return templates.TemplateResponse(
+        request=request, name="timer_settings.html", context={"active_page": "timer_settings"}
+    )
+
+
 @router.get("/weekly-review-view")
 def get_weekly_review_page(request: Request):
     return templates.TemplateResponse(

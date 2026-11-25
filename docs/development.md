@@ -139,6 +139,14 @@ frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserv
 The [#59 final repair ledger](timer-workspace-final-repair-59.md) distinguishes the five repairs from
 prior Standards/Spec results and records the combined synthetic one-dataset DOM/API replay.
 
+The [approved #59 UI polish](timer-workspace-polish-59.md) moves optional controls to `/timer-settings`
+(**Focus & goals**) and mounts `components/timer_workspace_bar.html` outside each page header.
+`timer_settings.js` renders ordinary goal/reporting/focus forms over the existing controllers;
+`workspace_summary.js` presents authoritative union accounting without recomputing it. Agenda keeps
+its selected current card, B-style signed corrections and a collapsed, independently saved work note.
+Urgent focus actions/notices and operation/idle recovery remain available outside settings. Prototype
+scripts are design references only, never production page dependencies.
+
 ### Implementation notes and historical adoption checkpoints
 
 The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording
@@ -966,7 +974,7 @@ local start day, never midnight clipping.
 ### Independent timers (Agenda #4)
 
 See [the concrete timer contract/runbook](timer-v2-contract.md#implemented-4-interface-and-recovery-runbook).
-Agenda, Calendar and the shared navbar list independent timers from the server. Start selects an
+Agenda, Calendar and the shared timer strip list independent timers from the server. Start selects an
 assigned task's existing unfinished timer without Resume or reassociation; taskless starts remain
 independent. Pause/Resume/Stop and minimal idle-gap Claim/Discard are targeted. Still-running and
 paused buffers never enter completed totals; stopping/splitting records their positive segments.

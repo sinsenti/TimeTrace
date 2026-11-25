@@ -13,6 +13,9 @@ test('Calendar shows only uncommitted exact coverage, never bridges pause gaps',
     assert.equal(events[0].end,'2026-01-01T10:30:00Z');
     assert.match(events[0].title,/LIVE.*paused.*Example.*note/);
     assert.equal(events[0].editable,false);
+    assert.equal(events[0].extendedProps.taskTitle,'Example');
+    assert.equal(events[0].extendedProps.notes,'note');
+    assert.equal(events[0].extendedProps.timerState,'paused');
 });
 test('a status started during Stop cannot restore live work after ACK while replacement GET hangs', async () => {
     let release;

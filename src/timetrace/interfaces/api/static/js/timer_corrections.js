@@ -27,8 +27,16 @@ function correctionTargets(timer, saved = []) {
     }
     return result;
 }
-function correctionPresentation(envelope) {
+function correctionPresentation(envelope,options={}) {
     const plan = envelope.plan || envelope;
+    if(options.human){
+        const zone=options.timeZone||envelope.request?.change?.timezone||Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const date=value=>{const instant=new Date(value);return Number.isFinite(instant.getTime())?instant.toLocaleString(undefined,{timeZone:zone,year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}):'Unavailable';};
+        const rows=value=>(Array.isArray(value)?value:[value]).filter(Boolean).map(row=>`${date(row.start_utc)} → ${date(row.end_utc)}`).join('\n');
+        const minutes=value=>(Number(value)/60).toLocaleString(undefined,{maximumFractionDigits:3});
+        const effect=plan.action==='exclude'?`${minutes(plan.removed_seconds)} minutes of selected work removed. Already excluded pause/gap: ${minutes(plan.already_uncredited_seconds)} minutes. Unselected coverage is unchanged.`:`${minutes(plan.duration_seconds)} minutes retained at the preview cutoff.`;
+        return `Before\n${rows(plan.before)}\n\nAfter\n${rows(plan.after)}\n\n${effect}\n`+[...new Set([...(envelope.warnings||[]),...(plan.warnings||[])])].join('\n')+'\nLater recording is not included in this preview. Paused timers stay paused; schedules are unchanged.';
+    }
     const intervals = value => (Array.isArray(value) ? value : [value]).map(row=>`${row.source_segment_id || 'actual interval'} → ${row.segment_id || 'same identity'}: ${row.start_utc} — ${row.end_utc}`).join('\n');
     const change=envelope.request?.change;
     const local=change?.timezone ? `Signed local context: ${change.timezone}; ${change.local_datetime || change.start_local_datetime} (UTC offset ${change.offset_seconds ?? change.start_offset_seconds}s)${change.end_local_datetime ? ` — ${change.end_local_datetime} (UTC offset ${change.end_offset_seconds}s)` : ''}.\n` : '';
@@ -38,26 +46,46 @@ function correctionPresentation(envelope) {
 }
 function mountTimeCorrections({document,control,api,conflicts = () => false}) {
     const dialog=document.createElement('dialog'); dialog.id='timer-correction-dialog'; dialog.setAttribute('role','dialog');
-    const heading=document.createElement('h2'); heading.id='timer-correction-title'; heading.textContent='Adjust actual credited work'; dialog.setAttribute('aria-labelledby',heading.id);
-    const context=document.createElement('p'), choices=document.createElement('fieldset');
-    const legend=document.createElement('legend'); legend.textContent='Explicit actual interval selection (not schedules)'; choices.append(legend);
-    const fields=document.createElement('div'); fields.className='correction-fields';
-    const inputs={};
-    for (const [key,label,type] of [['kind','Adjustment','select'],['timezone','IANA timezone','text'],['start','Local start date and time','text'],['startOffset','Start UTC offset (e.g. -04:00)','text'],['end','Local exclusion end date and time','text'],['endOffset','End UTC offset (e.g. -05:00)','text']]) {
-        const wrap=document.createElement('label'); wrap.textContent=label;
-        const input=document.createElement(type==='select'?'select':'input'); if(type!=='select')input.type=type;
-        if(type==='select') for(const [value,text] of [['set_start','Move the selected actual start'],['exclude','Exclude an exact interval from selected work']]) {const option=document.createElement('option');option.value=value;option.textContent=text;input.append(option);}
-        inputs[key]=input; wrap.append(input); fields.append(wrap);
+    const heading=document.createElement('h2');heading.id='timer-correction-title';heading.textContent='Adjust recorded time';dialog.setAttribute('aria-labelledby',heading.id);
+    const introduction=document.createElement('p');introduction.textContent='Change recorded work only. Plans stay unchanged; paused timers stay paused.';
+    const context=document.createElement('p'),choices=document.createElement('fieldset');
+    const legend=document.createElement('legend');legend.textContent='Which work interval?';choices.append(legend);
+    const advanced=document.createElement('details'),advancedLabel=document.createElement('summary');advancedLabel.textContent='Advanced time settings & technical details';advanced.append(advancedLabel,context);
+    const advancedFields=document.createElement('div');advanced.append(advancedFields);
+    const fields=document.createElement('div');fields.className='correction-fields';
+    const inputs={},dateFields={};
+    for(const [key,label,type] of [['kind','What would you like to do?','select'],['timezone','Time zone (IANA name)','text'],['start','Exact start value','text'],['startOffset','Start UTC offset (e.g. -04:00)','text'],['end','Exact break-end value','text'],['endOffset','End UTC offset (e.g. -05:00)','text']]){
+        const wrap=document.createElement('label');wrap.textContent=label;const input=document.createElement(type==='select'?'select':'input');if(type!=='select')input.type=type;
+        if(type==='select')for(const [value,text] of [['set_start','Change start time'],['exclude','Remove a break']]){const option=document.createElement('option');option.value=value;option.textContent=text;input.append(option);}
+        inputs[key]=input;wrap.append(input);(key==='kind'?fields:advancedFields).append(wrap);
+        if(key==='start'||key==='end'){
+            const label=document.createElement('label'),caption=document.createElement('span'),display=document.createElement('input');caption.textContent=key==='start'?'New start':'Break ends';display.type='datetime-local';display.step='0.001';label.append(caption,display);fields.append(label);dateFields[key]={label,caption,display,shown:''};
+            display.addEventListener('input',()=>{if(display.value===dateFields[key].shown)return;dateFields[key].shown=display.value;input.value=display.value;input.dispatchEvent(new Event('input',{bubbles:true}));});
+        }
     }
-    const message=document.createElement('p'); message.setAttribute('role','status');
-    const preview=document.createElement('pre'); preview.className='correction-preview';
-    const actions=document.createElement('div'); actions.className='workspace-actions';
+    const message=document.createElement('p'),status=document.createElement('p');status.setAttribute('role','status');advanced.append(message);
+    const previewTitle=document.createElement('h3'),preview=document.createElement('div');preview.className='correction-preview-human';
+    const rawPreview=document.createElement('pre');rawPreview.className='correction-preview';advanced.append(rawPreview);
+    const setup=document.createElement('div');setup.className='correction-setup-actions';
+    const actions=document.createElement('div');actions.className='workspace-actions';
     function button(text,fn){const b=document.createElement('button');b.type='button';b.textContent=text;b.addEventListener('click',fn);actions.append(b);return b;}
-    let owner=null, generation=0;
-    function update(){const state=control.snapshot();dialog.setAttribute('aria-busy',String(Boolean(owner?.busy || state.pending)));for(const input of [...Object.values(inputs),...choices.querySelectorAll('input')])input.disabled=!owner;const blocked=state.pending || Boolean(state.receipt && state.receipt.outcome!=='acknowledged'); apply.disabled=!owner?.approved || owner.busy || blocked; request.disabled=!owner || Boolean(owner.busy)||blocked; initialize.disabled=blocked;discard.disabled=!owner || blocked;reload.disabled=!owner || blocked || Boolean(owner.busy);}
+    let owner=null,generation=0;
+    function update(){
+        const state=control.snapshot();dialog.setAttribute('aria-busy',String(Boolean(owner?.busy||state.pending)));
+        for(const input of [...Object.values(inputs),...choices.querySelectorAll('input')])input.disabled=!owner;
+        for(const key of ['start','end']){const {display}=dateFields[key];display.disabled=inputs[key].disabled;if(document.activeElement!==display){display.value=inputs[key].value.replace(/(\.\d{3})\d+/,'$1');dateFields[key].shown=display.value;}}
+        dateFields.start.caption.textContent=inputs.kind.value==='exclude'?'Break starts':'New start';dateFields.end.label.hidden=inputs.kind.value!=='exclude';advancedFields.hidden=fields.hidden;
+        const blocked=state.pending||Boolean(state.receipt&&state.receipt.outcome!=='acknowledged');apply.disabled=!owner?.approved||owner.busy||blocked;request.disabled=!owner||Boolean(owner.busy)||blocked;initialize.disabled=blocked;discard.disabled=!owner||blocked;reload.disabled=!owner||blocked||Boolean(owner.busy);
+        const text=message.textContent,needsInitialization=text.startsWith('Preview refused:')&&text.includes('initialization is required');
+        const initializationTarget=needsInitialization?setup:advanced;if(initialize.parentElement!==initializationTarget)initializationTarget.append(initialize);
+        const reloadTarget=text.startsWith('Initialization acknowledged.')?setup:advanced;if(reload.parentElement!==reloadTarget)reloadTarget.append(reload);
+        status.textContent=needsInitialization?'Enable time adjustments once before the first edit. This does not change your times.':text.startsWith('Initialization acknowledged.')?'Time adjustments enabled. Refresh intervals, then preview your edit.':text.startsWith('Target identities/revisions reloaded.')?'Intervals refreshed. Your dates are unchanged; select the interval and preview again.':text.startsWith('Enter complete dates')?'Choose the new time, then preview the change.':text.startsWith('Input changed.')?'Your edit changed. Preview again before applying.':text.startsWith('Review exact signed')?'Check the before and after, then apply.':text.startsWith('Preview refused:')?'Cannot preview this edit. Review the reason and time-zone choices in Advanced; no change applied.':text.startsWith('Cannot load explicit target')?'Could not load this work interval. No action sent; details are in Advanced.':text;
+        if(text.startsWith('Preview refused:')&&!needsInitialization||text.startsWith('Cannot load explicit target'))advanced.open=true;
+        previewTitle.hidden=!preview.textContent;previewTitle.textContent=owner?.approved?'Preview — review before applying':'Previous preview — request a new preview before applying';
+    }
     function invalidate(){if(owner){owner.approved=null;owner.dirty=true;owner.inputVersion=(owner.inputVersion||0)+1;if(owner.phase==='preview'){owner.busy=false;owner.phase=null;}generation++;message.textContent='Input changed. Request and review a new signed preview; prior preview is not approved.';update();}}
     for(const input of Object.values(inputs))input.addEventListener('input',invalidate);
-    const reload=button('Refresh target metadata (keep dates)',async()=>{
+    const reload=button('Refresh intervals',async()=>{
         const captured=owner,read=++generation;
         if(!captured)return;
         const selected=new Set([...choices.querySelectorAll('input:checked')].map(input=>targetKey(captured.candidates[+input.value].target)));
@@ -72,8 +100,8 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
         }catch(error){if(owner===captured && read===generation)message.textContent=`Target refresh failed: ${error.message}. Draft and old display retained; no approval.`;}
         finally{if(owner===captured && read===generation){captured.busy=false;captured.phase=null;update();}}
     });
-    const initialize=button('Initialize correction safety explicitly',async()=>{try{const ok=await control.initializeCorrections();message.textContent=ok?'Initialization acknowledged. Refresh target metadata, select actual intervals, then request a preview explicitly.':control.snapshot().message;}catch(error){message.textContent=error.message;}update();});
-    const request=button('Preview (no write)',async()=>{
+    const initialize=button('Enable time adjustments',async()=>{try{const ok=await control.initializeCorrections();message.textContent=ok?'Initialization acknowledged. Refresh target metadata, select actual intervals, then request a preview explicitly.':control.snapshot().message;}catch(error){message.textContent=error.message;}update();});
+    const request=button('Preview changes',async()=>{
         const captured=owner, read=++generation; captured.phaseId=(captured.phaseId||0)+1;captured.busy=true;captured.phase='preview';captured.approved=null;update();
         try {
             const selected=[...choices.querySelectorAll('input:checked')].map(input=>captured.candidates[+input.value].target);
@@ -82,14 +110,14 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
             const target=selected.length===1?selected[0]:{kind:'selection',targets:selected};
             const approved=await control.previewCorrection(captured.resource,{target,change});
             if(owner!==captured || read!==generation)return;
-            const description=correctionPresentation(approved); captured.approved=approved; preview.textContent=description;message.textContent='Review exact signed intervals and warnings, then explicitly apply. Every selected interval must retain positive work; complete removal is unsupported. No clamping or spill.';
+            captured.approved=approved;rawPreview.textContent=correctionPresentation(approved);preview.textContent=correctionPresentation(approved,{human:true});message.textContent='Review exact signed intervals and warnings, then explicitly apply. Every selected interval must retain positive work; complete removal is unsupported. No clamping or spill.';
         }catch(error){if(owner===captured && read===generation)message.textContent=`Preview refused: ${error.message}. No mutation sent. Draft and previous display retained. Initialize explicitly if requested; review idle time in the shared timer region if frozen.`;}
         finally{if(owner===captured && read===generation){captured.busy=false;captured.phase=null;update();}}
     });
-    const apply=button('Apply this signed preview',async()=>{
+    const apply=button('Apply changes',async()=>{
         const captured=owner;
         if(!captured?.approved)return;
-        if(conflicts(captured)){message.textContent='Conflicting note/work draft: explicitly save, discard or review it before applying. Your typing has not been changed.';return;}
+        if(conflicts(captured)){message.textContent='Conflicting note/work draft: explicitly save, discard or review it before applying. Your typing has not been changed.';update();return;}
         const inputVersion=captured.inputVersion||0,phase=captured.phaseId=(captured.phaseId||0)+1;
         captured.submittedVersion=inputVersion;
         captured.busy=true;captured.phase='commit';update();
@@ -103,17 +131,17 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
         }catch(error){if(owner===captured && captured.phaseId===phase)message.textContent=error.message;}
         finally{if(owner===captured && captured.phaseId===phase){captured.busy=false;captured.phase=null;update();}}
     });
-    const discard=button('Discard adjustment draft',()=>{
+    const discard=button('Discard draft',()=>{
         const state=control.snapshot();
-        if(state.pending || (state.receipt && state.receipt.outcome!=='acknowledged')){message.textContent='Finish the saved operation before discarding this adjustment draft.';return;}
+        if(state.pending || (state.receipt && state.receipt.outcome!=='acknowledged')){message.textContent='Finish the saved operation before discarding this adjustment draft.';update();return;}
         if(owner){owner.approved=null;owner.dirty=false;owner.busy=false;owner.phase=null;}generation++;
         dialog.close();
     });
-    button('Close (keep adjustment draft)',()=>dialog.close());
+    button('Close (keep draft)',()=>dialog.close());
     dialog.addEventListener('close',()=>{generation++;if(owner)owner.busy=false;update();});
     document.defaultView?.addEventListener('beforeunload',event=>{if(owner?.dirty){event.preventDefault();event.returnValue='';}});
-    const review=document.createElement('a');review.href='#multiple_timers';review.textContent='Review idle time or saved operation in shared timer controls';review.addEventListener('click',()=>dialog.close());
-    dialog.append(heading,context,choices,fields,message,preview,review,actions);document.body.append(dialog);
+    const review=document.createElement('a');review.href='#multiple_timers';review.textContent='Review idle time or saved operation in shared timer controls';review.addEventListener('click',()=>{dialog.close();const expander=document.querySelector('[data-timer-expander]');if(expander)expander.open=true;});
+    advanced.append(review);dialog.append(heading,introduction,choices,fields,status,setup,previewTitle,preview,actions,advanced);document.body.append(dialog);
     const targetKey=target=>target.kind+':'+(target.work_id||target.segment_id);
     async function loadCandidates(resource,timer) {
         if(resource.startsWith('/recorded-work/')) {
@@ -124,14 +152,17 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
         const saved=await Promise.all((timer.segments||[]).filter(s=>s.recorded_work_id).map(s=>api.get(`/recorded-work/${encodeURIComponent(s.recorded_work_id)}`)));
         return {candidates:correctionTargets(timer,saved),subject:timer,timerId:timer.id};
     }
+    const choiceDiagnostics=document.createElement('pre');advanced.append(choiceDiagnostics);
+    function choiceTime(value){const instant=new Date(value);if(!Number.isFinite(instant.getTime()))return 'Unknown time';try{return instant.toLocaleString(undefined,{timeZone:inputs.timezone.value||undefined,month:'short',day:'numeric',year:'numeric',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'});}catch(_){return instant.toISOString();}}
     function renderChoices(captured,selected) {
+        choiceDiagnostics.textContent=JSON.stringify(captured.candidates.map(c=>({target:c.target,start:c.start,end:c.end,task_id:c.context.task_id,scheduled_session_id:c.context.scheduled_session_id,source:c.context.provenance})),null,2);
         for(const node of [...choices.children].slice(1))node.remove();
         let initial=null;
         captured.candidates.forEach((candidate,index)=>{
             const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.value=String(index);input.checked=selected.has(targetKey(candidate.target));
             if(input.checked)initial=candidate;
             input.addEventListener('change',invalidate);
-            label.append(input,document.createTextNode(`${JSON.stringify(candidate.target)} · ${candidate.start} — ${candidate.end||'recording'} · source ${candidate.context.provenance||'timer buffer'} · task ${candidate.context.task_id||'taskless'} · plan ${candidate.context.scheduled_session_id||'none'} · ${candidate.context.notes||'no work note'}`));choices.append(label);
+            label.append(input,document.createTextNode(`${choiceTime(candidate.start)} — ${candidate.end?choiceTime(candidate.end):'Now (recording)'}${candidate.context.notes?' · '+candidate.context.notes:''}`));choices.append(label);
         });
         return initial;
     }
@@ -177,7 +208,7 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
             inputs.kind.value='set_start';inputs.timezone.value=Intl.DateTimeFormat().resolvedOptions().timeZone;
             if(initial){const start=local(initial.start,inputs.timezone.value),end=local(initial.end||new Date().toISOString(),inputs.timezone.value);inputs.start.value=start.date;inputs.startOffset.value=start.offset;inputs.end.value=end.date;inputs.endOffset.value=end.offset;}
             else for(const key of ['start','startOffset','end','endOffset'])inputs[key].value='';
-            fields.hidden=Boolean(change); preview.textContent='';message.textContent=change?`${change.credited_delta_seconds>0?'Add':'Remove'} five credited minutes on the explicitly checked actual interval, by moving its start. Preview required.`:'Enter complete dates, IANA zone and explicit offsets. Repeated DST hours require your offset choice; gaps are refused by the server.';
+            fields.hidden=Boolean(change);preview.textContent='';rawPreview.textContent='';message.textContent=change?`${change.credited_delta_seconds>0?'Add':'Remove'} five credited minutes on the explicitly checked actual interval, by moving its start. Preview required.`:'Enter complete dates, IANA zone and explicit offsets. Repeated DST hours require your offset choice; gaps are refused by the server.';
             update();if(!dialog.open)dialog.showModal();
         }catch(error){if(read!==generation)return;message.textContent=`Cannot load explicit target ${resource}: ${error.message}. No approval; no action sent.`;update();if(!dialog.open)dialog.showModal();}
     },dialog};

@@ -300,7 +300,8 @@ function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
         'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension',
-        'unfinished', 'pin-status', 'pins', 'activities', 'search', 'filter-tag', 'filter-note']) p.element(`agenda-${suffix}`);
+        'unfinished', 'pin-status', 'pins', 'activities', 'search', 'filter-tag', 'filter-note', 'help-open', 'help', 'inspector-panel', 'columns']) p.element(`agenda-${suffix}`);
+    p.elements.get('agenda-progress').ownerDocument=p.context.document;
     p.context.URLSearchParams = URLSearchParams;
     p.context.crypto = require('node:crypto').webcrypto;
     p.context.confirm = () => true;
@@ -308,6 +309,7 @@ function loadFolio(p) {
     p.load('workspace_pins.js');
     p.load('workspace_history.js');
     p.load('workspace_notes.js');
+    p.load('workspace_summary.js');
     p.load('agenda.js');
     return p.run('agendaPage.refresh()');
 }
@@ -1030,7 +1032,10 @@ test('Folio shows union-based progress with explicit local-start and non-additiv
         return url === '/api/tasks?status=all' ? [] : {items:[]};
     });
     await loadFolio(p);
-    assert.match(p.elements.get('agenda-progress').children.map(el => el.textContent).join(' '), /Recorded task time.*1.5.*local record-start.*non-additive/);
+    const text=node=>[node.textContent,...node.children.map(text)].join(' ');
+    const progress=p.elements.get('agenda-progress');
+    assert.match(text(progress), /1h 30m.*recorded time/);
+    assert.match(text(progress.children[1]), /Recorded task time.*1.5.*local record-start.*non-additive/);
 });
 
 test('Folio plan context prefills task but attachment is explicit; 409 keeps work input and review is read-only', async () => {

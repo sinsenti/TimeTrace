@@ -1,7 +1,7 @@
 <div class="app-navigation">
     <a href="/dashboard" class="app-brand">TimeTrace</a>
     <nav aria-label="Main navigation">
-        {% for page, path, label in [('dashboard', '/dashboard', 'Calendar'), ('agenda', '/agenda-view', 'Agenda'), ('tasks', '/tasks', 'Tasks'), ('stats', '/stats', 'Statistics'), ('habits', '/habits-view', 'Habits'), ('revision', '/revision', 'Revision'), ('settings_ai', '/settings', 'Settings')] %}
+        {% for page, path, label in [('dashboard', '/dashboard', 'Calendar'), ('agenda', '/agenda-view', 'Agenda'), ('tasks', '/tasks', 'Tasks'), ('stats', '/stats', 'Statistics'), ('habits', '/habits-view', 'Habits'), ('revision', '/revision', 'Revision'), ('timer_settings', '/timer-settings', 'Focus & goals'), ('settings_ai', '/settings', 'Settings')] %}
         <a href="{{ path }}" {% if page == 'settings_ai' %}onclick="return followSettingsLink(event)"{% endif %} {% if active_page == page %}aria-current="page"{% endif %}>{{ label }}</a>
         {% endfor %}
     </nav>
@@ -21,33 +21,3 @@
     <span id="vim_mode_indicator" class="vim-mode-indicator" role="status" aria-live="polite" aria-label="Vim keyboard mode">-- NORMAL --</span>
     {% endif %}
 </div>
-<section id="multiple_timers" aria-label="Independent timers" class="multiple-timers">
-    <div class="multiple-timer-row">
-        <label>Task <select data-timer-task aria-label="Timer task"><option value="">Unassigned</option></select></label>
-        <label><input type="checkbox" data-timer-idle checked> Pause when idle</label>
-        <button type="button" data-timer-start disabled>Start timer</button>
-        <button type="button" data-timer-refresh>Refresh timers</button>
-    </div>
-    <p data-timer-message role="status" aria-live="polite"></p>
-    <div data-timer-list></div>
-    <section data-idle-review aria-label="Per-timer idle review" hidden>
-        <h2>Review idle gaps</h2>
-        <p>Choose each gap independently. Claim adds only the observed absence as work; Discard excludes it.
-            Leave unresolved changes nothing. Resolved timers remain paused until explicit Resume.</p>
-        <div data-idle-review-list></div>
-        <button type="button" data-idle-apply disabled>Apply selected decisions</button>
-    </section>
-</section>
-<section data-personal-goals aria-label="Personal summed-work goals" class="personal-goals"></section>
-<script defer src="/static/js/personal_goals.js?v=goals64"></script>
-<style>.personal-goals{max-width:1180px;margin:.7rem auto;padding:0 1rem;box-sizing:border-box;font-size:.85rem}[data-work-assignment]{padding:0 1rem;margin:.7rem auto;box-sizing:border-box}.personal-goals input,.personal-goals select,[data-work-assignment] input,[data-work-assignment] select{max-width:100%}.goal-chip{display:inline-block;margin:.3rem .7rem .3rem 0}.personal-goals details{margin:.4rem 0}.personal-goals button,[data-work-assignment] button{margin:.3rem}.personal-goals input[type=number]{width:7rem}</style>
-<section data-work-assignment aria-label="Optional saved work assignment" hidden style="max-width:100%;overflow-wrap:anywhere"></section>
-<script defer src="/static/js/multiple_timers.js?v=focus63"></script>
-<script defer src="/static/js/work_assignment.js?v=goals64"></script>
-<script defer src="/static/js/timer_focus.js?v=focus63"></script>
-<style>.focus-actions,.focus-settings{display:flex;flex-wrap:wrap;gap:.65rem;align-items:center}.focus-settings label{display:flex;gap:.4rem;align-items:center}.focus-settings input[type=number]{width:5rem}.timer-focus-panel{max-width:100%;overflow-wrap:anywhere;border-top:1px solid #64748b;padding:.75rem;margin-top:.75rem}.focus-settings p{flex-basis:100%}</style>
-<link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
-{% include "components/idle_resolution_modal.html" %}
-{% if active_page == 'settings_ai' or (active_page == 'tasks' and task_id is not defined) %}
-<script defer src="/static/js/timer_control.js?v=timers4"></script>
-{% endif %}
