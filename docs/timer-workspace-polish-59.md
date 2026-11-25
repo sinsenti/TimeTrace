@@ -43,15 +43,39 @@ historical verification receipts.
 
 ## Verification
 
-Candidate verification is in progress; do not interpret prototype approval as deployment.
+Final gates on implementation + repair commit `823c279`:
+
+- **Python: 1,236 passed**, 1,694 warnings, 22m23s; safe-path mode, external test DB/HOME,
+  native sends disabled. Unit tests retain their synthetic idle observation; the separate browser
+  daemon has actual OS idle observation disabled.
+- **Node: 916 passed**, zero failures. Changed production JavaScript and the manual browser probe
+  pass `node --check`.
+- Scoped Ruff passes for the router and changed Python tests; full Ruff retains exactly **17
+  inherited findings**. Whitespace checks pass.
+- Four guarded real-browser cases pass: note ACK, date precision, task names/selection ownership,
+  and actual live Calendar labelling. Additional integrated checks are listed below.
+
 The first complete Python run passed 1,235 tests and failed one obsolete hard-coded asset-version
-assertion. That fixture is updated to test one versioned controller on every route, including the
-new settings page. An earlier run incorrectly disabled synthetic idle observation; that environment
-was corrected. Two 600-second limits were insufficient for the process/crash matrices; the complete
-run took 22m25s, with individual subprocess matrix cases around 28s. Final gate results and independent
-Standards/Spec review will be recorded before delivery. Current Node gate: **914 passed**.
-The corrected recovery/page HTTP suites: **33 passed**. Full Ruff has the same **17 inherited**
-findings; scoped Python lint and changed-JS syntax checks are separate gates.
+assertion. The corrected fixture tests one versioned controller on every route, including settings;
+its recovery/page suites passed 33 tests before the final all-green run. An earlier environment
+incorrectly disabled synthetic idle observation; it was corrected. Two 600-second limits were
+insufficient for the process/crash matrices, whose individual subprocess cases take around 28s.
+These interrupted/initial runs are not represented as passing gates.
+
+### Independent review
+
+- **Standards:** no documented-standard violations; two P2 judgement notes: copy-derived status
+  presentation and duplicated task-option replacement. These are recorded maintainability follow-ups,
+  not correctness blockers; this delivery does not broaden the controller/metadata interfaces to
+  address them.
+- **Spec:** two findings, both repaired in `823c279`: primary selected-timer navigation now shares
+  the existing dirty-editor confirmation guard; legacy timers retain secondary, named disclosure
+  of prospective unknown-history warning anchors. Both regression tests failed before their fixes.
+  The independent Spec reviewer rechecked both repairs and found no residual issue in that scope.
+
+Initial review counts remain Standards **2 notes**, Spec **2 findings**; do not relabel the initial
+review as zero findings. Implementation is committed on `feat/timer-workspace-polish-59`; this is
+not a claim of merge, deployment or manual platform acceptance.
 
 Actual application verification uses port **18128**, external DB/HOME/TMPDIR under
 `/tmp/timetrace-polish-browser-*`, native delivery and OS idle observation disabled, and AI routes
