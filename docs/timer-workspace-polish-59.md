@@ -146,3 +146,39 @@ blur; **Spec 0 findings**. No additional baseline smells were identified. The ea
 maintainability notes remain separately recorded. The previous 1,236/916 gates above remain frozen
 historical results. This follow-up is still local to the implementation branch, not merged/deployed
 to the personal daemon.
+
+## Owner-approved direct clock ±5 follow-up
+
+The owner then asked why clock minus opened the editor instead of applying directly, and requested
+seeing the explanation once rather than on every click. The owner requested full implementation
+of the agreed change: one remembered explanation, subsequent direct ±5 clicks, invalid adjustments
+refused without clamping, and previews retained for full **Adjust time**. This explicitly supersedes
+the earlier per-click human preview requirement **for clock ±5 only**; server signing, CAS, receipt
+hashes and exact interval/idle/lineage rules are unchanged.
+
+`createQuickTimeAdjustments` stores only an accepted explanation preference in browser-local
+storage, scoped to this TimeTrace origin. Each click captures the selected timer/revision and exact
+running or manual-pause interval, obtains a signed preview, verifies its revision/target/delta and
+checks current selection generation/drafts before committing through the original journal.
+Concurrent clicks are not queued. Frozen/ambiguous/stale targets and dirty editors refuse; other
+intervals are never substituted. One-time initialization is explicitly covered by the explanation;
+fresh authoritative state must show only that initialization before the original intent continues.
+A finalized own ACK remains usable if its display read hangs. Unknown writes hold the original
+receipt; read-only recovery updates the quick result without issuing another correction.
+
+Twelve public-controller regressions cover remembered consent/reload, Cancel/storage failure,
+server refusal/current paused identity, stale signed revisions, duplicate clicks, A→B→A selection,
+new typing, preparation races and ACK/uncertainty/recovery behavior. Actual fresh production-app
+checks use a second isolated server on **18129**, not the owner's existing 18128 preview: first
+explanation, automatic initialization, repeated direct running/paused steps and reload, refusal of
+an under-five-minute subtraction without changing its timestamps, full editor preview/disabled
+Apply preservation, and a deliberately dropped actual correction response recovered with one GET
+and exactly one correction POST. Six-digit starts, creation anchor, note, other timer and associated
+plan were preserved. Pre-Start plan creation revision 1 is not the correct baseline: the immutable
+Start receipt establishes its reservation revision 2. GET-only focus enrichment was also excluded
+from comparison against raw POST output. Those initial over-broad probe comparisons were corrected,
+not represented as passing checks. Native Cancel was not claimed: the first dialog was already
+accepted before the dismissal command; deterministic controller tests cover Cancel.
+
+Final full gates and independent review for this latest follow-up remain pending. Previous gates
+above remain historical, not a claim about the new direct controls.

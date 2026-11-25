@@ -14,7 +14,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
     try { selectedTimerId = storage.getItem('timetrace_timer_selected') || null; } catch (_) { /* Display preference only. */ }
     let observedAt = null;
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, observed_at:observedAt});
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, selectionGeneration, observed_at:observedAt});
     const publish = () => {
         const state = snapshot();
         onState(state);
@@ -190,7 +190,7 @@ function renderTimerWorkspaceCard(root, state, control) {
         const node = root.ownerDocument.createElement(tag); node.textContent = text; return node;
     };
     const timer = state.timers.find(timer => timer.id === state.selectedTimerId);
-    const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
+    const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), Boolean(control?.hasQuickAdjustmentPending?.()), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
     if (root.dataset.workspaceSignature === signature && timer) {
         root.querySelector('.workspace-clock').firstChild.textContent = timerWorkspaceClock(timer, state.fresh);
         return;
@@ -214,9 +214,9 @@ function renderTimerWorkspaceCard(root, state, control) {
         const target = timer.state === 'running' ? {start_time:timer.running_start} : (timer.segments || []).find(s=>s.id === timer.manual_pause_note_segment_id && !s.recorded_work_id);
         for (const [symbol,delta] of [['−',-300],['+',300]]) {
             const step=create('button',symbol); step.type='button'; step.className='correction-step';
-            step.title=`${delta > 0 ? 'Add' : 'Remove'} five credited minutes by moving the start of ${target?.start_time || 'an explicitly selected actual interval'} ${delta > 0 ? 'earlier' : 'later'}; preview before applying.`;
+            step.title=`${delta > 0 ? 'Add' : 'Remove'} five credited minutes by moving the start of ${target?.start_time || 'an explicitly selected actual interval'} ${delta > 0 ? 'earlier' : 'later'}; applies directly after the one-time explanation.`;
             step.setAttribute('aria-label',step.title);
-            step.disabled=blocked || !target?.start_time;
+            step.disabled=blocked || Boolean(control?.hasQuickAdjustmentPending?.()) || !target?.start_time;
             step.addEventListener('click',()=>control.correctTime(timer,{kind:'step_start',credited_delta_seconds:delta})); clock.append(step);
         }
         const adjust=create('button','Adjust time'); adjust.type='button'; adjust.disabled=blocked;
@@ -264,7 +264,7 @@ if (typeof window !== 'undefined') {
         for (const event of ['pointerdown', 'keydown', 'focusin']) document.addEventListener(event, () => { interaction++; }, true);
         const startFocus = createTimerStartFocus({interaction:()=>interaction,
             guarded:()=> Boolean(document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]')) ||
-                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) || Boolean(window.multipleTimers?.hasFocusDraft?.()) ||
+                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) || Boolean(window.multipleTimers?.hasFocusDraft?.()) || Boolean(window.multipleTimers?.hasQuickAdjustmentPending?.()) ||
                 (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts()),
             focus:()=> {
                 if (!currentCard) {

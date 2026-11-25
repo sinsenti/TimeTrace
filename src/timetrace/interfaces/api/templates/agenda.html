@@ -15,7 +15,7 @@
     </header>
     {% include "components/timer_workspace_bar.html" %}
     <main class="folio" id="agenda-workspace">
-        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><details data-current-note><summary>Work note</summary><div id="workspace-current-note"></div></details></section>
+        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><p data-quick-time-status role="status" aria-live="polite" hidden></p><details data-current-note><summary>Work note</summary><div id="workspace-current-note"></div></details></section>
         <div id="agenda-unfinished"></div>
         <header class="folio-masthead">
             <h1>Activity</h1>
@@ -94,7 +94,7 @@
     <script src="/static/js/workspace_notes.js?v=feedback59-3"></script>
     <script src="/static/js/workspace_pins.js"></script>
     <script src="/static/js/workspace_history.js"></script>
-    <script src="/static/js/timer_corrections.js?v=polish59-rc2"></script>
+    <script src="/static/js/timer_corrections.js?v=quick59-2"></script>
     <script src="/static/js/workspace_shortcuts.js"></script>
     <script src="/static/js/workspace_summary.js?v=polish59-rc2"></script>
     <script src="/static/js/agenda.js?v=feedback59-3"></script>

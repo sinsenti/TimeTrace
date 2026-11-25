@@ -144,6 +144,11 @@ The [approved #59 UI polish](timer-workspace-polish-59.md) moves optional contro
 `timer_settings.js` renders ordinary goal/reporting/focus forms over the existing controllers;
 `workspace_summary.js` presents authoritative union accounting without recomputing it. Agenda keeps
 its selected current card, B-style signed corrections and a collapsed, independently saved work note.
+The owner subsequently approved one browser/origin explanation for clock ±5, followed by direct
+quick clicks: `createQuickTimeAdjustments` still obtains and verifies each signed preview before
+committing through the shared receipt funnel. Full **Adjust time** retains human preview/Apply.
+The quick controller fences selection generations, revisions, current interval identity and drafts;
+it never clamps an invalid subtraction, resumes a paused timer or replays an uncertain operation.
 Urgent focus actions/notices and operation/idle recovery remain available outside settings. Prototype
 scripts are design references only, never production page dependencies. Saved-entry notes refresh
 quietly on open/focus and while visible, without replacing typing or rebasing uncertain writes.

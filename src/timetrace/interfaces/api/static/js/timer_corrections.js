@@ -44,6 +44,71 @@ function correctionPresentation(envelope,options={}) {
         (plan.action === 'exclude' ? `Removed selected work: ${plan.removed_seconds}s; already uncredited pause/gap: ${plan.already_uncredited_seconds}s; unselected coverage unchanged: ${plan.unselected_covered_seconds}s.\n` : `Retained credited duration at cutoff: ${plan.duration_seconds}s.\n`) +
         [...new Set([...(envelope.warnings || []),...(plan.warnings || [])])].join('\n') + '\nIf recording continues after this cutoff, that later work is not included in this preview. Paused/frozen states are not resumed; schedules are not changed.';
 }
+function createQuickTimeAdjustments({control,storage,confirm,onState=()=>{},conflicts=()=>false}) {
+    const key='timetrace_quick_time_adjustments_v1';let pending=false,message='',binding=null;
+    const snapshot=()=>({pending,message}),publish=()=>onState(snapshot());
+    function targetOf(timer){
+        if(timer.state==='running'&&timer.running_start&&timer.running_segment_id)return {kind:'running',segment_id:timer.running_segment_id};
+        const segment=timer.state==='paused'&&(timer.segments||[]).find(s=>s.id===timer.manual_pause_note_segment_id&&!s.recorded_work_id);
+        if(segment)return {kind:'buffered',segment_id:segment.id};
+        throw Error('No current work interval to adjust. Choose an exact interval in Adjust time.');
+    }
+    function eligible(timer){
+        const state=control.snapshot();
+        const ownACK=timer&&state.receipt?.outcome==='acknowledged'&&state.lastResult?.timer?.id===timer.id&&state.lastResult.timer.revision===timer.revision;
+        if(!timer||(!state.fresh&&!ownACK)||state.pending||(state.receipt&&!ownACK))throw Error('Refresh or recover the saved timer operation before adjusting time.');
+        if(timer.state==='frozen'||(timer.idle_gaps||[]).some(g=>!g.decision))throw Error('Review idle time before adjusting this timer.');
+        if(conflicts(timer))throw Error('Save or discard your open edits before using the quick adjustment.');
+    }
+    function reconcile(){
+        const result=control.snapshot().lastResult;
+        if(pending||!binding?.id||result?.operation_id!==binding.id||!result.correction)return false;
+        message=binding.message;binding=null;publish();return true;
+    }
+    return {snapshot,reconcile,async adjust(clicked,delta){
+        if(pending)return false;pending=true;message='Checking five-minute adjustment…';publish();
+        try{
+            if(![300,-300].includes(delta))throw Error('Quick adjustments must be exactly five minutes.');
+            let state=control.snapshot(),timer=state.timers.find(t=>t.id===clicked.id);const selection=state.selectionGeneration;
+            eligible(timer);
+            if(state.selectedTimerId!==clicked.id||timer.revision!==clicked.revision)throw Error('The selected timer changed. Click again after reviewing it.');
+            if(storage.getItem(key)!=='accepted'){
+                if(!await confirm('Enable quick five-minute adjustments? + adds credited work by moving the current interval’s start earlier; − removes work by moving it later. This click will apply after validation. Future clicks apply directly. Invalid adjustments are refused, never clamped. Timers are not resumed and plans stay unchanged. One-time safe preparation may be needed.')){message='Cancelled. No time changed.';return false;}
+                storage.setItem(key,'accepted');
+            }
+            const resource=`/timers/${encodeURIComponent(timer.id)}`;
+            const unchanged=()=>{const next=control.snapshot(),current=next.timers.find(t=>t.id===timer.id);eligible(current);if(next.selectedTimerId!==timer.id||next.selectionGeneration!==selection||current.revision!==timer.revision)throw Error('The timer changed. Review it and click again.');return next;};
+            function geometry(value){return JSON.stringify([value.state,value.task_id,value.scheduled_session_id,value.notes,value.tags,value.pause_when_idle,value.mode,value.target_minutes,value.running_start,(value.segments||[]).map(s=>[s.start_time,s.end_time,s.notes,s.task_id,s.tags,s.scheduled_session_id,s.recorded_work_id]),value.idle_gaps]);}
+            async function prepare(){
+                const before=unchanged(),fingerprint=geometry(timer);
+                if(!Number.isInteger(before.revision))throw Error('Refresh timer status before enabling quick adjustments.');
+                message='Preparing safe time adjustments…';publish();
+                if(!await control.initializeCorrections())throw Error(control.snapshot().message||'Preparation not confirmed. Check the saved operation before adjusting time.');
+                await control.refresh();const next=control.snapshot(),current=next.timers.find(t=>t.id===timer.id);eligible(current);
+                if(next.selectedTimerId!==timer.id||next.selectionGeneration!==selection||next.revision!==before.revision+1||geometry(current)!==fingerprint)throw Error('Timer state changed during preparation. No time adjustment applied; review it and click again.');
+                timer=current;
+            }
+            unchanged();
+            if(timer.state==='running'&&timer.running_start&&!timer.running_segment_id)await prepare();
+            let target=targetOf(timer),preview;
+            try{preview=await control.previewCorrection(resource,{target,change:{kind:'step_start',credited_delta_seconds:delta}});}
+            catch(error){if(error.code!=='correction_initialization_required')throw error;await prepare();target=targetOf(timer);preview=await control.previewCorrection(resource,{target,change:{kind:'step_start',credited_delta_seconds:delta}});}
+            if(preview?.schema_version!==1||preview.action!=='step_start'||preview.timer_revision!==timer.revision||preview.resource!==resource||preview.request?.target?.kind!==target.kind||preview.request?.target?.segment_id!==target.segment_id||preview.request?.change?.kind!=='step_start'||preview.request.change.credited_delta_seconds!==delta)throw Error('The signed preview changed the requested interval or revision. No adjustment applied.');
+            state=control.snapshot();const current=state.timers.find(t=>t.id===timer.id);eligible(current);
+            if(state.selectedTimerId!==timer.id||state.selectionGeneration!==selection||current.revision!==timer.revision||JSON.stringify(targetOf(current))!==JSON.stringify(target))throw Error('The timer changed while checking. No adjustment applied; review it and click again.');
+            const label=timer.task_title||(timer.task_id?'Unavailable task':'Unassigned timer');
+            const start=preview.after?.start_utc?` Start: ${new Date(preview.after.start_utc).toLocaleString()}.`:'';
+            const success=`${label}: ${delta>0?'Added':'Removed'} 5 minutes.${start} ${[...new Set([...(preview.warnings||[]),...(preview.plan?.warnings||[])])].join(' ')}`;
+            const saving=control.commitCorrection(resource,preview),receipt=control.snapshot().receipt;
+            binding=receipt?.url===`${resource}/correction`?{id:receipt.payload?.operation_id,message:success}:null;
+            const ok=await saving;
+            if(ok)binding=null;
+            message=ok?success:`${label}: ${control.snapshot().message||'Adjustment not confirmed. Check the saved operation; do not repeat the click.'}`;
+            return ok;
+        }catch(error){message=error.message||'Could not adjust time. No new action sent.';return false;}
+        finally{pending=false;if(!reconcile())publish();}
+    }};
+}
 function mountTimeCorrections({document,control,api,conflicts = () => false}) {
     const dialog=document.createElement('dialog'); dialog.id='timer-correction-dialog'; dialog.setAttribute('role','dialog');
     const heading=document.createElement('h2');heading.id='timer-correction-title';heading.textContent='Adjust recorded time';dialog.setAttribute('aria-labelledby',heading.id);
@@ -211,14 +276,27 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
             fields.hidden=Boolean(change);preview.textContent='';rawPreview.textContent='';message.textContent=change?`${change.credited_delta_seconds>0?'Add':'Remove'} five credited minutes on the explicitly checked actual interval, by moving its start. Preview required.`:'Enter complete dates, IANA zone and explicit offsets. Repeated DST hours require your offset choice; gaps are refused by the server.';
             update();if(!dialog.open)dialog.showModal();
         }catch(error){if(read!==generation)return;message.textContent=`Cannot load explicit target ${resource}: ${error.message}. No approval; no action sent.`;update();if(!dialog.open)dialog.showModal();}
-    },dialog};
+    },dialog,hasDraft:()=>Boolean(owner?.dirty||owner?.busy)};
 }
 if (typeof window !== 'undefined') {
-    let panel;
+    let panel,quick;
     window.openTimeCorrection = context => {
+        if(context.timer&&context.change?.kind==='step_start'){
+            const control=window.multipleTimers;
+            quick ||= createQuickTimeAdjustments({control,
+                storage:{getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value)},
+                confirm:text=>window.confirm(text),
+                conflicts:timer=>Boolean(panel?.dialog.open||panel?.hasDraft()||control.hasNoteDraft?.(timer.id)||control.hasFocusDraft?.()||(typeof agendaPage!=='undefined'&&agendaPage.hasDraft())),
+                onState:state=>{const status=document.querySelector('[data-quick-time-status]');if(status){status.textContent=state.message;status.hidden=!state.message;}const display=document.querySelector('[data-current-display]');if(display&&typeof renderTimerWorkspaceCard==='function')renderTimerWorkspaceCard(display,control.snapshot(),control);}
+            });
+            control.hasQuickAdjustmentPending=()=>quick.snapshot().pending;
+            return quick.adjust(context.timer,context.change.credited_delta_seconds);
+        }
         panel ||= mountTimeCorrections({document,control:window.multipleTimers,api,
             conflicts:owner=>Boolean(owner.timerId && window.multipleTimers.hasNoteDraft?.(owner.timerId)) || (typeof agendaPage!=='undefined' && agendaPage.correctionConflicts?.((owner.approved.request.target.targets || [owner.approved.request.target]).map(c=>c.work_id).filter(Boolean)))});
         return panel.open(context);
     };
+    window.addEventListener('timetrace:timer-mutated',()=>quick?.reconcile());
+    window.addEventListener('beforeunload',event=>{if(quick?.snapshot().pending){event.preventDefault();event.returnValue='';}});
 }
-if (typeof module !== 'undefined') module.exports = {correctionInstant,correctionChange,correctionTargets,correctionPresentation};
+if (typeof module !== 'undefined') module.exports = {correctionInstant,correctionChange,correctionTargets,correctionPresentation,createQuickTimeAdjustments};

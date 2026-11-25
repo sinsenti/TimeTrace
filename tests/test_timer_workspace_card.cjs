@@ -9,7 +9,7 @@ class Element {
     setAttribute(key,value) { this[key] = value; }
     addEventListener(key, fn) { this.listeners[key] = fn; }
 }
-test('B controls preview an explicit actual interval and keep Adjust time in the action row',()=>{
+test('B controls target the current actual interval and keep full Adjust time in the action row',()=>{
     const root=new Element('section'); root.ownerDocument={createElement:tag=>new Element(tag)};
     const timer={id:'a',state:'running',revision:2,running_start:'2026-11-23T11:00:00Z',running_segment_id:'segment',elapsed_seconds:600};
     const calls=[];
