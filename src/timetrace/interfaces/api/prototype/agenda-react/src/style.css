@@ -1,0 +1,356 @@
+:root {
+  font-family: system-ui, sans-serif;
+  color: #192e2a;
+  background: #eef2ed;
+  line-height: 1.5;
+  font-synthesis: none;
+  --border: #c9d8d0;
+  --ink: #123c34;
+  --muted: #47605a;
+  --accent: #206454;
+  --paper: #fff;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+}
+p,
+h1,
+h2 {
+  margin: 0 0 0.45rem;
+}
+h1 {
+  font-size: clamp(1.7rem, 5vw, 2.55rem);
+  line-height: 1.1;
+}
+h2 {
+  font-size: 1.17rem;
+  line-height: 1.25;
+}
+.frame {
+  width: min(100% - 2rem, 69rem);
+  margin: auto;
+}
+header {
+  background: var(--ink);
+  color: white;
+}
+.masthead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+.eyebrow {
+  font-size: 0.75rem;
+  font-weight: 750;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+header .eyebrow {
+  color: #c6e3d9;
+}
+.tag {
+  padding: 0.35rem 0.65rem;
+  border-radius: 2rem;
+  white-space: nowrap;
+  background: #d9eee5;
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+.tag[data-online='false'] {
+  background: #ffebc0;
+  color: #664105;
+}
+main {
+  padding-top: 1rem;
+  padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+}
+.intro {
+  margin-bottom: 1rem;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.87rem;
+}
+.card {
+  padding: clamp(0.8rem, 2vw, 1.25rem);
+  border: 1px solid var(--border);
+  border-radius: 0.8rem;
+  background: var(--paper);
+  min-width: 0;
+}
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 0.5rem;
+  margin-bottom: 0.55rem;
+}
+.eyebrow:last-child,
+p:last-child {
+  margin-bottom: 0;
+}
+button,
+input,
+select {
+  font: inherit;
+  min-height: 44px;
+  color: inherit;
+  border: 1px solid #829e93;
+  border-radius: 0.45rem;
+  background: #fff;
+  padding: 0.48rem 0.7rem;
+  max-width: 100%;
+}
+button {
+  font-weight: 650;
+  cursor: pointer;
+}
+button:hover:enabled {
+  background: #e5f0ea;
+}
+button.primary,
+button[aria-pressed='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+button.primary:hover:enabled,
+button[aria-pressed='true']:hover {
+  background: var(--ink);
+}
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+:focus-visible {
+  outline: 3px solid #aa4a00;
+  outline-offset: 3px;
+}
+label {
+  display: grid;
+  gap: 0.22rem;
+  font-size: 0.86rem;
+  font-weight: 650;
+  min-width: 0;
+}
+input,
+select {
+  min-width: 0;
+  width: 100%;
+  font-size: 1rem;
+}
+form {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+.time-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.editor {
+  border-top: 0.24rem solid var(--accent);
+  scroll-margin-top: 1rem;
+}
+.editor [role='alert'] {
+  color: #9e3500;
+}
+.dayline,
+.planning,
+.split aside,
+.focus-pane {
+  display: grid;
+  gap: 0.85rem;
+  align-content: start;
+}
+.dayline {
+  max-width: 52rem;
+  margin: auto;
+}
+.layout-A .agenda {
+  border-left: 0.25rem solid var(--accent);
+}
+.split {
+  display: grid;
+  gap: 0.85rem;
+  align-items: start;
+}
+.segmented {
+  display: flex;
+  gap: 0.4rem;
+  margin: 0 auto 0.75rem;
+  max-width: 40rem;
+}
+.segmented button {
+  flex: 1;
+}
+.focus-pane {
+  max-width: 40rem;
+  margin: auto;
+}
+.layout-C .timer {
+  text-align: center;
+}
+.layout-C .timer label {
+  margin: 0 auto 0.75rem;
+}
+.layout-C .timer .clock {
+  font-size: clamp(2.5rem, 10vw, 4rem);
+}
+.timer .clock {
+  font-size: clamp(2rem, 8vw, 3.25rem);
+  font-weight: 750;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.timer label {
+  max-width: 23rem;
+  margin-bottom: 0.75rem;
+}
+.timer .hint {
+  margin-top: 0.5rem;
+}
+.plan-list,
+.records {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+.plan-list li,
+.records li {
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--border);
+  display: grid;
+  gap: 0.35rem 0.65rem;
+  align-items: center;
+}
+.plan-list li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.plan-list li .slot {
+  grid-column: 1;
+}
+.plan-list li strong {
+  grid-column: 1;
+}
+.plan-list li button {
+  grid-column: 2;
+  grid-row: 1/3;
+}
+.slot {
+  display: grid;
+  gap: 0.02rem;
+  font-variant-numeric: tabular-nums;
+}
+.slot small,
+.records small {
+  color: var(--muted);
+}
+.records li {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+.records li strong {
+  grid-column: 1/-1;
+}
+.records small {
+  font-weight: 750;
+}
+.pending {
+  border-left: 0.25rem solid #a06400;
+  background: #fff6de;
+  padding: 0.7rem;
+  margin: 0.5rem 0;
+  overflow-wrap: anywhere;
+}
+.pending dl {
+  margin: 0.45rem 0;
+}
+.pending dl div {
+  display: grid;
+  gap: 0.15rem;
+}
+.pending dl div + div {
+  margin-top: 0.35rem;
+}
+.pending dt {
+  font-weight: 700;
+}
+.pending dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+.pending .button-row {
+  margin: 0.55rem 0;
+}
+.demo {
+  margin-top: 0.85rem;
+  background: #f8fbf9;
+}
+.demo h2 {
+  font-size: 0.98rem;
+}
+.demo .hint {
+  margin-top: 0.45rem;
+}
+.notice {
+  min-height: 1.5em;
+  margin-top: 0.45rem;
+  color: var(--ink);
+  font-weight: 650;
+}
+.switcher {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(0.65rem + env(safe-area-inset-bottom));
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  border-radius: 2rem;
+  background: #192e2a;
+  color: white;
+  padding: 0.3rem;
+  box-shadow: 0 2px 12px #192e2a55;
+  z-index: 2;
+}
+.switcher button {
+  min-width: 44px;
+  border-radius: 2rem;
+}
+.switcher span {
+  min-width: 6.7rem;
+  text-align: center;
+  font-weight: 750;
+  white-space: nowrap;
+}
+@media (min-width: 42rem) {
+  .plan-list li {
+    grid-template-columns: 8rem minmax(0, 1fr) auto;
+  }
+  .plan-list li strong,
+  .plan-list li button {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}
+@media (min-width: 56rem) {
+  .split {
+    grid-template-columns: minmax(17rem, 1fr) minmax(0, 1.7fr);
+  }
+  .layout-B .agenda .plan-list li {
+    grid-template-columns: 7rem minmax(0, 1fr) auto;
+  }
+}
