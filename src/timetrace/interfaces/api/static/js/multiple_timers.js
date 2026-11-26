@@ -308,7 +308,10 @@ if (typeof window !== 'undefined') {
             const unassignedStart=region.querySelector('[data-timer-unassigned]');if(unassignedStart)unassignedStart.disabled=blocked;
             window.sharedTaskLauncher?.sync();
             window.agendaTaskLauncher?.sync();
-            for (const button of document.querySelectorAll('[data-workspace-start]')) button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
+            for (const button of document.querySelectorAll('[data-workspace-start]')) {
+                if(button.dataset.launcherOwnedStart==='true')continue;
+                button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
+            }
             const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {

@@ -109,6 +109,14 @@ before the fix and passed after it. The first post-fix reload still used cached 
 versions were advanced before claiming the native repair. The tracked browser probe includes this
 keyboard check. Availability policy is now one public predicate shared by both presentations.
 
-Recheck and final full suites/lint/syntax gates are pending. Earlier #59 gates are historical and
-not a claim about this new feature. No commit is merged/deployed into the personal app; work remains
-on the local implementation branch.
+Independent recheck of `2b7e250`: Standards verified all originals/smell resolved and found no new
+issue. Spec verified its originals resolved and found one new P2: the legacy `[data-workspace-start]`
+disabling loop overrode the repaired Agenda card policy after an ACK with a hung display read.
+Launcher-owned cards are now explicitly marked and excluded from that legacy loop; pin/history
+starts retain their original guards. The tracked `hung_display` real-app case failed before the
+fix and passed afterward with one actual Start and the next card available before a status GET.
+This additional finding remains recorded separately from the initial inventory.
+
+Final full suites/lint/syntax gates are pending. Earlier #59 gates are historical and not a claim
+about this new feature. No commit is merged/deployed into the personal app; work remains on the
+local implementation branch.

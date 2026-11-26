@@ -62,15 +62,15 @@ const agendaPage = (() => {
         await window.multipleTimers?.start({task_id:taskId || null});
     }
     let activityMode='all';
-    function activityCard(task,start,disabled=false){
+    function activityCard(task,start,disabled=false,launcherOwned=false){
         const item=make('article','', 'agenda-activity-card');item.append(make('strong',task.title||'Task unavailable'));
         const info=[task.parent_title,task.scheduled_state==='now'?'Scheduled now':task.scheduled_state==='soon'?'Scheduled within one hour':null,task.match_kind==='fuzzy'?'Close match':null].filter(Boolean).join(' · ');item.append(make('small',info));
-        const actions=make('div','', 'activity-actions');const begin=make('button','Start');begin.type='button';begin.disabled=disabled;begin.dataset.workspaceStart='true';begin.dataset.metadataAvailable=String(!disabled);begin.addEventListener('click',start);
+        const actions=make('div','', 'activity-actions');const begin=make('button','Start');begin.type='button';begin.disabled=disabled;begin.dataset.workspaceStart='true';begin.dataset.metadataAvailable=String(!disabled);if(launcherOwned)begin.dataset.launcherOwnedStart='true';begin.addEventListener('click',start);
         const details=make('button','Task details');details.type='button';details.addEventListener('click',()=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(task.id);});actions.append(begin,details);item.append(actions);return item;
     }
     let cardsSignature=null;
     function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const blocked=!canStartTaskFromTimerState(window.multipleTimers.snapshot());const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
-        for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked));
+        for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked,true));
     }
     let discoveryGeneration = 0;
     async function discovery() {

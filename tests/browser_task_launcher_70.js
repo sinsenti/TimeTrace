@@ -3,7 +3,7 @@
  */
 async function runTaskLauncherCase(name) {
     const assert=(value,message)=>{if(!value)throw Error(`${name}: ${message}`);};
-    assert(['late_ack','lost_ack','completed_keyboard'].includes(name),'choose an explicit verification case');
+    assert(['late_ack','lost_ack','completed_keyboard','hung_display'].includes(name),'choose an explicit verification case');
     assert(location.origin==='http://127.0.0.1:18131','owned synthetic origin required');
     const health=await api.get('/health');
     assert(health.db_file.startsWith('/tmp/timetrace-launcher-browser-'),'isolated synthetic data required');
@@ -12,6 +12,7 @@ async function runTaskLauncherCase(name) {
         assert(document.activeElement.getClientRects().length>0,'completion control is visible to keyboard users');
         return {case:name,result:'passed'};
     }
+    if(name==='hung_display')assert(window.agendaTaskLauncher,'Agenda suggestion cards required');
     assert(!document.querySelector('dialog[open]'),'close dialogs first');
     assert(!multipleTimers.hasNoteDraft()&&!multipleTimers.hasFocusDraft?.(),'clean timer editors required');
     const launcher=window.agendaTaskLauncher||window.sharedTaskLauncher;
@@ -20,17 +21,18 @@ async function runTaskLauncherCase(name) {
     await launcher.model.input('Reading');
     const state=launcher.model.snapshot();
     assert(state.rows[state.activeIndex]?.title==='Reading','ordinary synthetic Reading task required');
-    const original=window.fetch.bind(window);let posts=0,reads=0,release,received;
+    const original=window.fetch.bind(window);let posts=0,reads=0,release,received,restored=false;const displayReleases=[];
     const responseReceived=new Promise(resolve=>{received=resolve;});
     window.fetch=async(...args)=>{
         const url=String(args[0]),options=args[1];
         if(url.includes('/operations/')&&(!options?.method||options.method==='GET'))reads++;
         const response=await original(...args);
+        if(name==='hung_display'&&!restored&&posts>0&&url.endsWith('/timers')&&(!options?.method||options.method==='GET'))return new Promise(resolve=>displayReleases.push(()=>resolve(response)));
         if(options?.method==='POST'&&url.endsWith('/timers')){
             posts++;const payload=JSON.parse(options.body);
             assert(payload.task_id===state.rows[state.activeIndex].id,'captured task ID only');
             assert(!('scheduled_session_id' in payload)&&!('notes' in payload),'no implicit plan/note reuse');
-            if(name==='late_ack')return new Promise(resolve=>{release=()=>resolve(response);received();});
+            if(name==='late_ack'||name==='hung_display')return new Promise(resolve=>{release=()=>resolve(response);received();});
             if(name==='lost_ack')throw Error('Synthetic lost Start response');
         }
         return response;
@@ -38,7 +40,7 @@ async function runTaskLauncherCase(name) {
     const url=location.href;
     try{
         const starting=launcher.model.key({key:'Enter'});
-        if(name==='late_ack'){
+        if(name==='late_ack'||name==='hung_display'){
             await responseReceived;
             await launcher.model.input('Review');
             release();await starting;
@@ -46,6 +48,11 @@ async function runTaskLauncherCase(name) {
             assert((window.agendaTaskLauncher?document.querySelector('#agenda-search'):document.querySelector('[data-launcher-input]')).value==='Review','actual field retains typing');
             assert(!launcher.model.snapshot().pending,'own ACK releases writer UI');
             assert(posts===1,'exactly one Start');
+            if(name==='hung_display'){
+                assert(multipleTimers.snapshot().receipt?.outcome==='acknowledged'&&!multipleTimers.snapshot().fresh,'display read remains pending after own ACK');
+                const card=[...document.querySelectorAll('#agenda-activities .agenda-activity-card')].find(c=>c.querySelector('strong')?.textContent==='Review references');
+                assert(card&&!card.querySelector('button').disabled,'next suggestion Start card is available without a display GET');
+            }
         }else if(name==='lost_ack'){
             assert(await starting===false,'unknown response retained');
             assert(multipleTimers.snapshot().receipt?.outcome==='uncertain','original safety journal retained');
@@ -60,7 +67,7 @@ async function runTaskLauncherCase(name) {
         assert(location.href===url,'Start does not navigate');
         return {case:name,posts,operationReads:reads,result:'passed'};
     }finally{
-        window.fetch=original;release?.();
+        restored=true;window.fetch=original;release?.();for(const finish of displayReleases)finish();
         await launcher.model.input('');launcher.model.close();
     }
 }
