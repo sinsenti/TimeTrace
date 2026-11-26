@@ -56,8 +56,8 @@ async (page, baseURL) => {
         await p.locator('#wb_submit').click(); check((await edited).ok(), 'Widget edit acknowledged'); await ready();
         check((await detail(named.id)).widgets[0].title === 'Edited <literal> count', 'Edited title persists literally');
         const beforeOrder = requests.filter(r => r.path === '/analytics/query').length;
-        const moveEarlier = p.getByRole('button', { name: 'Move earlier: Synthetic comparison', exact: true });
-        await moveEarlier.focus(); await moveEarlier.press('Enter');
+        const moveHandle = p.getByRole('button', { name: 'Move widget: Synthetic comparison', exact: true });
+        await moveHandle.focus(); await moveHandle.press('ArrowLeft');
         await p.waitForFunction(id => document.querySelector('#widget_grid > [data-widget-id]').dataset.widgetId === id, chartId);
         check(requests.filter(r => r.path === '/analytics/query').length === beforeOrder, 'Reorder does not rerun healthy queries');
         check(await p.evaluate(() => !!document.activeElement.closest('.canvas-widget-controls')), 'Keyboard reorder retains a usable canvas focus target');

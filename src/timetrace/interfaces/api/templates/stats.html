@@ -32,7 +32,7 @@
         ::-webkit-scrollbar-thumb { background: var(--border-muted); border-radius: 3px; }
     </style>
     <link rel="stylesheet" href="/static/css/appearance.css">
-    <link rel="stylesheet" href="/static/css/dashboard_canvas.css?v=ui-review2-1">
+    <link rel="stylesheet" href="/static/css/dashboard_canvas.css?v=ui-review2-1-drag72">
     <link rel="stylesheet" href="/static/css/widget_builder.css">
 </head>
 <body class="stats-canvas min-h-screen flex flex-col pb-12">
@@ -78,6 +78,7 @@
         <nav id="dashboard_tabs" class="canvas-tabs" aria-label="Saved dashboards"></nav>
         <div id="dashboard_notice" class="canvas-notice" role="status" aria-live="polite"></div>
         <div id="legacy_notice" class="canvas-notice" role="status" aria-live="polite"></div>
+        <p id="dashboard_drag_help" class="sr-only">Drag a widget’s Move handle to a marked edge. Or focus Move and use arrow keys to move one position. Escape cancels dragging.</p>
         <section id="widget_grid" class="canvas-grid" aria-label="Dashboard widgets"></section>
 
         <!-- Interactive Statistics Item Inspector List -->
@@ -104,7 +105,8 @@
     <script src="/static/js/timer_control.js?v=timers4"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/stats.js"></script>
-    <script src="/static/js/dashboards.js?v=ui-review2-1"></script>
+    <script src="/static/js/dashboard_drag.js?v=72"></script>
+    <script src="/static/js/dashboards.js?v=ui-review2-1-drag72"></script>
     <script id="performed_time_preset" type="application/json">{{ performed_time_preset | tojson }}</script>
     <script src="/static/js/widget_builder.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
