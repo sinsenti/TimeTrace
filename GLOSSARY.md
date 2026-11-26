@@ -56,6 +56,10 @@ _Avoid_: Scheduled session, timer
 **Timer**:
 A way to track time as it happens, optionally for a task; stopping and saving it produces a recorded interval. Timers can run in parallel, but no task can have two running timers.
 
+**Entry note**:
+Text describing the activity tracked by a timer or saved in a recorded interval. It is separate from the task's description and a scheduled session's notes.
+_Avoid_: Work note, timer note
+
 **Recorded task time**:
 The total time credited across tasks, counting each minute once per task. Two recorded intervals covering the same 20 minutes count as 20 minutes for one task or 40 minutes across two different tasks.
 _Avoid_: Elapsed recorded time
