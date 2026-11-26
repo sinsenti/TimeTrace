@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
+from data_builders import manual_work_row
 
 
 @pytest.fixture(autouse=True)
@@ -333,7 +334,6 @@ def test_goal_descendant_sql_defends_against_a_legacy_corrupt_hierarchy_cycle(cl
 
 
 def test_weekly_global_goal_is_not_derived_from_paginated_task_rows_or_goal_rollups(client, clock, db):
-    from timetrace.db.models import Session as Work
     from timetrace.db.models import Task
 
     tasks = [Task(title=f"Bounded displayed task {i}") for i in range(201)]
@@ -341,10 +341,8 @@ def test_weekly_global_goal_is_not_derived_from_paginated_task_rows_or_goal_roll
     db.flush()
     db.add_all(
         [
-            Work(
+            manual_work_row(
                 task_id=t.id,
-                kind="recorded_work",
-                provenance="manual",
                 start_time=datetime(2000, 1, 4, 10),
                 end_time=datetime(2000, 1, 4, 11),
                 duration_seconds=3600,

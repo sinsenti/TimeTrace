@@ -4,8 +4,8 @@ import shutil
 from pathlib import Path
 
 import pytest
+from process_test_support import environment, run
 from test_saved_correction_migration import OLD_SETUP, UPGRADE
-from test_saved_correction_recovery import environment, run
 
 
 def test_goal_history_context_and_receipts_are_append_only_in_a_real_migrated_database(tmp_path):

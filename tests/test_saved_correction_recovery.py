@@ -1,12 +1,10 @@
 """Real process/SQLite recovery checks for accepted saved corrections."""
 
-import os
 import shutil
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
+from process_test_support import environment, run
 
 SETUP = """
 import json,os
@@ -24,25 +22,6 @@ module.datetime=Clock
 init_db()
 c=TestClient(create_daemon_app())
 """
-
-
-def environment(tmp_path):
-    return {
-        **os.environ,
-        "TIMETRACE_DB_FILE": str(tmp_path / "synthetic.db"),
-        "TIMETRACE_TIMER_STATE_FILE": str(tmp_path / "active_timer.json"),
-        "HOME": str(tmp_path / "home"),
-        "TMPDIR": str(tmp_path),
-        "TIMETRACE_PORT": "18461",
-        "TIMETRACE_IDLE_DETECTION_ENABLED": "false",
-        "TZ": "UTC",
-    }
-
-
-def run(script, env, expected=0):
-    process = subprocess.run([sys.executable, "-P", "-c", script], env=env, capture_output=True, text=True, timeout=45)
-    assert process.returncode == expected, process.stderr
-    return process.stdout
 
 
 @pytest.mark.parametrize("pending", [False, True])

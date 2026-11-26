@@ -653,6 +653,12 @@ git diff --check
   `TestClient` as a context manager, avoiding lifespan migrations and the background idle loop.
 - `reset_timer`: autouse reset of the timer singleton to prevent state leaking between tests.
 
+Keep mutable databases and timer files private to each test. Reuse interval construction with
+`tests/data_builders.py`; the caller still owns flush and commit. Keep policy matrices at their
+service interface and retain HTTP cases for wire behavior. The shared
+`tests/process_test_support.py` launcher always starts a fresh interpreter; each durability
+scenario decides when to migrate, crash, or reconcile.
+
 Coverage includes timer/idle state, UTC conversion, task title syntax, task HTTP basics, session
 creation, legacy tag fan-out, substantial pure/service recurrence tests, AI privacy boundaries, and
 fake-agent remembered-instruction chat/API lifecycle tests. Provider-construction tests replace

@@ -1,8 +1,9 @@
-"""Task work accounting through the ordinary inspector and read-only AI interfaces."""
+"""Task work accounting with real SQLite, plus inspector and AI adapter contracts."""
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from data_builders import legacy_session_row
 
 from timetrace.core import timer
 from timetrace.core.exceptions import EntityNotFoundError
@@ -224,6 +225,14 @@ def test_task_without_sessions_has_its_entire_budget_remaining(db):
             id="missing-estimate-is-unbounded",
         ),
         pytest.param(
+            -60,
+            False,
+            7200,
+            1800,
+            (-1.0, 2.0, 0.5, -3.0, -3.5, None, False),
+            id="negative-estimate-has-balances-but-no-progress",
+        ),
+        pytest.param(
             60,
             False,
             19,
@@ -233,7 +242,7 @@ def test_task_without_sessions_has_its_entire_budget_remaining(db):
         ),
     ],
 )
-def test_task_budgets_match_for_ordinary_and_ai_progress(db, estimate, recurring, logged, scheduled, expected):
+def test_work_accounting_budget_matrix(db, estimate, recurring, logged, scheduled, expected):
     task = Task(title="Work budget", estimated_minutes=estimate, is_recurring=recurring)
     db.add(task)
     db.flush()
@@ -259,26 +268,64 @@ def test_task_budgets_match_for_ordinary_and_ai_progress(db, estimate, recurring
     )
     db.commit()
 
-    assert_accounting(
-        db,
-        task,
-        dict(
-            zip(
-                (
-                    "estimated_hours",
-                    "logged_hours",
-                    "scheduled_hours",
-                    "remaining_hours",
-                    "unscheduled_hours",
-                    "progress_pct",
-                    "is_unbounded",
-                ),
-                expected,
-                strict=True,
-            )
-        ),
-        session_count=2,
+    assert TaskService(db).get_work_accounting(task) == dict(
+        zip(
+            (
+                "estimated_hours",
+                "logged_hours",
+                "scheduled_hours",
+                "remaining_hours",
+                "unscheduled_hours",
+                "progress_pct",
+                "is_unbounded",
+            ),
+            expected,
+            strict=True,
+        )
     )
+
+
+def test_work_accounting_counts_only_own_eligible_intervals_in_mixed_history(db):
+    task = Task(title="Mixed interval history", estimated_minutes=60)
+    child = Task(title="Separate child budget", parent_id=task.id)
+    db.add_all([task, child])
+    db.flush()
+    for start, end, seconds in [
+        (-180, -120, 3600),  # closed past
+        (-60, 0, 3600),  # inclusive end
+        (1, 31, 1800),  # strictly future
+        (0, 30, 1800),  # exclusive start
+        (-30, 30, 3600),  # straddling
+        (-10, None, 900),  # past open, duration retained
+        (60, None, 900),  # future open, duration retained
+    ]:
+        db.add(
+            legacy_session_row(
+                task_id=task.id,
+                start_time=(NOW + timedelta(minutes=start)).replace(tzinfo=None),
+                end_time=(NOW + timedelta(minutes=end)).replace(tzinfo=None) if end is not None else None,
+                duration_seconds=seconds,
+            )
+        )
+    db.add(
+        legacy_session_row(
+            task_id=child.id,
+            start_time=(NOW - timedelta(hours=10)).replace(tzinfo=None),
+            end_time=NOW.replace(tzinfo=None),
+            duration_seconds=36000,
+        )
+    )
+    db.commit()
+
+    assert TaskService(db).get_work_accounting(task) == {
+        "estimated_hours": 1.0,
+        "logged_hours": 2.0,
+        "scheduled_hours": 0.5,
+        "remaining_hours": -1.0,
+        "unscheduled_hours": -1.5,
+        "progress_pct": 200.0,
+        "is_unbounded": False,
+    }
 
 
 @pytest.mark.parametrize("frozen", [False, True], ids=["running-timer", "frozen-idle-timer"])

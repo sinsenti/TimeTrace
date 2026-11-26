@@ -1,17 +1,13 @@
-"""Ticket 05 HTTP characterization of the existing shared work-accounting contract.
-
-These are not claimed as RED: no backend policy or endpoint changes are needed.
-"""
+"""HTTP adapter contracts; the budget matrix lives in test_task_work_accounting.py."""
 
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from data_builders import legacy_session_row
 
 from timetrace.core.timer import timer_manager
-from timetrace.db.models import Session as SessionModel
 from timetrace.db.models import Task
 from timetrace.services import session_service
-from timetrace.services.ai_insights_service import AIInsightsService
 
 INSTANT = datetime(2026, 11, 4, 12, tzinfo=UTC)
 
@@ -52,11 +48,10 @@ def test_task_details_public_create_default_and_explicit_update_null(client, est
     ("estimate", "recurring", "remaining", "unscheduled", "progress", "unbounded"),
     [
         (60, False, -1, -1.5, 200, False),
-        (-60, False, -3, -3.5, None, False),
-        (0, False, None, None, None, True),
         (None, False, None, None, None, True),
         (60, True, None, None, 200, True),
     ],
+    ids=["finite-overspent", "missing-serializes-nulls", "recurring-omits-projections"],
 )
 def test_task_details_http_accounting_is_own_real_history_not_performed_row_count(
     client, db, monkeypatch, estimate, recurring, remaining, unscheduled, progress, unbounded
@@ -85,25 +80,21 @@ def test_task_details_http_accounting_is_own_real_history_not_performed_row_coun
     task.estimated_minutes = estimate  # SQLAlchemy's INSERT default otherwise replaces None with 15.
     rows = []
     for start, end, seconds in [
-        (-180, -120, 3600),  # closed past
-        (-60, 0, 3600),  # inclusive end exactly at the single measurement instant
-        (1, 31, 1800),  # strictly future closed
-        (0, 30, 1800),  # exclusive start exactly now
-        (-30, 30, 3600),  # straddling
-        (-10, None, 900),  # open retaining a duration
-        (60, None, 900),  # future open retaining a duration
+        (-180, -60, 7200),  # logged
+        (1, 31, 1800),  # scheduled
+        (-60, 60, 7200),  # visible in history, neither logged nor scheduled
     ]:
-        row = SessionModel(
+        row = legacy_session_row(
             task_id=task.id,
             start_time=(INSTANT + timedelta(minutes=start)).replace(tzinfo=None),
-            end_time=(INSTANT + timedelta(minutes=end)).replace(tzinfo=None) if end is not None else None,
+            end_time=(INSTANT + timedelta(minutes=end)).replace(tzinfo=None),
             duration_seconds=seconds,
             notes="Recorded <not necessarily performed>",
         )
         rows.append(row)
     db.add_all(rows)
     db.add(
-        SessionModel(
+        legacy_session_row(
             task_id=child.id,
             start_time=(INSTANT - timedelta(hours=10)).replace(tzinfo=None),
             end_time=INSTANT.replace(tzinfo=None),
@@ -125,15 +116,18 @@ def test_task_details_http_accounting_is_own_real_history_not_performed_row_coun
         "is_unbounded": unbounded,
     }
     assert {key: data[key] for key in expected} == expected
-    assert data["total_sessions"] == 7
+    assert type(data["is_unbounded"]) is bool
+    for key in ("logged_hours", "scheduled_hours", "remaining_hours", "unscheduled_hours", "progress_pct"):
+        if expected[key] is not None:
+            assert type(data[key]) in (int, float)
+    assert data["task"]["id"] == task.id
+    assert data["total_sessions"] == 3
     assert {row["id"] for row in data["sessions"]} == {row.id for row in rows}
     assert all(not row["id"].startswith("virt:") for row in data["sessions"])
     assert data["total_hours"] == 4.5  # All recorded rows, not the 2h logged accounting total.
-    ai = AIInsightsService(db).get_task_progress(task.id)
-    assert {key: ai[key] for key in expected} == expected
-    assert ai["session_count"] == 7
-    assert "sessions" not in ai
-    child_stats = client.get(f"/api/tasks/{child.id}/stats").json()
+    child_response = client.get(f"/api/tasks/{child.id}/stats")
+    assert child_response.status_code == 200
+    child_stats = child_response.json()
     assert child_stats["logged_hours"] == 10
     assert child_stats["total_sessions"] == 1
 

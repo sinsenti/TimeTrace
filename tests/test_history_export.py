@@ -3,6 +3,7 @@
 from datetime import datetime
 
 import pytest
+from data_builders import manual_work_row
 
 
 @pytest.fixture(autouse=True)
@@ -21,14 +22,10 @@ def history_test_zone(monkeypatch):
 
 
 def test_history_candidate_scan_refuses_incomplete_filtered_success_but_explicit_ids_are_bounded(client, db):
-    from timetrace.db.models import Session as SavedInterval
-
     records = [
-        SavedInterval(
+        manual_work_row(
             start_time=datetime(2000, 1, 4, 10),
             end_time=datetime(2000, 1, 4, 11),
-            kind="recorded_work",
-            provenance="manual",
             notes="excluded",
         )
         for _ in range(10001)
@@ -150,18 +147,8 @@ def test_every_formula_or_control_prefix_is_spreadsheet_inert(client, note):
 
 
 def test_eligible_row_cap_and_combined_artifact_cap_refuse_not_truncate(client, db):
-    from timetrace.db.models import Session as SavedInterval
-
     db.add_all(
-        [
-            SavedInterval(
-                start_time=datetime(2000, 1, 4, 10),
-                end_time=datetime(2000, 1, 4, 11),
-                kind="recorded_work",
-                provenance="manual",
-            )
-            for _ in range(2001)
-        ]
+        [manual_work_row(start_time=datetime(2000, 1, 4, 10), end_time=datetime(2000, 1, 4, 11)) for _ in range(2001)]
     )
     db.commit()
     request = {"start_date": "2000-01-04", "end_date": "2000-01-04", "timezone": "UTC", "mode": "filtered"}
