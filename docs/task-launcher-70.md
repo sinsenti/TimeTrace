@@ -117,6 +117,21 @@ starts retain their original guards. The tracked `hung_display` real-app case fa
 fix and passed afterward with one actual Start and the next card available before a status GET.
 This additional finding remains recorded separately from the initial inventory.
 
-Final full suites/lint/syntax gates are pending. Earlier #59 gates are historical and not a claim
-about this new feature. No commit is merged/deployed into the personal app; work remains on the
-local implementation branch.
+## Final gates
+
+Code candidate `c6788cb` (implementation `c2a560f`, ownership/timezone repairs `2b7e250`, card
+availability repair `c6788cb`): **1250 Python passed,1695 warnings;944 Node passed**, zero failed or
+skipped. Python ran with safe path, external HOME/TMPDIR and native notifications disabled; the
+synthetic idle-observation suite remained enabled. Changed Python Ruff, all changed JS/CJS syntax
+and whitespace checks passed. Broad Ruff retains17 inherited findings in unchanged files.
+
+After restarting only the disposable app against its existing synthetic dataset, final native
+runs passed delayed ACK/newer typing (1POST), lost ACK/read-only recovery (1POST+1operationGET),
+hung display/next-card availability (1POST), native Tab/Space completion opt-in, and shared native
+Enter on Statistics without navigation. Effective daemon-zone metadata was also read back.
+Raster capture remains unavailable; no broad visual/accessibility/OS/audio certification is claimed.
+
+The fresh isolated preview remains on port18131; the earlier18128 preview was lost at the Orca
+restart. The wider selected Quiet Statistics/Focus presentation and explanation-only #69 remain
+separate from #70. Earlier #59 gates are historical, not this feature's gate. Commits remain local,
+unpushed and unmerged; no personal daemon restart, personal DB/provider access or deployment occurred.
