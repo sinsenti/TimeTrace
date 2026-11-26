@@ -104,6 +104,7 @@ Paths below are relative to `src/timetrace/` unless stated otherwise.
 
 In the table, `static/`, `templates/`, and `routers/` shorthand is under `interfaces/api/`.
 Templates include shared pieces from `templates/components/`, but there is no common base template.
+Include `components/favicon.html` in the `<head>` of new app pages to use the shared browser tab icon.
 The root app is the runtime entry point, not the separate unused `interfaces/api/main.py` instance.
 
 The [core timer workspace contract and verification](timer-workspace-60.md) documents Agenda's
