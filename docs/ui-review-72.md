@@ -282,3 +282,13 @@ navigation, data or task-time semantics change. Maintained browser check
 `tests/browser_outline_spacing_72.js` failed against42px/14px expected padding before the fix;
 the original native loop then passed with14px. The CSS-contract regression failed first and the
 focused25 Outline Node cases passed after the fix. Broader verification follows this checkpoint.
+
+Verified code `0ed35d12`: **1283 Python passed/1696 warnings in211.78s;998 Node passed**, zero
+failures/cancellations/skips. Scoped Ruff, changed JS/CJS syntax and whitespace pass; broad Ruff
+retains17 inherited findings. Independent bounded Standards/Spec review found **0 /0** issues.
+Native checks at1217/768/390/320 CSS pixels retained14px, including child → parent → child selection.
+A populated status notice remained visible with its12px margin; editor/full-details controls stayed
+available. The probe observed **zero server mutation requests**. Its injected diagnostic style was
+removed, and the maintained browser probe uses actual served CSS. No raster/AT/touch/other-engine
+or owner visual acceptance is inferred. This is a local CSS-only fix; no personal-daemon restart,
+personal database/provider experiment or automatic push is included.
