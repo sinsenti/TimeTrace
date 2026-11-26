@@ -55,4 +55,25 @@ unit test substitutes for a real drag gesture, persisted order and reload verifi
   focused checks:106 Python passed/84 warnings and41 Node passed. Parent added the presence CSS
   include; combined native discard and review/full gates remain pending.
 
-Dialog/presentation work, activity-ranking decision, independent review and final full gates: pending.
+- Dialog/presentation commits `095de12`/`53063ef` integrated as `130864f`/`547dc7d`. The single
+  conflict was the shared canvas DOM adapter/test additions; both sets were retained and30 canvas
+  cases passed. Worker focused gates:646 Node and39 Python passed. Parent cache-versioned changed
+  assets across every serving template; two old fixed-version assertions were updated to require
+  versioned assets without pinning an obsolete literal. Combined focused checks:24 Python/56 Node
+  passed after those test repairs.
+- Priority discovery `bb6cb36` integrated as `7872b12`: Agenda's compact High/Medium/Low/No priority
+  groups use server-filtered selectors before bounds; shared Suggested defaults stay unchanged.
+  Worker focused gates:62 Python/87 Node passed. Start-frequency/history ranking remains entirely
+  pending the owner's choice; no false Frequent label or historical reconstruction was added.
+- Combined owned18132 native checks passed: actual mouse drag + persisted/reloaded order and keyboard
+  movement; default Enter and Escape cancel discard with zero writes; target Entry note becomes
+  read-only during a held actual discard response; own ACK removes only that timer/draft, with one
+  discard POST and unchanged saved rows and other timer geometry. Early discard-probe attempts used
+  an over-broad closed-dialog selector and an unbound fetch spy (Illegal invocation); those harness
+  faults were corrected, not represented as product failures or passing checks.
+- Help/filter dialogs have footer Close; filter copy accurately includes plan notes; schedule inputs
+  use second granularity. Native computed styles across Refined Archive/Stone/Porcelain show no
+  purple estimate badge fill, while the existing purple dark Edit/badge styling remains.
+
+Independent Standards/Spec review and final full gates: pending. Owner visual acceptance and the
+history-ranking choice remain separate; the ongoing #72 review map is not completed by this batch.
