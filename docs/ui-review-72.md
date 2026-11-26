@@ -33,4 +33,21 @@ boundaries and isolated synthetic actual-app checks. Workers run focused red/gre
 runs full Python/Node gates at the end and the independent Standards/Spec review. No passing drag
 unit test substitutes for a real drag gesture, persisted order and reload verification.
 
-Implementation, review, native verification and final gate results: pending.
+## Integration and bounded evidence
+
+- Statistics lane commit `bd8190f` integrated as `1448502`: handle-only native widget dragging,
+  keyboard reordering, persisted full-ID order and dashboard-local uncertainty/read-start fences.
+  Worker focused Node checks:133 passed; full gates/review remain pending.
+- Parent's Orca-native equivalent of the tracked drag probe passed against the owned18132 scratch
+  app: actual mouse down/moves/up exposed the insertion indicator, one intended drag reorder was
+  persisted, reload retained it, keyboard moved exactly one place, and other dashboards stayed
+  unchanged. The temporary dashboard alone was removed after the check. Narrow viewport, physical
+  touch, other engines/screen readers and owner visual acceptance remain unclaimed here.
+- Source correction: the existing Agenda note filter matches both saved-entry notes and scheduled
+  plan notes (not task descriptions/live timer notes). Preserve that behavior with neutral label
+  **Notes contain** and accurate help; do not silently hide plans under a presentation change.
+- Discard note input may be read-only only for that target while discard is sent/uncertain, retaining
+  text until own confirmed ACK and leaving other drafts editable. New typing before submission
+  invalidates approval; refusal restores editability; unknown outcomes recover by GET only.
+
+Other implementation lanes, independent review and final full gates: pending.
