@@ -81,7 +81,7 @@ _Avoid_: Inferred ownership
 **Within schedule**:
 The portion of a recorded interval for the same task that overlaps the original plan or current schedule, whichever the comparison names. For a 09:00–10:00 plan and a 09:50–10:20 recorded interval, 10 minutes are within the plan whether or not the interval is linked.
 
-**Fit schedule to recorded intervals**:
+**Fit schedule to recorded work**:
 An adjustment of the current schedule to span the earliest start and latest end of the recorded intervals explicitly linked to that session. The original plan and the recorded intervals remain unchanged.
 
 **Timer inactivity gap**:

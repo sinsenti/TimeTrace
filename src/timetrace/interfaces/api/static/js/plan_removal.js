@@ -20,7 +20,7 @@
     function mount(container, row, hooks) {
         if (row.is_virtual) return; // Existing occurrence delete/series policy is not bypassed here.
         const make = (tag, text) => { const node = document.createElement(tag); node.textContent = text; return node; };
-        const open = make('button', 'Delete / Squeeze');
+        const open = make('button', 'Delete / Fit schedule to recorded work');
         open.type = 'button';
         container.appendChild(open);
         open.addEventListener('click', async () => {
@@ -28,19 +28,19 @@
             hooks.lock(true);
             open.disabled = true;
             const panel = make('section', 'Loading exact affected records…');
-            panel.setAttribute('aria-label', 'Delete or squeeze confirmation');
+            panel.setAttribute('aria-label', 'Delete or fit schedule confirmation');
             container.appendChild(panel);
             const controller = new PlanRemovalController(hooks.api, row.id);
             try {
                 const preview = await controller.load();
                 panel.textContent = '';
-                panel.appendChild(make('p', 'Original plan and current schedule are shown below. Delete everything removes each whole associated work record, including portions outside this plan. Squeeze changes only the current schedule to their outer bounds, retaining gaps and original plan.'));
+                panel.appendChild(make('p', 'Original plan and current schedule are shown below. Delete everything removes each whole associated work record, including portions outside this plan. Fit schedule to recorded work changes only the current schedule to the earliest start and latest end of all explicitly linked recorded work, including gaps between intervals. The original plan and recorded work stay unchanged.'));
                 panel.appendChild(make('pre', JSON.stringify(preview.manifest, null, 2)));
                 const status = make('p', 'Choose an action to confirm this exact whole manifest, or cancel.');
                 status.setAttribute('role', 'status');
                 panel.appendChild(status);
                 const buttons = [];
-                for (const [action, label] of [['delete_everything', 'Delete everything'], ['squeeze', 'Squeeze']]) {
+                for (const [action, label] of [['delete_everything', 'Delete everything'], ['squeeze', 'Fit schedule to recorded work']]) {
                     const button = make('button', label);
                     button.type = 'button';
                     const reasons = preview.blocked[action];

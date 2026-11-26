@@ -133,3 +133,27 @@ writers stopped. A receipt-bearing schema downgrade is refused; restore a matchi
 File fsync/atomic replacement/directory fsync and advisory locking are exercised on this Linux host.
 Other operating systems/filesystems and physical OS-idle inputs are not certified by the synthetic
 fault/restart tests. See the task delivery evidence for actual suite/browser/migration results.
+
+## Visible explicit plan context
+
+The selected timer's current card and shared timer menu show **No linked plan**, or read
+its actual explicit `scheduled_session_id` through `GET /scheduled-sessions/{id}`. Linked
+context uses the task title and browser-local current schedule endpoints, with **Open linked
+plan** reusing Agenda's existing date/entry navigation and unsaved-editor departure guard.
+Selection, timer revision and status-read generations fence late detail reads. Failed/stale
+reads retain the fact of the link without claiming current plan details or offering a stale
+navigation target; **Refresh timer status** retries reads only. The compact strip names the
+link state; expand its menu or open the timer workspace for the full context.
+
+This is not a reassociation control. Ordinary task starts stay task-only; selecting an existing
+paused/frozen timer neither resumes it nor changes its plan. Model text stays literal text.
+Existing per-timer Entry note drafts and operation recovery retain their own owners.
+
+The plan action formerly labeled Squeeze is now **Fit schedule to recorded work**. The API action
+remains `squeeze`: it spans the earliest start and latest end of **all explicitly linked saved
+records**, including intervening gaps, and preserves original endpoints and recorded work. It is
+not a sum-of-tracked-minutes fit. Associated unfinished timers/unresolved gaps still block it;
+confirmation still owns an exact manifest and unknown-write recovery remains GET-only.
+
+No new Stop dialog is implemented by this presentation slice. **Stop & record** still saves
+actual unsaved positive segments, with existing gap and Entry note safeguards and no plan edit.

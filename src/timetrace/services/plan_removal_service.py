@@ -110,7 +110,7 @@ class PlanRemovalService:
             delete.append("Associated work has a legacy recurrence anchor; deletion is not supported.")
         squeeze = list(common)
         if not manifest["work"]:
-            squeeze.append("No associated recorded work to squeeze around.")
+            squeeze.append("No explicitly linked recorded work to fit the schedule to.")
         if any(row["kind"] != "recorded_work" or not row["end_time"] for row in manifest["work"]):
             delete.append("Association includes unsupported work metadata.")
             squeeze.append("Association includes unsupported work metadata.")

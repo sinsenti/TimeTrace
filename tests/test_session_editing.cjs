@@ -14,7 +14,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     const safetyStorage = new Map();
     function element(id = '', tag = 'div') {
         const classes = new Set(['hidden']);
-        const el = { id, tagName: tag.toUpperCase(), type: '', value: '', _text: '', get textContent(){return this._text;}, set textContent(value){this._text=value;this.children=[];}, children: [], dataset: {}, style: {}, isConnected: true,
+        const el = { id, tagName: tag.toUpperCase(), get ownerDocument(){return context?.document;}, type: '', value: '', _text: '', get textContent(){return this._text;}, set textContent(value){this._text=value;this.children=[];}, children: [], dataset: {}, style: {}, isConnected: true,
             classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, on) { if (on) classes.add(c); else classes.delete(c); } },
             setAttribute(name, value) { this[name] = value; }, removeAttribute(name) { delete this[name]; },
             addEventListener(name, fn) { this[name] = fn; }, removeEventListener() {},

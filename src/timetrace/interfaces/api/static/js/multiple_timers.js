@@ -14,8 +14,39 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
     try { selectedTimerId = storage.getItem('timetrace_timer_selected') || null; } catch (_) { /* Display preference only. */ }
     let observedAt = null, discardPrompt = false;
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, selectionGeneration, observed_at:observedAt});
+    let planContext = {status:'none'}, planReadKey = null;
+    function syncPlanContext() {
+        const timer = timers.find(t => t.id === selectedTimerId);
+        if (!timer?.scheduled_session_id) {
+            planReadKey = null; planContext = {status:'none'}; return;
+        }
+        const identity = {timer_id:timer.id, scheduled_session_id:timer.scheduled_session_id};
+        if (!fresh || pending || receipt) {
+            planReadKey = null; planContext = {...identity,status:'stale'}; return;
+        }
+        const statusGeneration = readGeneration;
+        const key = JSON.stringify([timer.id,timer.revision,timer.scheduled_session_id,selectionGeneration,statusGeneration]);
+        if (key === planReadKey) return;
+        planReadKey = key; planContext = {...identity,status:'loading'};
+        // A plan read is display-only. It cannot select, resume, attach or recover a write.
+        void (async () => {
+            try {
+                const plan = await api.get(`/scheduled-sessions/${encodeURIComponent(timer.scheduled_session_id)}`);
+                if (planReadKey !== key || readGeneration !== statusGeneration) return;
+                if (plan?.id !== timer.scheduled_session_id || !timer.task_id || plan.task_id !== timer.task_id ||
+                    !Number.isFinite(Date.parse(plan.start_time)) || !Number.isFinite(Date.parse(plan.end_time)) ||
+                    Date.parse(plan.end_time) <= Date.parse(plan.start_time)) throw Error('Unknown linked plan');
+                planContext = {...identity,status:'ready',plan};
+            } catch (_) {
+                if (planReadKey !== key || readGeneration !== statusGeneration) return;
+                planContext = {...identity,status:'unavailable'};
+            }
+            publish();
+        })();
+    }
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, selectionGeneration, planContext, observed_at:observedAt});
     const publish = () => {
+        syncPlanContext();
         const state = snapshot();
         onState(state);
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('timetrace:timer-state', {detail:state}));
@@ -251,13 +282,14 @@ function renderTimerWorkspaceCard(root, state, control) {
     const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), Boolean(control?.hasQuickAdjustmentPending?.()), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
     if (root.dataset.workspaceSignature === signature && timer) {
         root.querySelector('.workspace-clock').firstChild.textContent = timerWorkspaceClock(timer, state.fresh);
+        renderTimerPlanContext(root,state,timer);
         renderOtherTimerPresence(root,state,control);
         return;
     }
     root.dataset.workspaceSignature = signature;
     root.replaceChildren();
     if (!timer) { root.append(create('p', 'Choose an activity or start unassigned recording.')); return; }
-    const title = create('h2', timer.task_title || (timer.task_id ? `Task ${timer.task_id.slice(-8)} · title awaiting read` : 'Unassigned recording'));
+    const title = create('h2', timer.task_title || (timer.task_id ? 'Task title awaiting read' : 'Unassigned recording'));
     const clock = create('p', timerWorkspaceClock(timer, state.fresh));
     clock.className = 'workspace-clock';
     clock.dataset.timerCorrectionClock = ''; // #61 owns circular step controls beside this clock.
@@ -295,16 +327,51 @@ function renderTimerWorkspaceCard(root, state, control) {
         discard.addEventListener('click',()=>control.discardSelected({id:timer.id,revision:timer.revision})); row.append(discard);
     }
     root.append(title, clock, row);
+    renderTimerPlanContext(root,state,timer);
     renderOtherTimerPresence(root,state,control,true);
 }
 
-function guardTimerWorkspaceNavigation(event) {
+function renderTimerPlanContext(root, state, timer) {
+    const make = (tag, text) => { const node = root.ownerDocument.createElement(tag); node.textContent = text; return node; };
+    let context = root.querySelector?.('.timer-plan-context');
+    if (!context) {
+        context = make('div',''); context.className = 'timer-plan-context'; root.append(context);
+    }
+    const signature = JSON.stringify([timer.id,timer.scheduled_session_id,timer.task_title,state.fresh,state.pending,Boolean(state.receipt),state.planContext]);
+    if (context.dataset.planContextSignature === signature) return;
+    context.dataset.planContextSignature = signature;
+    context.replaceChildren();
+    if (!timer.scheduled_session_id) {
+        context.append(make('p', `No linked plan${state.fresh && !state.pending && !state.receipt ? '' : ' · last known'}`));
+    } else {
+        const read = state.planContext;
+        const ready = state.fresh && !state.pending && !state.receipt && read?.status === 'ready' &&
+            read.timer_id === timer.id && read.scheduled_session_id === timer.scheduled_session_id;
+        if (ready) {
+            const plan = read.plan;
+            context.append(make('p', `Linked plan · ${timer.task_title || 'Task title unavailable'} · Current schedule: ${new Date(plan.start_time).toLocaleString()} — ${new Date(plan.end_time).toLocaleString()}`));
+            const at = new Date(plan.start_time), pad = n => String(n).padStart(2,'0');
+            const date = `${at.getFullYear()}-${pad(at.getMonth()+1)}-${pad(at.getDate())}`;
+            const link = make('a','Open linked plan');
+            link.href = `/agenda-view?${new URLSearchParams({date,entry:plan.id})}`;
+            link.addEventListener('click', event => guardTimerWorkspaceNavigation(event,'linked plan'));
+            context.append(link);
+        } else {
+            context.append(make('p', !state.fresh || state.pending || state.receipt
+                ? 'Linked plan · details last known; refresh timer status to read the current schedule.'
+                : read?.status === 'unavailable' ? 'Linked plan · details unavailable. Refresh timer status to retry.'
+                    : 'Linked plan · loading current schedule…'));
+        }
+    }
+}
+
+function guardTimerWorkspaceNavigation(event, destination = 'timer workspace') {
     if (event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
     if (typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts()) return;
     event.preventDefault();
     const href = event.currentTarget?.href || event.target?.closest?.('a[href]')?.href;
     const source = window.location.href;
-    void window.appDialogs.confirm({title:'Open timer workspace?', message:'Leave unsaved editor changes to open the timer workspace?'}).then(approved => {
+    void window.appDialogs.confirm({title:`Open ${destination}?`, message:`Leave unsaved editor changes to open the ${destination}?`}).then(approved => {
         if (approved && href && window.location.href === source) window.location.href = href;
     });
 }
@@ -313,7 +380,7 @@ function renderTimerStripStatus(root,state) {
     const selected=root.querySelector('[data-timer-selected]');if(!selected)return;
     const timer=state.timers.find(t=>t.id===state.selectedTimerId);
     selected.onclick=guardTimerWorkspaceNavigation;
-    selected.textContent=timer?`${timer.task_title||'Unassigned'} · ${timerWorkspaceClock(timer,state.fresh)}`:'Open timer workspace';
+    selected.textContent=timer?`${timer.task_title||'Unassigned'} · ${timerWorkspaceClock(timer,state.fresh)} · ${timer.scheduled_session_id?'Linked plan':'No linked plan'}${state.fresh&&!state.pending&&!state.receipt?'':' · last known'}`:'Open timer workspace';
     selected.href=timer?`/agenda-view?${new URLSearchParams({timer:timer.id})}`:'/agenda-view';
     root.querySelector('[data-timer-count]').textContent=`Other timers · ${state.timers.filter(t=>t.id!==state.selectedTimerId).length}${state.receipt?' · Operation recovery':''}`;
     const expander=root.querySelector('[data-timer-expander]');
@@ -384,7 +451,7 @@ if (typeof window !== 'undefined') {
                 if(button.dataset.launcherOwnedStart==='true')continue;
                 button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
             }
-            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
+            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId, state.planContext,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {
                 for (const label of list.querySelectorAll('[data-timer-label]')) {
@@ -412,6 +479,7 @@ if (typeof window !== 'undefined') {
                 label.dataset.timerLabel = timer.id;
                 label.textContent = timerLabel(timer);
                 row.append(label);
+                if (!currentCard && state.selectedTimerId === timer.id) renderTimerPlanContext(row,state,timer);
                 if (currentCard) {
                     const select = button('Select timer', () => { window.multipleTimers.select(timer.id); currentCard.scrollIntoView({block:'nearest'}); }, false, `${timer.id}/select`);
                     select.setAttribute('aria-pressed', String(state.selectedTimerId === timer.id));
