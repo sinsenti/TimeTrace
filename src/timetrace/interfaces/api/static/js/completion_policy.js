@@ -38,7 +38,7 @@ function handleCompletionPolicy(putResponse) {
 
     const titleEl = document.getElementById('completion_policy_modal_title');
     if (titleEl) {
-        titleEl.innerText = policy.reason === 'left_scheduled' ? 'Removed from calendar' : 'Task completed';
+        titleEl.innerText = policy.reason === 'left_scheduled' ? 'Task status changed' : 'Task completed';
     }
 
     const listEl = document.getElementById('completion_policy_session_list');

@@ -63,6 +63,18 @@ const ownSessions = (sessionId, otherSessionId) => [
     { id: otherSessionId, start_time: '2026-11-15T10:00:00Z', end_time: '2026-11-15T11:00:00Z' }
 ];
 
+test('leaving Scheduled describes the status change without claiming that schedules were removed', () => {
+    const b = fixture();
+    const policy = { task_id: 'task', reason: 'left_scheduled',
+        scheduled_sessions: ownSessions(b.sessionId, b.otherSessionId), subtask_scheduled_count: 0 };
+    b.context.handleCompletionPolicy({ completion_policy: policy });
+    assert.equal(b.fields.completion_policy_modal_title.innerText, 'Task status changed');
+    assert.equal(b.writes.length, 0, 'opening the choice does not remove schedules');
+    b.context.handleCompletionPolicy({ completion_policy: { ...policy, reason: 'completed' } });
+    assert.equal(b.fields.completion_policy_modal_title.innerText, 'Task completed');
+    assert.equal(b.writes.length, 0);
+});
+
 test('completion policy resets a hidden subtree choice between P2 and P3 while preserving own-session selection', async () => {
     const b = fixture();
     const handle = b.context.handleCompletionPolicy;
