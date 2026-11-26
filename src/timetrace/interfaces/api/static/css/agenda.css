@@ -75,6 +75,11 @@
 #agenda-pins button:disabled, #agenda-activities button:disabled { opacity: .5; }
 #agenda-ledger details { padding: 14px 0; border-bottom: 1px solid var(--border-muted); }
 #agenda-ledger summary { cursor: pointer; font-weight: 600; }
+/* Saved-work actions keep their sibling order and labels; only presentation changes. */
+.folio button.history-entry-action { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; margin: 8px 8px 14px 0; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; font: 500 .8125rem/1.4 system-ui, sans-serif; vertical-align: top; }
+.folio button.history-entry-adjust { background: var(--bg-card); color: var(--text-muted); }
+.folio button.history-entry-repeat { background: var(--accent-soft, color-mix(in srgb, var(--accent-primary) 14%, var(--bg-card))); border-color: transparent; color: var(--accent-primary); font-weight: 600; }
+.folio button.history-entry-action:not(:disabled):hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 @media (max-width: 740px) {
     .folio { padding: 28px 18px 70px; }
     .folio-columns { display: flex; flex-direction: column; gap: 24px; }

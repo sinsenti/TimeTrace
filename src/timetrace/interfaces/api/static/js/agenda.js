@@ -129,11 +129,11 @@ const agendaPage = (() => {
                     label.append(ratings); parents.get(row.id).append(label);
                 }
                 if (row.kind === 'recorded_work') {
-                    const adjust=make('button','Adjust saved actual time'); adjust.type='button';
+                    const adjust=make('button','Adjust saved actual time','history-entry-action history-entry-adjust'); adjust.type='button';
                     adjust.addEventListener('click',()=>window.openTimeCorrection({row}));
                     parents.get(row.id).append(adjust);
                 }
-                const again = make('button', 'Start again'); again.type = 'button';
+                const again = make('button', 'Start again', 'history-entry-action history-entry-repeat'); again.type = 'button';
                 again.disabled = Boolean(row.task_id && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(row.task_id)));
                 again.dataset.workspaceStart = 'true'; again.dataset.metadataAvailable = String(!again.disabled);
                 const timerState = window.multipleTimers?.snapshot(); again.disabled ||= !timerState?.fresh || timerState.pending || Boolean(timerState.receipt);

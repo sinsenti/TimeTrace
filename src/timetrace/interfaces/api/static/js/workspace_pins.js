@@ -23,26 +23,40 @@ if(typeof window!=='undefined'){
     };
     let dialog=null,read=0,page=0;
     window.openWorkspacePins=async()=>{
-        if(!dialog){dialog=document.createElement('dialog');dialog.className='workspace-help';dialog.setAttribute('aria-label','Manage pinned activities');document.body.append(dialog);}
+        if(!dialog){
+            dialog=document.createElement('dialog');dialog.className='workspace-help app-dialog workspace-pins-dialog';
+            dialog.setAttribute('aria-label','Manage pinned activities');dialog.setAttribute('aria-labelledby','workspace-pins-title');dialog.setAttribute('aria-describedby','workspace-pins-description');
+            dialog.addEventListener('cancel',()=>{read++;});document.body.append(dialog);
+        }
         const generation=++read;dialog.replaceChildren();
-        const heading=document.createElement('h2');heading.textContent='Pinned activities';const explanation=document.createElement('p');explanation.textContent='Shortcuts on this browser. Unpinning never deletes a task.';
-        const close=document.createElement('button');close.textContent='Close';close.type='button';close.addEventListener('click',()=>{read++;dialog.close();});dialog.append(heading,explanation,close);
-        if(!dialog.open)dialog.showModal();
-        const label=document.createElement('label');label.textContent='Find an activity to pin';const search=document.createElement('input');search.type='search';label.append(search);const found=document.createElement('div');dialog.append(label,found);let searchRead=0;
+        const heading=document.createElement('h2');heading.id='workspace-pins-title';heading.textContent='Manage pinned activities';
+        const explanation=document.createElement('p');explanation.id='workspace-pins-description';explanation.textContent='Shortcuts on this browser. Unpinning never deletes a task.';
+        const label=document.createElement('label');label.className='workspace-pins-search';label.textContent='Find an activity to pin';
+        const search=document.createElement('input');search.type='search';search.placeholder='Search activities…';label.append(search);
+        const found=document.createElement('div');found.className='workspace-pin-results';found.setAttribute('aria-live','polite');
+        const saved=document.createElement('section');saved.className='workspace-pins-saved';
+        const savedTitle=document.createElement('h3');savedTitle.textContent='Pinned on this browser';savedTitle.id='workspace-pins-saved-title';saved.setAttribute('aria-labelledby',savedTitle.id);
+        const list=document.createElement('div');list.className='workspace-pin-list';list.textContent='Loading pinned activities…';saved.append(savedTitle,list);
+        const footer=document.createElement('footer');footer.className='app-dialog-actions';
+        const pager=document.createElement('nav');pager.className='workspace-pins-pagination';pager.hidden=true;pager.setAttribute('aria-label','Pinned activity pages');
+        const close=document.createElement('button');close.textContent='Close';close.type='button';close.className='app-dialog-primary';close.addEventListener('click',()=>{read++;dialog.close();});footer.append(pager,close);
+        dialog.append(heading,explanation,label,found,saved,footer);
+        if(!dialog.open)dialog.showModal();search.focus();let searchRead=0;
         search.addEventListener('input',async()=>{const current=++searchRead;const q=search.value;found.replaceChildren();if(!q.trim())return;
             try{const result=await api.get(`/api/tasks/launcher?${new URLSearchParams({q,limit:'20'})}`);if(current!==searchRead||generation!==read||!dialog.open)return;
                 for(const task of result.suggestions){const row=document.createElement('div');row.className='workspace-pin-row';const title=document.createElement('strong');title.textContent=task.title;const toggle=document.createElement('button');toggle.type='button';toggle.textContent=createWorkspacePins(localStorage).ids().includes(task.id)?'Unpin':'Pin';toggle.addEventListener('click',()=>{try{const pins=createWorkspacePins(localStorage);pins.ids().includes(task.id)?pins.unpin(task.id):pins.pin(task.id);notify();void window.openWorkspacePins();}catch(_){explanation.textContent='The pin change could not be saved.';}});row.append(title,toggle);found.append(row);}
             }catch(_){if(current===searchRead&&generation===read)found.textContent='Activity search unavailable; existing pins are unchanged.';}
         });
-        let ids;try{ids=createWorkspacePins(localStorage).ids();}catch(_){explanation.textContent='Saved pins are unavailable; existing storage is unchanged.';return;}
+        let ids;try{ids=createWorkspacePins(localStorage).ids();}catch(_){explanation.textContent='Saved pins are unavailable; existing storage is unchanged.';list.textContent='Pins unavailable on this browser.';return;}
         page=Math.min(page,Math.max(0,Math.ceil(ids.length/20)-1));const shown=ids.slice(page*20,(page+1)*20);
         const names=await Promise.all(shown.map(id=>api.get(`/api/tasks/${encodeURIComponent(id)}`).then(task=>({id,title:task.title}),()=>({id,title:'Task unavailable'}))));
         if(generation!==read||!dialog.open)return;
-        if(!ids.length){const empty=document.createElement('p');empty.textContent='No pinned activities. Open Task details to pin one.';dialog.append(empty);}
+        list.replaceChildren();savedTitle.textContent=`Pinned on this browser (${ids.length})`;
+        if(!ids.length){const empty=document.createElement('p');empty.className='workspace-pins-empty';empty.textContent='No pinned activities yet. Search above and choose Pin to add a shortcut.';list.append(empty);}
         for(const task of names){const row=document.createElement('div');row.className='workspace-pin-row';const title=document.createElement('strong');title.textContent=task.title;
-            const remove=document.createElement('button');remove.type='button';remove.textContent='Unpin';remove.addEventListener('click',()=>{try{createWorkspacePins(localStorage).unpin(task.id);notify();void window.openWorkspacePins();}catch(_){explanation.textContent='The pin change could not be saved.';}});row.append(title,remove);dialog.append(row);
+            const remove=document.createElement('button');remove.type='button';remove.textContent='Unpin';remove.addEventListener('click',()=>{try{createWorkspacePins(localStorage).unpin(task.id);notify();void window.openWorkspacePins();}catch(_){explanation.textContent='The pin change could not be saved.';}});row.append(title,remove);list.append(row);
         }
-        if(ids.length>20){const counter=document.createElement('p');counter.textContent=`${page*20+1}–${Math.min(ids.length,(page+1)*20)} of ${ids.length}`;dialog.append(counter);for(const [label,step] of [['Previous',-1],['Next',1]]){const b=document.createElement('button');b.textContent=label;b.disabled=page+step<0||(page+step)*20>=ids.length;b.addEventListener('click',()=>{page+=step;void window.openWorkspacePins();});dialog.append(b);}}
+        if(ids.length>20){pager.hidden=false;const counter=document.createElement('span');counter.textContent=`${page*20+1}–${Math.min(ids.length,(page+1)*20)} of ${ids.length}`;pager.append(counter);for(const [label,step] of [['Previous',-1],['Next',1]]){const b=document.createElement('button');b.type='button';b.textContent=label;b.disabled=page+step<0||(page+step)*20>=ids.length;b.addEventListener('click',()=>{page+=step;void window.openWorkspacePins();});pager.append(b);}}
     };
     window.addEventListener('timetrace:pins-changed',()=>window.refreshTaskPinDetail(document.getElementById('edit_task_id')?.value||null));
     window.addEventListener('storage',event=>{if(event.key==='timetrace.workspace.pins.v1')notify();});

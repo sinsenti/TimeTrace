@@ -1123,6 +1123,39 @@ test('ui72 manual recording labels Entry note separately from plan notes',async(
     await p.elements.get('agenda-new').click();assert.equal(p.elements.get('agenda-notes-label').textContent,'Plan notes');
 });
 
+test('saved-history actions have distinct styling without changing correction identity or task-only repeat payload',async()=>{
+    const saved={id:'saved-history-style',task_id:null,kind:'recorded_work',revision:3,provenance:'manual',
+        start_time:'2000-01-04T09:00:00Z',end_time:'2000-01-04T09:20:00Z',notes:'Keep saved entry note'};
+    const original=JSON.stringify(saved),starts=[],corrections=[];
+    const p=sessionPage(async url=>url.startsWith('/agenda?')?[saved]:[]);
+    p.context.multipleTimers={snapshot:()=>({fresh:true,pending:false,receipt:null}),start:async payload=>starts.push(payload)};
+    p.context.openTimeCorrection=options=>corrections.push(options);
+    await loadFolio(p);
+    const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
+    const buttons=descendants(p.elements.get('agenda-ledger')).filter(el=>el.tagName==='BUTTON');
+    const adjust=buttons.find(el=>el.textContent==='Adjust saved actual time');
+    const again=buttons.find(el=>el.textContent==='Start again');
+    assert.equal(adjust.className,'history-entry-action history-entry-adjust');
+    assert.equal(again.className,'history-entry-action history-entry-repeat');
+    assert.equal(adjust.type,'button');assert.equal(again.type,'button');assert.equal(again.disabled,false);
+    await adjust.click();assert.equal(corrections[0].row.id,saved.id);assert.equal(corrections[0].row.revision,3);
+    await again.click();assert.deepEqual({...starts[0]},{task_id:null});
+    assert.equal(JSON.stringify(saved),original,'restyling/repeat never rewrites saved notes, times or associations');
+    assert.equal(p.writes.length,0,'correction entrypoint only opens its existing approval flow');
+});
+test('restyled repeat retains unavailable-task and pending/stale/uncertain timer disabling',async()=>{
+    for(const scenario of ['pending','stale','receipt','missing task']){
+        const saved={id:'guarded-history',task_id:scenario==='missing task'?'missing':null,kind:'recorded_work',
+            start_time:'2000-01-04T09:00:00Z',end_time:'2000-01-04T09:20:00Z'};
+        const p=sessionPage(async url=>url.startsWith('/agenda?')?[saved]:[]);
+        p.context.multipleTimers={snapshot:()=>({fresh:scenario!=='stale',pending:scenario==='pending',receipt:scenario==='receipt'?{}:null})};
+        await loadFolio(p);
+        const descendants=node=>node.children.flatMap(child=>[child,...descendants(child)]);
+        const again=descendants(p.elements.get('agenda-ledger')).find(el=>el.textContent==='Start again');
+        assert.equal(again.disabled,true,scenario);
+        assert.equal(again.dataset.workspaceStart,'true','shared timer synchronization must still own this control');
+    }
+});
 test('Agenda mounts priority discovery through the shared launcher and keeps pins secondary',async()=>{
     const reads=[];
     const task={id:'low-priority-task',title:'Low task',priority:'low',match_kind:'default'};

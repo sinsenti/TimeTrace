@@ -170,3 +170,23 @@ Final complete gates after the focus and fixture repairs (`99d8eaa8`): **1282 Py
 JS/CJS syntax and whitespace pass; broad Ruff retains17 inherited findings. The full run kept the
 same isolated environment and four-worker/synthetic-idle policy. The integration preview remains
 available for owner review; all commits remain local, without dev merge/push or personal deployment.
+
+## Follow-up: saved-entry actions and pinned-activity dialog
+
+The next screenshots identify the saved-history **Adjust saved actual time / Start again** buttons
+and **Manage pinned activities** popup. Saved-entry actions now have smaller, rounded, separated
+controls: neutral time adjustment and a softly themed repeat action. Their labels, sibling positions,
+click handlers, correction identity/revision and task-only repeat payload remain unchanged. Disabled
+states still belong to task metadata and shared timer freshness/pending/receipt guards.
+
+The pin manager adopts the shared app-dialog shell with an explicit title/description, initially
+focused search, separate current-pins area, useful search-first empty state and footer Close. Pin/
+unpin and paginated navigation remain browser-local, never task or recorded-work mutations. Escape
+uses the existing shared modal shield; native cancellation advances the read generation without a
+delayed close-event owner. Search and lookup responses retain their generation/open checks. Rows
+render titles as text, not HTML. Styles remain scoped and asset versions advance for serving pages.
+
+New public-entry regressions reproduced the unstyled history actions and old dialog composition
+before production edits. Focused **71 Node cases passed**, including correction/repeat payloads,
+disabled repeat guards, footer/search focus, local pin/unpin,21-pin pagination and old-search fencing.
+Full gates, native checks and bounded independent follow-up review are pending at this checkpoint.
