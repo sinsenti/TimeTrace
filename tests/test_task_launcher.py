@@ -280,6 +280,7 @@ def test_launcher_validates_view_priority_and_bounds_at_http_and_service(client,
 
 def test_agenda_serves_priority_filters_and_bounded_discovery_hooks(client):
     from html.parser import HTMLParser
+    from urllib.parse import parse_qs, urlsplit
 
     class DiscoveryHTML(HTMLParser):
         def __init__(self):
@@ -297,7 +298,10 @@ def test_agenda_serves_priority_filters_and_bounded_discovery_hooks(client):
     assert by_id["agenda-priority"][0] == "select"
     assert by_id["agenda-activities"][1]["class"] == "agenda-priority-results"
     assert {attrs["value"] for tag, attrs in page.nodes if tag == "option"} >= {"all", "high", "medium", "low", "none"}
-    assert any(attrs.get("src") == "/static/js/task_launcher.js?v=ui72-priority1" for _, attrs in page.nodes)
-    assert any(attrs.get("href") == "/static/css/agenda_discovery.css?v=ui72-priority1" for _, attrs in page.nodes)
+    for attribute, path in [("src", "/static/js/task_launcher.js"), ("href", "/static/css/agenda_discovery.css")]:
+        urls = [attrs[attribute] for _, attrs in page.nodes if urlsplit(attrs.get(attribute, "")).path == path]
+        assert len(urls) == 1
+        assert parse_qs(urlsplit(urls[0]).query).get("v", [""])[0], "changed assets need a nonempty cache version"
+        assert client.get(urls[0]).status_code == 200
     assert by_id["agenda-manage-pins"][0] == "button"
     assert client.get("/static/css/agenda_discovery.css").status_code == 200

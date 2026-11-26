@@ -156,3 +156,11 @@ horizontal overflow at1217/768/390/320 CSS pixels; all three light palettes and 
 own primary background/foreground. The probe observed **zero mutation requests**. No physical-touch,
 other-engine, screen-reader or owner visual acceptance is inferred. The final CSS-only focus repair
 has its own native red/green evidence; it does not alter the Python/JS behavior under the full gates.
+The bounded independent recheck resolved the P1 with no new finding on either axis.
+
+The first follow-up full run passed **988 Node** and **1281 Python**, with one Python failure:
+a discovery composition test hardcoded the old asset-cache tokens. The test now retains exact
+asset paths, requires one versioned inclusion with a nonempty version and fetches both actual URLs
+successfully instead of pinning an obsolete token. All existing priority/pin assertions remain.
+Focused root/launcher checks then passed **28 Python**; full verification is repeated after this
+test-only repair rather than reporting1282 green cases from the failed full run.
