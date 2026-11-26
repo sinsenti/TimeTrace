@@ -5,7 +5,6 @@ transition. Everything else here guards a specific library trap the design ran i
 vs `between` inclusivity, `Z`-suffixed `UNTIL`, the occurrence-id round-trip).
 """
 
-import uuid
 from datetime import datetime, timedelta
 
 import pytest
@@ -86,7 +85,8 @@ def test_occurrence_id_round_trip():
     "value",
     [
         "",
-        str(uuid.uuid7()),
+        # A plain UUIDv7, fixed so every xdist worker collects the same case.
+        "01a21749-0101-76db-afef-38816f85f741",
         TASK_ID,
         f"virt:{TASK_ID}",
         f"virt:{TASK_ID}:20260903T0729Z",

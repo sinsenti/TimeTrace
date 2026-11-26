@@ -627,9 +627,17 @@ not the latest suite count. Use the [shared delivery summary](../specs/README.md
 for current integrated receipts. "No browser test suite" means no installed automatic browser suite;
 tracked manual/native probes and their bounded execution evidence exist as described above.
 
-Run the full suite with `uv run python -P -m pytest -q`. The `-P` safe-path option is needed
-because the repository-root `copy.py` shadows Python's standard-library `copy` module. For a
-narrower loop:
+Run the full Python suite with four workers. Work stealing balances fast tests against slow
+subprocess and migration tests. Use the serial command for debugging or constrained runners.
+The `-P` safe-path option prevents the repository-root `copy.py` from shadowing the standard library.
+
+```bash
+uv run python -P -m pytest -q -n 4 --dist=worksteal tests/  # standard full suite
+uv run python -P -m pytest -q -n 0 tests/                 # serial full suite
+```
+
+Focused invocations stay serial by default. Keep parametrized values and order deterministic
+at collection time: each worker must collect identical test IDs in the same order.
 
 ```bash
 uv run python -P -m pytest -q tests/test_recurrence.py tests/test_recurrence_service.py

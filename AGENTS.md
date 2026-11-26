@@ -53,7 +53,7 @@ Python **3.14**, managed with `uv`; there is no frontend build step.
 
 ```bash
 uv sync
-uv run python -P -m pytest -q
+uv run python -P -m pytest -q -n 4 --dist=worksteal tests/
 uv run ruff check .
 uv run ruff check --fix path/to/changed.py
 uv run ruff format path/to/changed.py
