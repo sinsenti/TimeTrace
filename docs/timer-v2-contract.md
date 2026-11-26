@@ -143,7 +143,9 @@ plan** reusing Agenda's existing date/entry navigation and unsaved-editor depart
 Selection, timer revision and status-read generations fence late detail reads. Failed/stale
 reads retain the fact of the link without claiming current plan details or offering a stale
 navigation target; **Refresh timer status** retries reads only. The compact strip names the
-link state; expand its menu or open the timer workspace for the full context.
+link state; expand its menu or open the timer workspace for the full context. Periodic plan-detail
+loading and completion update that context independently, retaining unchanged timer controls and
+keyboard focus (including a paused timer's **Resume** button).
 
 This is not a reassociation control. Ordinary task starts stay task-only; selecting an existing
 paused/frozen timer neither resumes it nor changes its plan. Model text stays literal text.

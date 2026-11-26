@@ -451,12 +451,15 @@ if (typeof window !== 'undefined') {
                 if(button.dataset.launcherOwnedStart==='true')continue;
                 button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
             }
-            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId, state.planContext,
+            const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {
                 for (const label of list.querySelectorAll('[data-timer-label]')) {
                     const timer = state.timers.find(t => t.id === label.dataset.timerLabel);
-                    if (timer) label.textContent = timerLabel(timer);
+                    if (timer) {
+                        label.textContent = timerLabel(timer);
+                        if (!currentCard && state.selectedTimerId === timer.id) renderTimerPlanContext(label.parentNode,state,timer);
+                    }
                 }
                 return;
             }
