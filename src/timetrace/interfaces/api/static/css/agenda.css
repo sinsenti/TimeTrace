@@ -6,14 +6,32 @@
     --accent-primary: #c4b5fd;
 }
 .folio { max-width: 1280px; margin: auto; padding: 34px 48px 90px; overflow-wrap: anywhere; }
-.folio-masthead { border-bottom: 1px solid var(--border-muted); padding-bottom: 26px; }
 .folio h1 { font: clamp(2.4rem, 6vw, 3.625rem)/1.08 Georgia, serif; letter-spacing: -.035em; margin: 22px 0 14px; }
 .folio h1 em { color: var(--accent-primary, var(--text-main)); }
 .folio-deck { font: 1rem/1.8 Georgia, serif; }
 .folio-eyebrow, .folio-section-title > span, .agenda-time, .agenda-type { font: .78rem/1.55 ui-monospace, monospace; }
 .folio-eyebrow, .agenda-type { text-transform: uppercase; }
-.folio-strip, .folio-section-title, .folio-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
-.folio-strip { padding: 13px 0; border-bottom: 1px solid var(--border-muted); }
+.folio-section-title, .folio-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
+/* Date and actions form one compact toolbar, not four evenly scattered controls. */
+.activity-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; padding: 16px 0 20px; margin-top: 8px; border-bottom: 1px solid var(--border-color); }
+.activity-toolbar-context, .activity-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+.activity-toolbar-context { gap: 20px; }
+.activity-toolbar-actions { gap: 8px; }
+.folio .activity-toolbar h1 { font: 600 1.125rem/1.3 system-ui, sans-serif; letter-spacing: -.02em; margin: 0; }
+.folio .activity-toolbar-date { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 20px; font-size: .75rem; color: var(--text-muted); }
+.folio .activity-toolbar input, .folio .activity-toolbar button { min-height: 36px; border-color: var(--border-color); border-radius: 8px; font: 500 .8125rem/1.4 system-ui, sans-serif; }
+.folio .activity-toolbar input { color: var(--text-main); padding: 7px 10px; }
+.folio .activity-toolbar button { padding: 8px 12px; }
+.folio .activity-toolbar .activity-primary { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-header); font-weight: 600; }
+.folio .activity-toolbar .activity-help { background: transparent; border-color: transparent; color: var(--text-muted); }
+.folio .activity-toolbar button:not(:disabled):hover { box-shadow: inset 0 0 0 1px currentColor; }
+.folio .activity-toolbar .activity-help:hover { background: var(--accent-soft); box-shadow: none; }
+@media (max-width: 520px) {
+    .activity-toolbar { gap: 14px; }
+    .activity-toolbar-context { width: 100%; justify-content: space-between; gap: 12px; }
+    .folio .activity-toolbar-date { border: 0; padding: 0; gap: 6px; }
+    .activity-toolbar-actions { gap: 6px; }
+}
 .folio-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); gap: 44px; align-items: start; margin-top: 26px; }
 .folio-section-title { border-bottom: 2px solid var(--border-muted); padding-bottom: 12px; }
 .folio h2 { font: 1.5rem/1.3 Georgia, serif; }

@@ -1152,7 +1152,8 @@ test('Agenda mounts priority discovery through the shared launcher and keeps pin
     assert.equal(p.elements.get('agenda-pins').hidden,true);
     assert.equal(p.elements.get('agenda-activities').hidden,false);
     const section=p.elements.get('agenda-activities').children.find(el=>el.dataset.priority==='low');
-    const start=section.children.find(el=>el.tagName==='ARTICLE').children[1].children[0];
+    const body=section.children.find(el=>el.className==='launcher-group-body');
+    const start=body.children.find(el=>el.tagName==='ARTICLE').children[1].children[0];
     await start.click();
     assert.equal(p.writes.length,1);assert.equal(p.writes[0].url,'/timers');assert.equal(p.writes[0].payload.task_id,task.id);assert.equal(p.writes[0].payload.scheduled_session_id,undefined);
 });

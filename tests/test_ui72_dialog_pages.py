@@ -32,6 +32,22 @@ def test_app_dialogs_available_before_served_callers(client, path):
             assert html.index("/static/js/app_dialogs.js") < html.index(f"/static/js/{caller}")
 
 
+def test_agenda_activity_toolbar_groups_date_and_existing_actions(client):
+    html = client.get("/agenda-view").text
+    toolbar = re.search(r'<header class="activity-toolbar"[^>]*>.*?</header>', html, re.S)
+    assert toolbar is not None
+    assert 'aria-label="Activity controls"' in toolbar.group()
+    assert "<h1>Activity</h1>" in toolbar.group()
+    assert re.search(
+        r'<label[^>]*>.*?Local date.*?<input id="agenda-date" type="date" required>', toolbar.group(), re.S
+    )
+    actions = re.search(r'<div class="activity-toolbar-actions">(.*?)</div>', toolbar.group(), re.S).group(1)
+    for control in ["agenda-new", "agenda-record", "agenda-help-open"]:
+        assert re.search(rf'<button id="{control}"[^>]*type="button"', actions)
+        assert html.count(f'id="{control}"') == 1
+    assert 'class="folio-strip"' not in html
+
+
 def test_agenda_help_and_filters_have_named_dialogs_with_footer_close(client):
     html = client.get("/agenda-view").text
     for name in ["agenda-help", "agenda-filters"]:

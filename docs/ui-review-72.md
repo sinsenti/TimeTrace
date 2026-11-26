@@ -119,3 +119,25 @@ untouched. No dev merge, push, personal-daemon restart or deployment occurred.
 Owner visual acceptance and the history-ranking choice remain separate; the ongoing #72 review map
 is not completed by this batch. The remaining choice is an honestly labelled Most worked on view from
 existing recorded-time history, or prospective Frequently started tracking with explicit coverage.
+
+## Follow-up: Activity toolbar and priority disclosures
+
+The owner clarified the next redesign scope with a screenshot: the Activity title, local date,
+Plan session, Add recorded work and Shortcuts & help row, not the whole Agenda page. The compact
+responsive toolbar groups title/date on the left and the existing actions on the right, with a
+filled theme-aware Plan action, secondary recording action and quieter Help. Existing control IDs,
+handlers, local-date meaning and all three actions remain; timer/history layout is unchanged.
+
+Each priority heading is now a full-width native button with expanded state, result count and a
+controlled group body. Clicking, Enter or Space folds/unfolds the entire body while retaining the
+header and its focus. Folds are page-local (no storage or server writes), survive result refreshes,
+and are independent by title-match rank and priority. A new page opens all groups. Collapsed tasks
+are not eligible for Arrow/Enter or stale row activation, and folding a selected row clears that
+selection. A fold is a newer selection generation: an earlier Start ACK cannot clear its view.
+Unfolding never counts as explicit selection of a fuzzy match. Shared Suggested remains unchanged.
+
+Red-first evidence: the four new Node regressions and one root-HTTP toolbar case failed against the
+previous code. Focused green checks passed **80 Node and13 Python**. The existing Agenda-mounted
+writer test's direct-child fixture was adjusted for the controlled group body without removing its
+task-only writer assertions. Full-suite, independent follow-up review and native checks follow this
+checkpoint; do not substitute the previous batch's final counts for this candidate.

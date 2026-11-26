@@ -7,9 +7,9 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="/static/css/appearance.css?v=ui72-rc1">
     <link rel="stylesheet" href="/static/css/ai.css">
-    <link rel="stylesheet" href="/static/css/agenda.css?v=ui72-rc1">
+    <link rel="stylesheet" href="/static/css/agenda.css?v=ui72-toolbar1">
     <link rel="stylesheet" href="/static/css/timer_presence.css?v=ui72-rc1">
-    <link rel="stylesheet" href="/static/css/agenda_discovery.css?v=ui72-priority1">
+    <link rel="stylesheet" href="/static/css/agenda_discovery.css?v=ui72-collapse1">
 </head>
 <body class="agenda-page">
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2">
@@ -19,15 +19,17 @@
     <main class="folio" id="agenda-workspace">
         <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><p data-quick-time-status role="status" aria-live="polite" hidden></p><details data-current-note><summary>Entry note</summary><div id="workspace-current-note"></div></details></section>
         <div id="agenda-unfinished"></div>
-        <header class="folio-masthead">
-            <h1>Activity</h1>
+        <header class="activity-toolbar" aria-label="Activity controls">
+            <div class="activity-toolbar-context">
+                <h1>Activity</h1>
+                <label class="activity-toolbar-date"><span>Local date</span> <input id="agenda-date" type="date" required></label>
+            </div>
+            <div class="activity-toolbar-actions">
+                <button id="agenda-new" class="activity-primary" type="button">+ Plan session</button>
+                <button id="agenda-record" type="button">Add recorded work</button>
+                <button id="agenda-help-open" class="activity-help" type="button">Shortcuts &amp; help</button>
+            </div>
         </header>
-        <div class="folio-strip">
-            <label>Local date <input id="agenda-date" type="date" required></label>
-            <button id="agenda-new" type="button">+ Plan session</button>
-            <button id="agenda-record" type="button">Add recorded work</button>
-            <button id="agenda-help-open" type="button">Shortcuts &amp; help</button>
-        </div>
         <p id="agenda-status" role="status"></p>
         <div id="agenda-progress" aria-live="polite"></div>
         <button id="agenda-retry" type="button" hidden>Refresh agenda</button>

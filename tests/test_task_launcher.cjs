@@ -65,6 +65,26 @@ test('both launcher presentations share one fresh-or-own-ACK availability policy
  assert.equal(canStartTaskFromTimerState({fresh:true,pending:true,receipt:null}),false);
  assert.equal(canStartTaskFromTimerState({fresh:false,pending:false,receipt:{outcome:'uncertain',payload:{operation_id:'a'}}}),false);
 });
+test('folding during an in-flight Start owns the view through a late ACK and never refetches or repeats a write',async()=>{
+ let ack,reads=0,starts=0;
+ const l=createTaskLauncher({view:'priority',api:{get:async()=>{reads++;return {suggestions:[{id:'a',title:'Read A',priority:'high',match_kind:'prefix'}]};}},startTask:(p,h)=>{starts++;h.onSubmitted('fold-op');return new Promise(resolve=>{ack=()=>{h.onAcknowledged({operation_id:'fold-op',timer:{id:'t',state:'running'}});resolve(true);};});}});
+ await l.input('read');const saving=l.start();await Promise.resolve();
+ assert.equal(l.toggleGroup('prefix','high'),true);ack();await saving;
+ assert.equal(l.snapshot().query,'read');assert.equal(l.snapshot().open,true);assert.equal(l.snapshot().activeIndex,-1);
+ assert.deepEqual(l.snapshot().collapsedGroups,['prefix:high']);assert.equal(reads,1);assert.equal(starts,1);
+ await l.key({key:'Enter'});assert.equal(starts,1);
+ l.toggleGroup('prefix','high');l.key({key:'ArrowDown'});assert.equal(l.snapshot().activeIndex,0);
+});
+test('collapsed close matches still require explicit selection, and search rank groups collapse independently',async()=>{
+ let starts=0;
+ const l=createTaskLauncher({view:'priority',api:{get:async()=>({suggestions:[{id:'fuzzy',title:'Raed',priority:'high',match_kind:'fuzzy'}]})},startTask:async()=>{starts++;return true;}});
+ await l.input('read');assert.equal(l.toggleGroup('unknown','high'),false);assert.equal(l.toggleGroup('fuzzy','all'),false);
+ l.toggleGroup('default','high');assert.equal(l.choose(0),true,'default and close-match groups do not share one fold');
+ l.toggleGroup('fuzzy','high');assert.equal(l.choose(0),false);await l.start({explicitButton:true});assert.equal(starts,0);
+ l.toggleGroup('fuzzy','high');await l.key({key:'Enter'});assert.equal(starts,0,'unfolding is not an explicit close-match selection');
+ l.key({key:'ArrowDown'});await l.key({key:'Enter'});assert.equal(starts,1);
+ await l.view('suggested');assert.equal(l.toggleGroup('fuzzy','high'),false,'the shared Suggested presentation has no folding state');
+});
 const reading={id:'reading-uuid',title:'Reading',match_kind:'default',scheduled_state:'now'};
 test('focus shows defaults and Enter starts the highlighted task only',async()=>{
  const calls=[];const launcher=createTaskLauncher({api:{get:async()=>({suggestions:[reading]})},startTask:async(payload,hooks)=>{calls.push(payload);hooks.onSubmitted('op-1');hooks.onAcknowledged({operation_id:'op-1',timer:{id:'timer-1',task_id:reading.id,state:'running'}});return true;}});

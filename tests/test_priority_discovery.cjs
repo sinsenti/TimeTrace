@@ -34,7 +34,7 @@ test('shared mounted priority discovery renders headed compact groups and uses t
  const nodes=descendants(h.results);
  assert.equal(h.input.attributes.role,'searchbox');
  assert.equal(descendants(h.root).some(el=>el.className==='task-launcher-popup'),false,'persistent results do not duplicate an overlaid popup');
- assert.deepEqual(nodes.filter(el=>el.tagName==='h4').map(el=>el.textContent),['High priority','Medium priority','Low priority','No priority']);
+ assert.deepEqual(nodes.filter(el=>el.tagName==='h4').map(el=>descendants(el).find(child=>child.className==='launcher-group-label').textContent),['High priority','Medium priority','Low priority','No priority']);
  assert.deepEqual(nodes.filter(el=>el.tagName==='strong').map(el=>el.textContent),['High','Medium','Low <literal>','Unset']);
  assert.match(nodes.find(el=>el.tagName==='small'&&el.textContent.includes('Parent')).textContent,/Scheduled now/);
  assert.match(nodes.find(el=>el.className==='launcher-result-bound').textContent,/20.*search.*more/i);
@@ -48,11 +48,38 @@ test('mounted typed discovery preserves title-rank sections and explicit close-m
  const h=await mount([{id:'exact',title:'Read',priority:'-',match_kind:'exact'},{id:'prefix',title:'Reading',priority:'high',match_kind:'prefix'},{id:'contains',title:'About read',priority:'medium',match_kind:'contains'},{id:'fuzzy',title:'Raed',priority:'low',match_kind:'fuzzy'}]);
  await h.launcher.model.input('read');
  assert.deepEqual(descendants(h.results).filter(el=>el.tagName==='strong').map(el=>el.textContent),['Read','Reading','About read','Raed']);
- assert.match(descendants(h.results).find(el=>el.tagName==='h4'&&el.textContent.includes('Close matches')).textContent,/select before starting/);
+ assert.match(descendants(h.results).find(el=>el.className==='launcher-group-label'&&el.textContent.includes('Close matches')).textContent,/select before starting/);
  assert.equal(h.launcher.model.snapshot().activeIndex,0);
  const close=h.results.children.find(el=>el.dataset.priority==='low');
  await descendants(close).find(el=>el.textContent==='Start').fire('click');
  assert.equal(h.writes[0].p.task_id,'fuzzy','click on an explicit row is a deliberate fuzzy choice');
+});
+test('priority header buttons fold the full body without rebuilding the focused header or writing data',async()=>{
+ const h=await mount([{id:'high',title:'High',priority:'high',match_kind:'default'},{id:'low',title:'Low',priority:'low',match_kind:'default'}]);
+ const group=h.results.children.find(el=>el.dataset.priority==='high');
+ const toggle=descendants(group).find(el=>el.className==='launcher-group-toggle');
+ assert.ok(toggle,'each priority heading exposes a real keyboard-operable button');
+ const body=descendants(group).find(el=>el.id===toggle.attributes['aria-controls']);
+ assert.ok(body);assert.equal(toggle.attributes['aria-expanded'],'true');assert.equal(body.hidden,false);
+ toggle.focus();await toggle.fire('click');
+ assert.equal(toggle.attributes['aria-expanded'],'false');assert.equal(body.hidden,true);
+ assert.equal(toggle.ownerDocument.activeElement,toggle);assert.ok(descendants(group).includes(toggle));
+ assert.equal(h.launcher.model.snapshot().activeIndex,-1,'hiding the selected task clears its keyboard selection');
+ assert.equal(await h.launcher.activate('high'),false,'a hidden stale action cannot start a different selected task');
+ assert.equal(h.writes.length,0);
+ await toggle.fire('click');assert.equal(toggle.attributes['aria-expanded'],'true');assert.equal(body.hidden,false);
+ assert.equal(h.writes.length,0);
+});
+test('folded tasks are skipped by keyboard and stay folded through reads without affecting other groups',async()=>{
+ const h=await mount([{id:'high',title:'High',priority:'high',match_kind:'default'},{id:'low',title:'Low',priority:'low',match_kind:'default'}]);
+ const group=h.results.children.find(el=>el.dataset.priority==='high');
+ await descendants(group).find(el=>el.className==='launcher-group-toggle').fire('click');
+ await h.launcher.model.focus();
+ assert.equal(h.launcher.model.snapshot().rows[h.launcher.model.snapshot().activeIndex].id,'low');
+ h.launcher.model.key({key:'ArrowDown'});assert.equal(h.launcher.model.snapshot().activeIndex,1);
+ h.launcher.model.key({key:'ArrowUp'});assert.equal(h.launcher.model.snapshot().activeIndex,1);
+ assert.equal(descendants(h.results.children.find(el=>el.dataset.priority==='high')).find(el=>el.className==='launcher-group-body').hidden,true);
+ await h.launcher.model.key({key:'Enter'});assert.equal(h.writes.length,1);assert.equal(h.writes[0].p.task_id,'low');
 });
 test('mounted completed-task opt-in and no-priority filter go to the server with the current title and tag query',async()=>{
  const h=await mount([]);await h.launcher.model.input('Read%_');await h.launcher.model.tag('Study%_');
