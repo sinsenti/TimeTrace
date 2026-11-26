@@ -41,6 +41,30 @@ test('a start captures the idle preference before asynchronous metadata checks',
  let idle=true,release,payload;const l=createTaskLauncher({api:{get:async()=>({suggestions:[{id:'r',title:'Reading',match_kind:'default'}]})},pauseWhenIdle:()=>idle,validateTask:()=>new Promise(r=>release=r),startTask:async p=>{payload=p;return true;}});
  await l.focus();const pending=l.key({key:'Enter'});idle=false;release(true);await pending;assert.deepEqual(payload,{task_id:'r',pause_when_idle:true});
 });
+test('a late ACK preserves a newer suggestion selection even when the query is unchanged',async()=>{
+ let ack;const rows=[{id:'a',title:'Read A',match_kind:'prefix'},{id:'b',title:'Read B',match_kind:'prefix'}];
+ const l=createTaskLauncher({api:{get:async()=>({suggestions:rows})},startTask:(p,h)=>{h.onSubmitted('a-op');return new Promise(resolve=>{ack=()=>{h.onAcknowledged({operation_id:'a-op',timer:{id:'t',state:'running'}});resolve(true);};});}});
+ await l.input('read');const saving=l.start();await Promise.resolve();l.key({key:'ArrowDown'});ack();await saving;
+ assert.equal(l.snapshot().query,'read');assert.equal(l.snapshot().rows[l.snapshot().activeIndex].id,'b');
+});
+test('same-query refresh failure after Start belongs to the newer read, not its old ACK',async()=>{
+ let reads=0,ack;const l=createTaskLauncher({api:{get:async()=>{if(++reads>1)throw Error('offline');return {suggestions:[{id:'a',title:'Read A',match_kind:'prefix'}]};}},startTask:(p,h)=>{h.onSubmitted('a-op');return new Promise(resolve=>{ack=()=>{h.onAcknowledged({operation_id:'a-op',timer:{id:'t',state:'running'}});resolve(true);};});}});
+ await l.input('read');const saving=l.start();await Promise.resolve();await l.refresh();ack();await saving;
+ assert.equal(l.snapshot().query,'read');assert.match(l.snapshot().message,/unavailable/);
+});
+test('timer selection made during metadata preflight survives the eventual Start ACK',async()=>{
+ const {createTimerController}=require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');let release;const values=new Map();
+ const control=createTimerController({api:{get:async()=>({timers:[{id:'a',state:'running'},{id:'b',state:'paused'}],revision:1}),post:async(_,p)=>({operation_id:p.operation_id,timer:{id:'a',state:'running'}})},storage:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},operationId:()=> 'preflight',onState(){}});
+ await control.refresh();const l=createTaskLauncher({api:{get:async()=>({suggestions:[{id:'task-a',title:'Task A',match_kind:'default'}]})},timerSelection:()=>control.snapshot().selectionGeneration,validateTask:()=>new Promise(r=>release=r),startTask:(p,h)=>{const saving=control.start(p,h.onAcknowledged,{preservePage:true,selectionGeneration:h.selectionGeneration});h.onSubmitted(control.snapshot().receipt.payload.operation_id);return saving;}});
+ await l.focus();const saving=l.start();control.select('b');release(true);await saving;assert.equal(control.snapshot().selectedTimerId,'b');
+});
+test('both launcher presentations share one fresh-or-own-ACK availability policy',()=>{
+ const {canStartTaskFromTimerState}=require('../src/timetrace/interfaces/api/static/js/task_launcher.js');
+ assert.equal(canStartTaskFromTimerState({fresh:true,pending:false,receipt:null}),true);
+ assert.equal(canStartTaskFromTimerState({fresh:false,pending:false,receipt:{outcome:'acknowledged',payload:{operation_id:'a'}},lastResult:{operation_id:'a'}}),true);
+ assert.equal(canStartTaskFromTimerState({fresh:true,pending:true,receipt:null}),false);
+ assert.equal(canStartTaskFromTimerState({fresh:false,pending:false,receipt:{outcome:'uncertain',payload:{operation_id:'a'}}}),false);
+});
 const reading={id:'reading-uuid',title:'Reading',match_kind:'default',scheduled_state:'now'};
 test('focus shows defaults and Enter starts the highlighted task only',async()=>{
  const calls=[];const launcher=createTaskLauncher({api:{get:async()=>({suggestions:[reading]})},startTask:async(payload,hooks)=>{calls.push(payload);hooks.onSubmitted('op-1');hooks.onAcknowledged({operation_id:'op-1',timer:{id:'timer-1',task_id:reading.id,state:'running'}});return true;}});

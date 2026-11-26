@@ -1,7 +1,11 @@
 /** Search selects an explicit task. Only the existing timer writer can start it. */
-function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined}) {
+function canStartTaskFromTimerState(state){
+    const ownAck=state.receipt?.outcome==='acknowledged'&&state.lastResult?.operation_id===state.receipt.payload?.operation_id;
+    return !state.pending&&(state.fresh&&!state.receipt||Boolean(ownAck));
+}
+function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined,timerSelection=()=>undefined}) {
     let query='',tagFilter='',includeCompleted=false,rows=[],activeIndex=-1,open=false,loading=false,pending=false;
-    let version=0,request=0,explicit=false,message='',actionMessage='',binding=null;
+    let version=0,request=0,selectionGeneration=0,explicit=false,message='',actionMessage='',binding=null;
     const snapshot=()=>({query,tagFilter,includeCompleted,rows,activeIndex,open,loading,pending,message,actionMessage});
     const publish=()=>onState(snapshot());
     async function read(){
@@ -21,7 +25,7 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
         if(owner!==binding||owner.acknowledged||!owner.id||result?.operation_id!==owner.id||!result.timer)return false;
         owner.acknowledged=true;pending=false;
         actionMessage=`${owner.task.title}: ${result.timer.state==='running'?'recording':result.timer.state}.`;
-        if(version===owner.version&&query===owner.query){query='';message='';version++;request++;loading=false;rows=[];activeIndex=-1;open=false;}
+        if(version===owner.version&&request===owner.request&&selectionGeneration===owner.selectionGeneration&&query===owner.query){query='';message='';version++;request++;loading=false;rows=[];activeIndex=-1;open=false;}
         publish();return true;
     }
     async function start({explicitButton=false}={}){
@@ -29,10 +33,11 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
         if(pending||loading||(!open&&!explicitButton)||!task||(task.match_kind==='fuzzy'&&!explicit))return false;
         if(!available()){actionMessage='Finish timer recovery or refresh timer status before starting.';publish();return false;}
         const idle=pauseWhenIdle(),payload={task_id:task.id,...(typeof idle==='boolean'?{pause_when_idle:idle}:{})};
-        const owner={task,query,version,id:null,acknowledged:false};binding=owner;pending=true;actionMessage='';publish();
+        const owner={task,query,version,request,selectionGeneration,timerSelection:timerSelection(),id:null,acknowledged:false};binding=owner;pending=true;actionMessage='';publish();
         try{
             if(!await validateTask(task,includeCompleted))throw Error('Task changed or is unavailable. Search again.');
             const result=await startTask(payload,{
+                selectionGeneration:owner.timerSelection,
                 onSubmitted:id=>{owner.id=id;},
                 onAcknowledged:result=>acknowledged(owner,result),
             });
@@ -47,7 +52,7 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
         tag:value=>{tagFilter=value;version++;open=true;return read();},
         includeCompleted:value=>{includeCompleted=Boolean(value);version++;open=true;return read();},
         close:()=>{open=false;request++;loading=false;publish();},
-        choose:index=>{if(loading||!rows[index])return false;activeIndex=index;explicit=true;open=true;publish();return true;},
+        choose:index=>{if(loading||!rows[index])return false;activeIndex=index;selectionGeneration++;explicit=true;open=true;publish();return true;},
         reconcile:result=>binding?acknowledged(binding,result):false,
         start,
         key:event=>{
@@ -58,7 +63,7 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
             if(['ArrowDown','ArrowUp'].includes(event.key)&&!open){open=true;void read();return true;}
             if(['ArrowDown','ArrowUp'].includes(event.key)&&open&&!loading&&rows.length){
                 activeIndex=activeIndex<0?(event.key==='ArrowDown'?0:rows.length-1):(activeIndex+(event.key==='ArrowDown'?1:-1)+rows.length)%rows.length;
-                explicit=true;publish();return true;
+                selectionGeneration++;explicit=true;publish();return true;
             }
             return false;
         },
@@ -73,11 +78,11 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
     const check=doc.createElement('input');check.type='checkbox';checkLabel.append(check,doc.createTextNode(' Include completed'));
     const options=doc.createElement('div');options.id=`${uid}-options`;options.setAttribute('role','listbox');options.setAttribute('aria-label','Task suggestions');
     const status=doc.createElement('p');status.className='task-launcher-status';status.setAttribute('role','status');
-    popup.append(hint,checkLabel,options);root.append(popup,status);root.hidden=false;
+    popup.append(hint,options);root.append(checkLabel,popup,status);root.hidden=false;
     input.maxLength=200;
     input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls',options.id);input.setAttribute('autocomplete','off');
     let model,signature='';
-    function available(){const s=control.snapshot();const ownAck=s.receipt?.outcome==='acknowledged'&&s.lastResult?.operation_id===s.receipt.payload?.operation_id;return !s.pending&&(s.fresh&&!s.receipt||ownAck);}
+    function available(){return canStartTaskFromTimerState(control.snapshot());}
     function render(s){
         if(input.value!==s.query)input.value=s.query;
         popup.hidden=!s.open;check.checked=s.includeCompleted;input.setAttribute('aria-expanded',String(s.open));input.setAttribute('aria-busy',String(s.loading));
@@ -95,7 +100,7 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
         }
         onSuggestions?.(s);
     }
-    model=createTaskLauncher({api,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,
+    model=createTaskLauncher({api,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,timerSelection:()=>control.snapshot().selectionGeneration,
         validateTask:async(task,includeCompleted)=>{
             const current=await api.get(`/api/tasks/${encodeURIComponent(task.id)}`);
             if(current.id!==task.id||current.title!==task.title)return false;
@@ -105,7 +110,7 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
         },
         startTask:(payload,hooks)=>{
             const previous=control.snapshot().receipt?.payload?.operation_id;
-            const saving=control.start(payload,hooks.onAcknowledged,{preservePage:true});
+            const saving=control.start(payload,hooks.onAcknowledged,{preservePage:true,selectionGeneration:hooks.selectionGeneration});
             const receipt=control.snapshot().receipt;if(receipt?.url==='/timers'&&receipt.payload?.operation_id!==previous)hooks.onSubmitted(receipt.payload.operation_id);
             return saving;
         },
@@ -114,9 +119,10 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
     input.addEventListener('keydown',event=>{if(model.key(event)!==false)event.preventDefault();});
     check.addEventListener('change',()=>void model.includeCompleted(check.checked));
     const outside=e=>{if(!root.contains(e.target)&&e.target!==startButton)model.close();};doc.addEventListener('pointerdown',outside);
+    doc.addEventListener('focusin',event=>{if(model.snapshot().open&&!root.contains(event.target)&&event.target!==startButton)model.close();});
     const recovered=e=>model.reconcile(e.detail);window.addEventListener('timetrace:timer-mutated',recovered);
     const tasksChanged=()=>{if(model.snapshot().open||onSuggestions)void model.refresh();};window.addEventListener('timetrace:tasks-mutated',tasksChanged);
     render(model.snapshot());
     return {model,sync:()=>render(model.snapshot()),start:()=>model.start({explicitButton:true}),activate:id=>{const index=model.snapshot().rows.findIndex(t=>t.id===id);if(index<0)return false;model.choose(index);return model.start({explicitButton:true});}};
 }
-if(typeof module!=='undefined'&&module.exports)module.exports={createTaskLauncher,mountTaskLauncher};
+if(typeof module!=='undefined'&&module.exports)module.exports={createTaskLauncher,mountTaskLauncher,canStartTaskFromTimerState};

@@ -46,12 +46,15 @@ journal and block a new Start. Finalized recovery is read-only and updates only 
   never aggregated in Python. A bounded top-N heap ranks the full eligible stream before the output
   limit, avoiding both UUID-before-rank loss and the analytics2000-group truncation problem. Existing
   analytics vocabulary, union/cohort rules and public limits are not altered. Custom local start-date
-  bounds are derived from the same captured measurement instant used for the scheduling window.
+  bounds are derived from the same captured measurement instant used for the scheduling window,
+  in QueryService's effective daemon timezone (not a potentially different browser calendar day).
+  The response exposes that effective zone and warns when the requested browser zone differs.
 - `createTaskLauncher` is the public JS behavior seam. Its DOM adapter renders text nodes and ARIA
   combobox/listbox state, validates fresh task metadata before Start and delegates to the existing
   timer writer. Results are fenced by request/query generation; Start owns a fixed task/idle intent.
 - The existing timer controller's Start gains an optional own-ACK callback and `preservePage` option.
-  Its private journal stores `preserve_page` outside the fixed server payload; retry/receipt hashes
+  Its private journal stores `preserve_page` outside the fixed server payload; the captured timer
+  selection generation also fences result selection across metadata preflight. Retry/receipt hashes
   and server protocols are unchanged. ACK releases the UI before display refresh; replay remains
   the existing explicit exact-operation action, never an automatic new request.
 - Agenda retains existing date/history/plan/inspector/manual-work/correction/export/ratings/note and
@@ -90,6 +93,22 @@ without a repeat mutation. Provider routes/native sends/actual OS idle observati
 Screenshot capture timed out before and after restart; DOM/native interaction evidence is not raster,
 OS/audio/accessibility certification. No screenshots are claimed for this candidate.
 
-Full suites, final lint/syntax checks and independent Standards/Spec review are pending. Earlier
-#59 gates are historical and not a claim about this new feature. No commit is merged/deployed into
-the personal app; work remains on the local implementation branch.
+## Independent review and repairs
+
+Initial review of `09260d1...c2a560f`: Standards **3 P1 documented-contract findings**, plus **1 P2
+judgement smell**; Spec **2 P1 and1 P2 findings**. Counts stay separate rather than being rewritten
+as zero after repair. Shared findings concern late-ACK ownership and browser/daemon calendar bounds;
+Standards also found keyboard access to Include completed, and Spec found the metadata-preflight
+window before the timer writer captured a newer timer selection.
+
+Red/green public regressions now fence query, request and suggestion-selection generations before
+ACK clearing; carry the timer-selection generation captured before metadata validation into the
+existing writer; and derive recorded-time dates in the canonical daemon zone. Include completed
+is outside the dismissible list, visible while interacting or enabled; native Tab access failed
+before the fix and passed after it. The first post-fix reload still used cached old bundles; cache
+versions were advanced before claiming the native repair. The tracked browser probe includes this
+keyboard check. Availability policy is now one public predicate shared by both presentations.
+
+Recheck and final full suites/lint/syntax gates are pending. Earlier #59 gates are historical and
+not a claim about this new feature. No commit is merged/deployed into the personal app; work remains
+on the local implementation branch.

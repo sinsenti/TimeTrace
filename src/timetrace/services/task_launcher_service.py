@@ -10,7 +10,7 @@ from sqlmodel import Session, select
 from timetrace.core.exceptions import ValidationError
 from timetrace.core.query_spec import AnalyticsQuery, DateRange, QueryFilter
 from timetrace.core.task_search import title_match_rank
-from timetrace.core.timezones import resolve_timezone
+from timetrace.core.timezones import daemon_tzinfo
 from timetrace.db.models import Task, TaskStatus
 from timetrace.db.session import sqlite_read_snapshot
 from timetrace.interfaces.api.schemas import QueryContextRequest
@@ -74,7 +74,9 @@ class TaskLauncherService:
         # metadata in 200-row batches, aggregate each batch through QueryService, and
         # retain only the final top-N. Raw work rows never enter Python aggregation.
         candidates = self.db.exec(statement.order_by(Task.id)).yield_per(200)
-        zone = resolve_timezone(timezone)
+        # QueryService's SQLite local-day contract is daemon-local, even when the
+        # browser requests another zone. Derive bounds in that same effective zone.
+        zone = daemon_tzinfo()
         today = now.replace(tzinfo=UTC).astimezone(zone).date()
         date_range = DateRange(
             preset="custom", start_date=(today - timedelta(days=29)).isoformat(), end_date=today.isoformat()
@@ -128,4 +130,8 @@ class TaskLauncherService:
         return {
             "suggestions": [row for _, row in nsmallest(limit, ranked(), key=lambda item: item[0])],
             "measurement_at": now.replace(tzinfo=UTC).isoformat(),
+            "timezone": zone.key,
+            "warnings": ["Recorded-time ranking uses the daemon timezone, not the requested browser timezone."]
+            if timezone and timezone != zone.key
+            else [],
         }

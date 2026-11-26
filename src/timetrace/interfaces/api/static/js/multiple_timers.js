@@ -44,13 +44,13 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             fresh = false; message = 'Timer status unavailable. Last-known timers retained; retry status.'; publish(); return null;
         }
     }
-    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true, preservePage = false) {
+    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true, preservePage = false, selectionAtIntent = null) {
         if (pending || (receipt && receipt.outcome !== 'acknowledged' && !retry)) return false;
         const ownership = ++writeGeneration;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
         pending = true; publish();
         let acknowledged = false;
-        const selectionAtStart = selectionGeneration;
+        const selectionAtStart = selectionAtIntent ?? selectionGeneration;
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
@@ -161,7 +161,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (!/^\/(timers|recorded-work)\/[^/]+$/.test(resource) || preview?.resource !== resource) return Promise.reject(Error('Correction resource does not match approval.'));
             return write(`${resource}/correction`, {preview}, false, null, false);
         },
-        start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true),
+        start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true, options.selectionGeneration??null),
         act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
 }

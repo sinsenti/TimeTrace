@@ -3,10 +3,15 @@
  */
 async function runTaskLauncherCase(name) {
     const assert=(value,message)=>{if(!value)throw Error(`${name}: ${message}`);};
-    assert(['late_ack','lost_ack'].includes(name),'choose an explicit verification case');
+    assert(['late_ack','lost_ack','completed_keyboard'].includes(name),'choose an explicit verification case');
     assert(location.origin==='http://127.0.0.1:18131','owned synthetic origin required');
     const health=await api.get('/health');
     assert(health.db_file.startsWith('/tmp/timetrace-launcher-browser-'),'isolated synthetic data required');
+    if(name==='completed_keyboard'){
+        assert(document.activeElement.matches('.launcher-completed input'),'Tab from search must reach Include completed');
+        assert(document.activeElement.getClientRects().length>0,'completion control is visible to keyboard users');
+        return {case:name,result:'passed'};
+    }
     assert(!document.querySelector('dialog[open]'),'close dialogs first');
     assert(!multipleTimers.hasNoteDraft()&&!multipleTimers.hasFocusDraft?.(),'clean timer editors required');
     const launcher=window.agendaTaskLauncher||window.sharedTaskLauncher;

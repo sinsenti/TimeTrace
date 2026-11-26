@@ -69,7 +69,7 @@ const agendaPage = (() => {
         const details=make('button','Task details');details.type='button';details.addEventListener('click',()=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(task.id);});actions.append(begin,details);item.append(actions);return item;
     }
     let cardsSignature=null;
-    function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const timers=window.multipleTimers.snapshot();const ownAck=timers.receipt?.outcome==='acknowledged'&&timers.lastResult?.operation_id===timers.receipt.payload?.operation_id;const blocked=timers.pending||!(timers.fresh&&!timers.receipt||ownAck);const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
+    function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const blocked=!canStartTaskFromTimerState(window.multipleTimers.snapshot());const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
         for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked));
     }
     let discoveryGeneration = 0;

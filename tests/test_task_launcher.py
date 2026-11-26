@@ -129,6 +129,32 @@ def test_scheduled_suggestions_reuse_virtual_projection_and_respect_a_moved_occu
     assert next(r for r in rows if r["id"] == recurring["id"])["scheduled_state"] is None
 
 
+def test_launcher_uses_the_analytics_daemon_day_when_browser_timezone_differs(client, db, monkeypatch):
+    from datetime import datetime
+
+    import timetrace.core.timezones as zones
+    from timetrace.services import TaskLauncherService
+
+    monkeypatch.setenv("TZ", "UTC")
+    zones._reset_caches()
+    try:
+        task(client, "Alpha no work", priority="high")
+        worked = task(client, "Beta worked", priority="high")
+        response = client.post(
+            "/recorded-work",
+            json={"task_id": worked["id"], "start_time": "2000-01-10T00:00:00Z", "end_time": "2000-01-10T00:10:00Z"},
+        )
+        assert response.status_code == 201, response.text
+        result = TaskLauncherService(db).suggestions(
+            timezone="America/Los_Angeles", measurement_at=datetime(2000, 1, 10, 0, 30)
+        )
+        assert result["suggestions"][0]["id"] == worked["id"]
+        assert result["suggestions"][0]["recorded_hours"] > 0
+        assert result["timezone"] == "UTC"
+    finally:
+        zones._reset_caches()
+
+
 def test_launcher_uses_configured_completion_flags_and_opt_in(client):
     response = client.post("/api/tasks/statuses", json={"name": "Shelved", "is_completed": True})
     assert response.status_code == 201, response.text
