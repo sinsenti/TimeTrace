@@ -92,10 +92,10 @@ runs. Final combined source checks, after those repairs:
 node --test tests/test_ui72_app_dialogs.cjs tests/test_ui72_history_export.cjs tests/test_session_editing.cjs tests/test_outline_tasks.cjs tests/test_dashboard_canvas.cjs tests/test_draft_ownership.cjs tests/test_ai_settings_page.cjs tests/test_task_postmortems.cjs tests/test_task_inspector_search.cjs tests/test_correction_presentation.cjs tests/test_timer_corrections.cjs tests/test_history_export.cjs tests/test_ai_instruction_approval.cjs tests/test_ai_proposal_recovery.cjs tests/test_browser_preferences.cjs tests/test_calendar_shell.cjs tests/test_calendar_task_registry.cjs tests/test_day_workspace.cjs tests/test_markdown_export.cjs tests/test_rating_administration.cjs tests/test_session_reviews.cjs tests/test_sql_widget_builder.cjs tests/test_status_management.cjs tests/test_task_detail_child_receipts.cjs tests/test_task_detail_estimates.cjs tests/test_task_details.cjs tests/test_task_detail_tags.cjs tests/test_task_quick_edit.cjs tests/test_timer_review_regressions.cjs tests/test_workspace_notes.cjs tests/test_timer_strip.cjs
 # 646 passed; no failures/cancellations/skips
 
-HOME=/tmp/timetrace-ui72-dialogs/home TMPDIR=/tmp/timetrace-ui72-dialogs/tmp TIMETRACE_DB_FILE=/tmp/timetrace-ui72-dialogs/dev.db TIMETRACE_NATIVE_NOTIFICATIONS=false /tmp/timetrace-ui72-dialogs/venv/bin/python -P -m pytest -q tests/test_ui72_dialog_pages.py tests/test_outline_tasks.py tests/test_history_export.py
+HOME=/tmp/timetrace-ui72-dialogs/home TMPDIR=/tmp/timetrace-ui72-dialogs/tmp TIMETRACE_DB_FILE=/tmp/timetrace-ui72-dialogs/dev.db TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false /tmp/timetrace-ui72-dialogs/venv/bin/python -P -m pytest -q tests/test_ui72_dialog_pages.py tests/test_outline_tasks.py tests/test_history_export.py
 # 39 passed
 
-HOME=/tmp/timetrace-ui72-dialogs/home TMPDIR=/tmp/timetrace-ui72-dialogs/tmp TIMETRACE_DB_FILE=/tmp/timetrace-ui72-dialogs/dev.db TIMETRACE_NATIVE_NOTIFICATIONS=false /tmp/timetrace-ui72-dialogs/venv/bin/ruff check tests/test_ui72_dialog_pages.py
+HOME=/tmp/timetrace-ui72-dialogs/home TMPDIR=/tmp/timetrace-ui72-dialogs/tmp TIMETRACE_DB_FILE=/tmp/timetrace-ui72-dialogs/dev.db TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false /tmp/timetrace-ui72-dialogs/venv/bin/ruff check tests/test_ui72_dialog_pages.py
 # All checks passed; scoped ruff format also completed
 
 for f in $(git diff --name-only -- '*.js') src/timetrace/interfaces/api/static/js/app_dialogs.js; do node --check "$f" || exit; done
@@ -106,7 +106,11 @@ git diff --check
 Python environment was synchronized with `UV_PROJECT_ENVIRONMENT=/tmp/timetrace-ui72-dialogs/venv`,
 `UV_CACHE_DIR=/home/user/.cache/uv`, the required Python 3.14.6 interpreter, external HOME/TMPDIR,
 absolute isolated DB path and native notifications false. Synthetic-idle unit behavior was not disabled.
-No daemon, browser, personal database, provider/key, OS notification/audio or live-model experiment ran.
+Initial shell prefixes used the unused `TIMETRACE_NATIVE_NOTIFICATIONS=false` spelling;
+`tests/conftest.py` already sets the correct `TIMETRACE_NATIVE_NOTIFICATIONS_ENABLED=false` before
+imports, so every Python run still had native sends disabled. The final 39-test Python/lint/format
+revalidation explicitly uses the correct shell flag shown above. No daemon, browser, personal database,
+provider/key, OS notification/audio or live-model experiment ran.
 
 ## Remaining gates
 
