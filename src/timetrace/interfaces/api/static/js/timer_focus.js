@@ -16,6 +16,8 @@ function createFocusController({control,api,notifications=typeof Notification===
     }
     return {
         selected,draft,hasDraft:()=>drafts.size>0,
+        hasTimerDraft:id=>drafts.has(id),hasDefaultsDraft:()=>drafts.has(defaultsKey),
+        timerDraftIds:()=>[...drafts.keys()].filter(key=>key!==defaultsKey),
         reset:id=>drafts.delete(id),
         edit(id,values){const t=timer(id);edit(id,values,t?.focus?.settings,t?.revision);},
         saveTimer(){const t=selected(); if(!t)return false; const p=draft(t.id),submitted=drafts.get(t.id);
@@ -31,7 +33,7 @@ function createFocusController({control,api,notifications=typeof Notification===
                 acknowledgeDraft(defaultsKey,submitted,result.focus_defaults.revision);
                 onAcknowledged(result.focus_defaults);
             });},
-        action(action){const t=selected(); if(!t?.focus)return false; return control.act(t.id,'focus-action',{
+        action(action,id=selected()?.id){const t=timer(id); if(!t?.focus)return false; return control.act(t.id,'focus-action',{
             expected_revision:t.revision,expected_generation:t.focus.generation,action});},
         async requestPermission(){if(!notifications){deliveryMessage='Browser notifications unavailable; in-app fallback.';return;}
             try {await notifications.requestPermission();}catch(_){deliveryMessage='Browser permission unavailable; in-app fallback.';}},
@@ -61,85 +63,40 @@ function createFocusController({control,api,notifications=typeof Notification===
         }
     };
 }
-if(typeof module!=='undefined')module.exports={createFocusController};
-
-if(typeof window!=='undefined')document.addEventListener('DOMContentLoaded',async()=>{
-    await window.multipleTimersReady;
-    const control=window.multipleTimers;if(!control)return;
-    const region=document.createElement('section');region.className='timer-focus-panel';region.setAttribute('aria-label','Focus and notifications');
-    const host=document.getElementById('workspace-current-timer')||document.getElementById('multiple_timers');if(!host)return;
-    host.append(region);
-    const heading=document.createElement('h3');heading.textContent='Focus and breaks';region.append(heading);
-    const clock=document.createElement('p'),warning=document.createElement('p'),actions=document.createElement('div');actions.className='focus-actions';
-    const notices=document.createElement('div');notices.setAttribute('aria-live','polite');
-    region.append(clock,warning,actions);
-    const detail=document.createElement('details'),summary=document.createElement('summary');summary.textContent='Focus settings';detail.append(summary);region.append(detail);
-    const form=document.createElement('form');form.className='focus-settings';detail.append(form);
-    function input(label,type,name){const wrapper=document.createElement('label');wrapper.textContent=label;const field=document.createElement('input');field.type=type;field.name=name;
-        if(type==='number'){field.min='1';field.max='1440';field.step='1';field.required=true;}wrapper.append(field);form.append(wrapper);return field;}
-    const enabled=input('Enable focus','checkbox','enabled'),work=input('Work minutes','number','work_minutes'),pause=input('Break minutes','number','break_minutes');
-    const behavior=document.createElement('select');behavior.setAttribute('aria-label','Focus behavior');behavior.name='behavior';
-    for(const [value,text]of[['notify_only','Notify only (keep recording)'],['automatic_break','Automatically pause at a live boundary']]){const o=document.createElement('option');o.value=value;o.textContent=text;behavior.append(o);}form.append(behavior);
-    const scope=document.createElement('select');scope.setAttribute('aria-label','Settings scope');for(const [v,t]of[['timer','Selected timer overrides'],['defaults','Saved defaults for future timers']]){const o=document.createElement('option');o.value=v;o.textContent=t;scope.append(o);}form.append(scope);
-    const sound=input('Sound (saved global preference; OS may silence it)','checkbox','sound_enabled');
-    const explanation=document.createElement('p');explanation.textContent='Edits apply to subsequent periods; disabling cancels focus/break without resuming. Defaults affect future timers only. Sound is global.';form.append(explanation);
-    const save=document.createElement('button');save.type='submit';save.textContent='Save focus settings';form.append(save);
-    const message=document.createElement('p');region.append(message);
-    function button(label,handler){const b=document.createElement('button');b.type='button';b.textContent=label;b.addEventListener('click',handler);return b;}
-    const focus=createFocusController({control,api});let loaded=null,defaults=null,scopeRead=0;
-    const previousDraft=control.hasFocusDraft;control.hasFocusDraft=()=>focus.hasDraft()||Boolean(previousDraft?.());
-    window.addEventListener('beforeunload',event=>{if(control.hasFocusDraft()){event.preventDefault();event.returnValue='';}});
-    function values(){return {enabled:enabled.checked,work_minutes:Number(work.value),break_minutes:Number(pause.value),behavior:behavior.value,sound_enabled:sound.checked};}
-    function load(p){enabled.checked=Boolean(p?.enabled);work.value=p?.work_minutes??25;pause.value=p?.break_minutes??5;behavior.value=p?.behavior||'notify_only';sound.checked=Boolean(scope.value==='defaults'?(p?.sound_enabled??defaults?.sound_enabled):defaults?.sound_enabled);sound.disabled=scope.value!=='defaults';}
-    function adoptDefaults(saved){if(!defaults||saved.revision>=defaults.revision)defaults=saved;}
-    function loadScope(){loaded=focus.selected()?.id;load(scope.value==='defaults'?(focus.defaultsDraft()||defaults):focus.draft(loaded));}
-    form.addEventListener('input',event=>{
-        if(event.target===scope)return;
-        if(scope.value==='timer'){const t=focus.selected();if(t)focus.edit(t.id,values());}
-        else focus.editDefaults(values(),defaults);
-    });
-    scope.addEventListener('change',async()=>{
-        const own=++scopeRead;loadScope();render();
-        if(scope.value!=='defaults')return;
-        const saved=await api.get('/timer-focus/defaults').catch(()=>null);
-        if(!saved||own!==scopeRead)return;
-        adoptDefaults(saved);if(!focus.defaultsDraft())loadScope();render();
-    });
-    form.addEventListener('submit',async event=>{event.preventDefault();if(!form.reportValidity())return;try{
-        if(scope.value==='defaults'){
-            if(!defaults)return;
-            focus.editDefaults(values(),defaults);
-            if(!await focus.saveDefaults(defaults,adoptDefaults))return;
-        }else{
-            const t=focus.selected();if(!t)return;focus.edit(t.id,values());
-            if(!await focus.saveTimer())return;
+function renderFocusAlerts(root,focus,control) {
+    const document=root.ownerDocument,state=control.snapshot(),status=focus.snapshot();root.replaceChildren();
+    const node=(tag,text)=>{const element=document.createElement(tag);element.textContent=text;return element;};
+    const button=(text,handler,disabled=false)=>{const element=node('button',text);element.type='button';element.disabled=disabled;element.addEventListener('click',handler);return element;};
+    const blocked=state.pending||Boolean(state.receipt)||!state.fresh;
+    for(const timer of state.timers){
+        if(timer.identity_started_at_provenance==='prospective_unknown_history'){
+            const details=node('details','');details.append(node('summary',`${timer.task_title||'Unassigned timer'} · Legacy warning history`),node('p','The two-hour warning uses a prospective anchor established when focus state was initialized. Earlier creation history is unknown; this is not a known two-hour lifetime total. Pauses after that anchor are included.'));root.append(details);
         }
-        message.textContent='Settings acknowledged. Existing period timing is unchanged.';
-    }catch(_){message.textContent='Settings status unavailable. Recover the shared saved operation; do not submit a new request blindly.';}render();});
-    form.append(button('Use current saved focus settings',async()=>{
-        const t=focus.selected();
-        if(scope.value==='timer'){if(t){focus.reset(t.id);load(t.focus?.settings);}return;}
-        const own=++scopeRead,draft=focus.defaultsDraft();
-        const saved=await api.get('/timer-focus/defaults').catch(()=>null);
-        if(!saved||scope.value!=='defaults'||scopeRead!==own||focus.defaultsDraft()!==draft)return;
-        adoptDefaults(saved);focus.resetDefaults();loadScope();
-    }));
-    region.append(button('Allow browser notifications (open page only)',async()=>{await focus.requestPermission();message.textContent='Browser permission: '+(typeof Notification==='undefined'?'unavailable':Notification.permission)+'. Closed-page delivery requires the daemon desktop adapter.';}));
-    region.append(notices);
-    function render(){const state=control.snapshot(),t=focus.selected(),f=t?.focus;const blocked=state.pending||Boolean(state.receipt)||!state.fresh;
-        if(loaded!==t?.id&&scope.value==='timer'){loaded=t?.id;load(focus.draft(t?.id));}
-        save.disabled=blocked||(scope.value==='timer'?!t:!defaults);actions.replaceChildren();
-        clock.textContent=f?`${f.phase.replaceAll('_',' ')} · ${f.remaining_seconds==null?'off':Math.ceil(f.remaining_seconds/60)+'m '+Math.ceil(f.remaining_seconds%60)+'s remaining'} (server focus clock)`:'Focus not initialized.';
-        warning.textContent=t?.identity_started_at_provenance==='prospective_unknown_history'?'Historical creation time unknown: two-hour warning uses the explicitly initialized prospective anchor.':'Two-hour warning includes pauses, once per unfinished timer; it never stops recording.';
-        if(t&&!f)actions.append(button('Initialize retained focus state',()=>control.initializeFocus()));
-        if(f?.phase==='work_due')for(const [a,label]of[['take_break','Take break'],['keep_working','Keep working']]){const b=button(label,()=>focus.action(a));b.disabled=blocked||t.state==='frozen';actions.append(b);}
-        if(['break','break_due'].includes(f?.phase)){const b=button('Resume work',()=>focus.action('resume_work'));b.disabled=blocked||t.state==='frozen';actions.append(b);}
-        const status=focus.snapshot();notices.replaceChildren();
-        const diagnostic=document.createElement('p');diagnostic.textContent=(status.capability?.reason||'Checking delivery capability…')+' '+status.deliveryMessage;notices.append(diagnostic);
-        for(const n of status.notices.filter(n=>!n.acknowledged&&n.status!=='cancelled')){const card=document.createElement('p');card.textContent=`${n.kind.replaceAll('_',' ')} · timer ${n.timer_id.slice(-8)} · ${n.channel||'in-app fallback'}: ${n.status}${n.status==='unknown'?' (delivery uncertain; no retry alert)':''} `;
-            card.append(button('Dismiss notice',async()=>{await focus.acknowledge(n.id);await update();}));notices.append(card);}
+        const phase=timer.focus?.phase;if(!['work_due','break_due','break'].includes(phase))continue;
+        const card=node('div',`${timer.task_title||'Unassigned timer'} · ${phase==='work_due'?'Focus period complete':phase==='break_due'?'Break complete':'On a break'}`);
+        if(phase==='work_due')for(const [action,label] of [['take_break','Take break'],['keep_working','Keep working']])card.append(button(label,()=>focus.action(action,timer.id),blocked||timer.state==='frozen'));
+        else card.append(button('Resume work',()=>focus.action('resume_work',timer.id),blocked||timer.state==='frozen'));
+        root.append(card);
     }
-    window.addEventListener('timetrace:timer-state',render);
-    async function update(){await focus.refreshNotices();if(!defaults){const saved=await api.get('/timer-focus/defaults').catch(()=>null);if(saved){adoptDefaults(saved);if(!focus.hasDraft())loadScope();}}render();}
-    await update();const interval=setInterval(()=>void update(),3000);window.addEventListener('pagehide',()=>clearInterval(interval),{once:true});
-});
+    for(const notice of status.notices.filter(n=>!n.acknowledged&&n.status!=='cancelled')){
+        const timer=state.timers.find(t=>t.id===notice.timer_id),label=timer?.task_title||'Unassigned timer';
+        const card=node('p',`${notice.kind==='two_hour'?'Two-hour timer warning':notice.kind==='break_due'?'Break complete':'Focus period complete'} · ${label} · ${notice.status}${notice.status==='unknown'?' (delivery uncertain; no automatic retry)':''}`);
+        card.append(button('Dismiss notice',async()=>{await focus.acknowledge(notice.id);await focus.refreshNotices();renderFocusAlerts(root,focus,control);}));root.append(card);
+    }
+    if(status.deliveryMessage)root.append(node('p',status.deliveryMessage));root.hidden=root.children.length===0;
+}
+if(typeof module!=='undefined')module.exports={createFocusController,renderFocusAlerts};
+if(typeof window!=='undefined'){
+    let ready;window.timerFocusReady=new Promise(resolve=>{ready=resolve;});
+    document.addEventListener('DOMContentLoaded',async()=>{
+        await window.multipleTimersReady;const control=window.multipleTimers;if(!control){ready(null);return;}
+        const focus=createFocusController({control,api});window.timerFocus=focus;
+        const previousDraft=control.hasFocusDraft;control.hasFocusDraft=()=>focus.hasDraft()||Boolean(previousDraft?.());
+        window.addEventListener('beforeunload',event=>{if(control.hasFocusDraft()){event.preventDefault();event.returnValue='';}});
+        const root=document.querySelector('[data-focus-alerts]');
+        const render=()=>{if(root)renderFocusAlerts(root,focus,control);window.dispatchEvent(new CustomEvent('timetrace:focus-state'));};
+        window.addEventListener('timetrace:timer-state',render);ready(focus);
+        async function update(){await focus.refreshNotices();render();}
+        void update();const interval=setInterval(()=>void update(),3000);window.addEventListener('pagehide',()=>clearInterval(interval),{once:true});
+    });
+}

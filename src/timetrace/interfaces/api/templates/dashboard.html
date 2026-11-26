@@ -96,17 +96,9 @@
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2 flex items-center justify-between shrink-0 gap-3 text-xs h-12">
         {% include "components/navbar.html" %}
 
-        <div class="calendar-timer-wrap min-w-0 max-w-full">
-            <div id="active_timer_pill" role="group" aria-label="Secondary work timer">
-                <span id="timer_status_label" role="status">Loading timer status…</span>
-                <select id="timer_task_select" aria-label="Timer task">
-                    <option value="">-- Task --</option>
-                </select>
-                <button type="button" id="toggle_btn" onclick="toggleTimer()" disabled>Start Timer</button>
-            </div>
-        </div>
 
     </header>
+    {% include "components/timer_workspace_bar.html" %}
 
     <div class="planning-header">
         <div class="planning-task-tools">
@@ -279,14 +271,14 @@
     <script src="/static/js/tags_engine.js"></script>
     <script src="/static/js/task_attach.js"></script>
     <script src="/static/js/timer_control.js?v=timers4"></script>
-    <script src="/static/js/task_modal.js"></script>
+    <script src="/static/js/task_modal.js?v=launcher70-1"></script>
     <script src="/static/js/session_modal.js"></script>
     <script src="/static/js/vim_engine.js"></script>
     <script src="/static/js/settings.js"></script>
     <script src="/static/js/calendar.js"></script>
-    <script src="/static/js/calendar_live.js"></script>
+    <script src="/static/js/calendar_live.js?v=polish59-rc2"></script>
     <script src="/static/js/sidebar_totals.js?v=ui-polish-3"></script>
-    <script src="/static/js/dashboard.js?v=ui-review3-1"></script>
+    <script src="/static/js/dashboard.js?v=polish59-rc2"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>
     <script src="/static/js/ai_drafts.js"></script>

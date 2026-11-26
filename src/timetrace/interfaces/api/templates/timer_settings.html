@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight">
+<head>
+    <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>TimeTrace · Focus &amp; goals</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="/static/css/appearance.css">
+    <link rel="stylesheet" href="/static/css/ai.css">
+</head>
+<body class="timer-settings-body">
+    <header class="timer-settings-header">{% include "components/navbar.html" %}</header>
+    {% include "components/timer_workspace_bar.html" %}
+    <main class="timer-settings-page">
+        <a href="/dashboard">← Calendar</a><h1>Focus &amp; goals</h1>
+        <p>Choose your targets and how you want to focus.</p>
+        <nav class="timer-settings-tabs" aria-label="Timer settings sections">
+            <button type="button" data-timer-tab="goals" aria-pressed="true">Goals</button>
+            <button type="button" data-timer-tab="focus" aria-pressed="false">Focus &amp; breaks</button>
+        </nav>
+        <section data-timer-panel="goals" data-goal-settings aria-labelledby="goals-heading">
+            <header class="settings-section-heading"><div><h2 id="goals-heading">Your goals</h2><p>Optional targets for an activity, a task group or all recorded work.</p></div><button type="button" data-goal-add>Add goal</button></header>
+            <p data-goal-message role="status"></p><div data-goal-list class="settings-cards"></div>
+            <form data-goal-form class="settings-editor" hidden>
+                <h3 data-goal-editor-title>New goal</h3>
+                <label>Activity or task group<select name="owner" required><option value="">Choose an activity…</option><option value="global">All activities</option></select></label>
+                <div class="settings-fields"><label><span data-goal-target-unit>Target hours</span><input name="hours" type="number" min="0" step="any" required></label><label>Repeat<select name="cadence"><option value="day">Per day</option><option value="week">Per week</option><option value="total">Total target</option></select></label></div>
+                <label><input name="descendants" type="checkbox"> Include child activities</label>
+                <label><input name="enabled" type="checkbox"> Goal enabled</label>
+                <label data-goal-start hidden>Count from (optional)<input name="start_date" type="date"></label>
+                <p data-goal-help></p>
+                <div class="settings-actions"><button type="submit">Save goal</button><button type="button" data-goal-cancel>Cancel</button></div>
+            </form>
+            <details><summary>How goals are counted</summary><p>Goals add saved work durations, including overlaps. Live timers count after recording. Goals are separate from estimates and elapsed-time totals. A task group includes its selected task and, optionally, child activities—not a tag or category filter.</p></details>
+            <a href="/weekly-review-view">Weekly overview / review</a>
+            <details data-goal-recovery><summary>Retained request and recovery</summary><p data-goal-request></p><button type="button" data-goal-refresh>Refresh latest settings</button><button type="button" data-goal-rebase>Keep draft with latest revision</button></details>
+        </section>
+        <section data-timer-panel="focus" data-focus-settings aria-labelledby="focus-heading" hidden>
+            <h2 id="focus-heading">Focus &amp; breaks</h2>
+            <label>Apply to<select data-focus-scope><option value="defaults">Future timers</option><option value="timer">Selected timer</option></select></label>
+            <label data-focus-timer-label hidden>Timer<select data-focus-timer></select></label>
+            <article class="settings-card"><header><h3>Focus routine</h3><span data-focus-enabled>Off</span></header><div data-focus-periods class="focus-periods"></div><p data-focus-behavior></p><button type="button" data-focus-edit>Edit routine</button><small data-focus-draft></small></article>
+            <form data-focus-form class="settings-editor" hidden>
+                <h3>Edit focus routine</h3><label><input name="enabled" type="checkbox"> Enable focus routine</label>
+                <div class="settings-fields"><label>Work period (minutes)<input name="work_minutes" type="number" min="1" max="1440" step="1" required></label><label>Break (minutes)<input name="break_minutes" type="number" min="1" max="1440" step="1" required></label></div>
+                <label>When time is up<select name="behavior"><option value="notify_only">Notify me; keep recording</option><option value="automatic_break">Pause this timer for a break</option></select></label>
+                <label><input name="sound_enabled" type="checkbox"> Play a sound (global preference)</label>
+                <p>Settings affect subsequent periods. Breaks never resume work automatically. Disabling focus does not resume the timer.</p>
+                <div class="settings-actions"><button type="submit">Save changes</button><button type="button" data-focus-reset>Reset to saved</button><button type="button" data-focus-close>Close editor</button></div>
+            </form>
+            <section data-focus-retained hidden aria-label="Other unsaved focus settings"><h3>Other unsaved settings</h3><div data-focus-retained-list></div></section>
+            <p data-focus-message role="status"></p><button type="button" data-focus-initialize hidden>Initialize retained focus state</button>
+            <details><summary>Notifications and details</summary><p>Future defaults do not change existing timer overrides. The fixed two-hour warning includes pauses and never stops recording.</p><p data-focus-capability></p><button type="button" data-focus-permission>Allow browser notifications (open page only)</button></details>
+        </section>
+        <details data-report-settings><summary>Reporting preferences</summary><div class="settings-section-heading"><div><strong data-report-summary>Reading preferences…</strong><small data-report-zone></small></div><button type="button" data-report-edit>Edit</button></div>
+            <section data-report-editor hidden><h3>Start the week on</h3><p>Changes affect current/future periods; completed earlier periods keep their settings.</p><div data-report-days class="report-weekdays" role="group" aria-label="First day of reporting week"></div><button type="button" data-report-save>Save changes</button><button type="button" data-report-cancel>Cancel</button></section>
+            <p data-report-message role="status"></p><details data-report-recovery><summary>History and recovery details</summary><p data-report-history></p><button type="button" data-report-refresh>Refresh latest settings</button><button type="button" data-report-rebase>Keep choice with latest revision</button></details>
+        </details>
+    </main>
+    {% include "components/settings_modal.html" %}
+    {% include "components/ai_drawer.html" %}
+    <script src="/static/js/api_client.js"></script><script src="/static/js/task_knowledge.js"></script><script src="/static/js/utils.js"></script>
+    <script src="/static/js/settings.js"></script><script defer src="/static/js/timer_control.js?v=timers4"></script>
+    <script defer src="/static/js/timer_settings.js?v=polish59-rc2"></script>
+    <script src="/static/js/ai_assistant.js"></script><script src="/static/js/ai_insights.js"></script><script src="/static/js/ai_drafts.js"></script>
+</body>
+</html>

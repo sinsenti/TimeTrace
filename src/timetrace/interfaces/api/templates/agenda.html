@@ -13,40 +13,39 @@
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2">
         {% include "components/navbar.html" %}
     </header>
+    {% include "components/timer_workspace_bar.html" %}
     <main class="folio" id="agenda-workspace">
-        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><div id="workspace-current-note"></div></section>
+        <section id="workspace-current-timer" class="workspace-current-timer" aria-label="Current timer" tabindex="-1"><div data-current-display></div><p data-quick-time-status role="status" aria-live="polite" hidden></p><details data-current-note><summary>Work note</summary><div id="workspace-current-note"></div></details></section>
         <div id="agenda-unfinished"></div>
         <header class="folio-masthead">
-            <span class="folio-eyebrow">Agenda · The daily edition</span>
-            <h1>Make space for <em>meaningful work.</em></h1>
-            <p class="folio-deck">Your plan and your recorded work, side by side. One does not replace the other.</p>
+            <h1>Activity</h1>
         </header>
-        <p>Timer shortcuts (outside editors): Alt+Shift+1–9 selects; Alt+Shift+Enter starts the picked task; Alt+Shift+P pauses/resumes selected; Alt+Shift+S stops selected; Alt+Shift+F searches. Use the circular minus/plus to preview five credited minutes on an explicit actual interval, or Adjust time for dated edits and exact exclusions.</p>
         <div class="folio-strip">
             <label>Local date <input id="agenda-date" type="date" required></label>
             <button id="agenda-new" type="button">+ Plan session</button>
             <button id="agenda-record" type="button">Add recorded work</button>
+            <button id="agenda-help-open" type="button">Shortcuts &amp; help</button>
         </div>
         <p id="agenda-status" role="status"></p>
         <div id="agenda-progress" aria-live="polite"></div>
         <button id="agenda-retry" type="button" hidden>Refresh agenda</button>
-        <div class="folio-columns">
+        <section class="agenda-search-first" aria-label="Activity discovery">
+            <div class="section-heading"><h3>Start an activity</h3><button type="button" id="agenda-manage-pins">Manage pins</button></div>
+            <nav class="agenda-activity-tabs" aria-label="Activity list"><button type="button" data-activity-tab="all" aria-pressed="true">All activities</button><button type="button" data-activity-tab="pinned" aria-pressed="false">Pinned activities</button></nav>
+            <div id="agenda-launcher" data-task-launcher class="task-launcher"><label>Task search <input id="agenda-search" data-launcher-input type="search" placeholder="Type a task, then Enter to start…"></label></div>
+            <p id="agenda-pin-status" role="status"></p><div id="agenda-pins" class="agenda-activity-cards" hidden></div>
+            <div id="agenda-activities" class="agenda-activity-cards" hidden></div>
+            <button type="button" id="agenda-filters-open">Filter activities / history</button>
+        </section>
+        <dialog id="agenda-filters" class="workspace-help"><h2>Filter activities and history</h2><form method="dialog"><button>Close</button></form><label>Tag contains <input id="agenda-filter-tag" type="search"></label><label>Work note contains <input id="agenda-filter-note" type="search"></label><p>Work-note filtering searches saved entry notes, not task descriptions.</p></dialog>
+        <div class="folio-columns" id="agenda-columns">
             <section aria-labelledby="agenda-ledger-title">
-                <div class="folio-section-title"><h2 id="agenda-ledger-title">The shape of the day</h2><span>LOCAL TIME</span></div>
-                <section aria-label="Activity discovery">
-                    <h3>Pinned activities</h3><p id="agenda-pin-status" role="status"></p><div id="agenda-pins"></div>
-                    <label>Task search <input id="agenda-search" type="search"></label>
-                    <label>Tag contains <input id="agenda-filter-tag" type="search"></label>
-                    <label>Work note contains <input id="agenda-filter-note" type="search"></label>
-                    <p>History reads intervals intersecting the selected local day, grouped by local start day; totals retain their labeled start-date cohort. Task search returns at most 50 matching tasks in stable ID order before display sorting; work-note filtering does not search task descriptions. Cross-day and advanced combinations are available in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
-                    <div id="agenda-activities"></div>
-                </section>
+                <div class="folio-section-title"><h2 id="agenda-ledger-title">History &amp; plans</h2><span>LOCAL TIME</span></div>
                 <h3>Activity history and plan context</h3>
                 <button id="history-export-open" type="button">Export saved history</button>
-                <p>Overlapping carry-ins belong to their local start day, not this day's export. Export opens a bounded start-day view; plans and live timers are never eligible.</p>
                 <div id="agenda-ledger"></div>
             </section>
-            <aside class="folio-inspector" aria-labelledby="agenda-inspector-title">
+            <aside class="folio-inspector" id="agenda-inspector-panel" aria-labelledby="agenda-inspector-title" hidden>
                 <span class="folio-eyebrow" id="agenda-kind">Inspector</span>
                 <h2 id="agenda-inspector-title" tabindex="-1">Select a ledger entry</h2>
                 <dl id="agenda-detail"></dl>
@@ -72,6 +71,11 @@
             </aside>
         </div>
     </main>
+    <dialog id="agenda-help" class="workspace-help" role="dialog"><h2>Shortcuts &amp; recording help</h2><form method="dialog"><button>Close</button></form>
+        <p>Outside editors: Alt+Shift+1–9 selects; Alt+Shift+Enter starts the picked task; Alt+Shift+P pauses/resumes; Alt+Shift+S stops; Alt+Shift+F searches. In activity search, use ↑/↓ to choose and Enter to start; Tab only moves focus. Close matches require explicit selection. Clock ±5 applies directly after a one-time explanation. Adjust time keeps Preview and Apply for full interval edits. Invalid quick adjustments are refused, never clamped.</p>
+        <p>History reads intervals intersecting the local day, grouped by local start day. Totals retain their labeled start-date cohort. Task search returns at most 50 matching tasks before display sorting. Work-note filtering does not search task descriptions. More combinations are in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
+        <p>Carry-ins belong to their local start day, not this day's export. Export uses a bounded saved-work start-day view; plans and live timers are never eligible.</p>
+    </dialog>
     {% include "components/task_modal.html" %}
     {% include "components/completion_policy_modal.html" %}
     {% include "components/settings_modal.html" %}
@@ -88,14 +92,14 @@
     <script src="/static/js/completion_policy.js"></script>
     <script src="/static/js/tags_engine.js"></script>
     <script src="/static/js/task_attach.js"></script>
-    <script src="/static/js/task_modal.js"></script>
-    <script src="/static/js/current_note_editor.js"></script>
-    <script src="/static/js/workspace_notes.js"></script>
-    <script src="/static/js/workspace_pins.js"></script>
+    <script src="/static/js/task_modal.js?v=launcher70-1"></script>
+    <script src="/static/js/current_note_editor.js?v=polish59-rc2"></script>
+    <script src="/static/js/workspace_notes.js?v=feedback59-3"></script>
     <script src="/static/js/workspace_history.js"></script>
-    <script src="/static/js/timer_corrections.js"></script>
-    <script src="/static/js/workspace_shortcuts.js"></script>
-    <script src="/static/js/agenda.js"></script>
+    <script src="/static/js/timer_corrections.js?v=quick59-app-consent-2"></script>
+    <script src="/static/js/workspace_shortcuts.js?v=launcher70-1"></script>
+    <script src="/static/js/workspace_summary.js?v=polish59-rc2"></script>
+    <script src="/static/js/agenda.js?v=launcher70-rc4"></script>
     <script src="/static/js/history_export.js"></script>
     <script src="/static/js/ai_assistant.js"></script>
     <script src="/static/js/ai_insights.js"></script>

@@ -139,6 +139,31 @@ frozen Markdown/CSV preview and explicit output, plus the shared overlap-preserv
 The [#59 final repair ledger](timer-workspace-final-repair-59.md) distinguishes the five repairs from
 prior Standards/Spec results and records the combined synthetic one-dataset DOM/API replay.
 
+The [approved #59 UI polish](timer-workspace-polish-59.md) moves optional controls to `/timer-settings`
+(**Focus & goals**) and mounts `components/timer_workspace_bar.html` outside each page header.
+`timer_settings.js` renders ordinary goal/reporting/focus forms over the existing controllers;
+`workspace_summary.js` presents authoritative union accounting without recomputing it. Agenda keeps
+its selected current card, B-style signed corrections and a collapsed, independently saved work note.
+The owner subsequently approved one browser/origin explanation for clock ±5, followed by direct
+quick clicks: `createQuickTimeAdjustments` still obtains and verifies each signed preview before
+committing through the shared receipt funnel. Full **Adjust time** retains human preview/Apply.
+The quick controller fences selection generations, revisions, current interval identity and drafts;
+it never clamps an invalid subtraction, resumes a paused timer or replays an uncertain operation.
+The [search-first task launcher #70](task-launcher-70.md) uses one public JS controller for Agenda
+and the shared strip. `TaskLauncherService` ranks current/nearby plans, priority and canonical
+recorded-task-time evidence before limiting results; typed/close matches remain deterministic.
+Enter starts only the captured task, never its suggested schedule. Page-preservation and exact
+query/ACK ownership are private UI metadata over the existing timer writer. Task pins stay local
+and move off card faces into the full task editor / Manage pins; no task schema field is added.
+Urgent focus actions/notices and operation/idle recovery remain available outside settings. Prototype
+scripts are design references only, never production page dependencies. Saved-entry notes refresh
+quietly on open/focus and while visible, without replacing typing or rebasing uncertain writes.
+Confirmed permanent removal uses `DELETE /recorded-work/{id}?expected_revision=N`: the service
+reserves the SQLite writer, checks pending correction/assignment guards and removes only that
+physical entry and its attached ratings. Plans, tasks, other entries, timers and immutable audit
+snapshots stay intact; uncertain deletion recovery reads only. The legacy session-delete API remains
+separate.
+
 ### Implementation notes and historical adoption checkpoints
 
 The [current-status precedence](#current-status-precedence) above supersedes unfinished-ticket wording
@@ -966,7 +991,7 @@ local start day, never midnight clipping.
 ### Independent timers (Agenda #4)
 
 See [the concrete timer contract/runbook](timer-v2-contract.md#implemented-4-interface-and-recovery-runbook).
-Agenda, Calendar and the shared navbar list independent timers from the server. Start selects an
+Agenda, Calendar and the shared timer strip list independent timers from the server. Start selects an
 assigned task's existing unfinished timer without Resume or reassociation; taskless starts remain
 independent. Pause/Resume/Stop and minimal idle-gap Claim/Discard are targeted. Still-running and
 paused buffers never enter completed totals; stopping/splitting records their positive segments.

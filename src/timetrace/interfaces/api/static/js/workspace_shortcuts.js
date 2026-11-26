@@ -22,6 +22,7 @@ if (typeof document !== 'undefined') document.addEventListener('keydown', event 
     }
     if (!state.fresh || state.pending || state.receipt) return;
     if (action === 'start') {
+        if(window.sharedTaskLauncher){void window.sharedTaskLauncher.start();return;}
         control.start({task_id:document.querySelector('[data-timer-task]').value || null}); return;
     }
     const timer = state.timers.find(timer=>timer.id === state.selectedTimerId);

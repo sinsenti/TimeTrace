@@ -4,6 +4,7 @@ const agendaPage = (() => {
     // Reuse the sole shared controller region, below the prominent current card.
     const unfinished = document.getElementById('multiple_timers');
     if (unfinished) get('unfinished').append(unfinished);
+    get('help-open').addEventListener('click',()=>get('help').showModal());
     const date = get('date');
     const fields = ['task', 'tags', 'notes', 'start', 'end'];
     const values = () => ({...Object.fromEntries(fields.map(key => [key, get(key).value])), attach: Boolean(get('attach').checked)});
@@ -60,31 +61,35 @@ const agendaPage = (() => {
         // Repeat activities never inherit an old plan association, note or timestamp.
         await window.multipleTimers?.start({task_id:taskId || null});
     }
+    let activityMode='all';
+    function activityCard(task,start,disabled=false,launcherOwned=false){
+        const item=make('article','', 'agenda-activity-card');item.append(make('strong',task.title||'Task unavailable'));
+        const info=[task.parent_title,task.scheduled_state==='now'?'Scheduled now':task.scheduled_state==='soon'?'Scheduled within one hour':null,task.match_kind==='fuzzy'?'Close match':null].filter(Boolean).join(' · ');item.append(make('small',info));
+        const actions=make('div','', 'activity-actions');const begin=make('button','Start');begin.type='button';begin.disabled=disabled;begin.dataset.workspaceStart='true';begin.dataset.metadataAvailable=String(!disabled);if(launcherOwned)begin.dataset.launcherOwnedStart='true';begin.addEventListener('click',start);
+        const details=make('button','Task details');details.type='button';details.addEventListener('click',()=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(task.id);});actions.append(begin,details);item.append(actions);return item;
+    }
+    let cardsSignature=null;
+    function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const blocked=!canStartTaskFromTimerState(window.multipleTimers.snapshot());const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
+        for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked,true));
+    }
     let discoveryGeneration = 0;
     async function discovery() {
         const read = ++discoveryGeneration;
         const pinned = get('pins'), activities = get('activities');
-        clear(pinned); clear(activities);
+        clear(pinned); if(!window.agendaTaskLauncher)clear(activities);
         const fresh = taskKnowledge.state().status === 'fresh';
-        const action = (label, fn, disabled = false) => {
-            const button = make('button', label); button.type = 'button'; button.disabled = disabled;
-            if (label === 'Start') {
-                button.dataset.workspaceStart = 'true'; button.dataset.metadataAvailable = String(!disabled);
-                const state = window.multipleTimers?.snapshot(); button.disabled ||= !state?.fresh || state.pending || Boolean(state.receipt);
-            }
-            button.addEventListener('click', fn); return button;
-        };
-        const toggle = (id, remove) => {
-            try { remove ? pins.unpin(id) : pins.pin(id); get('pin-status').textContent = ''; discovery(); }
-            catch (error) { get('pin-status').textContent = `Pins not saved: ${error.message}`; }
-        };
         for (const id of pins?.ids() || []) {
             const task = taskKnowledge.get(id);
-            const item = make('div', task ? `${task.title} · ${id.slice(-8)} ` : `Unavailable task · ${id.slice(-8)} `);
-            item.append(action('Start', () => startActivity(id), !fresh || !task), action('Unpin', () => toggle(id, true)));
+            const item=activityCard(task||{id,title:'Task unavailable'},()=>startActivity(id),!fresh||!task);
             pinned.append(item);
         }
+        if(window.agendaTaskLauncher){
+            pinned.hidden=activityMode!=='pinned';const tag=queryText('filter-tag');
+            if(window.agendaTaskLauncher.model.snapshot().tagFilter!==tag)void window.agendaTaskLauncher.model.tag(tag);
+            suggestionCards(window.agendaTaskLauncher.model.snapshot());return;
+        }
         const search = queryText('search'), tag = queryText('filter-tag');
+        activities.hidden=!(search||tag);if(activities.hidden)return;
         let matches;
         try {
             matches = await api.get(`/api/tasks?${new URLSearchParams({status:'all',title_contains:search,tag_contains:tag,limit:'50'})}`);
@@ -97,10 +102,7 @@ const agendaPage = (() => {
         clear(activities);
         if (matches.length === 50) activities.append(make('p', 'Showing at most 50 matches in stable ID order; narrow the search for more.'));
         for (const task of matches) {
-            const item = make('div', `${task.title} · ${task.id.slice(-8)} `);
-            item.append(action('Start', () => startActivity(task.id), !fresh),
-                action(pins?.ids().includes(task.id) ? 'Unpin' : 'Pin', () => toggle(task.id, pins.ids().includes(task.id)), !pins));
-            activities.append(item);
+            activities.append(activityCard(task,()=>startActivity(task.id),!fresh));
         }
     }
 
@@ -113,7 +115,7 @@ const agendaPage = (() => {
         const parents = new Map();
         for (const group of groupWorkspaceHistory(visible)) {
             const details = make('details', '');
-            details.append(make('summary', `${group.day} · ${group.taskId ? taskTitle(group.rows[0]) + ' · ' + group.taskId.slice(-8) : 'Unassigned work'} · ${group.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy'} · ${group.rows.length} interval(s)`));
+            details.append(make('summary', `${group.day} · ${group.taskId ? taskTitle(group.rows[0]) : 'Unassigned work'} · ${group.kind === 'recorded_work' ? 'Recorded work' : 'Uncertain legacy'} · ${group.rows.length} interval(s)`));
             root.append(details);
             for (const row of group.rows) parents.set(row.id, details);
         }
@@ -183,21 +185,7 @@ const agendaPage = (() => {
         const root = get('progress');
         clear(root);
         if (!progress) return;
-        const hours = value => `${Number(value || 0).toLocaleString(undefined, {maximumFractionDigits: 3})} h`;
-        root.appendChild(make('p', `Recorded task time: ${hours(progress.recorded_task_time.total)} · Elapsed recorded time: ${hours(progress.elapsed_recorded_time.total)} · Unassigned: ${hours(progress.unassigned_recorded_time.total)}`));
-        root.appendChild(make('p', `${progress.cohort} Measured ${new Date(progress.measurement_at).toLocaleString()}. Zone: ${progress.recorded_task_time.meta?.timezone || 'daemon local'}.`));
-        for (const task of progress.tasks.rows) root.appendChild(make('p', `${task.labels.join(' / ')} — recorded task union ${hours(task.value)}`));
-        for (const basis of ['original', 'current']) {
-            if (!progress[basis]) continue;
-            root.appendChild(make('p', `${basis === 'original' ? 'Original-plan' : 'Current-schedule'} comparison, selected day's visible plans: inside ${hours(progress[basis].inside.total)}, outside ${hours(progress[basis].outside.total)}. Matching does not imply attachment; overlapping plan fills are non-additive.`));
-        }
-        const row = owner?.row;
-        if (row?.kind === 'scheduled_session') {
-            for (const basis of ['original', 'current']) {
-                const fill = progress[basis]?.fill.rows.find(item => item.keys[0] === row.id);
-                if (fill) root.appendChild(make('p', `${basis === 'original' ? 'Original-plan' : 'Current-schedule'} fill for selected plan: ${hours(fill.value)} (matching same-task work, including unattached work).`));
-            }
-        }
+        renderWorkSummary(root,progress,owner?.row?.kind==='scheduled_session'?owner.row.id:null);
     }
 
     async function refresh() {
@@ -234,6 +222,7 @@ const agendaPage = (() => {
             get('progress').appendChild(make('p', 'Recorded-work progress unavailable. Refresh reads only.'));
             get('retry').hidden = false;
         }
+        if (owner?.refreshSavedWorkNote) void owner.refreshSavedWorkNote();
         if (unconfirmedCreate) {
             if (!rangeFailed && unconfirmedCreate.day === activeDate) unconfirmedCreate.checked = true;
             get('status').textContent += ` A create was not confirmed. Check the ledger for ${unconfirmedCreate.day} before starting another entry.`;
@@ -241,6 +230,7 @@ const agendaPage = (() => {
     }
 
     function details(row) {
+        const active=Boolean(row||owner);get('inspector-panel').hidden=!active;get('columns').classList.toggle('has-inspector',active);
         const root = get('detail');
         clear(root);
         const add = (label, text) => { root.appendChild(make('dt', label)); root.appendChild(make('dd', text)); };
@@ -296,25 +286,47 @@ const agendaPage = (() => {
                 const label = make('label', 'Work-entry note (not task description)');
                 const input = make('textarea', ''); input.value = row.notes || ''; label.append(input);
                 const save = make('button', 'Save work note'); save.type = 'button'; save.disabled = true;
-                const retry = make('button', 'Refresh saved note (read only)'); retry.type = 'button';
+                const retry = make('button', 'Retry note refresh'); retry.type = 'button'; retry.hidden = true;
                 const status = make('p', ''); status.setAttribute('role','status');
                 let exportRevision = row.revision;
-                const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),onState(state) {
-                    if (state.saved.revision !== exportRevision) {
-                        exportRevision = state.saved.revision;
+                const editor = createWorkNoteEditor({api,row,refresh:()=>refresh(),isDirty:()=>Boolean(captured.noteDirty||captured.removalPending||captured.removalBlocked||document.activeElement===input),onState(state) {
+                    if (state.ackRevision && state.ackRevision !== exportRevision) {
+                        exportRevision = state.ackRevision;
                         window.dispatchEvent(new CustomEvent('timetrace:history-mutated', {detail:{}}));
                     }
                     if (owner !== captured) return;
+                    if(!captured.noteDirty&&!state.pending)input.value=state.saved.notes||'';
                     captured.notePending = state.pending;
                     captured.noteDirty = input.value !== (state.saved.notes || '');
                     save.disabled = state.pending || state.blocked || !captured.noteDirty;
                     status.textContent = state.message;
+                    retry.hidden = !state.blocked && !state.refreshFailed;
                     if (state.saved.revision !== row.revision) captured.row = state.saved;
                 }});
                 captured.invalidateWorkNote = reason => editor.invalidate(reason);
+                captured.refreshSavedWorkNote=()=>editor.readSaved();void editor.readSaved();
+                input.addEventListener('blur',()=>void editor.readSaved());
                 input.addEventListener('input',()=> { captured.noteDirty = input.value !== (editor.state().saved.notes || ''); save.disabled = editor.state().pending || editor.state().blocked || !captured.noteDirty; });
                 save.addEventListener('click',()=>editor.save(input.value)); retry.addEventListener('click',editor.retry);
-                root.append(label,save,retry,status);
+                const noteEditor=make('div','');noteEditor.className='saved-work-note';noteEditor.append(label,save,retry,status);root.append(noteEditor);
+                const remove=make('button','Delete entry'),check=make('button','Check deletion'),removalStatus=make('p','');remove.type=check.type='button';check.hidden=true;remove.className='recorded-work-delete';removalStatus.setAttribute('role','status');let removal=null;
+                async function removed(){
+                    if(!removal.state().deleted)return;
+                    if(owner===captured)open(null);
+                    window.dispatchEvent(new CustomEvent('timetrace:history-mutated',{detail:{}}));
+                    window.dispatchEvent(new CustomEvent('timetrace:work-mutated',{detail:{}}));
+                    await refresh();
+                }
+                remove.addEventListener('click',async()=>{
+                    if(owner!==captured||captured.notePending||captured.removalPending)return;
+                    if(captured.noteDirty){removalStatus.textContent='Save or discard your note edits before deleting this entry.';return;}
+                    if(!window.confirm(`Permanently delete this recorded entry?\n${taskTitle(captured.row)}\n${interval(captured.row.start_time,captured.row.end_time)}\nIts note and attached ratings will be removed. The task, plans and other entries stay unchanged. This cannot be undone.`))return;
+                    removal ||= createWorkEntryRemoval({api,row:captured.row,onState(state){
+                        if(owner!==captured)return;captured.removalPending=state.pending;captured.removalBlocked=state.blocked;input.readOnly=state.pending||state.blocked||state.deleted;save.disabled=state.pending||state.blocked||state.deleted||editor.state().blocked||!captured.noteDirty;remove.disabled=state.pending||state.blocked||state.deleted;remove.textContent=state.pending?(state.blocked?'Checking…':'Deleting…'):'Delete entry';check.hidden=!state.blocked||state.deleted;check.disabled=state.pending;removalStatus.textContent=state.message;
+                    }});
+                    await removal.remove();await removed();
+                });
+                check.addEventListener('click',async()=>{await removal.read();await removed();});root.append(remove,check,removalStatus);
             }
             else add('Basis', 'Legacy meaning is uncertain. Not included in plan-versus-record comparisons.');
         }
@@ -323,7 +335,7 @@ const agendaPage = (() => {
             ...(row.task_id ? {task:row.task_id} : {})})}`;
         root.appendChild(calendarLink);
         add('Tags', row.tags || 'None');
-        add('Notes', row.notes || 'None');
+        if(row.kind!=='recorded_work')add('Notes', row.notes || 'None');
     }
 
     function showExtension(plan) {
@@ -591,6 +603,14 @@ const agendaPage = (() => {
         if (!agendaPage.hasDraft() && !window.multipleTimers?.hasNoteDraft?.() && !window.multipleTimers?.hasFocusDraft?.()) return;
         event.preventDefault(); event.returnValue = '';
     });
+    const readSelectedNote=()=>{if(document.visibilityState!=='hidden')void owner?.refreshSavedWorkNote?.();};
+    window.addEventListener('focus',readSelectedNote);
+    if(typeof setInterval==='function'){const notePoll=setInterval(readSelectedNote,30000);window.addEventListener('pagehide',()=>clearInterval(notePoll),{once:true});}
+    get('filters-open')?.addEventListener('click',()=>get('filters').showModal());
+    get('manage-pins')?.addEventListener('click',()=>window.openWorkspacePins?.());
+    for(const tab of document.querySelectorAll('[data-activity-tab]'))tab.addEventListener('click',()=>{activityMode=tab.dataset.activityTab;for(const item of document.querySelectorAll('[data-activity-tab]'))item.setAttribute('aria-pressed',String(item===tab));void discovery();if(activityMode==='all')void window.agendaTaskLauncher?.model.focus();});
+    window.addEventListener('timetrace:pins-changed',()=>{try{pins=createWorkspacePins(localStorage);get('pin-status').textContent='';}catch(error){get('pin-status').textContent=error.message;}void discovery();});
+    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('search'),onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
     void refresh();
     for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,

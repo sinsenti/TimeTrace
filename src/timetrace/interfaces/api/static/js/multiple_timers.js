@@ -14,7 +14,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
     try { selectedTimerId = storage.getItem('timetrace_timer_selected') || null; } catch (_) { /* Display preference only. */ }
     let observedAt = null;
-    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, observed_at:observedAt});
+    const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, selectionGeneration, observed_at:observedAt});
     const publish = () => {
         const state = snapshot();
         onState(state);
@@ -44,17 +44,17 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             fresh = false; message = 'Timer status unavailable. Last-known timers retained; retry status.'; publish(); return null;
         }
     }
-    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true) {
+    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true, preservePage = false, selectionAtIntent = null) {
         if (pending || (receipt && receipt.outcome !== 'acknowledged' && !retry)) return false;
         const ownership = ++writeGeneration;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
         pending = true; publish();
         let acknowledged = false;
-        const selectionAtStart = selectionGeneration;
+        const selectionAtStart = selectionAtIntent ?? selectionGeneration;
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
-                receipt = {url, payload: JSON.parse(JSON.stringify({...payload, operation_id: operationId()})), outcome:'uncertain'};
+                receipt = {url, payload: JSON.parse(JSON.stringify({...payload, operation_id: operationId()})), outcome:'uncertain',...(preservePage?{preserve_page:true}:{})};
                 try { storage.setItem(key, JSON.stringify(receipt)); }
                 catch (_) { receipt = {outcome:'storage'}; message = 'Safety storage unavailable; no write sent.'; return false; }
             }
@@ -161,7 +161,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (!/^\/(timers|recorded-work)\/[^/]+$/.test(resource) || preview?.resource !== resource) return Promise.reject(Error('Correction resource does not match approval.'));
             return write(`${resource}/correction`, {preview}, false, null, false);
         },
-        start: payload => write('/timers', payload),
+        start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true, options.selectionGeneration??null),
         act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
 }
@@ -170,7 +170,7 @@ function createTimerStartFocus({interaction, guarded, focus}) {
     let intent = null;
     return state => {
         const receipt = state.receipt;
-        if (receipt?.url !== '/timers') return;
+        if (receipt?.url !== '/timers' || receipt.preserve_page) return;
         const id = receipt.payload?.operation_id;
         if (state.pending && receipt.outcome === 'uncertain' && intent?.id !== id) intent = {id, interaction:interaction()};
         if (receipt.outcome === 'acknowledged' && intent?.id === id) {
@@ -190,7 +190,7 @@ function renderTimerWorkspaceCard(root, state, control) {
         const node = root.ownerDocument.createElement(tag); node.textContent = text; return node;
     };
     const timer = state.timers.find(timer => timer.id === state.selectedTimerId);
-    const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
+    const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), Boolean(control?.hasQuickAdjustmentPending?.()), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
     if (root.dataset.workspaceSignature === signature && timer) {
         root.querySelector('.workspace-clock').firstChild.textContent = timerWorkspaceClock(timer, state.fresh);
         return;
@@ -214,9 +214,9 @@ function renderTimerWorkspaceCard(root, state, control) {
         const target = timer.state === 'running' ? {start_time:timer.running_start} : (timer.segments || []).find(s=>s.id === timer.manual_pause_note_segment_id && !s.recorded_work_id);
         for (const [symbol,delta] of [['−',-300],['+',300]]) {
             const step=create('button',symbol); step.type='button'; step.className='correction-step';
-            step.title=`${delta > 0 ? 'Add' : 'Remove'} five credited minutes by moving the start of ${target?.start_time || 'an explicitly selected actual interval'} ${delta > 0 ? 'earlier' : 'later'}; preview before applying.`;
+            step.title=`${delta > 0 ? 'Add' : 'Remove'} five credited minutes by moving the start of ${target?.start_time || 'an explicitly selected actual interval'} ${delta > 0 ? 'earlier' : 'later'}; applies directly after the one-time explanation.`;
             step.setAttribute('aria-label',step.title);
-            step.disabled=blocked || !target?.start_time;
+            step.disabled=blocked || Boolean(control?.hasQuickAdjustmentPending?.()) || !target?.start_time;
             step.addEventListener('click',()=>control.correctTime(timer,{kind:'step_start',credited_delta_seconds:delta})); clock.append(step);
         }
         const adjust=create('button','Adjust time'); adjust.type='button'; adjust.disabled=blocked;
@@ -233,7 +233,23 @@ function renderTimerWorkspaceCard(root, state, control) {
     root.append(title, clock, row);
 }
 
-if (typeof module !== 'undefined') module.exports = {createTimerController, renderTimerWorkspaceCard, createTimerStartFocus};
+function guardTimerWorkspaceNavigation(event) {
+    if(typeof hasSettingsDrafts==='function'&&hasSettingsDrafts()&&!window.confirm('Leave unsaved editor changes to open the timer workspace?'))event.preventDefault();
+}
+const timerStripExpansion=new WeakMap();
+function renderTimerStripStatus(root,state) {
+    const selected=root.querySelector('[data-timer-selected]');if(!selected)return;
+    const timer=state.timers.find(t=>t.id===state.selectedTimerId);
+    selected.onclick=guardTimerWorkspaceNavigation;
+    selected.textContent=timer?`${timer.task_title||'Unassigned'} · ${timerWorkspaceClock(timer,state.fresh)}`:'Open timer workspace';
+    selected.href=timer?`/agenda-view?${new URLSearchParams({timer:timer.id})}`:'/agenda-view';
+    root.querySelector('[data-timer-count]').textContent=`Other timers · ${state.timers.filter(t=>t.id!==state.selectedTimerId).length}${state.receipt?' · Operation recovery':''}`;
+    const expander=root.querySelector('[data-timer-expander]');
+    const recovery=Boolean(state.receipt&&!state.pending&&state.receipt.outcome!=='acknowledged')||state.timers.some(t=>t.state==='frozen'||(t.idle_gaps||[]).some(g=>!g.decision));
+    if(recovery&&!expander.open){expander.open=true;timerStripExpansion.set(root,true);}
+    else if(!recovery&&timerStripExpansion.get(root)){expander.open=false;timerStripExpansion.delete(root);}
+}
+if (typeof module !== 'undefined') module.exports = {createTimerController, renderTimerWorkspaceCard, createTimerStartFocus, renderTimerStripStatus};
 
 if (typeof window !== 'undefined') {
     let ready;
@@ -248,7 +264,7 @@ if (typeof window !== 'undefined') {
         for (const event of ['pointerdown', 'keydown', 'focusin']) document.addEventListener(event, () => { interaction++; }, true);
         const startFocus = createTimerStartFocus({interaction:()=>interaction,
             guarded:()=> Boolean(document.activeElement?.closest?.('input,textarea,select,[contenteditable="true"],[role="dialog"]')) ||
-                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) || Boolean(window.multipleTimers?.hasFocusDraft?.()) ||
+                (typeof agendaPage !== 'undefined' && agendaPage.hasDraft()) || Boolean(noteView?.hasDraft()) || Boolean(window.multipleTimers?.hasFocusDraft?.()) || Boolean(window.multipleTimers?.hasQuickAdjustmentPending?.()) ||
                 (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts()),
             focus:()=> {
                 if (!currentCard) {
@@ -260,6 +276,7 @@ if (typeof window !== 'undefined') {
             }});
         const notice = region.querySelector('[data-timer-message]');
         const tasks = region.querySelector('[data-timer-task]');
+        let taskRead=0,taskMessage='';
         const reviewPanel = region.querySelector('[data-idle-review]');
         const reviewList = region.querySelector('[data-idle-review-list]');
         const choices = new Map();
@@ -279,7 +296,8 @@ if (typeof window !== 'undefined') {
                 const id = requestedTimer; requestedTimer = null;
                 window.multipleTimers.select(id); return;
             }
-            notice.textContent = state.message;
+            notice.textContent = [state.message,taskMessage].filter(Boolean).join(' ');
+            renderTimerStripStatus(region,state);
             if (currentCard) renderTimerWorkspaceCard(currentCard.querySelector('[data-current-display]'), state, window.multipleTimers);
             noteView?.render(state);
             startFocus(state);
@@ -287,7 +305,13 @@ if (typeof window !== 'undefined') {
             if (focused) restoreFocus = focused;
             const blocked = state.pending || Boolean(state.receipt) || !state.fresh;
             region.querySelector('[data-timer-start]').disabled = blocked;
-            for (const button of document.querySelectorAll('[data-workspace-start]')) button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
+            const unassignedStart=region.querySelector('[data-timer-unassigned]');if(unassignedStart)unassignedStart.disabled=blocked;
+            window.sharedTaskLauncher?.sync();
+            window.agendaTaskLauncher?.sync();
+            for (const button of document.querySelectorAll('[data-workspace-start]')) {
+                if(button.dataset.launcherOwnedStart==='true')continue;
+                button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
+            }
             const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
             if (signature === renderedSignature) {
@@ -302,9 +326,7 @@ if (typeof window !== 'undefined') {
             if (!currentCard && state.selectedTimerId) {
                 const link = document.createElement('a'); link.textContent = 'Open selected timer workspace';
                 link.href = `/agenda-view?${new URLSearchParams({timer:state.selectedTimerId})}`;
-                link.addEventListener('click', event => {
-                    if (typeof hasSettingsDrafts === 'function' && hasSettingsDrafts() && !window.confirm('Leave unsaved editor changes to open the timer workspace?')) event.preventDefault();
-                });
+                link.addEventListener('click',guardTimerWorkspaceNavigation);
                 list.append(link);
             }
             reviewList.replaceChildren();
@@ -381,13 +403,19 @@ if (typeof window !== 'undefined') {
         const act = control.act;
         control.act = (id, action, ...args) => {
             if (action === 'stop' && noteView?.hasDraft(id)) {
-                notice.textContent = 'Save the current work-note draft or explicitly use the saved note before Stop & record.';
+                notice.textContent = 'Save the work-note draft or explicitly discard its changes before Stop & record.';
+                if(control.snapshot().selectedTimerId===id){const panel=document.querySelector('[data-current-note]');if(panel)panel.open=true;}
                 return Promise.resolve(false);
             }
             return act(id,action,...args);
         };
         if (typeof window.openTimeCorrection === 'function') control.correctTime = (timer,change) => window.openTimeCorrection({timer,change});
         control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };
+        const launcherRoot=region.querySelector('[data-task-launcher]');
+        if(launcherRoot&&typeof mountTaskLauncher==='function'){
+            window.sharedTaskLauncher=mountTaskLauncher(launcherRoot,control,{startButton:region.querySelector('[data-timer-start]')});
+            const legacy=region.querySelector('[data-legacy-task-picker]');if(legacy)legacy.hidden=true;
+        }
         ready();
         control.perform = async (operation, payload, stillCurrent = () => true) => {
             await control.refresh();
@@ -402,8 +430,10 @@ if (typeof window !== 'undefined') {
             if (operation === 'toggle') operation = timer.state === 'running' ? 'stop' : 'resume';
             return control.act(timer.id, operation, {...payload, expected_revision:timer.revision});
         };
-        region.querySelector('[data-timer-start]').addEventListener('click', () => control.start({task_id:tasks.value || null,
+        region.querySelector('[data-timer-start]').addEventListener('click', () => window.sharedTaskLauncher?window.sharedTaskLauncher.start():control.start({task_id:tasks.value || null,
             pause_when_idle:region.querySelector('[data-timer-idle]').checked}));
+        region.querySelector('[data-timer-unassigned]')?.addEventListener('click',()=>control.start({task_id:null,pause_when_idle:region.querySelector('[data-timer-idle]').checked},null,{preservePage:true}));
+        for(const startButton of [region.querySelector('[data-timer-start]'),region.querySelector('[data-timer-unassigned]')])startButton?.addEventListener('keydown',event=>{if(event.isComposing||event.repeat)event.preventDefault();});
         region.querySelector('[data-timer-refresh]').addEventListener('click', () => control.refresh());
         region.querySelector('[data-idle-apply]').addEventListener('click', async () => {
             const result = await control.review([...choices.values()]);
@@ -411,9 +441,17 @@ if (typeof window !== 'undefined') {
             renderedSignature = null; render(control.snapshot());
             notice.textContent = `${result.acknowledged.length} selected gap decision(s) acknowledged; ${result.remaining.length} not applied. ${control.snapshot().message}`;
         });
-        api.get('/api/tasks').then(rows => {
-            for (const task of rows) { const option = document.createElement('option'); option.value = task.id; option.textContent = task.title; tasks.append(option); }
-        }).catch(() => { notice.textContent = 'Task list unavailable. Taskless timers remain available.'; });
+        async function refreshTaskOptions(){if(window.sharedTaskLauncher)return;const generation=++taskRead;
+            try{const rows=await api.get('/api/tasks');if(generation!==taskRead)return;if(!Array.isArray(rows))throw Error('Unknown task response');
+                const selected=tasks.value,previous=tasks.selectedOptions?.[0]?.textContent;tasks.replaceChildren();
+                const unassigned=document.createElement('option');unassigned.value='';unassigned.textContent='Unassigned';tasks.append(unassigned);
+                for(const task of rows){const option=document.createElement('option');option.value=task.id;option.textContent=task.title;tasks.append(option);}
+                if(selected&&!rows.some(t=>t.id===selected)){const option=document.createElement('option');option.value=selected;option.textContent=previous||'Unavailable activity';tasks.append(option);}
+                tasks.value=selected;taskMessage='';
+            }catch(_){if(generation!==taskRead)return;taskMessage='Task names unavailable. The selected identity is retained; unassigned recording remains available.';}
+            render(control.snapshot());
+        }
+        window.addEventListener('timetrace:tasks-mutated',()=>void refreshTaskOptions());void refreshTaskOptions();
         window.addEventListener('timetrace:timer-mutated', () => {
             if (typeof calendar !== 'undefined' && calendar) calendar.refetchEvents();
             if (typeof agendaPage !== 'undefined') void agendaPage.refresh();

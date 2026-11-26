@@ -1,6 +1,16 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const {createGoalController,createGoalContextController}=require('../src/timetrace/interfaces/api/static/js/personal_goals.js');
 function storage(){const m=new Map();return {getItem:k=>m.get(k)||null,setItem:(k,v)=>m.set(k,v)}}
+test('unchanged reporting preferences never create another effective context',async()=>{
+ const calls=[];const c=createGoalContextController({api:{get:async()=>({revision:2,timezone:'UTC',first_day_of_week:1}),put:async(...args)=>{calls.push(args);return {revision:3,first_day_of_week:1};}},storage:storage(),onState:()=>{}});
+ await c.refresh();assert.equal(await c.save(),false);c.edit(1);assert.equal(await c.save(),false);assert.deepEqual(calls,[]);
+});
+test('an unchanged current weekday never suppresses an exact uncertain context retry',async()=>{
+ const store=storage(),payload={operation_id:'fixed',expected_revision:1,first_day_of_week:1},draft={expected_revision:1,first_day_of_week:1};
+ store.setItem('timetrace_goal_reporting_context_v1',JSON.stringify({draft,journal:{outcome:'uncertain',payload,submitted_draft:draft}}));const sent=[];
+ const c=createGoalContextController({api:{get:async()=>({revision:2,timezone:'UTC',first_day_of_week:1}),put:async(url,body)=>{sent.push(body);return {revision:2,timezone:'UTC',first_day_of_week:1};}},storage:store,onState:()=>{}});
+ await c.refresh();assert.equal(await c.save(),true);assert.deepEqual(sent,[payload]);assert.equal(c.snapshot().draft,null);
+});
 test('reporting context edit keeps its captured revision through polling and stale refusal',async()=>{
  let revision=1;const calls=[];const api={get:async()=>({revision,timezone:'UTC',first_day_of_week:1}),put:async(url,payload)=>{calls.push(payload);throw Object.assign(Error('stale context'),{status:409});}};
  const c=createGoalContextController({api,storage:storage(),onState:()=>{},operationId:()=> 'context-op'});
