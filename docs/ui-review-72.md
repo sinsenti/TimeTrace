@@ -50,4 +50,9 @@ unit test substitutes for a real drag gesture, persisted order and reload verifi
   text until own confirmed ACK and leaving other drafts editable. New typing before submission
   invalidates approval; refusal restores editability; unknown outcomes recover by GET only.
 
-Other implementation lanes, independent review and final full gates: pending.
+- Timer lane commit `ee77193` integrated as `e7ed44a`: durable selected discard, target-note
+  ownership/unknown recovery, Entry note editor label, and stable secondary-timer presence. Worker
+  focused checks:106 Python passed/84 warnings and41 Node passed. Parent added the presence CSS
+  include; combined native discard and review/full gates remain pending.
+
+Dialog/presentation work, activity-ranking decision, independent review and final full gates: pending.
