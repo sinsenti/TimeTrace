@@ -189,4 +189,19 @@ render titles as text, not HTML. Styles remain scoped and asset versions advance
 New public-entry regressions reproduced the unstyled history actions and old dialog composition
 before production edits. Focused **71 Node cases passed**, including correction/repeat payloads,
 disabled repeat guards, footer/search focus, local pin/unpin,21-pin pagination and old-search fencing.
-Full gates, native checks and bounded independent follow-up review are pending at this checkpoint.
+Full gates, native checks and bounded independent follow-up review follow this checkpoint.
+
+Verified code `fcfb5694`: **1282 Python passed/1696 warnings in191.14s;994 Node passed**, zero
+failures/cancellations/skips. Scoped Ruff, changed JS/CJS syntax and whitespace pass; broad Ruff's17
+inherited findings remain unchanged. Independent bounded review: **Standards0 / Spec0**.
+
+Native checks used a new isolated browser profile, not the owner's review profile/pin storage.
+Saved-entry labels/sibling order remain intact;36px controls,8px radii, separation and wrapping were
+checked at1217/390/320 CSS pixels. The pin popup focuses search, displays the new empty state and
+supports real keyboard search/Pin/Unpin, footer Close and Escape with focus returning to Manage pins.
+The dialog fits all three widths without horizontal overflow, and both controls/dialog follow all
+three light palettes and dark mode. The native probe observed **zero server mutation requests**;
+history correction/repeat payloads were exercised only in the controlled public-caller regression,
+not by starting real timers or applying corrections in this native check. The owner's pins, original
+preview, saved work and running timers were not changed. No raster/AT/touch/other-engine or owner
+visual acceptance is claimed. These commits remain local; no merge, push or deployment.
