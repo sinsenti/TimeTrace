@@ -20,3 +20,10 @@ wording, then all four focused cases passed. A separate synthetic native Calenda
 confirmed that the explicit plan survives Scheduled → To do unchanged; ordinary existing-block
 mouse dragging succeeded. That does not establish the owner's as-yet-unidentified failing drag
 scenario or claim that plan removal is implemented.
+
+The first native reload retained the old unversioned script despite the server serving the new
+bytes. Versioning the asset in all four Calendar/task consumers resolved that cache case; an added
+regression failed before those URL updates. All five focused Node cases then passed, and native
+Scheduled → To do displayed **Task status changed** with the plan still saved and unchanged.
+Broader combined gates and review are recorded separately at delivery; these focused checks alone
+are not a claim that the new Stop dialog or plan-removal flow has shipped.

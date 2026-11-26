@@ -63,6 +63,14 @@ const ownSessions = (sessionId, otherSessionId) => [
     { id: otherSessionId, start_time: '2026-11-15T10:00:00Z', end_time: '2026-11-15T11:00:00Z' }
 ];
 
+test('each Calendar/task caller versions the completion policy asset so wording updates reach cached browsers', () => {
+    const templates = path.resolve(__dirname, '../src/timetrace/interfaces/api/templates');
+    for (const name of ['dashboard.html', 'tasks.html', 'task_detail.html', 'agenda.html']) {
+        assert.match(fs.readFileSync(path.join(templates, name), 'utf8'),
+            /src="\/static\/js\/completion_policy\.js\?v=[^"\s]+"/, name);
+    }
+});
+
 test('leaving Scheduled describes the status change without claiming that schedules were removed', () => {
     const b = fixture();
     const policy = { task_id: 'task', reason: 'left_scheduled',
