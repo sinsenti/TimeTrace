@@ -299,11 +299,11 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
         const recurring = changeType === 'resize' ? await isRecurringCalendarEvent(event) : false;
         if (recurring === null) {
             info?.revert?.();
-            alert('Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.');
+            window.appDialogs.alert({message:'Cannot verify task recurrence. Try resizing again to retry the lookup. No changes were saved.'});
             return;
         }
         if (recurring) {
-            scope = typeof showRecurringResizeScopePrompt === 'function' ? await showRecurringResizeScopePrompt() : 'only_this';
+            scope = typeof showRecurringResizeScopePrompt === 'function' ? await showRecurringResizeScopePrompt() : null;
             if (!scope) { info?.revert?.(); return; }
         }
         updatedSession = typed ? await api.saveScheduledSession(target, payload, scope)
@@ -316,7 +316,7 @@ async function handleCalendarEventUpdate(event, changeType = 'move', info = null
             if (reconcile) {
                 calendarNeedsReview.set(key, { id, occurrence, title: event.title || 'Scheduled session', payload, uncertain });
                 renderCalendarScheduleReviews();
-            } else alert(err.message);
+            } else window.appDialogs.alert({message:err.message});
         } else console.error('Failed to update session:', err);
     } finally {
         calendarWrites.delete(key);

@@ -147,7 +147,7 @@ async function _wbLoadCapabilities(modal) {
     try {
         caps = await _ensureCapabilitiesLoaded();
     } catch (err) {
-        if (generation === wbOpenGeneration) alert('Could not load widget capabilities. Reopen the builder to retry.');
+        if (generation === wbOpenGeneration) window.appDialogs.alert({message:'Could not load widget capabilities. Reopen the builder to retry.'});
         return null;
     }
     if (generation !== wbOpenGeneration || selection !== _wbSelection() || context !== JSON.stringify(getQueryContext())) return null;

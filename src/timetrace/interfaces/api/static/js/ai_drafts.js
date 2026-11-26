@@ -898,6 +898,6 @@ async function aiUndoAllBatches() {
         await Promise.allSettled(reads);
     } catch (err) {
         console.error('Failed to undo all AI draft batches:', err);
-        alert('Undo failed: ' + (err.message || err));
+        window.appDialogs.alert({message:'Undo failed: ' + (err.message || err)});
     }
 }

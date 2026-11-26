@@ -43,7 +43,7 @@ async function scheduleCalendarDrop(info) {
     try {
         saved = await createScheduledSessionFromEditor(payload, intent);
     } catch (err) {
-        if (!err.scheduleRecovery) alert(`Could not schedule task: ${err.message}`);
+        if (!err.scheduleRecovery) window.appDialogs.alert({message:`Could not schedule task: ${err.message}`});
         return;
     }
     rememberSavedSession(saved);

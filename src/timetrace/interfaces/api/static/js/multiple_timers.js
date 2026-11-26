@@ -299,7 +299,14 @@ function renderTimerWorkspaceCard(root, state, control) {
 }
 
 function guardTimerWorkspaceNavigation(event) {
-    if(typeof hasSettingsDrafts==='function'&&hasSettingsDrafts()&&!window.confirm('Leave unsaved editor changes to open the timer workspace?'))event.preventDefault();
+    if (event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts()) return;
+    event.preventDefault();
+    const href = event.currentTarget?.href || event.target?.closest?.('a[href]')?.href;
+    const source = window.location.href;
+    void window.appDialogs.confirm({title:'Open timer workspace?', message:'Leave unsaved editor changes to open the timer workspace?'}).then(approved => {
+        if (approved && href && window.location.href === source) window.location.href = href;
+    });
 }
 const timerStripExpansion=new WeakMap();
 function renderTimerStripStatus(root,state) {

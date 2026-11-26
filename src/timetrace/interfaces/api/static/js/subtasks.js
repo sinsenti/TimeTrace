@@ -37,20 +37,25 @@ document.addEventListener('click', event => {
     }
     // The Settings navbar already owns this confirmation through its inline shared handler.
     if (link.getAttribute('onclick')?.includes('followSettingsLink')) return;
-    if (!confirmTaskDetailDeparture()) {
-        event.preventDefault();
-        event.stopPropagation();
-    }
+    if (typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts()) return;
+    event.preventDefault(); event.stopPropagation();
+    const href = link.href, source = window.location.href;
+    void confirmTaskDetailDeparture().then(approved => {
+        if (approved && window.location.href === source) window.location.href = href;
+    });
 }, true);
 
-function confirmTaskDetailDeparture() {
-    return typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts() ||
-        window.confirm('Leave this page and discard unsaved changes?');
+let taskDetailNavigationIntent = 0;
+async function confirmTaskDetailDeparture() {
+    const intent = ++taskDetailNavigationIntent, owner = taskDetailOwner, selection = taskDetailSelection, source = window.location.href;
+    const approved = typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts() ||
+        await window.appDialogs.confirm({title:'Leave editor?', message:'Leave this page and discard unsaved changes?'});
+    return approved && intent === taskDetailNavigationIntent && owner === taskDetailOwner && selection === taskDetailSelection && window.location.href === source;
 }
 
-function navigateToTaskDetail(taskId, dedicatedPage = false) {
+async function navigateToTaskDetail(taskId, dedicatedPage = false) {
     if (isInlineTaskDetail() && !dedicatedPage) return selectOutlineTask(taskId);
-    if (confirmTaskDetailDeparture()) window.location.href = `/task-inspector/${taskId}`;
+    if (await confirmTaskDetailDeparture()) window.location.href = `/task-inspector/${taskId}`;
 }
 
 function taskFormFieldValue(field) {
@@ -125,13 +130,16 @@ function inspectorCompletionPromptOpen() {
     return Boolean(modal && !modal.classList.contains('hidden'));
 }
 
-function canChangeInlineTaskDetail() {
+async function canChangeInlineTaskDetail() {
     if (taskPropertiesPending || subtaskSavePending || taskDetailMutationPending || inspectorCompletionPromptOpen()) {
         taskPropertiesFeedback('Wait for the current task write and completion prompt before changing or closing the inspector.');
         return false;
     }
-    return typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts(['task_properties_editor', 'subtask_modal']) ||
-        window.confirm('Discard unsaved task edits and change the inspector selection?');
+    const selection = taskDetailSelection, owner = taskDetailOwner;
+    const approved = typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts(['task_properties_editor', 'subtask_modal']) ||
+        await window.appDialogs.confirm({title:'Change task selection?', message:'Discard unsaved task edits and change the inspector selection?', confirmLabel:'Discard changes', danger:true});
+    return approved && selection === taskDetailSelection && owner === taskDetailOwner &&
+        !taskPropertiesPending && !subtaskSavePending && !taskDetailMutationPending && !inspectorCompletionPromptOpen();
 }
 
 function resetInlineTaskDetail(taskId = '') {
@@ -180,9 +188,9 @@ function toggleInspectorRecurrenceRule(isRecurring) {
     }
 }
 
-function navigateBack() {
+async function navigateBack() {
     if (isInlineTaskDetail()) return closeOutlineInspector();
-    if (!confirmTaskDetailDeparture()) return;
+    if (!await confirmTaskDetailDeparture()) return;
     if (document.referrer) {
         try {
             const refUrl = new URL(document.referrer);
@@ -561,7 +569,7 @@ async function saveInspectorTaskProperties(event) {
     const taskId = document.getElementById('inspector_task_id').value;
     if (!taskId) return;
     if (initializedTaskDetailId !== taskId) {
-        alert('Task properties are not ready. Wait for loading or use Retry refresh before saving.');
+        window.appDialogs.alert({message:'Task properties are not ready. Wait for loading or use Retry refresh before saving.'});
         return;
     }
 
@@ -571,7 +579,7 @@ async function saveInspectorTaskProperties(event) {
     const titleVal = document.getElementById('inspector_edit_title').value.trim();
 
     if (!titleVal) {
-        alert("Task title is required.");
+        window.appDialogs.alert({message:"Task title is required."});
         return;
     }
 
@@ -828,7 +836,7 @@ async function saveSubtaskFromModal() {
     const parentId = document.getElementById('subtask_parent_id').value;
     const titleVal = document.getElementById('modal_subtask_title').value.trim();
     if (!titleVal) {
-        alert("Subtask title is required.");
+        window.appDialogs.alert({message:"Subtask title is required."});
         return;
     }
 

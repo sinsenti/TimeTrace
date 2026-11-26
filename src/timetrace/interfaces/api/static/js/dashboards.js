@@ -207,12 +207,16 @@ async function _importLegacyWidgets(resume = false, skipUncertain = false) {
         const save = () => localStorage.setItem(LEGACY_IMPORT_KEY, JSON.stringify(progress));
         const uncertainMessage = () => `Browser widget import is uncertain: "${specs[progress.pending]?.title || 'Custom Widget'}" into "${target.name}". Original source and acknowledged imports are retained; nothing is automatically repeated. Review that dashboard before continuing.`;
         const retry = async () => {
-            if (!confirm('The last import may already be saved. Review the dashboard first. Retry can create a duplicate. Continue?')) return;
+            const journal = localStorage.getItem(LEGACY_IMPORT_KEY);
+            if (!await window.appDialogs.confirm({title:'Review uncertain import', message:'The last import may already be saved. Review the dashboard first. Retry can create a duplicate. Continue?'})) return;
+            if (localStorage.getItem(LEGACY_IMPORT_KEY) !== journal || localStorage.getItem(LEGACY_WIDGETS_KEY) !== raw) return;
             await _importLegacyWidgets(true);
             await reloadCurrentDashboard();
         };
         const verified = async () => {
-            if (!confirm('Have you verified the uncertain widget is already saved? It will not be sent again.')) return;
+            const journal = localStorage.getItem(LEGACY_IMPORT_KEY);
+            if (!await window.appDialogs.confirm({title:'Review uncertain import', message:'Have you verified the uncertain widget is already saved? It will not be sent again.'})) return;
+            if (localStorage.getItem(LEGACY_IMPORT_KEY) !== journal || localStorage.getItem(LEGACY_WIDGETS_KEY) !== raw) return;
             await _importLegacyWidgets(true, true);
             await reloadCurrentDashboard();
         };
@@ -328,9 +332,10 @@ async function _writeDashboard(write, apply, refresh) {
 
 async function createDashboard() {
     if (dashboardWritePending) return;
-    const name = prompt('Name for the new dashboard:');
-    if (!name || !name.trim()) return;
     const selection = canvasGeneration;
+    const name = await window.appDialogs.prompt({title:'New dashboard', message:'Name for the new dashboard:'});
+    if (dashboardWritePending || selection !== canvasGeneration) return;
+    if (!name || !name.trim()) return;
     await _writeDashboard(() => api.post('/api/dashboards', { name: name.trim() }), created => {
         dashboardList.push(created);
         if (selection === canvasGeneration) {
@@ -347,7 +352,9 @@ async function renameDashboard() {
     if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
-    const name = prompt('Rename dashboard:', current.name);
+    const selection = canvasGeneration;
+    const name = await window.appDialogs.prompt({title:'Rename dashboard', value:current.name});
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     if (!name || !name.trim() || name.trim() === current.name) return;
     await _writeDashboard(() => api.put(`/api/dashboards/${current.id}`, { name: name.trim() }), updated => {
         Object.assign(current, updated);
@@ -359,7 +366,10 @@ async function renameDashboard() {
 async function deleteDashboard() {
     if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
-    if (!current || !confirm(`Delete the dashboard "${current.name}" and all of its widgets?`)) return;
+    if (!current) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Delete dashboard?', message:`Delete the dashboard "${current.name}" and all of its widgets?`, confirmLabel:'Delete dashboard', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     await _writeDashboard(() => api.delete(`/api/dashboards/${current.id}`), () => {
         dashboardList = dashboardList.filter(d => d.id !== current.id);
         if (currentDashboardId === current.id) {
@@ -377,10 +387,12 @@ async function resetDashboard() {
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
     if (!current.is_seeded) {
-        alert('Only the seeded Overview dashboard can be reset to its default widgets.');
+        window.appDialogs.alert({message:'Only the seeded Overview dashboard can be reset to its default widgets.'});
         return;
     }
-    if (!confirm('Replace this dashboard\'s widgets with the default Overview set?')) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Reset Overview?', message:'Replace this dashboard’s widgets with the default Overview set?', confirmLabel:'Reset widgets', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     await _writeDashboard(() => api.post(`/api/dashboards/${current.id}/reset`), () => {
         if (currentDashboardId !== current.id) return;
         ++canvasGeneration;
@@ -646,7 +658,10 @@ async function deleteWidget(widgetId) {
     if (dashboardWritePending) return;
     const data = currentDashboardData;
     const widget = getWidgetById(widgetId);
-    if (!widget || !confirm(`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`)) return;
+    if (!widget) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Remove widget?', message:`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`, confirmLabel:'Remove widget', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || data !== currentDashboardData || getWidgetById(widgetId) !== widget) return;
     await _writeDashboard(() => api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`), () => {
         if (data !== currentDashboardData) {
             if (currentDashboardId === widget.dashboard_id) return reloadCurrentDashboard();

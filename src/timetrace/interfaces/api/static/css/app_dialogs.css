@@ -1,0 +1,29 @@
+.app-dialog {
+    box-sizing: border-box; width: min(32rem, 94vw); max-height: 90vh; overflow: auto;
+    padding: 1.5rem; border: 1px solid var(--border-muted, #64748b); border-radius: 12px;
+    background: var(--bg-card, #181923); color: var(--text-main, #e2e8f0); font: 1rem/1.6 system-ui, sans-serif;
+    box-shadow: 0 20px 70px #0005; overflow-wrap: anywhere;
+}
+.app-dialog::backdrop { background: #0008; }
+.app-dialog h2 { font-size: 1.35rem; font-weight: 650; margin: 0 0 .75rem; }
+.app-dialog p { white-space: pre-wrap; margin: .75rem 0 1.25rem; }
+.app-dialog label { display: grid; gap: .35rem; }
+.app-dialog :is(input, select, textarea, button) {
+    font: inherit; color: inherit; background: var(--bg-card, #181923); border: 1px solid var(--border-muted, #64748b);
+    border-radius: 6px; padding: .5rem .8rem; max-width: 100%; min-width: 0;
+}
+.app-dialog :focus-visible { outline: 2px solid var(--focus-color, currentColor); outline-offset: 3px; }
+.app-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .75rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-color, #64748b); }
+.app-dialog button { cursor: pointer; }
+.app-dialog button:disabled { cursor: default; opacity: .6; }
+.app-dialog .app-dialog-primary { border-width: 2px; font-weight: 650; }
+.app-dialog .app-dialog-danger { color: var(--dialog-danger, #fca5a5); border-color: currentColor; font-weight: 650; }
+:root[data-appearance="light"] .app-dialog { --dialog-danger: #a32e36; }
+.app-dialog-wide { width: min(56rem, 94vw); }
+.app-dialog-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); gap: 1rem; margin-block: 1.25rem; }
+.app-dialog-check { display: flex !important; align-items: center; gap: .6rem; }
+.app-dialog-toolbar { display: flex; flex-wrap: wrap; gap: .65rem; margin-block: 1rem; }
+#history-export-rows { max-height: 18rem; overflow: auto; }
+#history-export-rows fieldset { border: 1px solid var(--border-muted); border-radius: 6px; padding: .8rem; margin-block: .75rem; }
+#history-export-rows label { display: flex; gap: .6rem; margin-block: .6rem; align-items: baseline; }
+#history-export-preview { display: block; width: 100%; min-height: 14rem; font: .85rem/1.5 ui-monospace, monospace; }

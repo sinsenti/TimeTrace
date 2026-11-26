@@ -63,3 +63,14 @@
     .folio-columns > * { width: 100%; }
     .folio-inspector { border-top: 1px solid var(--border-muted); border-left: 0; padding: 22px 0 0; }
 }
+
+/* Inspector actions stay distinct from the schedule form and wrap without crowding. */
+#agenda-detail > button { margin: .35rem .5rem .7rem 0; padding: .65rem .9rem; line-height: 1.4; }
+#agenda-detail > .inspector-primary { display: block; width: 100%; font-weight: 700; border-width: 2px; }
+#agenda-detail > .inspector-secondary { font-weight: 600; }
+#agenda-detail > section { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border-muted); border-radius: 8px; }
+#agenda-detail section button { margin: .4rem .5rem .4rem 0; }
+.inspector-calendar-link { display: block; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border-muted); text-decoration: underline; text-underline-offset: .2em; }
+.saved-work-note { display: grid; gap: .65rem; margin-block: 1rem; }
+.saved-work-note label { display: grid; gap: .5rem; }
+.saved-work-note textarea { width: 100%; min-height: 6rem; }

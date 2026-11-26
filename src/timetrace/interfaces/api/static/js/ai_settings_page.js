@@ -97,8 +97,13 @@ function aiSetupSettingsPage() {
             if (!destination.hash) event.preventDefault();
             return;
         }
-        if (hasSettingsDrafts() && !window.confirm('Leave this page and discard unsaved changes?')) event.preventDefault();
-        else leaving = true;
+        if (hasSettingsDrafts()) {
+            event.preventDefault();
+            const source = window.location.href, href = link.href;
+            void window.appDialogs.confirm({title:'Leave editor?', message:'Leave this page and discard unsaved changes?'}).then(approved => {
+                if (approved && window.location.href === source) { leaving = true; window.location.href = href; }
+            });
+        } else leaving = true;
     });
     window.addEventListener('beforeunload', event => {
         if (!leaving && hasSettingsDrafts()) {
@@ -290,7 +295,7 @@ function aiBuildProviderCard(provider) {
                 await api.post(`/api/ai/providers/${encodeURIComponent(provider.id)}/activate`, {});
                 await aiRefreshProviderStatus();
             } catch {
-                if (card.parentNode) alert('Failed to activate provider. Retry explicitly.');
+                if (card.parentNode) window.appDialogs.alert({message:'Failed to activate provider. Retry explicitly.'});
             } finally { activateBtn.disabled = false; }
         });
         actions.appendChild(activateBtn);
@@ -308,13 +313,14 @@ function aiBuildProviderCard(provider) {
     deleteBtn.className = 'ai-btn-item';
     deleteBtn.textContent = 'Delete';
     deleteBtn.addEventListener('click', async () => {
-        if (deleteBtn.disabled || !window.confirm(`Delete provider "${provider.name}"? This cannot be undone.`)) return;
+        if (deleteBtn.disabled || !await window.appDialogs.confirm({title:`Delete provider "${provider.name}"?`, message:"This cannot be undone.", confirmLabel:"Delete provider", danger:true})) return;
+        if (deleteBtn.disabled || !card.parentNode) return;
         deleteBtn.disabled = true;
         try {
             await api.delete(`/api/ai/providers/${encodeURIComponent(provider.id)}`);
             await aiLoadProviders();
         } catch {
-            if (card.parentNode) alert('Failed to delete provider. Retry explicitly.');
+            if (card.parentNode) window.appDialogs.alert({message:'Failed to delete provider. Retry explicitly.'});
         } finally { deleteBtn.disabled = false; }
     });
     actions.appendChild(deleteBtn);
@@ -323,9 +329,11 @@ function aiBuildProviderCard(provider) {
     return card;
 }
 
-function aiOpenProviderForm(provider) {
+async function aiOpenProviderForm(provider) {
+    const captured = aiProviderOwner;
     if (aiProviderOwner && hasSettingsDrafts(['ai_provider_form_section'])
-        && !window.confirm('Discard unsaved provider changes?')) return;
+        && !await window.appDialogs.confirm({title:'Discard provider edits?', message:'Discard unsaved provider changes?', confirmLabel:'Discard changes', danger:true})) return;
+    if (aiProviderOwner !== captured || captured?.pending) return;
     aiCloseProviderForm();
     aiProviderOwner = { generation: ++aiProviderGeneration, pending: false,
         native: provider ? provider.use_native_openrouter : false };
@@ -392,7 +400,7 @@ async function aiSaveProviderForm() {
     if (!owner || owner.pending) return;
     const base = aiReadProviderFormBase();
     if (!base.name || !base.model) {
-        alert('Name and model are required.');
+        window.appDialogs.alert({message:'Name and model are required.'});
         return;
     }
     const key = document.getElementById('ai_provider_form_api_key');
@@ -428,7 +436,7 @@ async function aiSaveProviderForm() {
         }
         await aiRefreshProviderStatus();
     } catch {
-        if (aiProviderOwner === owner) alert('Failed to save provider. Your edits are retained; retry Save explicitly.');
+        if (aiProviderOwner === owner) window.appDialogs.alert({message:'Failed to save provider. Your edits are retained; retry Save explicitly.'});
     } finally {
         delete payload.api_key;
         owner.pending = false;

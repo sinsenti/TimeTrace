@@ -102,7 +102,7 @@ test('Revision task quick-select uses neutral chips, a stored-color accent, safe
     assert.doesNotMatch(bar.innerHTML, /background-color:/);
     assert.match(bar.innerHTML, /&lt;img/); assert.doesNotMatch(bar.innerHTML, /<img/);
     assert.match(bar.innerHTML, /aria-pressed="false"/);
-    h.c.selectTaskInspectorById(taskId);
+    await h.c.selectTaskInspectorById(taskId);
     assert.match(bar.innerHTML, /aria-pressed="true"/);
 });
 
@@ -125,6 +125,7 @@ test('pending search uses latest query, then ordinary input and keyboard selecti
     h.event('oninput', 'Rating18'); matching(h);
     h.search.emit('keydown', {key: 'ArrowDown'});
     h.search.emit('keydown', {key: 'Enter'});
+    await new Promise(setImmediate);
     assert.equal(h.dropdown.classList.contains('hidden'), true);
     assert.equal(h.search.value, 'Rating18 synthetic task');
     await h.c.refreshTaskInspectorKnowledge();

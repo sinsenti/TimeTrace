@@ -6,7 +6,7 @@ const path = require('node:path');
 const base = path.resolve(__dirname, '../src/timetrace/interfaces/api');
 function harness(respond = async () => []) {
     const roots = {};
-    const context = vm.createContext({console, alert() {}, document:{getElementById:id=>roots[id], querySelectorAll:()=>[],
+    const context = vm.createContext({console, window:{appDialogs:{alert(){}}}, document:{getElementById:id=>roots[id], querySelectorAll:()=>[],
         createElement:tag=>({tagName:tag,attributes:{},children:[],style:{},append(...children){this.children.push(...children);},replaceChildren(...children){this.children=children;},
             addEventListener(){},setAttribute(name,value){this.attributes[name]=value;}})},
         api:{get:respond, post:respond}});

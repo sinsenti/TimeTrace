@@ -39,6 +39,8 @@ class Element {
     }
     get classList() { return { add: c => this.className += ' ' + c, toggle: () => {}, contains: c => this.className.split(' ').includes(c) }; }
     focus() { this.focused = true; if (this.ownerDocument) this.ownerDocument.activeElement = this; }
+    append(...children) { children.forEach(child=>this.appendChild(child)); }
+    showModal(){this.open=true;} close(){this.open=false;} remove(){if(this.parentNode)this.parentNode.children=this.parentNode.children.filter(child=>child!==this);}
     getContext() { return { canvas: this }; }
 }
 const deferred = () => { let resolve; const promise = new Promise(r => resolve = r); return { promise, resolve }; };
@@ -56,6 +58,7 @@ function browser(handler, storage = new Map()) {
         addEventListener(type, handler) { if (type === 'DOMContentLoaded') ready.push(handler); }
     };
     for (const el of Object.values(elements)) el.ownerDocument = document;
+    document.body = document.createElement('body');
     const context = vm.createContext({
         document,
         localStorage: { getItem: k => storage.get(k) ?? null, setItem: (k, v) => storage.set(k, String(v)), removeItem: k => storage.delete(k) },
@@ -68,6 +71,8 @@ function browser(handler, storage = new Map()) {
         console: { error() {}, info() {} }, prompt: () => prompts.shift(), confirm: () => true, alert: text => alerts.push(text),
         getQueryContext: () => ({ timezone: 'UTC', first_day_of_week: 1 }), applyChartAppearance() {}
     });
+    context.window=context;context.addEventListener=()=>{};
+    context.appDialogs={confirm:async()=>context.confirm(), prompt:async()=>context.prompt(), alert:({message})=>context.alert(message)};
     for (const file of ['api_client.js', 'dashboard_drag.js', 'dashboards.js']) vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), context);
     const run = code => vm.runInContext(code, context);
     const buttons = (root = elements.widget_grid) => root.children.flatMap(c => [c, ...buttons(c)]).filter(c => c.tagName === 'button');
@@ -691,4 +696,16 @@ test('single-column drops use top/bottom insertion and keyboard events move one 
     assert.equal(moveHandle(b, 'a').attributes['aria-description'], 'Position 2 of 3');
     moveHandle(b, 'a').dispatchEvent({ type: 'keydown', key: 'ArrowLeft', repeat: true }); await tick();
     assert.equal(b.requests.filter(r => r.url.endsWith('/reorder')).length, 2, 'held keyboard repeat does not queue writes');
+});
+
+test('ui72 delayed dashboard deletion cannot delete a superseded selection; Cancel sends no write', async () => {
+    const b=browser(async (url, method)=>method==='GET'?[]:{});
+    b.run(fs.readFileSync(path.join(js,'app_dialogs.js'),'utf8'));
+    b.run('dashboardList=[{id:"one",name:"One"},{id:"two",name:"Two"}]; currentDashboardId="one"');
+    const deleting=b.run('deleteDashboard()');
+    b.run('currentDashboardId="two"; ++canvasGeneration');
+    const choose=label=>b.buttons(b.context.document.body).find(button=>button.textContent===label).dispatchEvent({type:'click'});
+    choose('Delete dashboard'); await deleting;
+    assert.equal(b.requests.length,0);
+    const canceled=b.run('deleteDashboard()');choose('Cancel');await canceled;assert.equal(b.requests.length,0);
 });

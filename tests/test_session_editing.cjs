@@ -14,7 +14,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     const safetyStorage = new Map();
     function element(id = '', tag = 'div') {
         const classes = new Set(['hidden']);
-        const el = { id, tagName: tag.toUpperCase(), type: '', value: '', textContent: '', children: [], dataset: {}, style: {}, isConnected: true,
+        const el = { id, tagName: tag.toUpperCase(), type: '', value: '', _text: '', get textContent(){return this._text;}, set textContent(value){this._text=value;this.children=[];}, children: [], dataset: {}, style: {}, isConnected: true,
             classList: { add: c => classes.add(c), remove: c => classes.delete(c), contains: c => classes.has(c), toggle(c, on) { if (on) classes.add(c); else classes.delete(c); } },
             setAttribute(name, value) { this[name] = value; }, removeAttribute(name) { delete this[name]; },
             addEventListener(name, fn) { this[name] = fn; }, removeEventListener() {},
@@ -23,6 +23,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
             replaceChildren(...children) { this.children = []; this.append(...children); },
             querySelectorAll() { return []; }, contains(child) { return this === child || this.children.includes(child); },
             insertBefore(child) { this.children.unshift(child); }, remove() { elements.delete(this.id); },
+            showModal(){this.open=true;},close(){this.open=false;},
             focus() { context.document.activeElement = this; }, select() {} };
         if (id) elements.set(id, el);
         return el;
@@ -46,6 +47,8 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
         }
     });
     context.window = context;
+    context.appDialogs = {confirm:async ({message}) => context.confirm?.(message) ?? true,
+        alert:({message}) => alerts.push(message), prompt:async () => null};
     const run = code => vm.runInContext(code, context);
     const load = name => vm.runInContext(fs.readFileSync(path.join(js, name), 'utf8'), context, { filename: name });
     for (const id of ['edit_session_id', 'session_modal_title', 'session_modal_start_now_btn', 'session_modal_delete_btn',
@@ -299,7 +302,7 @@ test('details opens its own recorded session without publishing task history as 
 function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
-        'notes', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension',
+        'notes', 'notes-label', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension',
         'unfinished', 'pin-status', 'pins', 'activities', 'search', 'filter-tag', 'filter-note', 'help-open', 'help', 'inspector-panel', 'columns']) p.element(`agenda-${suffix}`);
     p.elements.get('agenda-progress').ownerDocument=p.context.document;
     p.context.URLSearchParams = URLSearchParams;
@@ -327,12 +330,12 @@ for (const intent of ['same-row typing', 'other-row', 'date', 'late failure', 'u
         });
         await loadFolio(p);
         const select = id => p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===id).click();
-        select('old-plan');
+        await select('old-plan');
         p.context.dispatchEvent = event => p.listeners.get(event.type)?.(event);
         const lookup = p.context.dispatchEvent({type:'extend-selected-plan', detail:{planId:'old-plan'}});
         try {
             await requested.promise;
-            if (intent === 'other-row') select('new-plan');
+            if (intent === 'other-row') await select('new-plan');
             if (intent === 'date') {
                 p.elements.get('agenda-date').value = '2000-01-05';
                 await p.elements.get('agenda-date').change();
@@ -379,7 +382,7 @@ test('actual Agenda Start keeps the early capture revision through its continuat
     p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
     p.load('multiple_timers.js');
     p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
-    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===projection.id).click();
+    await p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===projection.id).click();
     const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
     try {
         await statusRequested.promise;
@@ -418,13 +421,13 @@ for (const intent of ['other row', 'same-owner typing', 'new date']) test(`Agend
     p.context.dispatchEvent = event => { void p.listeners.get(event.type)?.(event); };
     p.load('multiple_timers.js');
     p.run(`window.multipleTimers = createTimerController({api,storage:sessionStorage,onState(){},operationId:()=> 'start-op'})`);
-    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
+    await p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
     const start = p.elements.get('agenda-detail').children.find(e=>e.textContent==='Start working').click();
     try {
         await requested.promise;
         status.resolve({timers:[],revision:2});
         await new Promise(resolve=>setImmediate(resolve));
-        if (intent === 'other row') p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow==='other').click();
+        if (intent === 'other row') await p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow==='other').click();
         if (intent === 'new date') {
             p.elements.get('agenda-date').value = '2099-01-05';
             await p.elements.get('agenda-date').change();
@@ -453,7 +456,7 @@ test('Folio explicit extension retains stale attempt and offers read-only review
         return {...plan,revision:2};
     });
     await loadFolio(p);
-    p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
+    await p.elements.get('agenda-ledger').children.find(e=>e.dataset.agendaRow===plan.id).click();
     p.elements.get('agenda-detail').children.find(e=>e.textContent==='Extend current schedule').click();
     const extension = p.elements.get('agenda-extension');
     const input = extension.children.find(e=>e.type==='datetime-local');
@@ -483,7 +486,7 @@ test('Folio acknowledges a create before refreshing and retains later endpoint t
         return { kind: 'scheduled_session', id: 'saved-plan', revision: 1, ...JSON.parse(options.body) };
     });
     await loadFolio(p);
-    p.elements.get('agenda-new').click();
+    await p.elements.get('agenda-new').click();
     p.elements.get('agenda-task').value = 'task-uuid';
     const saving = p.elements.get('agenda-form').submit({ preventDefault() {} });
     p.elements.get('agenda-end').value = '2099-01-04T18:30';
@@ -733,7 +736,7 @@ test('Folio keeps a stale draft without replay, and a held conflict read cannot 
         return new Response(JSON.stringify({ detail: 'Schedule changed.', code: 'revision_stale' }), { status: 409 });
     });
     await loadFolio(p);
-    p.elements.get('agenda-ledger').children.find(e => e.dataset.agendaRow === 'plan-a').click();
+    await p.elements.get('agenda-ledger').children.find(e => e.dataset.agendaRow === 'plan-a').click();
     p.elements.get('agenda-end').value = '2099-01-04T11:00';
     await p.elements.get('agenda-form').submit({ preventDefault() {} });
     await reviewRead.promise;
@@ -741,7 +744,7 @@ test('Folio keeps a stale draft without replay, and a held conflict read cannot 
     assert.match(p.elements.get('agenda-edit-status').textContent, /changed on the server/);
     await p.elements.get('agenda-form').submit({ preventDefault() {} });
     assert.equal(p.writes.length, 1);
-    p.elements.get('agenda-ledger').children.find(e => e.dataset.agendaRow === 'plan-b').click();
+    await p.elements.get('agenda-ledger').children.find(e => e.dataset.agendaRow === 'plan-b').click();
     p.elements.get('agenda-start').focus();
     hold.resolve({ ...first, revision: 2 });
     await new Promise(setImmediate);
@@ -757,7 +760,7 @@ test('an unconfirmed Folio create is not replayed by Save or refresh', async () 
         throw Error('connection dropped');
     });
     await loadFolio(p);
-    p.elements.get('agenda-new').click();
+    await p.elements.get('agenda-new').click();
     await p.elements.get('agenda-form').submit({ preventDefault() {} });
     assert.match(p.elements.get('agenda-edit-status').textContent, /not confirmed/);
     assert.equal(p.elements.get('agenda-save')['aria-disabled'], 'true');
@@ -781,7 +784,7 @@ test('Folio reads the 23-hour local spring-forward day, not a UTC date or fixed 
         });
         await loadFolio(p);
         p.elements.get('agenda-date').value = '2026-03-08';
-        p.elements.get('agenda-date').change();
+        await p.elements.get('agenda-date').change();
         const end = await Promise.race([boundedRead.promise, new Promise(resolve => setImmediate(() => resolve(null)))]);
         assert.equal(end, '2026-03-09T04:00:00.000Z');
     } finally {
@@ -895,7 +898,7 @@ test('same-page task metadata refresh retitles the Folio inspector without repla
         return [];
     });
     await loadFolio(p);
-    p.elements.get('agenda-ledger').children.at(-1).click();
+    await p.elements.get('agenda-ledger').children.at(-1).click();
     const end = p.elements.get('agenda-end');
     end.value = '2099-01-04T11:15';
     end.focus();
@@ -1007,7 +1010,7 @@ test('Folio explicit manual work ACK retains later typing and never replays afte
             ...JSON.parse(options.body), warnings: [{code:'same_task_overlap',record_ids:['other'],overlap_seconds:1800}] };
     });
     await loadFolio(p);
-    p.elements.get('agenda-record').click();
+    await p.elements.get('agenda-record').click();
     p.elements.get('agenda-start').value = '2000-01-04T09:00';
     p.elements.get('agenda-end').value = '2000-01-04T10:00';
     const saving = p.elements.get('agenda-form').submit({preventDefault(){}});
@@ -1048,8 +1051,8 @@ test('Folio plan context prefills task but attachment is explicit; 409 keeps wor
         return new Response(JSON.stringify({detail:'Plan changed',code:'revision_stale'}),{status:409});
     });
     await loadFolio(p);
-    p.elements.get('agenda-ledger').children.find(el => el.dataset.agendaRow === plan.id).click();
-    p.elements.get('agenda-record').click();
+    await p.elements.get('agenda-ledger').children.find(el => el.dataset.agendaRow === plan.id).click();
+    await p.elements.get('agenda-record').click();
     assert.equal(p.elements.get('agenda-task').value,'task-id');
     assert.equal(p.elements.get('agenda-attach').checked,false);
     p.elements.get('agenda-attach').checked=true;
@@ -1063,4 +1066,59 @@ test('Folio plan context prefills task but attachment is explicit; 409 keeps wor
     assert.equal(p.elements.get('agenda-use-latest').hidden,true);
     await p.elements.get('agenda-form').submit({preventDefault(){}});
     assert.equal(p.writes.length,1);
+});
+test('ui72 Agenda hides fractions while retaining untouched schedule endpoint precision', async () => {
+    const plan={id:'precise-plan',kind:'scheduled_session',revision:1,
+        start_time:'2099-01-04T09:00:12.123456Z',end_time:'2099-01-04T10:00:34.654321Z',
+        original_start:'2099-01-04T09:00:12.123456Z',original_end:'2099-01-04T10:00:34.654321Z'};
+    const p=sessionPage(async (url,options)=>options.method==='GET' ? url.startsWith('/agenda?') ? {items:[plan]} : [] : {...plan,...JSON.parse(options.body)});
+    await loadFolio(p);
+    await p.elements.get('agenda-ledger').children.find(el=>el.dataset.agendaRow===plan.id).click();
+    assert.match(p.elements.get('agenda-start').value,/T\d{2}:00:12$/);
+    assert.match(p.elements.get('agenda-end').value,/T\d{2}:00:34$/);
+    await p.elements.get('agenda-form').submit({preventDefault(){}});
+    assert.equal(p.writes[0].payload.start_time,'2099-01-04T09:00:12.123456Z');
+    assert.equal(p.writes[0].payload.end_time,'2099-01-04T10:00:34.654321Z');
+});
+test('ui72 Agenda cancelled or superseded departure retains the original schedule draft', async () => {
+    const plan={id:'guarded-plan',kind:'scheduled_session',revision:1,start_time:'2099-01-04T09:00Z',end_time:'2099-01-04T10:00Z'};
+    const p=sessionPage(async url=>url.startsWith('/agenda?')?{items:[plan]}:[]);
+    await loadFolio(p);
+    await p.elements.get('agenda-ledger').children.find(el=>el.dataset.agendaRow===plan.id).click();
+    p.elements.get('agenda-end').value='2099-01-04T11:00';
+    p.load('app_dialogs.js');
+    const departing=p.elements.get('agenda-new').click();await Promise.resolve();
+    p.elements.get('agenda-end').value='2099-01-04T12:00';
+    const choose=label=>p.context.document.body.children.at(-1).children.at(-1).children.find(button=>button.textContent===label).click();
+    choose('Discard changes'); await departing;
+    assert.equal(p.elements.get('agenda-end').value,'2099-01-04T12:00');
+    const canceled=p.elements.get('agenda-new').click();await Promise.resolve();choose('Cancel');await canceled;
+    assert.equal(p.elements.get('agenda-end').value,'2099-01-04T12:00'); assert.equal(p.writes.length,0);
+});
+test('ui72 recurring resize without a scope chooser fails closed instead of treating Cancel as one occurrence', async () => {
+    const p=sessionPage(async()=>[]);p.load('app_dialogs.js');
+    p.context.event={id:'virt:task:20990104T090000',start:new Date('2099-01-04T09:00Z'),end:new Date('2099-01-04T10:00Z'),extendedProps:{isVirtual:true}};
+    let reverted=0;p.context.info={revert(){reverted++;}};
+    await p.run('handleCalendarEventUpdate(event, "resize", info)');
+    assert.equal(p.writes.length,0);assert.equal(reverted,1);
+    assert.match(p.context.document.body.children.at(-1).children[1].textContent,/scope chooser/i);
+});
+test('ui72 Notes filter retains saved entry and plan-note matches but ignores task descriptions and live Entry note text',async()=>{
+    const base={start_time:'2099-01-04T09:00Z',end_time:'2099-01-04T10:00Z',task_id:'task',revision:1};
+    const rows=[{...base,id:'saved-note',kind:'recorded_work',notes:'needle saved entry'},
+        {...base,id:'plan-note',kind:'scheduled_session',notes:'needle plan'},
+        {...base,id:'description-only',kind:'scheduled_session',notes:''}];
+    const p=sessionPage(async url=>url.startsWith('/agenda?')?{items:rows}:url==='/api/tasks?status=all'?[{id:'task',title:'Task',description:'needle description'}]:[]);
+    await loadFolio(p);
+    p.element('workspace-current-note','textarea').value='needle live timer';
+    p.elements.get('agenda-filter-note').value='needle';
+    p.elements.get('agenda-filter-note').input();
+    const descendants=root=>root.children.flatMap(child=>[child,...descendants(child)]);
+    assert.deepEqual(descendants(p.elements.get('agenda-ledger')).filter(el=>el.dataset.agendaRow).map(el=>el.dataset.agendaRow).sort(),['plan-note','saved-note']);
+});
+
+test('ui72 manual recording labels Entry note separately from plan notes',async()=>{
+    const p=sessionPage(async url=>url.startsWith('/agenda?')?{items:[]}:[]);await loadFolio(p);
+    await p.elements.get('agenda-record').click();assert.equal(p.elements.get('agenda-notes-label').textContent,'Entry note');
+    await p.elements.get('agenda-new').click();assert.equal(p.elements.get('agenda-notes-label').textContent,'Plan notes');
 });

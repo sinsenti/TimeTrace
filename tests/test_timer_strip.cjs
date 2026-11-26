@@ -1,12 +1,15 @@
 const test=require('node:test');const assert=require('node:assert/strict');
 const {renderTimerStripStatus}=require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
-test('primary workspace navigation respects retained editor drafts',()=>{
+test('primary workspace navigation respects retained editor drafts',async()=>{
  const nodes={'[data-timer-selected]':{},'[data-timer-count]':{},'[data-timer-expander]':{open:false}},root={querySelector:key=>nodes[key]};
- const previous=global.hasSettingsDrafts,oldWindow=global.window;let prevented=0,confirmed=0;
- try{global.hasSettingsDrafts=()=>true;global.window={confirm:()=>{confirmed++;return false;}};
- renderTimerStripStatus(root,{timers:[],fresh:true});nodes['[data-timer-selected]'].onclick({preventDefault(){prevented++;}});assert.equal(prevented,1);assert.equal(confirmed,1);
- global.window.confirm=()=>true;nodes['[data-timer-selected]'].onclick({preventDefault(){prevented++;}});assert.equal(prevented,1);
- global.hasSettingsDrafts=()=>false;global.window.confirm=()=>{throw Error('clean navigation must not prompt');};nodes['[data-timer-selected]'].onclick({preventDefault(){prevented++;}});assert.equal(prevented,1);
+ const previous=global.hasSettingsDrafts,oldWindow=global.window;let prevented=0,confirmed=0,approved=false;
+ try{global.hasSettingsDrafts=()=>true;global.window={location:{href:'/tasks'},appDialogs:{confirm:async()=>{confirmed++;return approved;}}};
+ renderTimerStripStatus(root,{timers:[],fresh:true});
+ const click=(extra={})=>nodes['[data-timer-selected]'].onclick({currentTarget:nodes['[data-timer-selected]'],preventDefault(){prevented++;},...extra});
+ click();await Promise.resolve();assert.equal(prevented,1);assert.equal(confirmed,1);assert.equal(global.window.location.href,'/tasks');
+ approved=true;click();await Promise.resolve();assert.equal(prevented,2);assert.equal(global.window.location.href,'/agenda-view');
+ click({ctrlKey:true});assert.equal(prevented,2);assert.equal(confirmed,2);
+ global.hasSettingsDrafts=()=>false;global.window.appDialogs.confirm=()=>{throw Error('clean navigation must not prompt');};click();assert.equal(prevented,2);
  }finally{global.hasSettingsDrafts=previous;global.window=oldWindow;}
 });
 test('ordinary pending/ACK writes do not leave the compact menu open; actual recovery does',()=>{

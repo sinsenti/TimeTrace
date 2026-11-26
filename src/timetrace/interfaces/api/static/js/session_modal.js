@@ -346,10 +346,12 @@ function updateSessionModalIntent() {
         ? 'Explicitly record actual past work. This does not create or attach a plan.' : 'Saved in uncertain legacy history.');
 }
 
-function useLatestSessionSchedule() {
+async function useLatestSessionSchedule() {
     const owner = sessionModalOwner;
-    if (!owner?.latest || !window.confirm('Replace your unsaved times with the saved schedule?')) return;
-    openEditSessionModal(owner.latest.id, owner.launcher, owner.latest);
+    const latest = owner?.latest;
+    if (!latest || !await window.appDialogs.confirm({title:'Use saved schedule?', message:'Replace your unsaved times with the saved schedule?'})) return;
+    if (sessionModalOwner !== owner || owner.pending || owner.latest !== latest) return;
+    openEditSessionModal(latest.id, owner.launcher, latest);
 }
 
 async function reviewSessionModalSchedule(owner, id) {
@@ -546,7 +548,7 @@ async function saveSessionFromModal() {
         const startDt = new Date(savedStart || startVal);
         const endDt = new Date(savedEnd || endVal);
         if (!startVal || !endVal || isNaN(startDt.getTime()) || isNaN(endDt.getTime()) || endDt <= startDt) {
-            alert('End time must be after a valid Start time.');
+            window.appDialogs.alert({message:'End time must be after a valid Start time.'});
             return;
         }
         const payload = {
@@ -593,7 +595,7 @@ async function saveSessionFromModal() {
             if (owner.blocked) void refreshSessionDisplay();
         } else {
             console.error('Failed to save session:', err);
-            alert('Failed to save session: ' + (err.message || err));
+            window.appDialogs.alert({message:'Failed to save session: ' + (err.message || err)});
         }
         return;
     } finally {

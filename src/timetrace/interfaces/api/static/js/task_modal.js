@@ -304,10 +304,12 @@ async function openEditTaskModal(id) {
     }
 }
 
-function closeTaskModal(resumeSession = true) {
+async function closeTaskModal(resumeSession = true) {
     if (taskSaveInFlight) return;
     if (savedTaskParent && (queuedTaskChildren.some(child => !child.id) || document.getElementById('task_child_title')?.value.trim())) {
-        if (!confirm('Discard unsaved subtasks? The parent and any saved subtasks will remain saved.')) return;
+        const generation = taskEditorGeneration;
+        if (!await window.appDialogs.confirm({title:'Discard unsaved subtasks?', message:'The parent and any saved subtasks will remain saved.', confirmLabel:'Discard changes', danger:true})) return;
+        if (generation !== taskEditorGeneration || taskSaveInFlight) return;
     }
     taskEditorGeneration++;
     if (typeof aiQuickAddReset === 'function') aiQuickAddReset();
@@ -333,7 +335,7 @@ async function saveTask() {
 
         const titleVal = document.getElementById('modal_input_title') ? document.getElementById('modal_input_title').value.trim() : '';
         if (!titleVal) {
-            alert("Task title is required.");
+            window.appDialogs.alert({message:"Task title is required."});
             return;
         }
 
@@ -456,8 +458,9 @@ async function deleteTask() {
     const id = idEl ? idEl.value : '';
     if (!id) return;
 
+    const generation = taskEditorGeneration;
     const confirmed = await showCustomConfirm("Delete Task Slot", "Are you sure you want to delete this task slot? Attached sessions will remain.");
-    if (confirmed) {
+    if (confirmed && generation === taskEditorGeneration && !taskSaveInFlight && !savedTaskParent && document.getElementById('edit_task_id')?.value === id) {
         await api.delete(`/api/tasks/${id}`);
         closeTaskModal();
         await taskKnowledge.changed();

@@ -239,10 +239,17 @@ function hasSettingsDrafts(ids = [...settingsDrafts.keys()], selector = 'input, 
 }
 
 function followSettingsLink(event) {
-    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return true;
+    if (event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return true;
     const path = new URL(window.location.href).pathname;
     if (path === '/settings/ai' || path === '/settings') return false;
-    return !hasSettingsDrafts() || window.confirm('Leave this page and discard unsaved changes?');
+    if (!hasSettingsDrafts()) return true;
+    event.preventDefault?.();
+    const destination = event.currentTarget?.href || event.target?.closest?.('a[href]')?.href || '/settings';
+    const source = window.location.href;
+    void window.appDialogs.confirm({title:'Leave editor?', message:'Leave this page and discard unsaved changes?'}).then(approved => {
+        if (approved && window.location.href === source) window.location.href = destination;
+    });
+    return false;
 }
 
 let settingsReturnFocus = null;

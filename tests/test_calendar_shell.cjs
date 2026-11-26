@@ -24,6 +24,7 @@ function browser(seed = {}, elements = {}) {
         console, Intl, Event, setTimeout: fn => fn(), URL, URLSearchParams,
         window: { location: { href: 'http://localhost/dashboard', search: '' }, addEventListener() {} }
     });
+    context.window.appDialogs={confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert?.(message), prompt:async()=>null};
     vm.runInContext(fs.readFileSync(path.join(js, 'settings.js'), 'utf8'), context);
     return { context, storage, attrs, styles, listeners, run: code => vm.runInContext(code, context) };
 }
@@ -278,7 +279,7 @@ test('Revision day drafts survive real Preferences Save, color reshuffle and irr
     assert.equal(fields.rev_tab_btn_sessions.classList.contains('hidden'), true);
 });
 
-test('Settings self navigation is inert; dirty Preferences cancel/leave/revert preserves separate owners', () => {
+test('Settings self navigation is inert; dirty Preferences cancel/leave/revert preserves separate owners', async () => {
     const appearance = {value:'light', type:'select-one'};
     const modal = panel(); modal.querySelectorAll = () => [appearance];
     const b = browser({}, {settings_modal:modal, setting_appearance:appearance});
@@ -295,7 +296,10 @@ test('Settings self navigation is inert; dirty Preferences cancel/leave/revert p
     assert.equal(appearance.value, 'dark');
     assert.equal(confirmations, 1);
     b.context.window.confirm = () => true;
-    assert.equal(b.run('followSettingsLink({})'), true);
+    assert.equal(b.run('followSettingsLink({})'), false);
+    await new Promise(setImmediate);
+    assert.equal(b.context.window.location.href, '/settings');
+    b.context.window.location.href = 'http://localhost/revision';
     appearance.value = 'light';
     b.context.window.confirm = () => { throw Error('reverted forms are clean'); };
     assert.equal(b.run('followSettingsLink({})'), true);

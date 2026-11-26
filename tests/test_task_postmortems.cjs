@@ -36,7 +36,7 @@ function element(tag = 'div', attrs = {}) {
         closest(selector){return matches(this,selector)?this:this.parentNode?.closest(selector) || null;},
         addEventListener(name,fn){(listeners[name] ||= []).push(fn);},
         dispatchEvent(event){event.target ||= this;for(const fn of listeners[event.type] || [])fn(event);if(!event.stopped)this.parentNode?.dispatchEvent(event);return !event.defaultPrevented;},
-        focus(){}, select(){}, cloneNode(deep){const copy=element(tag,{...this.attributes,id:this.id,type:this.type,value:this.value});copy.disabled=this.disabled;copy.checked=this.checked;if(deep)this.children.forEach(c=>copy.appendChild(c.cloneNode(true)));return copy;}
+        focus(){}, showModal(){this.open=true;}, close(){this.open=false;}, select(){}, cloneNode(deep){const copy=element(tag,{...this.attributes,id:this.id,type:this.type,value:this.value});copy.disabled=this.disabled;copy.checked=this.checked;if(deep)this.children.forEach(c=>copy.appendChild(c.cloneNode(true)));return copy;}
     };
     Object.defineProperty(el,'innerHTML',{get(){return this._html || '';},set(html){this._html=html;this.children=[];const stack=[this];for(const token of String(html).matchAll(/<\/?[a-z][^>]*>/gi)){const text=token[0];if(text.startsWith('</')){stack.pop();continue;}const t=text.match(/^<(\w+)/)[1];const child=element(t);for(const [,n,v] of text.matchAll(/([\w-]+)="([^"]*)"/g))child.setAttribute(n,v);if(/\sdisabled(?:\s|>)/.test(text))child.disabled=true;stack.at(-1).appendChild(child);if(!['input','br','hr'].includes(t))stack.push(child);}}});
     for(const [key,value] of Object.entries(attrs))el.setAttribute(key,value);
@@ -64,6 +64,7 @@ function fixture(respond = () => undefined, caller='revision') {
     const context=vm.createContext({URL,URLSearchParams,console:{error(){}},setTimeout:fn=>fn(),document,localStorage:{getItem:()=>null,setItem(){}},window:{location:{href:'http://localhost/revision',pathname:'/revision'},confirm:()=>confirm,addEventListener:(n,fn)=>(events[n] ||= []).push(fn)},alert:s=>alerts.push(s),
         fetch:async(url,options={})=>{const method=options.method || 'GET';const request={url,method,body:options.body?JSON.parse(options.body):null};requests.push(request);if(method !== 'GET')writes.push(request);let result=await respond(request);if(result===undefined)result=url.startsWith('/rating-definitions')?definitions:url.endsWith('/stats')?statistics(url.includes(taskB)?taskB:taskA):url.endsWith('/tree')?{...statistics().task,subtasks:[]}:{};const httpStatus=typeof result?.status==='number'?result.status:200;return {ok:httpStatus<400,status:httpStatus,headers:{get:()=> 'application/json'},json:async()=>typeof result?.status==='number'?result.json:result};},
         taskKnowledge:{state:()=>({generation:0}),values:()=>[statistics(taskA).task,statistics(taskB).task],get:id=>statistics(id).task,viewResult(){}},escapeHtml:s=>String(s??''),roundVal:x=>x,formatMinutesToDuration:x=>String(x),formatFlexibleDateForInput:x=>x,parseFlexibleDateInput:()=>null,showCustomConfirm:async()=>true});
+    context.window.appDialogs = {confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert(message), prompt:async()=>null};
     const run=code=>vm.runInContext(code,context);
     for(const file of ['api_client.js','settings.js','ratings_config.js','task_postmortem.js',caller === 'revision'?'task_inspector.js':'subtasks.js'])run(fs.readFileSync(path.join(source,file),'utf8'));
     return {run,context,review,fields,requests,writes,alerts,events,set confirm(value){confirm=value;},field:name=>review.querySelector(`[data-task-review="${name}"]`),input:index=>review.querySelectorAll('.custom-rating-input')[index],async load(id=taskA){if(caller === 'revision'){run(`selectedInspectedTaskId=${JSON.stringify(id)}`);await context.loadTaskInspectorStats(id);}else {await context.loadTaskDetailTree();await tick();}}};
@@ -368,4 +369,19 @@ test('Dedicated begin disables Save before a failed same-task tree refresh witho
     await loading;assert.equal(b.field('blockers').value,'Keep during failed read');assert.equal(b.field('save').disabled,true);
     await b.review.taskPostmortem.save();assert.equal(b.writes.length,0);
     fail=false;await b.load();assert.equal(b.field('blockers').value,'Keep during failed read');assert.equal(b.field('save').disabled,false);
+});
+test('ui72 task-selection approval cannot consume typing made while the confirmation is open',async()=>{
+    const b=fixture();await b.load();b.fields.task_inspector_search.value='Task A';b.field('blockers').value='First draft';
+    b.run(fs.readFileSync(path.join(source,'app_dialogs.js'),'utf8'));
+    const selecting=b.context.selectTaskInspectorById(taskB);
+    b.field('blockers').value='Newer draft';b.field('blockers').dispatchEvent({type:'input'});
+    b.context.document.body.querySelectorAll('button').find(button=>button.textContent==='Discard changes').dispatchEvent({type:'click'});await selecting;
+    assert.equal(b.field('blockers').value,'Newer draft');assert.equal(b.fields.task_inspector_search.value,'Task A');assert.equal(b.writes.length,0);
+});
+test('ui72 newer task-selection intent invalidates an older approval without changing retained drafts',async()=>{
+    const b=fixture();await b.load();b.field('blockers').value='Retain A';
+    b.run(fs.readFileSync(path.join(source,'app_dialogs.js'),'utf8'));
+    const old=b.context.selectTaskInspectorById(taskB);
+    await b.context.selectTaskInspectorById(taskA);await tick();b.context.document.body.querySelectorAll('button').find(button=>button.textContent==='Discard changes').dispatchEvent({type:'click'});await old;
+    assert.equal(b.fields.task_inspector_search.value,'Task A');assert.equal(b.field('blockers').value,'Retain A');assert.equal(b.writes.length,0);
 });

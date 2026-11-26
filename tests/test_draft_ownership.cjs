@@ -40,6 +40,8 @@ function browser(elements, files, respond) {
             return {ok:(result.status || 200)<400, status:result.status || 200, headers:{get:()=> 'application/json'}, json:async()=>result.json};
         }, showCustomConfirm:async()=>true
     });
+    context.window.appDialogs = {confirm:async ({message}) => context.window.confirm(message),
+        alert:({message}) => context.alert?.(message), prompt:async () => null};
     const run = code => vm.runInContext(code, context);
     for(const file of ['api_client.js','settings.js',...files]) run(fs.readFileSync(path.join(js,file),'utf8'));
     return {run, context, writes, confirmations, events};

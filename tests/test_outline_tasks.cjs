@@ -34,7 +34,9 @@ function fixture({details = false, respond = async () => []} = {}) {
             changed: async () => details ? context.loadTaskDetailTree(true) : undefined, load() {}},
         api: {get: url => respond(url), put: async (url, body) => { writes.push({url, body}); return {id: url.split('/').at(-1), ...body}; }},
         matchesCustomFilter: task => task.tags !== '#exclude'});
-    context.window = context; context.addEventListener = () => {}; context.confirm = () => confirm;
+    context.window = context;
+    context.appDialogs = {confirm:async ({message})=>context.confirm(message), alert:({message})=>context.alert(message)};
+    context.addEventListener = () => {}; context.confirm = () => confirm;
     for (const file of ['utils.js', ...(details ? ['settings.js', 'subtasks.js'] : []), 'kanban.js', 'grouped_tasks.js', 'outline_tasks.js']) {
         if (fs.existsSync(path.join(source, file))) vm.runInContext(fs.readFileSync(path.join(source, file), 'utf8'), context);
     }
@@ -113,6 +115,7 @@ test('A-B-A selection rejects earlier held reads and clears old history before l
     }});
     p.elements.detail_task_sessions_list.innerHTML='Old history';
     const a = p.run('selectOutlineTask("a-uuid")');
+    await new Promise(setImmediate);
     assert.equal(p.elements.detail_task_sessions_list.innerHTML, '');
     await p.run('selectOutlineTask("b-uuid")');
     await p.run('selectOutlineTask("a-uuid")');
@@ -203,7 +206,7 @@ test('visible completion follow-up blocks selection close and duplicate property
     p.input('inspector_edit_title','Saved title'); await p.run('saveInspectorTaskProperties()');
     assert.equal(p.writes.length,1);
     assert.equal(await p.run('selectOutlineTask("b-uuid")'),false);
-    assert.equal(p.run('closeOutlineInspector()'),false);
+    assert.equal(await p.run('closeOutlineInspector()'),false);
     await p.run('saveInspectorTaskProperties()'); assert.equal(p.writes.length,1);
     modal.classList.add('hidden'); await p.run('selectOutlineTask("b-uuid")');
     assert.equal(p.elements.inspector_task_id.value,'b-uuid');
@@ -218,7 +221,7 @@ test('pending Save blocks switching and duplicate writes; ACK keeps concurrent A
     const saving=p.run('saveInspectorTaskProperties()');
     p.input('inspector_edit_title','Other'); p.input('inspector_edit_title','Submitted title');
     assert.equal(await p.run('selectOutlineTask("b-uuid")'),false);
-    assert.equal(p.run('closeOutlineInspector()'),false);
+    assert.equal(await p.run('closeOutlineInspector()'),false);
     assert.equal(p.elements.task_properties_editor.disabled,false,'Later typing remains enabled');
     await p.run('saveInspectorTaskProperties()'); assert.equal(p.writes.length,1);
     fail=true; ack.resolve({...tree('a-uuid','Canonical title')}); await saving;
@@ -278,7 +281,7 @@ test('pending child creation blocks inspector switching and closing; ACK refresh
     const ack=held(); p.context.api.post=async(url,body)=>{p.writes.push({url,body});return ack.promise;};
     const saving=p.run('saveSubtaskFromModal()');
     assert.equal(await p.run('selectOutlineTask("b-uuid")'),false);
-    assert.equal(p.run('closeOutlineInspector()'),false);
+    assert.equal(await p.run('closeOutlineInspector()'),false);
     await p.run('saveSubtaskFromModal()'); assert.equal(p.writes.length,1);
     ack.resolve({...tree('child-uuid','Child'),parent_id:'a-uuid'}); await saving;
     assert.equal(p.elements.inspector_edit_title.value,'Parent draft');
@@ -319,6 +322,7 @@ for (const activation of ['click', 'keydown']) test(`retained dirty Outline edit
     p.context.document.activeElement=card;
     let prompts=0; p.context.confirm=()=>{prompts++; return false;};
     p.run(`(function(event){${handler}}).call(card,event)`);
+    await new Promise(setImmediate);
     assert.equal(prompts,1);
     assert.equal(p.context.location.href,'/tasks');
     assert.equal(p.elements.inspector_edit_title.value,'Retained navigation draft');
@@ -328,6 +332,7 @@ for (const activation of ['click', 'keydown']) test(`retained dirty Outline edit
     assert.equal(p.writes.length,0);
     p.context.confirm=()=>{prompts++; return true;};
     p.run(`(function(event){${handler}}).call(card,event)`);
+    await new Promise(setImmediate);
     assert.equal(prompts,2);
     assert.equal(p.context.location.href,'/task-inspector/b-uuid');
     assert.equal(p.writes.length,0);
@@ -374,6 +379,7 @@ test('clean Kanban card keeps normal dedicated navigation and Enter ignores chil
     assert.equal(p.context.location.href,'/tasks');
     const click=html.match(/onclick="([^"]+)"/)[1];
     p.run(`(function(event){${click}}).call(card,event)`);
+    await new Promise(setImmediate);
     assert.equal(p.context.location.href,'/task-inspector/b-uuid');
     assert.equal(prompts,0); assert.equal(p.writes.length,0);
 });
@@ -425,4 +431,11 @@ test('search caller retains each ancestor in its own row and probe uses the same
         'Browser acceptance must retain child context too');
     assert.ok(probe.includes('[data-task-id="${grandchild.id}"] > .outline-row > .outline-context'),
         'Browser acceptance must check that the matching grandchild has no context label');
+});
+test('ui72 task estimate and Edit expose separate light-only appearance hooks without removing actions', () => {
+    const p=fixture();
+    const html=p.run('renderKanbanCard({id:"task-uuid",title:"Theme",status:"To Do",estimated_minutes:480})');
+    assert.match(html,/class="task-estimate-badge [^"]*bg-purple-950/);
+    assert.match(html,/class="task-edit-button [^"]*bg-purple-950\/80/);
+    assert.match(html,/openEditTaskModal\('task-uuid'\)/);
 });

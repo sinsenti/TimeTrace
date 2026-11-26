@@ -145,6 +145,7 @@ async function page(respond = () => null) {
                 headers: { get: () => 'application/json' }, json: async () => result.json };
         },
     });
+    context.window.appDialogs = {confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert(message), prompt:async()=>null};
     const run = code => vm.runInContext(code, context);
     for (const name of ['api_client.js', 'settings.js', 'ai_assistant.js', 'ai_settings_page.js']) {
         run(fs.readFileSync(path.join(apiRoot, 'static/js', name), 'utf8'), { filename: name });
