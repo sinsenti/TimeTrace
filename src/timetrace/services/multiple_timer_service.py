@@ -670,6 +670,8 @@ class MultipleTimerService:
     def mutate(self, action, timer_id, payload, *, _evaluation=None):
         if action == "focus_evaluate" and _evaluation is None:
             raise TimerError("Focus evaluation is a daemon service operation.")
+        if action == "discard" and (not timer_id or type(payload.get("expected_revision")) is not int):
+            raise TimerError("An explicit timer ID and current revision are required to discard it.")
         payload = {**payload, "action": action, "timer_id": timer_id}
         operation_id = payload["operation_id"]
         digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
@@ -693,6 +695,17 @@ class MultipleTimerService:
                         check_correction_guard(self.db, task_ids=roots, assignment_only=True)
                         scope = self._prepare_task_deletion(deepcopy(self.store.read()), payload)["scope"]
                         check_correction_guard(self.db, task_ids=scope, assignment_only=True)
+                if action == "discard":
+                    pending = self.store.read().get("pending_operation")
+                    unfinished_receipts = self.db.exec(
+                        select(MutationOperation).where(MutationOperation.file_finalized.is_(False))
+                    ).all()
+                    if (pending and pending["id"] != operation_id) or any(
+                        r.id != operation_id for r in unfinished_receipts
+                    ):
+                        raise ConflictError(
+                            "Recover the outstanding timer operation before discarding.", code="reconciliation_required"
+                        )
                 state = self._reconcile()
                 lock_sqlite_writer(self.db)
                 receipt = self.db.get(MutationOperation, operation_id)
@@ -832,7 +845,9 @@ class MultipleTimerService:
                         raise ConflictError("Timer changed.", code="revision_stale")
                     if timer["state"] == "stopped":
                         raise TimerError("Timer is stopped.")
-                    if action != "resolve" and any(g.get("decision") is None for g in timer["idle_gaps"]):
+                    if action not in ("resolve", "discard") and any(
+                        g.get("decision") is None for g in timer["idle_gaps"]
+                    ):
                         raise ConflictError("Resolve idle gaps first.", code="idle_gap_unresolved")
                     continue_running = timer["state"] == "running"
                     if action not in ("correction", "note", "idle_preference"):
@@ -876,6 +891,22 @@ class MultipleTimerService:
                             fresh = new_focus(focus["settings"], cutoff)
                             fresh["generation"] = focus["generation"] + 1
                             timer["focus"] = fresh
+                    elif action == "discard":
+                        # Keep saved lineage and its receipts; only unfinished buffers belong
+                        # to this action. A stopped tombstone prevents replay resurrection.
+                        timer["segments"] = [s for s in timer["segments"] if s.get("recorded_work_id")]
+                        timer["running_start"] = None
+                        timer.pop("running_segment_id", None)
+                        timer.pop("running_evidence", None)
+                        timer["manual_pause_note_segment_id"] = None
+                        timer["idle_gaps"] = []
+                        timer["notes"] = ""
+                        timer.pop("legacy_payload", None)
+                        timer["state"] = "stopped"
+                        timer["discarded"] = True
+                        if timer.get("focus"):
+                            timer["focus"]["phase"] = "disabled"
+                            timer["focus"]["recording_anchor"] = None
                     elif action in ("pause", "stop", "split"):
                         closed_id = self._close_segment(timer, cutoff)
                         timer["manual_pause_note_segment_id"] = closed_id if action == "pause" else None
