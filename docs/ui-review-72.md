@@ -75,5 +75,21 @@ unit test substitutes for a real drag gesture, persisted order and reload verifi
   use second granularity. Native computed styles across Refined Archive/Stone/Porcelain show no
   purple estimate badge fill, while the existing purple dark Edit/badge styling remains.
 
-Independent Standards/Spec review and final full gates: pending. Owner visual acceptance and the
+## Independent review and repair
+
+Initial `cacf046...ce3f30b` review: **Standards0 findings**, **Spec1 P1**. The Spec finding was
+identity loss during keyboard reorder when widget titles match: focus restoration used a display
+label rather than the owning widget ID. `26acca8` adds ID/control ownership; a mounted consecutive
+keyboard-move regression failed before the fix and all31 canvas cases passed afterward. Two actual
+native keyboard moves on identically titled widgets also kept the exact UUID and persisted order.
+An additional duplicate-title mouse probe exceeded its harness timeout and is not counted as passed;
+the earlier actual mouse drag/persistence/reload evidence remains separate.
+
+Initial combined gates: **1281 Python passed/1696 warnings; Node958 passed/24 failed** out of982.
+All24 failures reproduced as missing async app-dialog boundaries in four older test adapters. No
+production fallback or weakened assertions were introduced. Repair `d0e9bf2`, integrated as
+`e01cfcf`, gives983/983 Node passes in that lane (the extra case is the P1 regression, not a removed
+failure). Scope/syntax/whitespace passed; broad Ruff retains17 inherited findings.
+
+Post-repair independent recheck and final combined gates: pending. Owner visual acceptance and the
 history-ranking choice remain separate; the ongoing #72 review map is not completed by this batch.
