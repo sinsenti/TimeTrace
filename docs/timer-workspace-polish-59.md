@@ -192,3 +192,23 @@ The older optional maintainability notes remain separate. The disposable 18129 s
 without altering the owner's 18128 preview or its browser preference. Previous gates above remain
 historical. These commits remain local/unmerged, with no personal-daemon deployment or native OS
 notification/sound/platform certification claimed.
+
+## Owner follow-up: in-app quick-step consent
+
+The one-time ±5 explanation now uses a styled application `<dialog>`, not `window.confirm`.
+Cancel is initially focused; Cancel/Escape dismiss without consent or correction, while Enable
+and apply retains the existing signed validation, target/revision guards and browser-local
+once-only preference. Existing consent is preserved; no backend/protocol changes were made.
+
+Two public application-entry regressions failed before the wiring change and now pass, covering
+Cancel/Escape, approval and remembered consent without native prompts. An early implementation
+waited for the native close event; the embedded preview delayed that event after dismissal.
+Completion now settles directly on button/cancel events, with deferred-close-event regressions.
+The initial browser probe had no timer; the final probe used and stopped an owned disposable
+unassigned fixture. It verified a520px app dialog, Cancel focus, native Escape, zero browser
+prompts/correction mutations and released pending state, restoring the existing consent preference.
+
+Final follow-up gates: **1250 Python passed (1695 warnings),946 Node passed**, no failures/skips;
+changed JS/CJS syntax and whitespace pass. Broad Ruff retains17 inherited findings. Only the
+isolated preview was refreshed; no personal daemon restart, push, merge or deployment occurred.
+Raster/platform certification remains unclaimed.

@@ -44,6 +44,25 @@ function correctionPresentation(envelope,options={}) {
         (plan.action === 'exclude' ? `Removed selected work: ${plan.removed_seconds}s; already uncredited pause/gap: ${plan.already_uncredited_seconds}s; unselected coverage unchanged: ${plan.unselected_covered_seconds}s.\n` : `Retained credited duration at cutoff: ${plan.duration_seconds}s.\n`) +
         [...new Set([...(envelope.warnings || []),...(plan.warnings || [])])].join('\n') + '\nIf recording continues after this cutoff, that later work is not included in this preview. Paused/frozen states are not resumed; schedules are not changed.';
 }
+function confirmQuickTimeAdjustments(document,text) {
+    const dialog=document.createElement('dialog');dialog.id='quick-time-consent-dialog';
+    const heading=document.createElement('h2');heading.id='quick-time-consent-title';heading.textContent='Enable quick five-minute adjustments?';
+    const description=document.createElement('p');description.id='quick-time-consent-description';description.textContent=text.replace(/^Enable quick five-minute adjustments\? /,'');
+    dialog.setAttribute('aria-labelledby',heading.id);dialog.setAttribute('aria-describedby',description.id);
+    const actions=document.createElement('div');actions.className='workspace-actions';
+    const cancel=document.createElement('button');cancel.type='button';cancel.textContent='Cancel';cancel.autofocus=true;
+    const accept=document.createElement('button');accept.type='button';accept.textContent='Enable and apply';
+    actions.append(cancel,accept);dialog.append(heading,description,actions);document.body.append(dialog);
+    return new Promise(resolve=>{
+        let settled=false;
+        const finish=accepted=>{if(settled)return;settled=true;if(dialog.open)dialog.close();dialog.remove();resolve(accepted);};
+        cancel.addEventListener('click',()=>finish(false));
+        accept.addEventListener('click',()=>finish(true));
+        dialog.addEventListener('cancel',event=>{event.preventDefault();finish(false);});
+        dialog.addEventListener('close',()=>finish(false));
+        try{dialog.showModal();}catch{finish(false);}
+    });
+}
 function createQuickTimeAdjustments({control,storage,confirm,onState=()=>{},conflicts=()=>false}) {
     const key='timetrace_quick_time_adjustments_v1';let pending=false,message='',binding=null;
     const snapshot=()=>({pending,message}),publish=()=>onState(snapshot());
@@ -285,7 +304,7 @@ if (typeof window !== 'undefined') {
             const control=window.multipleTimers;
             quick ||= createQuickTimeAdjustments({control,
                 storage:{getItem:key=>window.localStorage.getItem(key),setItem:(key,value)=>window.localStorage.setItem(key,value)},
-                confirm:text=>window.confirm(text),
+                confirm:text=>confirmQuickTimeAdjustments(document,text),
                 conflicts:timer=>Boolean(panel?.dialog.open||panel?.hasDraft()||control.hasNoteDraft?.(timer.id)||control.hasFocusDraft?.()||(typeof agendaPage!=='undefined'&&agendaPage.hasDraft())),
                 onState:state=>{const status=document.querySelector('[data-quick-time-status]');if(status){status.textContent=state.message;status.hidden=!state.message;}const display=document.querySelector('[data-current-display]');if(display&&typeof renderTimerWorkspaceCard==='function')renderTimerWorkspaceCard(display,control.snapshot(),control);}
             });
