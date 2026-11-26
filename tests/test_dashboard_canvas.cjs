@@ -709,3 +709,25 @@ test('ui72 delayed dashboard deletion cannot delete a superseded selection; Canc
     assert.equal(b.requests.length,0);
     const canceled=b.run('deleteDashboard()');choose('Cancel');await canceled;assert.equal(b.requests.length,0);
 });
+
+test('consecutive keyboard moves keep the widget UUID when titles are identical', async () => {
+    const row = dashboard('one', [
+        {...widget('a'),title:'Same title'}, {...widget('b'),title:'Same title'}, widget('c')
+    ]);
+    const b = browser(async (url, method, body) => {
+        if (url === '/api/dashboards') return [row];
+        if (url.endsWith('/reorder')) {
+            row.widgets = body.widget_ids.map(id => row.widgets.find(w => w.id === id));
+            return row.widgets;
+        }
+        return url === '/api/dashboards/one' ? row : result(1);
+    });
+    await b.ready();
+    const handle = b.elements.widget_grid.children[0].querySelectorAll('[data-widget-drag-handle]')[0];
+    handle.focus();
+    handle.dispatchEvent({type:'keydown',key:'ArrowRight'});await tick();
+    assert.equal(b.context.document.activeElement.closest('[data-widget-id]').dataset.widgetId,'a');
+    b.context.document.activeElement.dispatchEvent({type:'keydown',key:'ArrowRight'});await tick();
+    assert.deepEqual(b.elements.widget_grid.children.map(card=>card.dataset.widgetId),['b','c','a']);
+    assert.equal(b.context.document.activeElement.closest('[data-widget-id]').dataset.widgetId,'a');
+});

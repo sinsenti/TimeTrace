@@ -606,6 +606,7 @@ function _addWidgetControls(card, widget, data, index) {
     const mkBtn = (label, title, handler, disabled) => {
         const btn = _el('button', 'px-1 text-slate-400 hover:text-white text-xs font-bold', label);
         btn.title = title;
+        btn.dataset.widgetControl = title;
         btn.setAttribute('aria-label', `${title}: ${_widgetDisplayTitle(widget)}`);
         if (disabled) {
             btn.disabled = true;
@@ -637,7 +638,10 @@ function _renderSavedWidgets(data) {
     const grid = document.getElementById('widget_grid');
     const active = document.activeElement;
     const restoreFocus = active && grid.contains(active);
-    const label = restoreFocus ? active.getAttribute('aria-label') : null;
+    const focusOwner = restoreFocus ? {
+        widgetId:active.closest('[data-widget-id]')?.dataset.widgetId,
+        control:active.dataset.widgetControl
+    } : null;
     grid.innerHTML = '';
     if (!data.widgets.length) grid.appendChild(_el('p', 'canvas-empty', 'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
     data.widgets.forEach((widget, index) => {
@@ -648,7 +652,8 @@ function _renderSavedWidgets(data) {
     });
     if (restoreFocus) {
         const buttons = Array.from(grid.querySelectorAll('button:not(:disabled)'));
-        const target = buttons.find(button => button.getAttribute('aria-label') === label) || buttons[0]
+        const target = buttons.find(button => button.closest('[data-widget-id]')?.dataset.widgetId === focusOwner.widgetId &&
+            button.dataset.widgetControl === focusOwner.control) || buttons[0]
             || document.querySelector('.canvas-actions button');
         if (target) target.focus();
     }
