@@ -5,7 +5,20 @@ completed grilling and explicit agreement. This is real application code, not th
 prototype. Parent #59 still owns broader visual adoption/integration. Statistics widgets are not
 replaced or reseeded. Explanation-only #69 and deferred stop/link decisions #67 remain separate.
 
-## Contract
+## Current presentation after #72
+
+The owner subsequently split Agenda's duplicate search roles in #72. **Task to time** in the shared
+strip remains the keyboard launcher below. Agenda's **Filter activities** uses the same controller
+in `filterOnly` mode: literal title matches stay in priority groups, no implicit row selection,
+Arrow/Enter start or close-match suggestions, and explicit row Start retains the filter. Pin view
+hides that priority-only filter. **Search history & plans** now lives with the ledger; its existing
+`agenda-search` identity also owns export title filtering. These title fields are independent;
+shared tag/note semantics remain unchanged. Alt+Shift+F focuses the shared launcher.
+
+## Original #70 contract
+
+The following records the original presentation; the #72 role split above supersedes the local
+Agenda search/Enter behavior, not the shared launcher's safety or backend contracts.
 
 Both Agenda's A2 search-first activity field and the shared launcher on every page use the same
 combobox/controller. Focus opens suggestions; the first ordinary result is highlighted. Arrows

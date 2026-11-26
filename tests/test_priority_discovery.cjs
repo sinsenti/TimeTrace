@@ -16,7 +16,7 @@ class Element{
  async fire(type){if(!this.disabled)return this.listeners[type]?.({preventDefault(){},target:this});}
 }
 function descendants(el){return el.children.flatMap(child=>[child,...descendants(child)]);}
-async function mount(rows){
+async function mount(rows,{filterOnly=false}={}){
  const urls=[],writes=[],values=new Map();
  const api={get:async url=>{urls.push(url);if(url==='/timers')return {timers:[],revision:1};if(url.startsWith('/api/tasks/launcher'))return {suggestions:rows};if(url==='/api/tasks/statuses')return [];return rows.find(row=>url.endsWith(row.id));},post:async(url,p)=>{writes.push({url,p});return {operation_id:p.operation_id,timer:{id:'timer',task_id:p.task_id,state:'running'}};}};
  const doc={createElement:tag=>new Element(tag,doc),createTextNode:text=>Object.assign(new Element('#text',doc),{textContent:text}),addEventListener(){},querySelector(){return {checked:true};}};
@@ -25,7 +25,7 @@ async function mount(rows){
  vm.runInContext(fs.readFileSync(require.resolve('../src/timetrace/interfaces/api/static/js/task_launcher.js'),'utf8'),context);
  const control=createTimerController({api,storage:{getItem:k=>values.get(k),setItem:(k,v)=>values.set(k,v),removeItem:k=>values.delete(k)},operationId:()=> 'group-start',onState(){}});
  await control.refresh();
- const launcher=context.mountTaskLauncher(root,control,{input,view:'priority',prioritySelect:priority,resultsRoot:results,onDetails:id=>urls.push(`details:${id}`)});
+ const launcher=context.mountTaskLauncher(root,control,{input,filterOnly,view:'priority',prioritySelect:priority,resultsRoot:results,onDetails:id=>urls.push(`details:${id}`)});
  await launcher.model.refresh();return {launcher,root,input,results,priority,urls,writes};
 }
 test('shared mounted priority discovery renders headed compact groups and uses the sole task-only timer writer',async()=>{
@@ -80,6 +80,21 @@ test('folded tasks are skipped by keyboard and stay folded through reads without
  h.launcher.model.key({key:'ArrowUp'});assert.equal(h.launcher.model.snapshot().activeIndex,1);
  assert.equal(descendants(h.results.children.find(el=>el.dataset.priority==='high')).find(el=>el.className==='launcher-group-body').hidden,true);
  await h.launcher.model.key({key:'Enter'});assert.equal(h.writes.length,1);assert.equal(h.writes[0].p.task_id,'low');
+});
+test('activity-filter mode never keyboard-starts or announces a picked task, but explicit row Start retains the filter',async()=>{
+ const h=await mount([{id:'read',title:'Reading',priority:'high',match_kind:'prefix'},{id:'fuzzy',title:'Raed',priority:'low',match_kind:'fuzzy'}],{filterOnly:true});
+ await h.launcher.model.input('read');assert.equal(h.launcher.model.snapshot().activeIndex,-1);
+ assert.equal(h.launcher.model.key({key:'ArrowDown'}),false);await h.launcher.model.key({key:'Enter'});
+ assert.equal(h.writes.length,0);assert.deepEqual(Array.from(h.launcher.model.snapshot().rows,row=>row.id),['read']);
+ const hint=descendants(h.root).find(el=>el.className==='task-launcher-hint');assert.equal(hint.hidden,true);
+ assert.doesNotMatch(descendants(h.root).find(el=>el.className==='task-launcher-status').textContent,/Selected:|Enter starts/);
+ assert.deepEqual(descendants(h.results).filter(el=>el.className==='launcher-group-label').map(el=>el.textContent),['High priority'],'filtering keeps priority groups rather than launcher match-rank headings');
+ h.launcher.model.toggleGroup('default','high');assert.equal(await h.launcher.activate('read'),false,'filtered rows obey the visible priority disclosure');
+ assert.equal(h.writes.length,0);h.launcher.model.toggleGroup('default','high');
+ h.launcher.model.choose(0);assert.equal(await h.launcher.model.start(),false,'filter-only start requires an explicit row action');
+ await h.launcher.activate('read');assert.equal(h.writes.length,1);assert.equal(h.writes[0].p.task_id,'read');
+ assert.equal(h.writes[0].p.scheduled_session_id,undefined);assert.equal(h.launcher.model.snapshot().query,'read');
+ assert.ok(descendants(h.results).filter(el=>el.className==='launcher-priority-row').every(el=>el.dataset.selected==='false'));
 });
 test('mounted completed-task opt-in and no-priority filter go to the server with the current title and tag query',async()=>{
  const h=await mount([]);await h.launcher.model.input('Read%_');await h.launcher.model.tag('Study%_');

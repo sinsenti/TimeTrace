@@ -71,7 +71,7 @@ const agendaPage = (() => {
     function suggestionCards(){
         get('activities').hidden=activityMode!=='all';
         get('pins').hidden=activityMode!=='pinned';
-        get('priority-control').hidden=activityMode!=='all';
+        get('priority-control').hidden=activityMode!=='all';get('launcher').hidden=activityMode!=='all';
     }
     async function discovery() {
         const pinned = get('pins');
@@ -608,9 +608,10 @@ const agendaPage = (() => {
     get('manage-pins')?.addEventListener('click',()=>window.openWorkspacePins?.());
     for(const tab of document.querySelectorAll('[data-activity-tab]'))tab.addEventListener('click',()=>{activityMode=tab.dataset.activityTab;for(const item of document.querySelectorAll('[data-activity-tab]'))item.setAttribute('aria-pressed',String(item===tab));void discovery();if(activityMode==='all')void window.agendaTaskLauncher?.model.focus();});
     window.addEventListener('timetrace:pins-changed',()=>{try{pins=createWorkspacePins(localStorage);get('pin-status').textContent='';}catch(error){get('pin-status').textContent=error.message;}void discovery();});
-    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('search'),view:'priority',prioritySelect:get('priority'),resultsRoot:get('activities'),onDetails:id=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(id);},onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
+    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('activity-filter'),filterOnly:true,view:'priority',prioritySelect:get('priority'),resultsRoot:get('activities'),onDetails:id=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(id);},onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
     void refresh();
-    for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
+    get('search').addEventListener('input',ledger);
+    for (const id of ['filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,
         correctionConflicts: ids => Boolean(owner && ids.includes(owner.row?.id) && (owner.noteDirty || owner.notePending || owner.pending || (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline)))),
         hasDraft: () => Boolean(owner && (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline) || owner.pending || owner.extensionPending || owner.removalPending || owner.noteDirty || owner.notePending))

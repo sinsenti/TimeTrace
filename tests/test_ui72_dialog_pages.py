@@ -48,6 +48,19 @@ def test_agenda_activity_toolbar_groups_date_and_existing_actions(client):
     assert 'class="folio-strip"' not in html
 
 
+def test_agenda_has_separate_activity_and_history_search_roles(client):
+    html = client.get("/agenda-view").text
+    discovery = re.search(r'<section class="agenda-search-first".*?</section>', html, re.S).group()
+    history = re.search(r'<section aria-labelledby="agenda-ledger-title".*?</section>', html, re.S).group()
+    assert "Filter activities" in discovery
+    assert 'id="agenda-activity-filter"' in discovery
+    assert 'id="agenda-search"' not in discovery
+    assert "Search history &amp; plans" in history
+    assert 'id="agenda-search"' in history
+    assert "Task to time" in html
+    assert "then Enter to start" not in discovery
+
+
 def test_agenda_help_and_filters_have_named_dialogs_with_footer_close(client):
     html = client.get("/agenda-view").text
     for name in ["agenda-help", "agenda-filters"]:

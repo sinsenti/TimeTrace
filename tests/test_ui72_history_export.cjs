@@ -10,7 +10,7 @@ function page(preview = async()=>({})) {
         addEventListener(name,fn){this.listeners[name]=fn;},focus(){document.activeElement=this;},
         showModal(){this.open=true;},close(){this.open=false;this.listeners.close?.();}});
     document.createElement=node;document.body=node('body');
-    for(const id of ['history-export-open','agenda-date','agenda-search','agenda-filter-tag','agenda-filter-note']) nodes.set(id,node('input'));
+    for(const id of ['history-export-open','agenda-date','agenda-search','agenda-activity-filter','agenda-filter-tag','agenda-filter-note']) nodes.set(id,node('input'));
     nodes.get('agenda-date').value='2000-01-04';
     const requests=[], copies=[];
     const response={work_count:1,legacy_count:0,timezone:'UTC',snapshot_at:'2000-01-05T00:00:00.123456Z',summed_recorded_work_seconds:61.123456,
@@ -40,6 +40,14 @@ test('ui72 saved history export has named fields, contextual exact details and b
     p.find('Close').listeners.click(); assert.equal(dialog.open,false);
 });
 
+test('history export follows the history title field, independently of the activity filter',async()=>{
+    const p=page();p.nodes.get('agenda-search').value='Reading history';p.nodes.get('agenda-activity-filter').value='Different activity';
+    p.nodes.get('history-export-open').listeners.click();await p.find('Preview all filtered matches').listeners.click();
+    assert.equal(p.requests[0].title,'Reading history');
+    assert.equal(p.nodes.get('agenda-activity-filter').listeners.input,undefined,'activity filtering does not invalidate history export');
+    p.nodes.get('agenda-search').value='New history';p.nodes.get('agenda-search').listeners.input();
+    assert.equal(p.find('Copy preview').disabled,true,'a real history-title change still invalidates its preview');
+});
 test('ui72 closing and reopening export invalidates a late preview without replacing the new selection status',async()=>{
     let release;const held=new Promise(resolve=>release=resolve);const p=page(()=>held);
     p.nodes.get('history-export-open').listeners.click();const reading=p.find('Preview all filtered matches').listeners.click();

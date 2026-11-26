@@ -303,7 +303,7 @@ function loadFolio(p) {
     for (const suffix of ['workspace', 'date', 'new', 'status', 'retry', 'ledger', 'kind', 'inspector-title',
         'detail', 'edit-status', 'review', 'latest', 'use-latest', 'form', 'metadata', 'task', 'tags',
         'notes', 'notes-label', 'start', 'end', 'save', 'cancel', 'record', 'attach', 'attachment', 'progress', 'extension',
-        'unfinished', 'pin-status', 'pins', 'activities', 'search', 'filter-tag', 'filter-note', 'help-open', 'help', 'inspector-panel', 'columns']) p.element(`agenda-${suffix}`);
+        'unfinished', 'pin-status', 'pins', 'activities', 'search', 'activity-filter', 'filter-tag', 'filter-note', 'help-open', 'help', 'inspector-panel', 'columns']) p.element(`agenda-${suffix}`);
     p.elements.get('agenda-progress').ownerDocument=p.context.document;
     p.context.URLSearchParams = URLSearchParams;
     p.context.crypto = require('node:crypto').webcrypto;
@@ -1162,7 +1162,7 @@ test('Agenda mounts priority discovery through the shared launcher and keeps pin
     const p=sessionPage(async(url,options)=>{
         if(options.method!=='GET')return {operation_id:JSON.parse(options.body).operation_id,timer:{id:'started-timer',task_id:task.id,state:'running'}};
         reads.push(url);
-        if(url.startsWith('/api/tasks/launcher'))return {suggestions:[task]};
+        if(url.startsWith('/api/tasks/launcher'))return {suggestions:[{...task,match_kind:new URLSearchParams(url.split('?')[1]).get('q')?'prefix':'default'}]};
         if(url==='/api/tasks?status=all')return [task];
         if(url===`/api/tasks/${task.id}`)return task;
         if(url==='/timers')return {timers:[],revision:1};
@@ -1170,6 +1170,9 @@ test('Agenda mounts priority discovery through the shared launcher and keeps pin
         return [];
     });
     const root=p.element('agenda-launcher');root.ownerDocument=p.context.document;root.querySelector=()=>null;
+    const allTab=p.element('priority-tab','button'),pinnedTab=p.element('pinned-tab','button');
+    allTab.dataset.activityTab='all';pinnedTab.dataset.activityTab='pinned';
+    p.context.document.querySelectorAll=selector=>selector==='[data-activity-tab]'?[allTab,pinnedTab]:[];
     p.element('agenda-priority-control');p.element('agenda-priority','select').value='all';
     p.context.document.createTextNode=text=>{const node=p.element();node.textContent=text;return node;};
     p.context.document.querySelector=()=>({checked:true});
@@ -1181,6 +1184,16 @@ test('Agenda mounts priority discovery through the shared launcher and keeps pin
     await p.documentListeners.get('DOMContentLoaded')();
     await p.context.agendaTaskLauncher.model.refresh();
     assert.equal(p.context.agendaTaskLauncher.model.snapshot().view,'priority');
+    assert.equal(p.context.agendaTaskLauncher.model.snapshot().filterOnly,true);
+    await pinnedTab.click();assert.equal(root.hidden,true,'priority-only filter is not shown for pinned activities');
+    await allTab.click();assert.equal(root.hidden,false);
+    const historySearch=p.elements.get('agenda-search'),activityFilter=p.elements.get('agenda-activity-filter');
+    assert.equal(typeof activityFilter.input,'function');
+    historySearch.value='No such history';historySearch.input();
+    assert.equal(p.context.agendaTaskLauncher.model.snapshot().query,'','history search does not refilter activities');
+    activityFilter.value='Low';activityFilter.input();
+    await p.context.agendaTaskLauncher.model.input('Low');
+    await p.context.agendaTaskLauncher.model.key({key:'Enter'});assert.equal(p.writes.length,0,'filter Enter never starts');
     assert.equal(new URL(reads.findLast(url=>url.startsWith('/api/tasks/launcher')),'http://test').searchParams.get('view'),'priority');
     assert.equal(p.elements.get('agenda-pins').hidden,true);
     assert.equal(p.elements.get('agenda-activities').hidden,false);

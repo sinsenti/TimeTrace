@@ -205,3 +205,24 @@ history correction/repeat payloads were exercised only in the controlled public-
 not by starting real timers or applying corrections in this native check. The owner's pins, original
 preview, saved work and running timers were not changed. No raster/AT/touch/other-engine or owner
 visual acceptance is claimed. These commits remain local; no merge, push or deployment.
+
+## Follow-up: separate launcher, activity filter and history search
+
+The owner agreed to remove the duplicated launcher role: keep **Task to time** at the top, replace
+Agenda's lower field with **Filter activities** and put **Search history & plans** beside the ledger.
+The shared launcher retains its ordinary/fuzzy keyboard selection and task-only Start. The local
+activity filter has no implicit selected row or Arrow/Enter start and excludes close-match guesses;
+literal matches remain in priority groups. Explicit row Start still uses the same guarded writer and
+retains the filter after ACK. Collapsed-group eligibility applies to filtered rows too. Pinned view
+hides the priority-only filter rather than displaying an unrelated control.
+
+The existing `agenda-search` field moves to history, preserving its ledger/export title semantics,
+200-character bound and export read-generation invalidation. Activity filtering neither changes
+history nor invalidates an export preview. Shared tag/note filters keep their existing semantics.
+Alt+Shift+F focuses Task to time, not either local filter. Serving cache versions and help/launcher
+maintenance documentation reflect the explicit owner-approved change from the original #70 UI.
+
+Three new/extended Node entry cases and the root-HTTP composition case failed first. Focused checks
+then passed **88 Node /29 Python** (including independent export criteria, shared keyboard defaults,
+explicit filter-row task-only Start, hidden-row refusal, retained filter and pinned-view controls).
+Full gates, native checks and bounded independent review follow this checkpoint.

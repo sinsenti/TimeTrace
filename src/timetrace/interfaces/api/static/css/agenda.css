@@ -32,6 +32,8 @@
     .folio .activity-toolbar-date { border: 0; padding: 0; gap: 6px; }
     .activity-toolbar-actions { gap: 6px; }
 }
+.folio .agenda-history-search { display: grid; gap: 6px; max-width: 32rem; margin: 14px 0 18px; font-size: .8125rem; font-weight: 500; }
+.folio .agenda-history-search input { min-height: 36px; font: inherit; border-color: var(--border-color); }
 .folio-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); gap: 44px; align-items: start; margin-top: 26px; }
 .folio-section-title { border-bottom: 2px solid var(--border-muted); padding-bottom: 12px; }
 .folio h2 { font: 1.5rem/1.3 Georgia, serif; }

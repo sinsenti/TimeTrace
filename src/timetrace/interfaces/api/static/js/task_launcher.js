@@ -4,15 +4,15 @@ function canStartTaskFromTimerState(state){
     return !state.pending&&(state.fresh&&!state.receipt||Boolean(ownAck));
 }
 function taskLauncherPriority(task){const priority=String(task.priority||'').toLowerCase();return ['high','medium','low'].includes(priority)?priority:'none';}
-function taskLauncherGroupKey(task){return `${task.match_kind}:${taskLauncherPriority(task)}`;}
-function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined,timerSelection=()=>undefined,view='suggested',priority='all'}) {
+function taskLauncherGroupKey(task,filterOnly=false){return `${filterOnly?'default':task.match_kind}:${taskLauncherPriority(task)}`;}
+function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined,timerSelection=()=>undefined,view='suggested',priority='all',filterOnly=false}) {
     const validView=value=>['suggested','priority'].includes(value),validPriority=value=>['all','high','medium','low','none'].includes(value);
     if(!validView(view)||!validPriority(priority))throw Error('Unsupported launcher view or priority.');
     let query='',tagFilter='',includeCompleted=false,rows=[],activeIndex=-1,open=false,loading=false,pending=false;
     let version=0,request=0,selectionGeneration=0,explicit=false,message='',actionMessage='',binding=null;
     const collapsedGroups=new Set();
-    const visible=task=>view!=='priority'||!collapsedGroups.has(taskLauncherGroupKey(task));
-    const snapshot=()=>({query,tagFilter,includeCompleted,view,priority,rows,activeIndex,open,loading,pending,message,actionMessage,collapsedGroups:[...collapsedGroups]});
+    const visible=task=>view!=='priority'||!collapsedGroups.has(taskLauncherGroupKey(task,filterOnly));
+    const snapshot=()=>({query,tagFilter,includeCompleted,view,priority,filterOnly,rows,activeIndex,open,loading,pending,message,actionMessage,collapsedGroups:[...collapsedGroups]});
     const publish=()=>onState(snapshot());
     async function read(){
         const own=++request,atVersion=version;loading=true;rows=[];activeIndex=-1;explicit=false;message='';publish();
@@ -22,21 +22,22 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
             const result=await api.get(`/api/tasks/launcher?${params}`);
             if(own!==request||atVersion!==version)return;
             if(!Array.isArray(result?.suggestions)||result.suggestions.some(r=>typeof r.id!=='string'||typeof r.title!=='string'))throw Error('Unknown suggestions');
-            rows=result.suggestions;activeIndex=rows.findIndex(r=>visible(r)&&r.match_kind!=='fuzzy');
-            message=rows.length?'':'No matching tasks. Choose another search or create a task explicitly.';
-        }catch(error){if(own!==request||atVersion!==version)return;rows=[];activeIndex=-1;message='Task suggestions unavailable. Try again; no timer started.';}
+            rows=filterOnly?result.suggestions.filter(row=>row.match_kind!=='fuzzy'):result.suggestions;
+            activeIndex=filterOnly?-1:rows.findIndex(r=>visible(r)&&r.match_kind!=='fuzzy');
+            message=rows.length?'':filterOnly?'No matching activities. Try another filter.':'No matching tasks. Choose another search or create a task explicitly.';
+        }catch(error){if(own!==request||atVersion!==version)return;rows=[];activeIndex=-1;message=filterOnly?'Activity filter unavailable. Try again.':'Task suggestions unavailable. Try again; no timer started.';}
         finally{if(own===request&&atVersion===version){loading=false;publish();}}
     }
     function acknowledged(owner,result){
         if(owner!==binding||owner.acknowledged||!owner.id||result?.operation_id!==owner.id||!result.timer)return false;
         owner.acknowledged=true;pending=false;
         actionMessage=`${owner.task.title}: ${result.timer.state==='running'?'recording':result.timer.state}.`;
-        if(version===owner.version&&request===owner.request&&selectionGeneration===owner.selectionGeneration&&query===owner.query){query='';message='';version++;request++;loading=false;rows=[];activeIndex=-1;open=false;}
+        if(!filterOnly&&version===owner.version&&request===owner.request&&selectionGeneration===owner.selectionGeneration&&query===owner.query){query='';message='';version++;request++;loading=false;rows=[];activeIndex=-1;open=false;}
         publish();return true;
     }
     async function start({explicitButton=false}={}){
         const task=rows[activeIndex];
-        if(pending||loading||(!open&&!explicitButton)||!task||!visible(task)||(task.match_kind==='fuzzy'&&!explicit))return false;
+        if(pending||loading||(filterOnly&&!explicitButton)||(!open&&!explicitButton)||!task||!visible(task)||(task.match_kind==='fuzzy'&&!explicit))return false;
         if(!available()){actionMessage='Finish timer recovery or refresh timer status before starting.';publish();return false;}
         const idle=pauseWhenIdle(),payload={task_id:task.id,...(typeof idle==='boolean'?{pause_when_idle:idle}:{})};
         const owner={task,query,version,request,selectionGeneration,timerSelection:timerSelection(),id:null,acknowledged:false};binding=owner;pending=true;actionMessage='';publish();
@@ -75,9 +76,9 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
             if(event.isComposing||event.repeat||event.altKey||event.ctrlKey||event.metaKey)return false;
             if(event.key==='Tab'){open=false;request++;loading=false;publish();return false;}
             if(event.key==='Escape'){open=false;request++;loading=false;publish();return true;}
-            if(event.key==='Enter')return start();
-            if(['ArrowDown','ArrowUp'].includes(event.key)&&!open){open=true;void read();return true;}
-            if(['ArrowDown','ArrowUp'].includes(event.key)&&open&&!loading&&rows.length){
+            if(event.key==='Enter')return filterOnly?true:start();
+            if(!filterOnly&&['ArrowDown','ArrowUp'].includes(event.key)&&!open){open=true;void read();return true;}
+            if(!filterOnly&&['ArrowDown','ArrowUp'].includes(event.key)&&open&&!loading&&rows.length){
                 const indices=rows.map((row,index)=>visible(row)?index:-1).filter(index=>index>=0);
                 if(!indices.length)return false;
                 const selected=indices.indexOf(activeIndex),direction=event.key==='ArrowDown'?1:-1;
@@ -89,10 +90,10 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
     };
 }
 let taskLauncherSequence=0;
-function mountTaskLauncher(root,control,{input=root.querySelector('[data-launcher-input]'),startButton=root.querySelector('[data-launcher-start]'),onSuggestions=null,view='suggested',prioritySelect=null,resultsRoot=null,onDetails=null}={}) {
+function mountTaskLauncher(root,control,{input=root.querySelector('[data-launcher-input]'),startButton=root.querySelector('[data-launcher-start]'),onSuggestions=null,view='suggested',prioritySelect=null,resultsRoot=null,onDetails=null,filterOnly=false}={}) {
     const doc=root.ownerDocument,uid=`task-launcher-${++taskLauncherSequence}`;
     const popup=doc.createElement('div');popup.className='task-launcher-popup';popup.hidden=true;
-    const hint=doc.createElement('p');hint.className='task-launcher-hint';hint.textContent='↑↓ choose · Enter starts · Tab moves focus';
+    const hint=doc.createElement('p');hint.className='task-launcher-hint';hint.textContent='↑↓ choose · Enter starts · Tab moves focus';hint.hidden=filterOnly;
     const checkLabel=doc.createElement('label');checkLabel.className='launcher-completed';
     const check=doc.createElement('input');check.type='checkbox';checkLabel.append(check,doc.createTextNode(' Include completed'));
     const options=doc.createElement('div');options.id=`${uid}-options`;options.setAttribute('role','listbox');options.setAttribute('aria-label','Task suggestions');
@@ -118,15 +119,15 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
             const bound=doc.createElement('p');bound.className='launcher-result-bound';bound.textContent='Up to 20 results. Filter by priority or search for more tasks.';resultsRoot.append(bound);
             const priorities=[['high','High priority'],['medium','Medium priority'],['low','Low priority'],['none','No priority']];
             // Search keeps exact → prefix → literal contains → explicit close matches.
-            const matches=s.query.trim()?['exact','prefix','contains','fuzzy']:['default'];
+            const matches=s.query.trim()&&!filterOnly?['exact','prefix','contains','fuzzy']:['default'];
             for(const match of matches){
                 for(const [priority,label] of priorities){
                     if(s.priority!=='all'&&s.priority!==priority)continue;
-                    const tasks=s.rows.map((task,index)=>({task,index})).filter(({task})=>taskLauncherPriority(task)===priority&&task.match_kind===match);
+                    const tasks=s.rows.map((task,index)=>({task,index})).filter(({task})=>taskLauncherPriority(task)===priority&&(filterOnly||task.match_kind===match));
                     if(s.query.trim()&&!tasks.length)continue;
                     const section=doc.createElement('section');section.className='launcher-priority-group';section.dataset.priority=priority;
                     const heading=doc.createElement('h4'),toggle=doc.createElement('button'),name=doc.createElement('span'),count=doc.createElement('span'),body=doc.createElement('div');
-                    const key=`${match}:${priority}`,title=s.query.trim()?`${{exact:'Exact title',prefix:'Title starts with',contains:'Title contains',fuzzy:'Close matches · select before starting'}[match]} · ${label}`:label;
+                    const key=`${match}:${priority}`,title=s.query.trim()&&!filterOnly?`${{exact:'Exact title',prefix:'Title starts with',contains:'Title contains',fuzzy:'Close matches · select before starting'}[match]} · ${label}`:label;
                     toggle.type='button';toggle.className='launcher-group-toggle';toggle.id=`${uid}-${match}-${priority}-toggle`;
                     body.className='launcher-group-body';body.id=`${uid}-${match}-${priority}-body`;body.setAttribute('role','group');body.setAttribute('aria-labelledby',toggle.id);
                     toggle.setAttribute('aria-controls',body.id);toggle.setAttribute('aria-label',`${title} (${tasks.length} ${tasks.length===1?'task':'tasks'})`);
@@ -147,7 +148,7 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
             }
         }
         for(const {toggle,body,key} of groupControls){const collapsed=s.collapsedGroups.includes(key);toggle.setAttribute('aria-expanded',String(!collapsed));body.hidden=collapsed;}
-        for(const {start,row,index} of resultActions){start.disabled=s.pending||s.loading||!available();row.dataset.selected=String(index===s.activeIndex);}
+        for(const {start,row,index} of resultActions){start.disabled=s.pending||s.loading||!available();row.dataset.selected=String(!filterOnly&&index===s.activeIndex);}
     }
     function render(s){
         if(input.value!==s.query)input.value=s.query;
@@ -156,7 +157,7 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
         input.setAttribute('aria-busy',String(s.loading));
         const row=s.rows[s.activeIndex];
         if(!resultsRoot&&row)input.setAttribute('aria-activedescendant',`${uid}-${s.activeIndex}`);else input.removeAttribute('aria-activedescendant');
-        status.textContent=[s.loading?'Finding tasks…':s.message,resultsRoot&&s.rows.length&&s.rows.every(task=>s.collapsedGroups.includes(taskLauncherGroupKey(task)))?'Expand a priority group to choose a task.':'',resultsRoot&&s.open&&row?`Selected: ${row.title}. Enter starts this task.`:'',s.actionMessage].filter(Boolean).join(' ');
+        status.textContent=[s.loading?'Finding tasks…':s.message,resultsRoot&&s.rows.length&&s.rows.every(task=>s.collapsedGroups.includes(taskLauncherGroupKey(task,filterOnly)))?'Expand a priority group to choose a task.':'',resultsRoot&&!filterOnly&&s.open&&row?`Selected: ${row.title}. Enter starts this task.`:'',s.actionMessage].filter(Boolean).join(' ');
         if(startButton){startButton.disabled=s.pending||s.loading||!row||!available();startButton.setAttribute('aria-label',row?`Start timer for ${row.title}`:'Choose a task before starting');}
         const next=JSON.stringify([s.rows,s.activeIndex]);if(!resultsRoot&&next!==signature){signature=next;options.replaceChildren();let fuzzy=false;
             s.rows.forEach((task,index)=>{
@@ -170,7 +171,7 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
         if(prioritySelect)prioritySelect.value=s.priority;
         renderResults(s);onSuggestions?.(s);
     }
-    model=createTaskLauncher({api,view,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,timerSelection:()=>control.snapshot().selectionGeneration,
+    model=createTaskLauncher({api,view,filterOnly,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,timerSelection:()=>control.snapshot().selectionGeneration,
         validateTask:async(task,includeCompleted)=>{
             const current=await api.get(`/api/tasks/${encodeURIComponent(task.id)}`);
             if(current.id!==task.id||current.title!==task.title)return false;

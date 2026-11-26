@@ -14,7 +14,7 @@ if (typeof document !== 'undefined') document.addEventListener('keydown', event 
     if (!action || !control) return;
     event.preventDefault();
     const state = control.snapshot();
-    if (action === 'search') { document.getElementById('agenda-search').focus(); return; }
+    if (action === 'search') { document.querySelector('.task-launcher-shared [data-launcher-input]')?.focus(); return; }
     if (action.startsWith('select:')) {
         const timer = state.timers[Number(action.split(':')[1])];
         if (timer) control.select(timer.id);
