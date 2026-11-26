@@ -10,13 +10,15 @@ function browser() {
         return {tagName:tag.toUpperCase(), children, listeners, isConnected:true, dataset:{},
             append(...items) {children.push(...items);}, setAttribute(k,v) {this[k]=v;},
             addEventListener(name, fn) {(listeners[name] ||= []).push(fn);},
-            dispatch(name) {for(const fn of listeners[name] || []) fn({preventDefault(){}});},
+            dispatch(name) {let prevented=false;for(const fn of listeners[name] || []) fn({preventDefault(){prevented=true;}});return !prevented;},
+            requestClose() {if(this.dispatch('cancel'))this.close();},
             contains(target) {return target === this || children.some(child => child.contains?.(target));},
             focus() {document.activeElement=this;}, showModal() {this.open=true;},
             // Embedded browsers may defer close until a future frame. Do not dispatch it here.
             close() {this.open=false;}, remove() {this.isConnected=false;}};
     }
     document.createElement=node; document.body=node('body');
+    document.querySelector=()=>document.body.children.find(child=>child.tagName==='DIALOG'&&child.open&&child.isConnected&&child.className?.split(' ').includes('app-dialog'));
     document.activeElement=node('button'); const launch=document.activeElement;
     const window={addEventListener(name,fn){(events[`window:${name}`] ||= []).push(fn);}};
     vm.runInNewContext(fs.readFileSync('src/timetrace/interfaces/api/static/js/app_dialogs.js','utf8'), {window, document});
@@ -76,4 +78,12 @@ test('window-capture Escape settles only the top app decision before underlying 
     let stopped=false,prevented=false;
     b.events['window:keydown'][0]({key:'Escape',preventDefault(){prevented=true;},stopImmediatePropagation(){stopped=true;}});
     assert.equal(await result,false);assert.equal(stopped,true);assert.equal(prevented,true);
+});
+
+test('Escape delegates to a static app dialog cancel owner without waiting for a close frame',()=>{
+    const b=browser(),dialog=b.document.createElement('dialog');dialog.className='app-dialog';
+    b.document.body.append(dialog);dialog.showModal();let ownerClosed=false;
+    dialog.addEventListener('cancel',event=>{event.preventDefault();ownerClosed=true;dialog.close();});
+    b.events['window:keydown'][0]({key:'Escape',preventDefault(){},stopImmediatePropagation(){}});
+    assert.equal(ownerClosed,true);assert.equal(dialog.open,false);
 });

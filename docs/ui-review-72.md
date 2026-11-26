@@ -91,5 +91,16 @@ production fallback or weakened assertions were introduced. Repair `d0e9bf2`, in
 `e01cfcf`, gives983/983 Node passes in that lane (the extra case is the P1 regression, not a removed
 failure). Scope/syntax/whitespace passed; broad Ruff retains17 inherited findings.
 
-Post-repair independent recheck and final combined gates: pending. Owner visual acceptance and the
-history-ranking choice remain separate; the ongoing #72 review map is not completed by this batch.
+Independent post-P1 recheck found no unresolved issues on either axis. The post-P1 full combined
+run passed1281 Python/1696 warnings and983 Node, zero failed/skipped (7m07s Python); this checkpoint
+precedes the additional static-dialog correction below, not a blanket final claim.
+
+A later parent native check found an additional **P2**: the window keyboard shield intercepted
+Escape on static Help/Filter/Export modals without delegating cancellation. The new public window-
+entry regression failed first; the shield now delegates to the focused static dialog's cancel
+owner (`requestClose`, with cancel-event fallback), preserving export invalidation without waiting
+for a close frame. Focused74 Node cases passed, followed by actual native Escape checks closing
+all three dialogs. Final revalidation/recheck of this last correction remains pending.
+
+Owner visual acceptance and the history-ranking choice remain separate; the ongoing #72 review map
+is not completed by this batch.

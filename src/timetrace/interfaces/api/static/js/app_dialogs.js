@@ -4,9 +4,16 @@
     // Bootstrap precedes page shortcuts, including window-capture Escape handlers. Keep their
     // underlying editors inert; native dialog controls still receive their browser default actions.
     window.addEventListener('keydown', event => {
-        if (!active && !document.querySelector?.('dialog.app-dialog[open]')) return;
+        const dialog = document.activeElement?.closest?.('dialog.app-dialog[open]') ||
+            (active?.dialog.open ? active.dialog : document.querySelector?.('dialog.app-dialog[open]'));
+        if (!dialog) return;
         event.stopImmediatePropagation();
-        if (active && ['Escape', 'Esc'].includes(event.key)) { event.preventDefault(); active.cancel(); }
+        if (['Escape', 'Esc'].includes(event.key)) {
+            event.preventDefault();
+            if (active?.dialog === dialog) active.cancel();
+            else if (typeof dialog.requestClose === 'function') dialog.requestClose();
+            else if (dialog.dispatchEvent(new Event('cancel', {cancelable:true}))) dialog.close();
+        }
     }, true);
     // Consent cannot discard editor input made after the question was opened, including ABA edits.
     for (const name of ['input', 'change']) document.addEventListener(name, event => {
