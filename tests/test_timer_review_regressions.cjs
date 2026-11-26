@@ -215,6 +215,7 @@ async function page(t) {
             unexpected.push(`${method} ${url}`);
             throw Error(`unexpected fake HTTP boundary: ${method} ${url}`);
         }});
+    context.window.appDialogs={confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert?.(message), prompt:async()=>null};
     d.bind(context);
     p.run = code => vm.runInContext(code, context);
     // Exact relative registration order on Dashboard; entire scripts, no extracted handlers.

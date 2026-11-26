@@ -15,7 +15,7 @@ const agendaPage = (() => {
     };
     const localInput = value => {
         const at = new Date(value);
-        return `${localDay(at)}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}.${pad(at.getMilliseconds(), 3)}`;
+        return `${localDay(at)}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}`;
     };
     const localDayBounds = day => {
         const [year, month, dayOfMonth] = day.split('-').map(Number);
@@ -68,15 +68,14 @@ const agendaPage = (() => {
         const actions=make('div','', 'activity-actions');const begin=make('button','Start');begin.type='button';begin.disabled=disabled;begin.dataset.workspaceStart='true';begin.dataset.metadataAvailable=String(!disabled);if(launcherOwned)begin.dataset.launcherOwnedStart='true';begin.addEventListener('click',start);
         const details=make('button','Task details');details.type='button';details.addEventListener('click',()=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(task.id);});actions.append(begin,details);item.append(actions);return item;
     }
-    let cardsSignature=null;
-    function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const blocked=!canStartTaskFromTimerState(window.multipleTimers.snapshot());const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
-        for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked,true));
+    function suggestionCards(){
+        get('activities').hidden=activityMode!=='all';
+        get('pins').hidden=activityMode!=='pinned';
+        get('priority-control').hidden=activityMode!=='all';get('launcher').hidden=activityMode!=='all';
     }
-    let discoveryGeneration = 0;
     async function discovery() {
-        const read = ++discoveryGeneration;
-        const pinned = get('pins'), activities = get('activities');
-        clear(pinned); if(!window.agendaTaskLauncher)clear(activities);
+        const pinned = get('pins');
+        clear(pinned);
         const fresh = taskKnowledge.state().status === 'fresh';
         for (const id of pins?.ids() || []) {
             const task = taskKnowledge.get(id);
@@ -87,22 +86,6 @@ const agendaPage = (() => {
             pinned.hidden=activityMode!=='pinned';const tag=queryText('filter-tag');
             if(window.agendaTaskLauncher.model.snapshot().tagFilter!==tag)void window.agendaTaskLauncher.model.tag(tag);
             suggestionCards(window.agendaTaskLauncher.model.snapshot());return;
-        }
-        const search = queryText('search'), tag = queryText('filter-tag');
-        activities.hidden=!(search||tag);if(activities.hidden)return;
-        let matches;
-        try {
-            matches = await api.get(`/api/tasks?${new URLSearchParams({status:'all',title_contains:search,tag_contains:tag,limit:'50'})}`);
-            if (read !== discoveryGeneration) return;
-            if (!Array.isArray(matches)) throw Error('Unknown task response');
-        } catch {
-            if (read !== discoveryGeneration) return;
-            activities.append(make('p', 'Task search unavailable. Refresh agenda to retry; no mutation was sent.')); return;
-        }
-        clear(activities);
-        if (matches.length === 50) activities.append(make('p', 'Showing at most 50 matches in stable ID order; narrow the search for more.'));
-        for (const task of matches) {
-            activities.append(activityCard(task,()=>startActivity(task.id),!fresh));
         }
     }
 
@@ -131,12 +114,12 @@ const agendaPage = (() => {
             label.appendChild(make('span', taskTitle(row), 'agenda-name'));
             button.appendChild(times);
             button.appendChild(label);
-            button.addEventListener('click', () => {
-                if (switchAllowed()) open(row, true);
+            button.addEventListener('click', async () => {
+                if (await switchAllowed()) open(row, true);
             });
             (parents.get(row.id) || root).appendChild(button);
             if (row.kind !== 'scheduled_session') {
-                const metadata = make('p', `${interval(row.start_time,row.end_time)} · ${row.provenance || 'Uncertain legacy provenance'} · ${row.notes || 'No work note'}`);
+                const metadata = make('p', `${interval(row.start_time,row.end_time)} · ${row.provenance || 'Uncertain legacy provenance'} · ${row.notes || 'No entry note'}`);
                 parents.get(row.id).append(metadata);
                 if (row.correction_lineage) {
                     const original=row.correction_lineage.rating_source_work_id;
@@ -146,11 +129,11 @@ const agendaPage = (() => {
                     label.append(ratings); parents.get(row.id).append(label);
                 }
                 if (row.kind === 'recorded_work') {
-                    const adjust=make('button','Adjust saved actual time'); adjust.type='button';
+                    const adjust=make('button','Adjust saved actual time','history-entry-action history-entry-adjust'); adjust.type='button';
                     adjust.addEventListener('click',()=>window.openTimeCorrection({row}));
                     parents.get(row.id).append(adjust);
                 }
-                const again = make('button', 'Start again'); again.type = 'button';
+                const again = make('button', 'Start again', 'history-entry-action history-entry-repeat'); again.type = 'button';
                 again.disabled = Boolean(row.task_id && (taskKnowledge.state().status !== 'fresh' || !taskKnowledge.get(row.task_id)));
                 again.dataset.workspaceStart = 'true'; again.dataset.metadataAvailable = String(!again.disabled);
                 const timerState = window.multipleTimers?.snapshot(); again.disabled ||= !timerState?.fresh || timerState.pending || Boolean(timerState.receipt);
@@ -240,7 +223,7 @@ const agendaPage = (() => {
         if (row.kind === 'scheduled_session') {
             add(row.is_virtual ? 'Original plan (provisional)' : 'Original plan', interval(row.original_start, row.original_end));
             add('Current schedule', interval(row.start_time, row.end_time));
-            const start = make('button', 'Start working');
+            const start = make('button', 'Start working', 'inspector-primary');
             start.type = 'button';
             start.disabled = !row.task_id;
             if (!row.task_id) start.title = 'Assign a task before linking a plan timer. Unassigned timers are available above.';
@@ -260,14 +243,14 @@ const agendaPage = (() => {
                 } finally { if (start.isConnected) start.disabled = false; }
             });
             root.appendChild(start);
-            const extend = make('button', 'Extend current schedule');
+            const extend = make('button', 'Extend current schedule', 'inspector-secondary');
             extend.type = 'button';
             extend.addEventListener('click', () => showExtension(row));
             root.appendChild(extend);
             const capturedDraft = owner;
             window.planRemoval?.mount(root, row, {
                 api,
-                available: () => owner === capturedDraft && !owner?.pending && !owner?.extensionPending && !owner?.removalPending && switchAllowed(),
+                available: async () => owner === capturedDraft && !owner?.pending && !owner?.extensionPending && !owner?.removalPending && await switchAllowed(),
                 lock: pending => { if (owner === capturedDraft) { owner.removalPending = pending; controls(); } },
                 ack: async result => {
                     generation++;
@@ -283,9 +266,9 @@ const agendaPage = (() => {
             if (row.kind === 'recorded_work') {
                 add('Provenance', row.provenance || 'Not specified');
                 const captured = owner;
-                const label = make('label', 'Work-entry note (not task description)');
+                const label = make('label', 'Entry note (not task description)');
                 const input = make('textarea', ''); input.value = row.notes || ''; label.append(input);
-                const save = make('button', 'Save work note'); save.type = 'button'; save.disabled = true;
+                const save = make('button', 'Save entry note'); save.type = 'button'; save.disabled = true;
                 const retry = make('button', 'Retry note refresh'); retry.type = 'button'; retry.hidden = true;
                 const status = make('p', ''); status.setAttribute('role','status');
                 let exportRevision = row.revision;
@@ -320,7 +303,9 @@ const agendaPage = (() => {
                 remove.addEventListener('click',async()=>{
                     if(owner!==captured||captured.notePending||captured.removalPending)return;
                     if(captured.noteDirty){removalStatus.textContent='Save or discard your note edits before deleting this entry.';return;}
-                    if(!window.confirm(`Permanently delete this recorded entry?\n${taskTitle(captured.row)}\n${interval(captured.row.start_time,captured.row.end_time)}\nIts note and attached ratings will be removed. The task, plans and other entries stay unchanged. This cannot be undone.`))return;
+                    const target = captured.row;
+                    if(!await window.appDialogs.confirm({title:"Delete recorded entry?", message:`${taskTitle(target)}\n${interval(target.start_time,target.end_time)}\nIts note and attached ratings will be removed. The task, plans and other entries stay unchanged. This cannot be undone.`, confirmLabel:"Delete entry", danger:true}))return;
+                    if(owner!==captured || captured.row!==target || captured.noteDirty || captured.notePending || captured.removalPending || captured.removalBlocked)return;
                     removal ||= createWorkEntryRemoval({api,row:captured.row,onState(state){
                         if(owner!==captured)return;captured.removalPending=state.pending;captured.removalBlocked=state.blocked;input.readOnly=state.pending||state.blocked||state.deleted;save.disabled=state.pending||state.blocked||state.deleted||editor.state().blocked||!captured.noteDirty;remove.disabled=state.pending||state.blocked||state.deleted;remove.textContent=state.pending?(state.blocked?'Checking…':'Deleting…'):'Delete entry';check.hidden=!state.blocked||state.deleted;check.disabled=state.pending;removalStatus.textContent=state.message;
                     }});
@@ -330,7 +315,7 @@ const agendaPage = (() => {
             }
             else add('Basis', 'Legacy meaning is uncertain. Not included in plan-versus-record comparisons.');
         }
-        const calendarLink = make('a', 'Open this day in Calendar');
+        const calendarLink = make('a', 'Open this day in Calendar', 'inspector-calendar-link');
         calendarLink.href = `/dashboard?${new URLSearchParams({date:localDay(row.start_time), view:'timeGridDay',
             ...(row.task_id ? {task:row.task_id} : {})})}`;
         root.appendChild(calendarLink);
@@ -343,7 +328,7 @@ const agendaPage = (() => {
         const root = get('extension');
         clear(root);
         const end = make('input', '');
-        end.type = 'datetime-local'; end.step = '0.001';
+        end.type = 'datetime-local'; end.step = '1';
         end.value = localInput(new Date(Math.max(Date.now(), Date.parse(plan.end_time) + 60000)));
         end.setAttribute('aria-label', 'Proposed current scheduled end');
         const status = make('p', 'Choose an end, then preview the current interval. Original plan and recorded work stay unchanged.');
@@ -391,7 +376,7 @@ const agendaPage = (() => {
 
     window.addEventListener('extend-selected-plan', async event => {
         const id = event.detail?.planId;
-        if (!id || !switchAllowed()) return;
+        if (!id || !await switchAllowed()) return;
         const draft = owner, day = activeDate, read = ++generation, input = JSON.stringify(values());
         const stillCurrent = () => owner === draft && activeDate === day && generation === read &&
             JSON.stringify(values()) === input && !owner?.pending && !owner?.extensionPending && !owner?.removalPending;
@@ -414,6 +399,7 @@ const agendaPage = (() => {
         get('attach').disabled = Boolean(row || owner?.pending);
         for (const field of fields) get(field).disabled = Boolean(owner?.retainedWorkDraft || owner?.extensionPending || owner?.removalPending);
         get('cancel').disabled = Boolean(owner?.extensionPending || owner?.removalPending);
+        if (get('notes-label')) get('notes-label').textContent = owner?.work ? 'Entry note' : 'Plan notes';
         get('metadata').hidden = Boolean(row);
         get('metadata').disabled = Boolean(row || owner?.pending);
         get('save').textContent = owner?.work ? 'Save recorded work' : row ? 'Save current schedule' : 'Add to schedule';
@@ -446,10 +432,15 @@ const agendaPage = (() => {
         if (focus) get('inspector-title').focus();
     }
 
-    function switchAllowed() {
+    let switchIntent = 0;
+    async function switchAllowed() {
         if (owner?.removalPending || owner?.extensionPending || owner?.notePending) return false;
         const dirty = owner && !get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline);
-        return !(dirty || owner?.noteDirty) || window.confirm('Leave these unsaved entry edits?');
+        const intent = ++switchIntent, captured = owner, before = JSON.stringify(values());
+        if (!(dirty || owner?.noteDirty)) return true;
+        const approved = await window.appDialogs.confirm({title:'Leave entry edits?', message:'Leave these unsaved entry edits?', confirmLabel:'Discard changes', danger:true});
+        return approved && intent === switchIntent && owner === captured && JSON.stringify(values()) === before &&
+            !owner?.pending && !owner?.notePending && !owner?.removalPending && !owner?.extensionPending;
     }
 
     async function review() {
@@ -537,29 +528,35 @@ const agendaPage = (() => {
         await refresh();
     }
 
-    date.addEventListener('change', () => {
-        if (!date.value || !switchAllowed()) { date.value = activeDate; return; }
-        activeDate = date.value;
+    date.addEventListener('change', async () => {
+        const target = date.value;
+        if (!target || !await switchAllowed()) { if (date.value === target) date.value = activeDate; return; }
+        if (date.value !== target) return;
+        activeDate = target;
         rows = [];
         open(null);
         void refresh();
     });
-    get('new').addEventListener('click', () => {
-        if (!switchAllowed()) return;
+    get('new').addEventListener('click', async () => {
+        if (!await switchAllowed()) return;
         if (unconfirmedCreate) {
             if (!unconfirmedCreate.checked) {
                 get('status').textContent = `Check ${unconfirmedCreate.day} with Refresh agenda before starting another entry.`;
                 return;
             }
-            if (!window.confirm('Only start a new plan after checking that the unconfirmed plan does not already exist. Start a new plan?')) return;
+            const captured = unconfirmedCreate;
+            if (!await window.appDialogs.confirm({title:'New plan, not a retry?', message:'Only start a new plan after checking that the unconfirmed plan does not already exist. Start a new plan?'})) return;
+            if (unconfirmedCreate !== captured || createPending) return;
             unconfirmedCreate = null;
         }
         open(null, true, true);
     });
-    get('record').addEventListener('click', () => {
-        if (!switchAllowed()) return;
+    get('record').addEventListener('click', async () => {
+        if (!await switchAllowed()) return;
         if (unconfirmedCreate) {
-            if (!unconfirmedCreate.checked || !window.confirm('Inspect the ledger first. Start an explicitly new work entry, not a retry?')) return;
+            const captured = unconfirmedCreate;
+            if (!captured.checked || !await window.appDialogs.confirm({title:'New work entry?', message:'Inspect the ledger first. Start an explicitly new work entry, not a retry?'})) return;
+            if (unconfirmedCreate !== captured || createPending) return;
             unconfirmedCreate = null;
         }
         const context = owner?.row?.kind === 'scheduled_session' ? owner.row : null;
@@ -567,8 +564,9 @@ const agendaPage = (() => {
     });
     get('retry').addEventListener('click', refresh);
     get('review').addEventListener('click', review);
-    get('use-latest').addEventListener('click', () => {
-        if (owner?.latest && switchAllowed()) open(owner.latest);
+    get('use-latest').addEventListener('click', async () => {
+        const captured = owner, latest = owner?.latest;
+        if (latest && await switchAllowed() && owner === captured && owner.latest === latest) open(latest);
     });
     get('cancel').addEventListener('click', () => {
         if (!owner?.blocked) open(owner?.row || null);
@@ -610,9 +608,10 @@ const agendaPage = (() => {
     get('manage-pins')?.addEventListener('click',()=>window.openWorkspacePins?.());
     for(const tab of document.querySelectorAll('[data-activity-tab]'))tab.addEventListener('click',()=>{activityMode=tab.dataset.activityTab;for(const item of document.querySelectorAll('[data-activity-tab]'))item.setAttribute('aria-pressed',String(item===tab));void discovery();if(activityMode==='all')void window.agendaTaskLauncher?.model.focus();});
     window.addEventListener('timetrace:pins-changed',()=>{try{pins=createWorkspacePins(localStorage);get('pin-status').textContent='';}catch(error){get('pin-status').textContent=error.message;}void discovery();});
-    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('search'),onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
+    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('activity-filter'),filterOnly:true,view:'priority',prioritySelect:get('priority'),resultsRoot:get('activities'),onDetails:id=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(id);},onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
     void refresh();
-    for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
+    get('search').addEventListener('input',ledger);
+    for (const id of ['filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,
         correctionConflicts: ids => Boolean(owner && ids.includes(owner.row?.id) && (owner.noteDirty || owner.notePending || owner.pending || (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline)))),
         hasDraft: () => Boolean(owner && (!get('form').hidden && JSON.stringify(values()) !== JSON.stringify(owner.baseline) || owner.pending || owner.extensionPending || owner.removalPending || owner.noteDirty || owner.notePending))

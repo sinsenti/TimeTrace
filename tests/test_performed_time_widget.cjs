@@ -41,6 +41,13 @@ function browser(preview, confirmDecision = () => true, capabilityRead = null) {
             }
             return child;
         }
+        append(...children) { children.forEach(child => this.appendChild(child)); }
+        showModal() { assert.equal(this.isConnected, true); this.open = true; }
+        close() { this.open = false; }
+        remove() {
+            if (this.parentNode) this.parentNode.children.splice(this.parentNode.children.indexOf(this), 1);
+            this.parentNode = null;
+        }
         get options() { return this.children.filter(c => c.tagName === 'OPTION'); }
         get value() { return this.tagName === 'SELECT' ? this.options.find(o => o.selected)?.value || '' : this._value; }
         set value(value) {
@@ -156,7 +163,7 @@ function browser(preview, confirmDecision = () => true, capabilityRead = null) {
             return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => structuredClone(result) };
         }
     });
-    for (const file of ['api_client.js', 'settings.js', 'dashboards.js', 'widget_builder.js']) {
+    for (const file of ['app_dialogs.js', 'api_client.js', 'settings.js', 'dashboards.js', 'widget_builder.js']) {
         vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), context, { filename: file });
     }
     const run = code => vm.runInContext(code, context);
@@ -165,7 +172,10 @@ function browser(preview, confirmDecision = () => true, capabilityRead = null) {
         setSaved: widget => { saved = { ...saved, ...widget }; },
         async load() { await run('loadDashboards()'); await tick(); run('setupWidgetBuilderKeyboard()'); this.check(); },
         async open() { await run(`openWidgetEditor('${boardId}', '${widgetId}')`); await tick(); this.check(); },
-        check() { assert.deepEqual(fixtureErrors, []); assert.deepEqual(alerts, []); },
+        check() {
+            assert.deepEqual(fixtureErrors, []); assert.deepEqual(alerts, []);
+            assert.equal(document.querySelectorAll('dialog').some(dialog => dialog.open), false, 'no unexpected app notice');
+        },
         change(id, value, type = 'input') { const el = this.el(id); el.value = value; el.dispatchEvent({ type, bubbles: true }); },
         writes() { return requests.filter(r => r.url.includes('/widgets') && ['PUT', 'POST'].includes(r.method)); }
     };
@@ -239,7 +249,16 @@ test('capability failure leaves performed preset unsaved and builder closed', as
     const b = browser(async () => b.responseA, () => true, async () => { throw Error('offline'); });
     setPreset(b); await b.run('openPerformedTimePreset()');
     assert.equal(b.el('widget_builder_modal').classList.contains('hidden'), true);
-    assert.match(b.alerts[0], /capabilities/); assert.equal(b.writes().length, 0);
+    const notice = b.document.querySelector('dialog');
+    assert.equal(notice.open, true);
+    assert.match(notice.querySelector('p').textContent, /capabilities/);
+    const close = notice.querySelector('button');
+    assert.equal(close.textContent, 'Close');
+    assert.equal(b.document.activeElement, close, 'the app notice has safe initial focus');
+    close.dispatchEvent({type: 'click'});
+    assert.equal(notice.isConnected, false);
+    assert.deepEqual(b.alerts, [], 'no native browser alert fallback');
+    assert.equal(b.writes().length, 0);
 });
 
 test('late preset capabilities cannot reopen after Cancel or dashboard selection changes', async () => {

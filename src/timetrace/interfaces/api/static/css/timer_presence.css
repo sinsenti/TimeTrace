@@ -1,0 +1,42 @@
+/* Presence is selection-only: independent clocks and note owners stay untouched. */
+#workspace-current-timer [data-current-display]:has(.workspace-other-timers:not([hidden])) {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(12rem, 20rem);
+    column-gap: 1.5rem;
+}
+#workspace-current-timer [data-current-display] > :not(.workspace-other-timers) { grid-column: 1; }
+#workspace-current-timer .workspace-other-timers {
+    grid-column: 2;
+    grid-row: 1 / span 3;
+    align-self: start;
+    min-width: 0;
+    padding-inline-start: 1rem;
+    border-inline-start: 1px solid var(--border-color);
+}
+.workspace-other-timers h3 { margin: 0 0 .5rem; font-size: .9rem; font-weight: 600; }
+.workspace-other-timers button {
+    display: block;
+    width: 100%;
+    margin-block: .4rem;
+    padding: .6rem .75rem;
+    border: 1px solid var(--border-color);
+    border-radius: .6rem;
+    background: var(--bg-card);
+    color: inherit;
+    text-align: start;
+    font-size: .85rem;
+    line-height: 1.5;
+    overflow-wrap: anywhere;
+    font-variant-numeric: tabular-nums;
+}
+.workspace-other-timers button:hover { background: var(--bg-hover, var(--bg-card)); }
+.workspace-other-timers button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+@media (max-width: 720px) {
+    #workspace-current-timer [data-current-display]:has(.workspace-other-timers:not([hidden])) { display: block; }
+    #workspace-current-timer .workspace-other-timers {
+        margin-block-start: 1rem;
+        padding: 1rem 0 0;
+        border-inline-start: 0;
+        border-block-start: 1px solid var(--border-color);
+    }
+}

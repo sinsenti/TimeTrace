@@ -1,5 +1,5 @@
 /** Targeted shared timers. Receipted writes are journaled before HTTP; refresh retries are reads. */
-function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID()}) {
+function createTimerController({api, storage, onState, operationId = () => crypto.randomUUID(), confirmDiscard = null, noteDraftVersion = () => 0}) {
     const key = 'timetrace_timer_v2_operation';
     let timers = [], revision = null, receipt = null, pending = false, fresh = false, message = '', lastResult = null;
     let informationNotice = '', readGeneration = 0, selectedTimerId = null, selectionGeneration = 0, writeGeneration = 0;
@@ -13,7 +13,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
     }
     catch (_) { message = 'Timer safety storage unavailable; writes are blocked.'; receipt = {outcome:'storage'}; }
     try { selectedTimerId = storage.getItem('timetrace_timer_selected') || null; } catch (_) { /* Display preference only. */ }
-    let observedAt = null;
+    let observedAt = null, discardPrompt = false;
     const snapshot = () => ({timers, revision, receipt, pending, fresh, message, lastResult, selectedTimerId, selectionGeneration, observed_at:observedAt});
     const publish = () => {
         const state = snapshot();
@@ -80,9 +80,12 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 }
                 if (ownership !== writeGeneration) return false;
                 if (receipt?.outcome === 'acknowledged') return true;
-                message = 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
+                message = receipt.url.endsWith('/discard') ? 'Discard outcome uncertain. Check saved operation status; recovery is read-only.' : 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
             }
-            if (result?.operation_id !== receipt.payload.operation_id) { message = 'Unrecognized acknowledgement. Check operation status.'; return false; }
+            if (result?.operation_id !== receipt.payload.operation_id || (receipt.url.endsWith('/discard') &&
+                (!result.timer?.discarded || result.timer.state !== 'stopped' || receipt.url !== `/timers/${encodeURIComponent(result.timer.id)}/discard`))) {
+                message = 'Unrecognized acknowledgement. Check operation status.'; return false;
+            }
             ++readGeneration;
             observedAt = null;
             receipt.outcome = 'acknowledged';
@@ -116,6 +119,11 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (receipt !== recovering || pending) return;
             if (receipt.outcome === 'acknowledged' && receipt.url.endsWith('/correction')) return refresh();
             if (result.status === 'finalized') {
+                if (recovering.url.endsWith('/discard') && (result.result?.operation_id !== recovering.payload.operation_id ||
+                    !result.result?.timer?.discarded || result.result.timer.state !== 'stopped' ||
+                    recovering.url !== `/timers/${encodeURIComponent(result.result.timer.id)}/discard`)) {
+                    message = 'Discard not confirmed by operation status. Saved request retained.'; publish(); return;
+                }
                 ++readGeneration;
                 observedAt = null;
                 lastResult = result.result;
@@ -127,8 +135,8 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 fresh = false; publish();
                 if (typeof window !== 'undefined' && lastResult) window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:lastResult}));
                 void refresh();
-            } else { message = 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
-        } catch (_) { if (receipt !== recovering || pending) return; message = 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
+            } else { message = recovering.url.endsWith('/discard') ? 'Discard needs daemon reconciliation. Keep the saved operation and check status again; no discard will be replayed.' : 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
+        } catch (_) { if (receipt !== recovering || pending) return; message = recovering.url.endsWith('/discard') ? 'Discard not confirmed. Keep the saved operation and check status again; recovery is read-only.' : 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
     }
     async function review(choices) {
         const acknowledged = [];
@@ -140,7 +148,32 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         }
         return {acknowledged, remaining:choices.map(c => c.gap_id).filter(id => !acknowledged.includes(id))};
     }
-    return {snapshot, refresh, recover, review,
+    async function discardSelected(target = null) {
+        const timer = timers.find(t => t.id === selectedTimerId);
+        if (discardPrompt || !timer || !fresh || pending || receipt) return false;
+        if (target && (target.id !== timer.id || target.revision !== timer.revision)) return false;
+        if (typeof confirmDiscard !== 'function') {
+            message = 'In-app confirmation unavailable. No timer was discarded.'; publish(); return false;
+        }
+        const captured = {id:timer.id, revision:timer.revision, selection:selectionGeneration, draft:noteDraftVersion(timer.id)};
+        discardPrompt = true;
+        let approved;
+        try {
+            approved = await confirmDiscard({title:'Discard selected timer?',
+                message:`Discard the not-yet-recorded time and timer-bound Entry note for ${timer.task_title || 'Unassigned recording'}? Unresolved idle time is discarded too. Already saved records, tasks, plans and other timers remain unchanged.`,
+                confirmLabel:'Discard timer', cancelLabel:'Cancel', danger:true});
+        } catch (_) {
+            message = 'In-app confirmation unavailable. No new discard was sent.'; publish(); return false;
+        } finally { discardPrompt = false; }
+        if (approved !== true) return false;
+        const current = timers.find(t => t.id === captured.id);
+        if (!fresh || pending || receipt || selectedTimerId !== captured.id || selectionGeneration !== captured.selection ||
+            current?.revision !== captured.revision || noteDraftVersion(captured.id) !== captured.draft) {
+            message = 'Timer selection, state or Entry note changed. Review it and choose Discard timer again.'; publish(); return false;
+        }
+        return write(`/timers/${encodeURIComponent(captured.id)}/discard`, {expected_revision:captured.revision}, false, null, false);
+    }
+    return {snapshot, refresh, recover, review, discardSelected,
         initializeFocus:()=>write('/timer-focus/initialize',{},false,null,false),
         saveFocusDefaults:({enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},onAcknowledged=null)=>write('/timer-focus/defaults',
             {enabled,work_minutes,break_minutes,behavior,sound_enabled,expected_revision},false,onAcknowledged,false),
@@ -150,7 +183,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             try {storage.setItem('timetrace_timer_selected',id);}catch(_){/* Display preference only; safety journal is independent. */}
             publish(); return true;
         },
-        retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.payload && write(receipt.url, receipt.payload, true),
+        retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.url?.endsWith('/discard') ? recover() : receipt?.payload && write(receipt.url, receipt.payload, true),
         initializeCorrections: () => write('/timers/correction-initialize', {}),
         previewCorrection: (resource, request) => {
             if (pending || (receipt && receipt.outcome !== 'acknowledged')) return Promise.reject(Error('Finish timer recovery before previewing corrections.'));
@@ -162,7 +195,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             return write(`${resource}/correction`, {preview}, false, null, false);
         },
         start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true, options.selectionGeneration??null),
-        act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
+        act: (id, action, payload = {}, onAcknowledged = null) => action === 'discard' ? Promise.resolve(false) : write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
 }
 
@@ -185,6 +218,31 @@ function timerWorkspaceClock(timer, fresh) {
     if (!Number.isFinite(timer.elapsed_seconds)) return `Credited total awaiting authoritative read · ${timer.state}`;
     return `${Math.floor(timer.elapsed_seconds / 60)}:${String(Math.floor(timer.elapsed_seconds) % 60).padStart(2,'0')} ${fresh ? 'live' : 'last known'} · ${timer.state}`;
 }
+const workspacePresence = new WeakMap();
+function renderOtherTimerPresence(root, state, control, rebuild = false) {
+    const others = state.timers.filter(t => t.id !== state.selectedTimerId);
+    let view = workspacePresence.get(root);
+    const signature = JSON.stringify(others.map(t => [t.id,t.task_title,t.task_id,t.state]));
+    if (!view || rebuild || view.signature !== signature) {
+        const aside = root.ownerDocument.createElement('aside'); aside.className = 'workspace-other-timers';
+        aside.setAttribute('aria-label','Other timers'); aside.hidden = others.length === 0;
+        const heading = root.ownerDocument.createElement('h3'); heading.textContent = 'Other timers'; aside.append(heading);
+        const buttons = new Map();
+        for (const timer of others) {
+            const button = root.ownerDocument.createElement('button'); button.type = 'button';
+            button.addEventListener('click',()=>control.select(timer.id));
+            aside.append(button); buttons.set(timer.id,button);
+        }
+        view?.aside.remove?.();
+        view = {aside,buttons,signature}; workspacePresence.set(root,view); root.append(aside);
+    }
+    for (const timer of others) {
+        const name = timer.task_title || (timer.task_id ? `Task ${timer.task_id.slice(-8)}` : `Unassigned · ${timer.id.slice(-8)}`);
+        const button = view.buttons.get(timer.id);
+        button.textContent = `${name} · ${timerWorkspaceClock(timer,state.fresh)}${timer.state === 'frozen' ? ' · idle review' : ''}`;
+        button.setAttribute('aria-label',`Select ${button.textContent}`);
+    }
+}
 function renderTimerWorkspaceCard(root, state, control) {
     const create = (tag, text) => {
         const node = root.ownerDocument.createElement(tag); node.textContent = text; return node;
@@ -193,6 +251,7 @@ function renderTimerWorkspaceCard(root, state, control) {
     const signature = JSON.stringify([state.selectedTimerId, state.pending, state.fresh, Boolean(state.receipt), Boolean(control?.hasQuickAdjustmentPending?.()), timer && {...timer, elapsed_seconds:0, remaining_seconds:0}]);
     if (root.dataset.workspaceSignature === signature && timer) {
         root.querySelector('.workspace-clock').firstChild.textContent = timerWorkspaceClock(timer, state.fresh);
+        renderOtherTimerPresence(root,state,control);
         return;
     }
     root.dataset.workspaceSignature = signature;
@@ -230,11 +289,24 @@ function renderTimerWorkspaceCard(root, state, control) {
         button.addEventListener('click', () => control.act(timer.id, action, {expected_revision:timer.revision}));
         row.append(button);
     }
+    if (control?.discardSelected) {
+        const discard = create('button','Discard timer'); discard.type = 'button'; discard.className = 'workspace-discard-timer';
+        discard.disabled = !state.fresh || state.pending || Boolean(state.receipt);
+        discard.addEventListener('click',()=>control.discardSelected({id:timer.id,revision:timer.revision})); row.append(discard);
+    }
     root.append(title, clock, row);
+    renderOtherTimerPresence(root,state,control,true);
 }
 
 function guardTimerWorkspaceNavigation(event) {
-    if(typeof hasSettingsDrafts==='function'&&hasSettingsDrafts()&&!window.confirm('Leave unsaved editor changes to open the timer workspace?'))event.preventDefault();
+    if (event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+    if (typeof hasSettingsDrafts !== 'function' || !hasSettingsDrafts()) return;
+    event.preventDefault();
+    const href = event.currentTarget?.href || event.target?.closest?.('a[href]')?.href;
+    const source = window.location.href;
+    void window.appDialogs.confirm({title:'Open timer workspace?', message:'Leave unsaved editor changes to open the timer workspace?'}).then(approved => {
+        if (approved && href && window.location.href === source) window.location.href = href;
+    });
 }
 const timerStripExpansion=new WeakMap();
 function renderTimerStripStatus(root,state) {
@@ -387,7 +459,7 @@ if (typeof window !== 'undefined') {
             }
             if (state.receipt?.payload) {
                 list.append(button('Check saved operation', () => window.multipleTimers.recover(), state.pending, 'receipt/check'));
-                list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : 'Retry same operation',
+                list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : state.receipt.url?.endsWith('/discard') ? 'Check discard status again' : 'Retry same operation',
                     () => window.multipleTimers.retry(), state.pending, 'receipt/retry'));
             }
             if (restoreFocus && !state.pending && region.contains(document.activeElement)) {
@@ -396,14 +468,18 @@ if (typeof window !== 'undefined') {
                 restoreFocus = null;
             }
         }
-        const control = createTimerController({api, storage:sessionStorage, onState:render});
+        const control = createTimerController({api, storage:sessionStorage, onState:render,
+            confirmDiscard:options=> {
+                if (typeof window.appDialogs?.confirm !== 'function') throw Error('In-app confirmation unavailable');
+                return window.appDialogs.confirm(options);
+            }, noteDraftVersion:id=>noteView?.draftVersion(id) || 0});
         window.multipleTimers = control;
         if (currentCard) noteView = createCurrentNoteView(document.getElementById('workspace-current-note'),control);
         control.hasNoteDraft = id => Boolean(noteView?.hasDraft(id));
         const act = control.act;
         control.act = (id, action, ...args) => {
             if (action === 'stop' && noteView?.hasDraft(id)) {
-                notice.textContent = 'Save the work-note draft or explicitly discard its changes before Stop & record.';
+                notice.textContent = 'Save the Entry note draft or explicitly discard its changes before Stop & record.';
                 if(control.snapshot().selectedTimerId===id){const panel=document.querySelector('[data-current-note]');if(panel)panel.open=true;}
                 return Promise.resolve(false);
             }

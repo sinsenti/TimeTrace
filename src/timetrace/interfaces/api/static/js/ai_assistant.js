@@ -899,7 +899,7 @@ function aiCreateConversation() {
         } catch (err) {
             if (!ownsSelection()) return null;
             console.error('Failed to create AI conversation:', err);
-            alert('Failed to start a new conversation: ' + (err.message || err));
+            window.appDialogs.alert({message:'Failed to start a new conversation: ' + (err.message || err)});
             return null;
         }
     })().finally(() => {
@@ -913,7 +913,9 @@ async function aiRenameCurrentConversation() {
     if (!aiCurrentConversationId) return;
     const conversationId = aiCurrentConversationId;
     const current = aiConversationsCache.find((c) => c.id === conversationId);
-    const nextTitle = prompt('Rename conversation', (current && current.title) || '');
+    const generation = aiConversationGeneration;
+    const nextTitle = await window.appDialogs.prompt({title:'Rename conversation', value:(current && current.title) || ''});
+    if (generation !== aiConversationGeneration || conversationId !== aiCurrentConversationId) return;
     if (nextTitle === null) return; // cancelled
     const trimmed = nextTitle.trim();
     if (!trimmed) return;
@@ -929,14 +931,16 @@ async function aiRenameCurrentConversation() {
         if (opt) opt.textContent = updated.title || '(untitled conversation)';
     } catch (err) {
         console.error('Failed to rename AI conversation:', err);
-        alert('Failed to rename conversation: ' + (err.message || err));
+        window.appDialogs.alert({message:'Failed to rename conversation: ' + (err.message || err)});
     }
 }
 
 async function aiDeleteCurrentConversation() {
     if (aiConversationDeleteOwner || !aiCurrentConversationId || !aiCanChangeConversation()) return;
     const id = aiCurrentConversationId;
-    if (!window.confirm('Delete this conversation? Applied changes and their action history are kept.')) return;
+    const generation = aiConversationGeneration;
+    if (!await window.appDialogs.confirm({title:'Delete conversation?', message:'Applied changes and their action history are kept.', confirmLabel:'Delete conversation', danger:true})) return;
+    if (generation !== aiConversationGeneration || aiCurrentConversationId !== id || aiConversationDeleteOwner || !aiCanChangeConversation()) return;
     const owner = {id};
     aiConversationDeleteOwner = owner;
     aiSyncComposerAvailability();

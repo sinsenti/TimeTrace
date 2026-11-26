@@ -154,6 +154,7 @@ function browser(preview, confirmDecision = () => true) {
             return { ok: true, status: 200, headers: { get: () => 'application/json' }, json: async () => structuredClone(result) };
         }
     });
+    context.window.appDialogs={confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert?.(message), prompt:async()=>null};
     for (const file of ['api_client.js', 'settings.js', 'dashboards.js', 'widget_builder.js']) {
         vm.runInContext(fs.readFileSync(path.join(js, file), 'utf8'), context, { filename: file });
     }
@@ -300,7 +301,9 @@ test('SQL Settings departure keeps clean, accepted and modified-click guard sema
     b.change('wb_title', 'Dirty title');
     for (const key of ['ctrlKey', 'metaKey', 'shiftKey', 'altKey']) assert.equal(settingsDeparture(b, { [key]: true }), true);
     assert.deepEqual(b.confirmations, [], 'modified clicks retain the current tab without confirmation');
-    assert.equal(settingsDeparture(b), true, 'accepted confirmation permits normal link departure');
+    assert.equal(settingsDeparture(b), false, 'async approval prevents the native departure immediately');
+    await tick();
+    assert.equal(b.run('window.location.href'), '/settings');
     assert.deepEqual(b.confirmations, ['Leave this page and discard unsaved changes?']);
     assert.equal(b.writes().length, 0);
     b.check();

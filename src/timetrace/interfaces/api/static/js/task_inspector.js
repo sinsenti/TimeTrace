@@ -161,8 +161,12 @@ function highlightTaskInspectItem(items) {
     });
 }
 
-function selectTaskInspectorById(taskId) {
-    if (taskId !== selectedInspectedTaskId && taskInspectorReviewEditor()?.canLeave() === false) return;
+let taskInspectorSelectionIntent = 0;
+async function selectTaskInspectorById(taskId) {
+    const intent = ++taskInspectorSelectionIntent;
+    const review = taskInspectorReviewEditor();
+    if (taskId !== selectedInspectedTaskId && review && !await review.canLeave()) return;
+    if (intent !== taskInspectorSelectionIntent) return;
     taskInspectorReviewEditor()?.bind(taskId);
     const task = taskKnowledge.get(taskId);
     const searchInput = document.getElementById('task_inspector_search');

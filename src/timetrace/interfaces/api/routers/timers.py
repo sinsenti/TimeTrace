@@ -343,6 +343,17 @@ def correction_preview(timer_id: str, req: CorrectionPreviewRequest, db: Session
     return MultipleTimerService(db).correction_preview(timer_id, req.model_dump())
 
 
+class DiscardTimerRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+
+
+@router.post("/timers/{timer_id}/discard")
+def discard_timer(timer_id: str, req: DiscardTimerRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("discard", timer_id, req.model_dump())
+
+
 @router.post("/timers/{timer_id}/{action}")
 def mutate_timer(timer_id: str, action: str, req: TimerMutation, db: Session = Depends(get_session)):
     payload = req.model_dump()

@@ -24,7 +24,7 @@
         open.type = 'button';
         container.appendChild(open);
         open.addEventListener('click', async () => {
-            if (!hooks.available()) return;
+            if (!await hooks.available()) return;
             hooks.lock(true);
             open.disabled = true;
             const panel = make('section', 'Loading exact affected records…');

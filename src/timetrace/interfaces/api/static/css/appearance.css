@@ -181,3 +181,12 @@ body > header { height: auto !important; min-height: 56px; flex-wrap: wrap; }
     .calendar-page #active_timer_pill > #timer_status_label { max-width: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .calendar-page #active_timer_pill > select { max-width: min(110px, 30vw); }
 }
+
+/* Preserve the dark Kanban controls; light palettes use a neutral Edit and plain estimate. */
+:root[data-appearance="light"] .kanban-card .task-edit-button {
+    background: var(--bg-card) !important; color: var(--text-main) !important; border-color: var(--border-muted) !important;
+}
+:root[data-appearance="light"] .kanban-card .task-edit-button:hover { background: var(--accent-soft) !important; }
+:root[data-appearance="light"] .kanban-card .task-estimate-badge {
+    background: transparent !important; color: var(--text-main) !important; border-color: transparent !important;
+}

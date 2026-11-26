@@ -34,3 +34,12 @@
 }
 /* Chart.js resize is asynchronous; a previous desktop bitmap must not widen the page. */
 .stats-canvas #widget_grid canvas { max-width: 100%; }
+
+/* Insertion edges follow DOM order, never a separate visual/canvas position. */
+.stats-canvas .canvas-drag-handle { cursor: grab; }
+.stats-canvas [data-dragging-widget] .canvas-drag-handle { cursor: grabbing; }
+.stats-canvas [data-drop-position]::after { content: ""; position: absolute; z-index: 2; pointer-events: none; background: var(--text-main); border-radius: 3px; }
+.stats-canvas [data-drop-axis="horizontal"][data-drop-position="before"]::after { left: -9px; top: 0; bottom: 0; width: 4px; }
+.stats-canvas [data-drop-axis="horizontal"][data-drop-position="after"]::after { right: -9px; top: 0; bottom: 0; width: 4px; }
+.stats-canvas [data-drop-axis="vertical"][data-drop-position="before"]::after { top: -9px; left: 0; right: 0; height: 4px; }
+.stats-canvas [data-drop-axis="vertical"][data-drop-position="after"]::after { bottom: -9px; left: 0; right: 0; height: 4px; }

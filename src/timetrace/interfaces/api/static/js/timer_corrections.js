@@ -278,7 +278,10 @@ function mountTimeCorrections({document,control,api,conflicts = () => false}) {
             update();if(!dialog.open)dialog.showModal();return;
         }
         if(owner?.resource===resource && JSON.stringify(owner.change)===JSON.stringify(change) && owner.dirty){if(!dialog.open)dialog.showModal();return;}
-        if(owner?.dirty && !window.confirm('Discard the retained adjustment draft to choose another correction target?'))return;
+        const captured = owner, previousGeneration = generation;
+        if(owner?.dirty && !await window.appDialogs.confirm({title:'Change adjustment target?', message:'Discard the retained adjustment draft to choose another correction target?', confirmLabel:'Discard changes', danger:true}))return;
+        const latest = control.snapshot();
+        if (owner !== captured || generation !== previousGeneration || latest.pending || (latest.receipt && latest.receipt.outcome !== 'acknowledged')) return;
         const read=++generation;
         owner=null;context.textContent=`Loading explicit target ${resource}; prior display is not an approval.`;update();if(!dialog.open)dialog.showModal();
         try {

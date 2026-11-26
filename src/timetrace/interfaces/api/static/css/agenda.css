@@ -6,14 +6,34 @@
     --accent-primary: #c4b5fd;
 }
 .folio { max-width: 1280px; margin: auto; padding: 34px 48px 90px; overflow-wrap: anywhere; }
-.folio-masthead { border-bottom: 1px solid var(--border-muted); padding-bottom: 26px; }
 .folio h1 { font: clamp(2.4rem, 6vw, 3.625rem)/1.08 Georgia, serif; letter-spacing: -.035em; margin: 22px 0 14px; }
 .folio h1 em { color: var(--accent-primary, var(--text-main)); }
 .folio-deck { font: 1rem/1.8 Georgia, serif; }
 .folio-eyebrow, .folio-section-title > span, .agenda-time, .agenda-type { font: .78rem/1.55 ui-monospace, monospace; }
 .folio-eyebrow, .agenda-type { text-transform: uppercase; }
-.folio-strip, .folio-section-title, .folio-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
-.folio-strip { padding: 13px 0; border-bottom: 1px solid var(--border-muted); }
+.folio-section-title, .folio-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .6rem; }
+/* Date and actions form one compact toolbar, not four evenly scattered controls. */
+.activity-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px 24px; padding: 16px 0 20px; margin-top: 8px; border-bottom: 1px solid var(--border-color); }
+.activity-toolbar-context, .activity-toolbar-actions { display: flex; align-items: center; flex-wrap: wrap; min-width: 0; }
+.activity-toolbar-context { gap: 20px; }
+.activity-toolbar-actions { gap: 8px; }
+.folio .activity-toolbar h1 { font: 600 1.125rem/1.3 system-ui, sans-serif; letter-spacing: -.02em; margin: 0; }
+.folio .activity-toolbar-date { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; border-left: 1px solid var(--border-color); padding-left: 20px; font-size: .75rem; color: var(--text-muted); }
+.folio .activity-toolbar input, .folio .activity-toolbar button { min-height: 36px; border-color: var(--border-color); border-radius: 8px; font: 500 .8125rem/1.4 system-ui, sans-serif; }
+.folio .activity-toolbar input { color: var(--text-main); padding: 7px 10px; }
+.folio .activity-toolbar button { padding: 8px 12px; }
+.folio .activity-toolbar .activity-primary { background: var(--accent-primary); border-color: var(--accent-primary); color: var(--bg-header); font-weight: 600; }
+.folio .activity-toolbar .activity-help { background: transparent; border-color: transparent; color: var(--text-muted); }
+.folio .activity-toolbar button:not(:disabled):hover { box-shadow: inset 0 0 0 1px currentColor; }
+.folio .activity-toolbar .activity-help:hover { background: var(--accent-soft); box-shadow: none; }
+@media (max-width: 520px) {
+    .activity-toolbar { gap: 14px; }
+    .activity-toolbar-context { width: 100%; justify-content: space-between; gap: 12px; }
+    .folio .activity-toolbar-date { border: 0; padding: 0; gap: 6px; }
+    .activity-toolbar-actions { gap: 6px; }
+}
+.folio .agenda-history-search { display: grid; gap: 6px; max-width: 32rem; margin: 14px 0 18px; font-size: .8125rem; font-weight: 500; }
+.folio .agenda-history-search input { min-height: 36px; font: inherit; border-color: var(--border-color); }
 .folio-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 32%); gap: 44px; align-items: start; margin-top: 26px; }
 .folio-section-title { border-bottom: 2px solid var(--border-muted); padding-bottom: 12px; }
 .folio h2 { font: 1.5rem/1.3 Georgia, serif; }
@@ -57,9 +77,25 @@
 #agenda-pins button:disabled, #agenda-activities button:disabled { opacity: .5; }
 #agenda-ledger details { padding: 14px 0; border-bottom: 1px solid var(--border-muted); }
 #agenda-ledger summary { cursor: pointer; font-weight: 600; }
+/* Saved-work actions keep their sibling order and labels; only presentation changes. */
+.folio button.history-entry-action { display: inline-flex; align-items: center; justify-content: center; min-height: 36px; margin: 8px 8px 14px 0; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 8px; font: 500 .8125rem/1.4 system-ui, sans-serif; vertical-align: top; }
+.folio button.history-entry-adjust { background: var(--bg-card); color: var(--text-muted); }
+.folio button.history-entry-repeat { background: var(--accent-soft, color-mix(in srgb, var(--accent-primary) 14%, var(--bg-card))); border-color: transparent; color: var(--accent-primary); font-weight: 600; }
+.folio button.history-entry-action:not(:disabled):hover { border-color: var(--accent-primary); color: var(--accent-primary); }
 @media (max-width: 740px) {
     .folio { padding: 28px 18px 70px; }
     .folio-columns { display: flex; flex-direction: column; gap: 24px; }
     .folio-columns > * { width: 100%; }
     .folio-inspector { border-top: 1px solid var(--border-muted); border-left: 0; padding: 22px 0 0; }
 }
+
+/* Inspector actions stay distinct from the schedule form and wrap without crowding. */
+#agenda-detail > button { margin: .35rem .5rem .7rem 0; padding: .65rem .9rem; line-height: 1.4; }
+#agenda-detail > .inspector-primary { display: block; width: 100%; font-weight: 700; border-width: 2px; }
+#agenda-detail > .inspector-secondary { font-weight: 600; }
+#agenda-detail > section { margin-block: 1rem; padding: 1rem; border: 1px solid var(--border-muted); border-radius: 8px; }
+#agenda-detail section button { margin: .4rem .5rem .4rem 0; }
+.inspector-calendar-link { display: block; margin-top: 1.2rem; padding-top: 1rem; border-top: 1px solid var(--border-muted); text-decoration: underline; text-underline-offset: .2em; }
+.saved-work-note { display: grid; gap: .65rem; margin-block: 1rem; }
+.saved-work-note label { display: grid; gap: .5rem; }
+.saved-work-note textarea { width: 100%; min-height: 6rem; }

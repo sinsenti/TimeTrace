@@ -102,16 +102,16 @@ function validateRequiredCustomRatings(targetType, targetId, editorRoot = null) 
     for (const card of root?.querySelectorAll('[data-rating-def-id]') || []) {
         const input = card.querySelector('.custom-rating-input');
         if (card.getAttribute('data-rating-unavailable') === 'true') {
-            alert('A rating definition is unavailable. Discard drafts or restore it and Refresh before saving.');
+            window.appDialogs.alert({message:'A rating definition is unavailable. Discard drafts or restore it and Refresh before saving.'});
             return false;
         }
         if (input && !input.disabled && (Number(input.value) < Number(input.min) || Number(input.value) > Number(input.max)
             || input.type === 'number' && (input.value === '' || !Number.isInteger(Number(input.value))))) {
-            alert('A rating draft is outside its current scale. Adjust the value or dismiss it before saving.');
+            window.appDialogs.alert({message:'A rating draft is outside its current scale. Adjust the value or dismiss it before saving.'});
             return false;
         }
         if (card.getAttribute('data-required') === 'true' && input && !input.disabled && input.value === '') {
-            alert('Please complete essential rating.');
+            window.appDialogs.alert({message:'Please complete essential rating.'});
             return false;
         }
     }

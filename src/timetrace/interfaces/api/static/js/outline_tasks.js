@@ -86,10 +86,12 @@ function updateOutlineSelectionNotice() {
         ? 'Selected task is outside the current filter or collapsed hierarchy. Its editor is retained.' : '';
 }
 
+let outlineSelectionIntent = 0;
 async function selectOutlineTask(taskId) {
+    const intent = ++outlineSelectionIntent;
     if (!taskId) return false;
     if (outlineSelectedTaskId === taskId) return loadTaskDetailTree(true);
-    if (!canChangeInlineTaskDetail()) return false;
+    if (!await canChangeInlineTaskDetail() || intent !== outlineSelectionIntent) return false;
     outlineSelectedTaskId = taskId;
     resetInlineTaskDetail(taskId);
     updateOutlineInspectorVisibility(selectedTaskView === 'outline');
@@ -113,8 +115,9 @@ function updateOutlineInspectorVisibility(visible) {
     }
 }
 
-function closeOutlineInspector(acknowledged = false) {
-    if (!acknowledged && !canChangeInlineTaskDetail()) return false;
+async function closeOutlineInspector(acknowledged = false) {
+    const intent = ++outlineSelectionIntent;
+    if (!acknowledged && (!await canChangeInlineTaskDetail() || intent !== outlineSelectionIntent)) return false;
     outlineSelectedTaskId = null;
     resetInlineTaskDetail();
     updateOutlineInspectorVisibility(selectedTaskView === 'outline');

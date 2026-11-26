@@ -386,7 +386,7 @@ async function promptDeleteSession(sessionId) {
         || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null);
     if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
     if ((session?.kind === 'scheduled_session' && !session.is_virtual) || session?.kind === 'recorded_work') {
-        alert('Deletion is not available for this entry.');
+        window.appDialogs.alert({message:'Deletion is not available for this entry.'});
         return;
     }
     let isRecurring = true;
@@ -400,7 +400,7 @@ async function promptDeleteSession(sessionId) {
     }
     if (request !== deleteSessionRequest) return;
     if (isRecurring === null) {
-        alert('Cannot verify task recurrence. Try Delete again to retry the lookup. No changes were saved.');
+        window.appDialogs.alert({message:'Cannot verify task recurrence. Try Delete again to retry the lookup. No changes were saved.'});
         return;
     }
     pendingDeleteSessionId = sessionId;
@@ -428,7 +428,7 @@ function calendarDeleteNeedsReview(session) {
     const rows = typeof calendarSessionRows === 'function' ? calendarSessionRows() : [];
     const current = rows.find(item => item.id === session?.id) || session;
     if (!calendarScheduleNeedsReview(current)) return false;
-    alert('Read the latest schedule state and explicitly discard the attempt before deleting this entry.');
+    window.appDialogs.alert({message:'Read the latest schedule state and explicitly discard the attempt before deleting this entry.'});
     return true;
 }
 
@@ -469,7 +469,7 @@ async function confirmRecurringDelete(scope) {
         await api.delete(`/sessions/${encodeURIComponent(sid)}?scope=${encodeURIComponent(scope || 'only_this')}`);
     } catch (err) {
         console.error('Failed to delete session:', err);
-        alert('Failed to delete session: ' + (err.message || err));
+        window.appDialogs.alert({message:'Failed to delete session: ' + (err.message || err)});
         return;
     }
 
@@ -743,16 +743,14 @@ function adjustDurationMinutes(deltaMins) {
 /**
  * Ask whether a duration change applies to one occurrence or the whole future series.
  * Resolves to 'only_this', 'all_future', or null when the user cancels.
- * Degrades to window.confirm on pages that do not include confirm_modal.html (e.g. stats.html).
+ * Refuses the edit if the existing scope chooser is unavailable.
  */
 function showRecurringResizeScopePrompt() {
     return new Promise((resolve) => {
         const modal = document.getElementById('recurring_resize_modal');
         if (!modal) {
-            const wantsAll = window.confirm(
-                "Apply this new duration to ALL FUTURE occurrences?\n\nOK: all future occurrences. Cancel: only this occurrence."
-            );
-            resolve(wantsAll ? 'all_future' : 'only_this');
+            window.appDialogs.alert({title:'Choose a recurrence scope', message:'The scope chooser is unavailable. Reload the page before resizing a recurring session. No changes were saved.'});
+            resolve(null);
             return;
         }
 
@@ -804,7 +802,7 @@ function showCustomConfirm(title, message) {
         const proceedBtn = document.getElementById('confirm_modal_proceed_btn');
 
         if (!modal) {
-            resolve(window.confirm(message));
+            window.appDialogs.confirm({title, message}).then(resolve);
             return;
         }
 

@@ -28,7 +28,11 @@ function createTaskPostmortemEditor(root, guardNavigation = false) {
         get ready() { return !!owner?.ready; },
         get initialized() { return !!owner?.textReady; },
         get taskId() { return owner?.taskId; },
-        canLeave() { return !dirty() || window.confirm('Discard this task review draft and select another task?'); },
+        async canLeave() {
+            const captured = owner, revision = editRevision;
+            const approved = !dirty() || await window.appDialogs.confirm({title:'Change task?', message:'Discard this task review draft and select another task?', confirmLabel:'Discard changes', danger:true});
+            return approved && owner === captured && revision === editRevision;
+        },
         bind(taskId) {
             if (owner?.taskId === taskId) return owner;
             owner = {taskId, token:++sequence, textReady:false, ready:false, busy:false, acknowledged:null};
@@ -143,7 +147,9 @@ function createTaskPostmortemEditor(root, guardNavigation = false) {
         async discard() {
             const captured = owner;
             if (!captured || captured.busy) return false;
-            if (dirty() && !window.confirm('Discard unsaved task review changes and reload the saved review?')) return false;
+            const confirmedRevision = editRevision;
+            if (dirty() && !await window.appDialogs.confirm({title:'Reload saved review?', message:'Discard unsaved task review changes and reload the saved review?', confirmLabel:'Discard changes', danger:true})) return false;
+            if (!current(captured) || captured.busy || confirmedRevision !== editRevision) return false;
             const beforeText = JSON.stringify(text());
             const beforeRatings = JSON.stringify(snapshotCustomRatings('task', captured.taskId, ratings).map(entry => [entry.signature, entry.rawValue]));
             const request = ++read, revision = editRevision;
@@ -182,9 +188,12 @@ function createTaskPostmortemEditor(root, guardNavigation = false) {
         if (!link || event.defaultPrevented || event.button > 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey ||
             link.target === '_blank' || link.hasAttribute?.('download') || link.getAttribute('href')?.startsWith('#') ||
             link.getAttribute('onclick')?.includes('followSettingsLink')) return;
-        if (dirty() && !window.confirm('Leave this page and discard unsaved task review changes?')) {
-            event.preventDefault(); event.stopPropagation();
-        }
+        if (!dirty()) return;
+        event.preventDefault(); event.stopPropagation();
+        const captured = owner, revision = editRevision, href = link.href, source = window.location.href;
+        void window.appDialogs.confirm({title:'Leave task review?', message:'Leave this page and discard unsaved task review changes?'}).then(approved => {
+            if (approved && current(captured) && revision === editRevision && window.location.href === source) window.location.href = href;
+        });
     }, true);
     window.addEventListener('beforeunload', event => {
         if (dirty()) { event.preventDefault(); event.returnValue = ''; }

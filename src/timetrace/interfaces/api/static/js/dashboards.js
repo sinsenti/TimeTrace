@@ -95,6 +95,13 @@ function _el(tag, className, text) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const grid = document.getElementById('widget_grid');
+    if (grid) dashboardDrag = createDashboardDrag({
+        grid,
+        getState: () => currentDashboardData && ({ owner: currentDashboardData,
+            ids: currentDashboardData.widgets.map(w => w.id), blocked: _dashboardReorderBlocked() }),
+        commit: (ids, data) => reorderDashboardWidgets(ids, data)
+    });
     loadDashboards();
 });
 
@@ -102,6 +109,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 let dashboardListGeneration = 0;
 let dashboardWritePending = false;
+let dashboardDrag = null;
+// A failed reorder may have committed. Only a subsequent successful detail read releases it.
+const dashboardReorderUncertain = new Set();
 let savedDashboardNotice = '';
 let dashboardNotice = { message: '', retry: null };
 let dashboardDetailNoticeGeneration = null;
@@ -197,12 +207,16 @@ async function _importLegacyWidgets(resume = false, skipUncertain = false) {
         const save = () => localStorage.setItem(LEGACY_IMPORT_KEY, JSON.stringify(progress));
         const uncertainMessage = () => `Browser widget import is uncertain: "${specs[progress.pending]?.title || 'Custom Widget'}" into "${target.name}". Original source and acknowledged imports are retained; nothing is automatically repeated. Review that dashboard before continuing.`;
         const retry = async () => {
-            if (!confirm('The last import may already be saved. Review the dashboard first. Retry can create a duplicate. Continue?')) return;
+            const journal = localStorage.getItem(LEGACY_IMPORT_KEY);
+            if (!await window.appDialogs.confirm({title:'Review uncertain import', message:'The last import may already be saved. Review the dashboard first. Retry can create a duplicate. Continue?'})) return;
+            if (localStorage.getItem(LEGACY_IMPORT_KEY) !== journal || localStorage.getItem(LEGACY_WIDGETS_KEY) !== raw) return;
             await _importLegacyWidgets(true);
             await reloadCurrentDashboard();
         };
         const verified = async () => {
-            if (!confirm('Have you verified the uncertain widget is already saved? It will not be sent again.')) return;
+            const journal = localStorage.getItem(LEGACY_IMPORT_KEY);
+            if (!await window.appDialogs.confirm({title:'Review uncertain import', message:'Have you verified the uncertain widget is already saved? It will not be sent again.'})) return;
+            if (localStorage.getItem(LEGACY_IMPORT_KEY) !== journal || localStorage.getItem(LEGACY_WIDGETS_KEY) !== raw) return;
             await _importLegacyWidgets(true, true);
             await reloadCurrentDashboard();
         };
@@ -318,9 +332,10 @@ async function _writeDashboard(write, apply, refresh) {
 
 async function createDashboard() {
     if (dashboardWritePending) return;
-    const name = prompt('Name for the new dashboard:');
-    if (!name || !name.trim()) return;
     const selection = canvasGeneration;
+    const name = await window.appDialogs.prompt({title:'New dashboard', message:'Name for the new dashboard:'});
+    if (dashboardWritePending || selection !== canvasGeneration) return;
+    if (!name || !name.trim()) return;
     await _writeDashboard(() => api.post('/api/dashboards', { name: name.trim() }), created => {
         dashboardList.push(created);
         if (selection === canvasGeneration) {
@@ -337,7 +352,9 @@ async function renameDashboard() {
     if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
-    const name = prompt('Rename dashboard:', current.name);
+    const selection = canvasGeneration;
+    const name = await window.appDialogs.prompt({title:'Rename dashboard', value:current.name});
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     if (!name || !name.trim() || name.trim() === current.name) return;
     await _writeDashboard(() => api.put(`/api/dashboards/${current.id}`, { name: name.trim() }), updated => {
         Object.assign(current, updated);
@@ -349,7 +366,10 @@ async function renameDashboard() {
 async function deleteDashboard() {
     if (dashboardWritePending) return;
     const current = dashboardList.find(d => d.id === currentDashboardId);
-    if (!current || !confirm(`Delete the dashboard "${current.name}" and all of its widgets?`)) return;
+    if (!current) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Delete dashboard?', message:`Delete the dashboard "${current.name}" and all of its widgets?`, confirmLabel:'Delete dashboard', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     await _writeDashboard(() => api.delete(`/api/dashboards/${current.id}`), () => {
         dashboardList = dashboardList.filter(d => d.id !== current.id);
         if (currentDashboardId === current.id) {
@@ -367,10 +387,12 @@ async function resetDashboard() {
     const current = dashboardList.find(d => d.id === currentDashboardId);
     if (!current) return;
     if (!current.is_seeded) {
-        alert('Only the seeded Overview dashboard can be reset to its default widgets.');
+        window.appDialogs.alert({message:'Only the seeded Overview dashboard can be reset to its default widgets.'});
         return;
     }
-    if (!confirm('Replace this dashboard\'s widgets with the default Overview set?')) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Reset Overview?', message:'Replace this dashboard’s widgets with the default Overview set?', confirmLabel:'Reset widgets', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || currentDashboardId !== current.id) return;
     await _writeDashboard(() => api.post(`/api/dashboards/${current.id}/reset`), () => {
         if (currentDashboardId !== current.id) return;
         ++canvasGeneration;
@@ -392,6 +414,7 @@ function _disposeWidgetChart(widgetId) {
 }
 
 function _clearDashboardCanvas() {
+    dashboardDrag?.cancel();
     currentDashboardData = null;
     Object.keys(dashboardCharts).forEach(_disposeWidgetChart);
     document.getElementById('widget_grid').innerHTML = '';
@@ -404,6 +427,7 @@ async function loadDashboard(dashboardId) {
         _dashboardNotice(dashboardNotice.message, dashboardNotice.retry);
     }
     const generation = ++canvasGeneration;
+    const reconcilesReorder = !dashboardWritePending && dashboardReorderUncertain.has(dashboardId);
     _clearDashboardCanvas();
     grid.appendChild(_el('p', 'canvas-empty', 'Loading dashboard…'));
     const resetBtn = document.getElementById('reset_dashboard_btn');
@@ -433,6 +457,7 @@ async function loadDashboard(dashboardId) {
     const data = { dashboard: detail, widgets: detail.widgets, results: {}, sql_results: {}, errors: {},
         loading: {}, cards: {}, requests: {}, context: { ...getQueryContext() } };
     currentDashboardData = data;
+    if (reconcilesReorder) dashboardReorderUncertain.delete(dashboardId);
     if (resetBtn) resetBtn.classList.toggle('hidden', !detail.is_seeded);
     const title = document.getElementById('dashboard_title');
     if (title) title.textContent = detail.name;
@@ -581,6 +606,7 @@ function _addWidgetControls(card, widget, data, index) {
     const mkBtn = (label, title, handler, disabled) => {
         const btn = _el('button', 'px-1 text-slate-400 hover:text-white text-xs font-bold', label);
         btn.title = title;
+        btn.dataset.widgetControl = title;
         btn.setAttribute('aria-label', `${title}: ${_widgetDisplayTitle(widget)}`);
         if (disabled) {
             btn.disabled = true;
@@ -591,9 +617,15 @@ function _addWidgetControls(card, widget, data, index) {
         return btn;
     };
 
-    bar.appendChild(mkBtn('‹', 'Move earlier', () => moveWidget(widget.id, -1), index === 0));
-    bar.appendChild(mkBtn('›', 'Move later', () => moveWidget(widget.id, 1),
-        index === data.widgets.length - 1));
+    const handle = mkBtn('Move', 'Move widget', () => {}, false);
+    handle.draggable = true;
+    handle.dataset.widgetDragHandle = '';
+    handle.setAttribute('aria-describedby', 'dashboard_drag_help');
+    handle.setAttribute('aria-description', `Position ${index + 1} of ${data.widgets.length}`);
+    handle.setAttribute('aria-keyshortcuts', 'ArrowLeft ArrowRight ArrowUp ArrowDown');
+    handle.title = 'Drag to reorder, or focus and use arrow keys';
+    handle.classList.add('canvas-drag-handle');
+    bar.appendChild(handle);
     bar.appendChild(mkBtn('Edit', 'Edit this widget', () => openWidgetEditor(widget.dashboard_id, widget.id)));
     const del = mkBtn('×', 'Remove this widget', () => deleteWidget(widget.id));
     del.className = 'px-1 text-slate-400 hover:text-red-400 text-sm font-bold';
@@ -606,7 +638,10 @@ function _renderSavedWidgets(data) {
     const grid = document.getElementById('widget_grid');
     const active = document.activeElement;
     const restoreFocus = active && grid.contains(active);
-    const label = restoreFocus ? active.getAttribute('aria-label') : null;
+    const focusOwner = restoreFocus ? {
+        widgetId:active.closest('[data-widget-id]')?.dataset.widgetId,
+        control:active.dataset.widgetControl
+    } : null;
     grid.innerHTML = '';
     if (!data.widgets.length) grid.appendChild(_el('p', 'canvas-empty', 'This dashboard has no widgets yet. Use "+ Add Widget" to build one.'));
     data.widgets.forEach((widget, index) => {
@@ -617,7 +652,8 @@ function _renderSavedWidgets(data) {
     });
     if (restoreFocus) {
         const buttons = Array.from(grid.querySelectorAll('button:not(:disabled)'));
-        const target = buttons.find(button => button.getAttribute('aria-label') === label) || buttons[0]
+        const target = buttons.find(button => button.closest('[data-widget-id]')?.dataset.widgetId === focusOwner.widgetId &&
+            button.dataset.widgetControl === focusOwner.control) || buttons[0]
             || document.querySelector('.canvas-actions button');
         if (target) target.focus();
     }
@@ -627,7 +663,10 @@ async function deleteWidget(widgetId) {
     if (dashboardWritePending) return;
     const data = currentDashboardData;
     const widget = getWidgetById(widgetId);
-    if (!widget || !confirm(`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`)) return;
+    if (!widget) return;
+    const selection = canvasGeneration;
+    if (!await window.appDialogs.confirm({title:'Remove widget?', message:`Remove the widget "${_widgetDisplayTitle(widget)}" from this dashboard?`, confirmLabel:'Remove widget', danger:true})) return;
+    if (dashboardWritePending || selection !== canvasGeneration || data !== currentDashboardData || getWidgetById(widgetId) !== widget) return;
     await _writeDashboard(() => api.delete(`/api/dashboards/${widget.dashboard_id}/widgets/${widgetId}`), () => {
         if (data !== currentDashboardData) {
             if (currentDashboardId === widget.dashboard_id) return reloadCurrentDashboard();
@@ -639,16 +678,24 @@ async function deleteWidget(widgetId) {
     }, async () => {});
 }
 
+function _dashboardReorderBlocked() {
+    const editor = document.getElementById('widget_builder_modal');
+    return dashboardWritePending || dashboardReorderUncertain.has(currentDashboardId) ||
+        (editor && !editor.classList.contains('hidden')) ||
+        (typeof wbSavePending !== 'undefined' && wbSavePending) ||
+        (typeof wbReady !== 'undefined' && wbReady);
+}
+
 // Reorder sends the full UUID set; the existing service rejects stale/partial orders.
-async function moveWidget(widgetId, delta) {
-    if (dashboardWritePending || !currentDashboardData) return;
-    const data = currentDashboardData;
-    const ids = data.widgets.map(w => w.id);
-    const from = ids.indexOf(widgetId);
-    const to = from + delta;
-    if (from < 0 || to < 0 || to >= ids.length) return;
-    ids.splice(to, 0, ids.splice(from, 1)[0]);
+async function reorderDashboardWidgets(ids, data = currentDashboardData) {
+    if (_dashboardReorderBlocked() || !data || data !== currentDashboardData) return;
+    const previous = data.widgets.map(w => w.id);
+    if (ids.length !== previous.length || new Set(ids).size !== ids.length ||
+        ids.some(id => !previous.includes(id)) || ids.every((id, i) => id === previous[i])) return;
+    dashboardDrag?.cancel();
+    dashboardReorderUncertain.add(data.dashboard.id);
     await _writeDashboard(() => api.post(`/api/dashboards/${data.dashboard.id}/widgets/reorder`, { widget_ids: ids }), () => {
+        dashboardReorderUncertain.delete(data.dashboard.id);
         if (data !== currentDashboardData) {
             if (currentDashboardId === data.dashboard.id) return reloadCurrentDashboard();
             return;
@@ -656,6 +703,16 @@ async function moveWidget(widgetId, delta) {
         data.widgets = ids.map(id => data.widgets.find(w => w.id === id));
         _renderSavedWidgets(data);
     }, async () => {});
+}
+
+async function moveWidget(widgetId, delta) {
+    if (!currentDashboardData) return;
+    const ids = currentDashboardData.widgets.map(w => w.id);
+    const from = ids.indexOf(widgetId);
+    const to = from + delta;
+    if (from < 0 || to < 0 || to >= ids.length) return;
+    ids.splice(to, 0, ids.splice(from, 1)[0]);
+    await reorderDashboardWidgets(ids);
 }
 
 // ---- Widget renderers ----

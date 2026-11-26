@@ -48,6 +48,7 @@ function fixture(respond, realDrafts = false) {
     });
     if (realDrafts) vm.runInContext(fs.readFileSync(path.join(source,'settings.js'),'utf8'),context);
     vm.runInContext(fs.readFileSync(path.join(source,'subtasks.js'),'utf8'),context);
+    context.window.appDialogs={confirm:async ({message})=>context.window.confirm(message), alert:({message})=>context.alert?.(message)};
     const run = code=>vm.runInContext(code,context);
     return {fields,writes,alerts,checkpoints,events,run,context,get refreshes(){return refreshes;}};
 }

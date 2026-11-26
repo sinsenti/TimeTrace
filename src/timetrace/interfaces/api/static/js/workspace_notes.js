@@ -22,7 +22,7 @@ function createWorkNoteEditor({api,row,refresh,onState = () => {},isDirty=()=>fa
         try {
             saved = await api.request(`/recorded-work/${encodeURIComponent(saved.id)}/note`,{method:'PATCH',body:JSON.stringify({notes,expected_revision:saved.revision})});
             ackRevision=saved.revision;
-            message = 'Work note saved; timestamps unchanged.'; pending = false; publish();
+            message = 'Entry note saved; timestamps unchanged.'; pending = false; publish();
         } catch (error) {
             blocked = true; message = `Note not confirmed: ${error.message}. Refresh reads only; review saved work before reopening.`;
             pending = false; publish(); return false;
