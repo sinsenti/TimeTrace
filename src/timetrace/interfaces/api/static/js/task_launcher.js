@@ -3,15 +3,17 @@ function canStartTaskFromTimerState(state){
     const ownAck=state.receipt?.outcome==='acknowledged'&&state.lastResult?.operation_id===state.receipt.payload?.operation_id;
     return !state.pending&&(state.fresh&&!state.receipt||Boolean(ownAck));
 }
-function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined,timerSelection=()=>undefined}) {
+function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,validateTask=async()=>true,timezone=null,pauseWhenIdle=()=>undefined,timerSelection=()=>undefined,view='suggested',priority='all'}) {
+    const validView=value=>['suggested','priority'].includes(value),validPriority=value=>['all','high','medium','low','none'].includes(value);
+    if(!validView(view)||!validPriority(priority))throw Error('Unsupported launcher view or priority.');
     let query='',tagFilter='',includeCompleted=false,rows=[],activeIndex=-1,open=false,loading=false,pending=false;
     let version=0,request=0,selectionGeneration=0,explicit=false,message='',actionMessage='',binding=null;
-    const snapshot=()=>({query,tagFilter,includeCompleted,rows,activeIndex,open,loading,pending,message,actionMessage});
+    const snapshot=()=>({query,tagFilter,includeCompleted,view,priority,rows,activeIndex,open,loading,pending,message,actionMessage});
     const publish=()=>onState(snapshot());
     async function read(){
         const own=++request,atVersion=version;loading=true;rows=[];activeIndex=-1;explicit=false;message='';publish();
         try{
-            const params=new URLSearchParams({q:query,include_completed:String(includeCompleted),limit:'20'});
+            const params=new URLSearchParams({q:query,include_completed:String(includeCompleted),view,priority,limit:'20'});
             if(timezone)params.set('timezone',timezone);if(tagFilter)params.set('tag_contains',tagFilter);
             const result=await api.get(`/api/tasks/launcher?${params}`);
             if(own!==request||atVersion!==version)return;
@@ -50,6 +52,8 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
         focus:()=>{open=true;return read();},
         input:value=>{query=value;version++;open=true;actionMessage='';return read();},
         tag:value=>{tagFilter=value;version++;open=true;return read();},
+        view:value=>{if(!validView(value))throw Error('Unsupported launcher view.');view=value;version++;open=true;return read();},
+        priority:value=>{if(!validPriority(value))throw Error('Unsupported launcher priority.');priority=value;version++;open=true;return read();},
         includeCompleted:value=>{includeCompleted=Boolean(value);version++;open=true;return read();},
         close:()=>{open=false;request++;loading=false;publish();},
         choose:index=>{if(loading||!rows[index])return false;activeIndex=index;selectionGeneration++;explicit=true;open=true;publish();return true;},
@@ -70,7 +74,7 @@ function createTaskLauncher({api,startTask,onState=()=>{},available=()=>true,val
     };
 }
 let taskLauncherSequence=0;
-function mountTaskLauncher(root,control,{input=root.querySelector('[data-launcher-input]'),startButton=root.querySelector('[data-launcher-start]'),onSuggestions=null}={}) {
+function mountTaskLauncher(root,control,{input=root.querySelector('[data-launcher-input]'),startButton=root.querySelector('[data-launcher-start]'),onSuggestions=null,view='suggested',prioritySelect=null,resultsRoot=null,onDetails=null}={}) {
     const doc=root.ownerDocument,uid=`task-launcher-${++taskLauncherSequence}`;
     const popup=doc.createElement('div');popup.className='task-launcher-popup';popup.hidden=true;
     const hint=doc.createElement('p');hint.className='task-launcher-hint';hint.textContent='↑↓ choose · Enter starts · Tab moves focus';
@@ -78,29 +82,73 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
     const check=doc.createElement('input');check.type='checkbox';checkLabel.append(check,doc.createTextNode(' Include completed'));
     const options=doc.createElement('div');options.id=`${uid}-options`;options.setAttribute('role','listbox');options.setAttribute('aria-label','Task suggestions');
     const status=doc.createElement('p');status.className='task-launcher-status';status.setAttribute('role','status');
-    popup.append(hint,options);root.append(checkLabel,popup,status);root.hidden=false;
-    input.maxLength=200;
-    input.setAttribute('role','combobox');input.setAttribute('aria-autocomplete','list');input.setAttribute('aria-controls',options.id);input.setAttribute('autocomplete','off');
-    let model,signature='';
+    popup.append(hint,options);
+    if(resultsRoot){resultsRoot.id ||= `${uid}-results`;root.append(hint,checkLabel,status);}
+    else root.append(checkLabel,popup,status);
+    root.hidden=false;input.maxLength=200;
+    input.setAttribute('role',resultsRoot?'searchbox':'combobox');
+    if(!resultsRoot)input.setAttribute('aria-autocomplete','list');
+    input.setAttribute('aria-controls',resultsRoot?resultsRoot.id:options.id);input.setAttribute('autocomplete','off');
+    let model,signature='',resultsSignature='',resultActions=[];
     function available(){return canStartTaskFromTimerState(control.snapshot());}
+    function activate(id){const index=model.snapshot().rows.findIndex(t=>t.id===id);if(index<0)return false;model.choose(index);return model.start({explicitButton:true});}
+    function taskInfo(task){
+        return [task.parent_title,task.completed?'Completed':null,task.scheduled_state==='now'?'Scheduled now':task.scheduled_state==='soon'?`Scheduled ${new Date(task.scheduled_start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:null,task.priority&&task.priority!=='-'?`${task.priority} priority`:null,task.recorded_hours>0?`${Number(task.recorded_hours.toFixed(1))} h recorded · last 30 days`:null].filter(Boolean).join(' · ');
+    }
+    function renderResults(s){
+        if(!resultsRoot)return;
+        const next=JSON.stringify([s.rows,s.query.trim(),s.priority]);
+        if(next!==resultsSignature){
+            resultsSignature=next;resultsRoot.replaceChildren();resultActions=[];
+            const bound=doc.createElement('p');bound.className='launcher-result-bound';bound.textContent='Up to 20 results. Filter by priority or search for more tasks.';resultsRoot.append(bound);
+            const priorities=[['high','High priority'],['medium','Medium priority'],['low','Low priority'],['none','No priority']];
+            const priorityOf=task=>['high','medium','low'].includes((task.priority||'').toLowerCase())?task.priority.toLowerCase():'none';
+            // Search keeps exact → prefix → literal contains → explicit close matches.
+            const matches=s.query.trim()?['exact','prefix','contains','fuzzy']:['default'];
+            for(const match of matches){
+                for(const [priority,label] of priorities){
+                    if(s.priority!=='all'&&s.priority!==priority)continue;
+                    const tasks=s.rows.map((task,index)=>({task,index})).filter(({task})=>priorityOf(task)===priority&&task.match_kind===match);
+                    if(s.query.trim()&&!tasks.length)continue;
+                    const section=doc.createElement('section');section.className='launcher-priority-group';section.dataset.priority=priority;
+                    const heading=doc.createElement('h4');heading.textContent=s.query.trim()?`${{exact:'Exact title',prefix:'Title starts with',contains:'Title contains',fuzzy:'Close matches · select before starting'}[match]} · ${label}`:label;section.append(heading);
+                    if(!tasks.length){const empty=doc.createElement('p');empty.className='launcher-group-empty';empty.textContent='No tasks in this result list. Filter or search to look further.';section.append(empty);}
+                    for(const {task,index} of tasks){
+                        const row=doc.createElement('article');row.className='launcher-priority-row';
+                        const text=doc.createElement('div'),title=doc.createElement('strong'),info=doc.createElement('small');title.textContent=task.title;info.textContent=taskInfo(task);text.append(title,info);
+                        const actions=doc.createElement('div');actions.className='launcher-row-actions';
+                        const start=doc.createElement('button');start.type='button';start.textContent='Start';start.dataset.launcherOwnedStart='true';start.setAttribute('aria-label',`Start timer for ${task.title}`);start.addEventListener('click',()=>activate(task.id));actions.append(start);
+                        if(onDetails){const details=doc.createElement('button');details.type='button';details.textContent='Task details';details.setAttribute('aria-label',`Task details for ${task.title}`);details.addEventListener('click',()=>onDetails(task.id));actions.append(details);}
+                        row.append(text,actions);section.append(row);resultActions.push({start,row,index});
+                    }
+                    resultsRoot.append(section);
+                }
+            }
+        }
+        for(const {start,row,index} of resultActions){start.disabled=s.pending||s.loading||!available();row.dataset.selected=String(index===s.activeIndex);}
+    }
     function render(s){
         if(input.value!==s.query)input.value=s.query;
-        popup.hidden=!s.open;check.checked=s.includeCompleted;input.setAttribute('aria-expanded',String(s.open));input.setAttribute('aria-busy',String(s.loading));
-        const row=s.rows[s.activeIndex];if(row)input.setAttribute('aria-activedescendant',`${uid}-${s.activeIndex}`);else input.removeAttribute('aria-activedescendant');
-        status.textContent=[s.loading?'Finding tasks…':s.message,s.actionMessage].filter(Boolean).join(' ');
+        popup.hidden=!s.open;check.checked=s.includeCompleted;
+        if(!resultsRoot)input.setAttribute('aria-expanded',String(s.open));
+        input.setAttribute('aria-busy',String(s.loading));
+        const row=s.rows[s.activeIndex];
+        if(!resultsRoot&&row)input.setAttribute('aria-activedescendant',`${uid}-${s.activeIndex}`);else input.removeAttribute('aria-activedescendant');
+        status.textContent=[s.loading?'Finding tasks…':s.message,resultsRoot&&s.open&&row?`Selected: ${row.title}. Enter starts this task.`:'',s.actionMessage].filter(Boolean).join(' ');
         if(startButton){startButton.disabled=s.pending||s.loading||!row||!available();startButton.setAttribute('aria-label',row?`Start timer for ${row.title}`:'Choose a task before starting');}
-        const next=JSON.stringify([s.rows,s.activeIndex]);if(next!==signature){signature=next;options.replaceChildren();let fuzzy=false;
+        const next=JSON.stringify([s.rows,s.activeIndex]);if(!resultsRoot&&next!==signature){signature=next;options.replaceChildren();let fuzzy=false;
             s.rows.forEach((task,index)=>{
                 if(task.match_kind==='fuzzy'&&!fuzzy){const heading=doc.createElement('p');heading.className='launcher-close-heading';heading.textContent='Close matches · select one before starting';options.append(heading);fuzzy=true;}
                 const option=doc.createElement('div');option.id=`${uid}-${index}`;option.setAttribute('role','option');option.setAttribute('aria-selected',String(index===s.activeIndex));option.className='task-launcher-option';
                 const title=doc.createElement('strong');title.textContent=task.title;const info=doc.createElement('small');
-                info.textContent=[task.parent_title,task.completed?'Completed':null,task.scheduled_state==='now'?'Scheduled now':task.scheduled_state==='soon'?`Scheduled ${new Date(task.scheduled_start).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`:null,task.priority&&task.priority!=='-'?`${task.priority} priority`:null,task.recorded_hours>0?`${Number(task.recorded_hours.toFixed(1))} h recorded · last 30 days`:null].filter(Boolean).join(' · ');
+                info.textContent=taskInfo(task);
                 option.append(title,info);option.addEventListener('pointerdown',e=>e.preventDefault());option.addEventListener('click',()=>{model.choose(index);input.focus({preventScroll:true});});options.append(option);
             });
         }
-        onSuggestions?.(s);
+        if(prioritySelect)prioritySelect.value=s.priority;
+        renderResults(s);onSuggestions?.(s);
     }
-    model=createTaskLauncher({api,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,timerSelection:()=>control.snapshot().selectionGeneration,
+    model=createTaskLauncher({api,view,timezone:Intl.DateTimeFormat().resolvedOptions().timeZone,available,onState:render,pauseWhenIdle:()=>document.querySelector('[data-timer-idle]')?.checked,timerSelection:()=>control.snapshot().selectionGeneration,
         validateTask:async(task,includeCompleted)=>{
             const current=await api.get(`/api/tasks/${encodeURIComponent(task.id)}`);
             if(current.id!==task.id||current.title!==task.title)return false;
@@ -118,11 +166,12 @@ function mountTaskLauncher(root,control,{input=root.querySelector('[data-launche
     input.addEventListener('focus',()=>{if(!model.snapshot().open)void model.focus();});input.addEventListener('pointerdown',()=>{if(!model.snapshot().open)void model.focus();});input.addEventListener('input',()=>void model.input(input.value));
     input.addEventListener('keydown',event=>{if(model.key(event)!==false)event.preventDefault();});
     check.addEventListener('change',()=>void model.includeCompleted(check.checked));
+    prioritySelect?.addEventListener('change',()=>model.priority(prioritySelect.value));
     const outside=e=>{if(!root.contains(e.target)&&e.target!==startButton)model.close();};doc.addEventListener('pointerdown',outside);
     doc.addEventListener('focusin',event=>{if(model.snapshot().open&&!root.contains(event.target)&&event.target!==startButton)model.close();});
     const recovered=e=>model.reconcile(e.detail);window.addEventListener('timetrace:timer-mutated',recovered);
-    const tasksChanged=()=>{if(model.snapshot().open||onSuggestions)void model.refresh();};window.addEventListener('timetrace:tasks-mutated',tasksChanged);
+    const tasksChanged=()=>{if(model.snapshot().open||onSuggestions||resultsRoot)void model.refresh();};window.addEventListener('timetrace:tasks-mutated',tasksChanged);
     render(model.snapshot());
-    return {model,sync:()=>render(model.snapshot()),start:()=>model.start({explicitButton:true}),activate:id=>{const index=model.snapshot().rows.findIndex(t=>t.id===id);if(index<0)return false;model.choose(index);return model.start({explicitButton:true});}};
+    return {model,sync:()=>render(model.snapshot()),start:()=>model.start({explicitButton:true}),activate};
 }
 if(typeof module!=='undefined'&&module.exports)module.exports={createTaskLauncher,mountTaskLauncher,canStartTaskFromTimerState};

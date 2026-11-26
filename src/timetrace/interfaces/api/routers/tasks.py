@@ -1,3 +1,5 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlmodel import Session as DBSession
 
@@ -31,10 +33,18 @@ def task_launcher(
     include_completed: bool = False,
     timezone: str | None = Query(None, max_length=100),
     tag_contains: str = Query("", max_length=200),
+    view: Literal["suggested", "priority"] = "suggested",
+    priority: Literal["all", "high", "medium", "low", "none"] = "all",
     db: DBSession = Depends(get_session),
 ):
     return TaskLauncherService(db).suggestions(
-        q, limit=limit, include_completed=include_completed, timezone=timezone, tag_contains=tag_contains
+        q,
+        limit=limit,
+        include_completed=include_completed,
+        timezone=timezone,
+        tag_contains=tag_contains,
+        view=view,
+        priority=priority,
     )
 
 

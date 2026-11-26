@@ -2,6 +2,7 @@
 
 from datetime import UTC, datetime, timedelta
 from heapq import nsmallest
+from typing import Literal
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import aliased
@@ -31,7 +32,11 @@ class TaskLauncherService:
         timezone: str | None = None,
         tag_contains: str = "",
         measurement_at: datetime | None = None,
+        view: Literal["suggested", "priority"] = "suggested",
+        priority: Literal["all", "high", "medium", "low", "none"] = "all",
     ) -> dict:
+        if view not in {"suggested", "priority"} or priority not in {"all", "high", "medium", "low", "none"}:
+            raise ValidationError("Choose a supported launcher view and priority filter.")
         if not 1 <= limit <= 50 or len(query) > 200 or len(tag_contains) > 200:
             raise ValidationError("Use at most 200 search characters and a launcher limit between 1 and 50.")
         now = measurement_at or datetime.now(UTC)
@@ -39,10 +44,10 @@ class TaskLauncherService:
             now = now.astimezone(UTC).replace(tzinfo=None)
         with sqlite_read_snapshot(self.db) as reader:
             return TaskLauncherService(reader)._suggestions(
-                query.strip(), limit, include_completed, timezone, now, tag_contains
+                query.strip(), limit, include_completed, timezone, now, tag_contains, view, priority
             )
 
-    def _suggestions(self, query, limit, include_completed, timezone, now, tag_contains):
+    def _suggestions(self, query, limit, include_completed, timezone, now, tag_contains, view, priority):
         connection = self.db.connection().connection.driver_connection
         # Pure, parameterized UDF: no request-specific state leaks to a pooled connection.
         connection.create_function("launcher_title_rank", 2, title_match_rank, deterministic=True)
@@ -55,6 +60,11 @@ class TaskLauncherService:
             parent, parent.id == Task.parent_id
         )
         statement = statement.where(rank < 4)
+        normalized_priority = func.coalesce(func.lower(Task.priority), "")
+        if priority == "none":
+            statement = statement.where(~normalized_priority.in_(["high", "medium", "low"]))
+        elif priority != "all":
+            statement = statement.where(normalized_priority == priority)
         if tag_contains:
             statement = statement.where(Task.tags.icontains(tag_contains, autoescape=True))
         if not include_completed:
@@ -106,6 +116,8 @@ class TaskLauncherService:
                     key = (
                         (match, *common)
                         if query
+                        else common
+                        if view == "priority"
                         else (
                             scheduled[0] if scheduled else 2,
                             scheduled[1] if scheduled and scheduled[0] == 1 else datetime.min,

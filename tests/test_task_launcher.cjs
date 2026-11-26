@@ -71,3 +71,26 @@ test('focus shows defaults and Enter starts the highlighted task only',async()=>
  await launcher.focus();assert.equal(launcher.snapshot().activeIndex,0);assert.equal(launcher.snapshot().open,true);
  await launcher.key({key:'Enter'});assert.deepEqual(calls,[{task_id:'reading-uuid'}]);assert.equal(launcher.snapshot().query,'');assert.match(launcher.snapshot().actionMessage,/Reading.*recording/);assert.equal(launcher.snapshot().pending,false);
 });
+test('view and priority changes fence old reads and ACKs without clearing the new query or choice',async()=>{
+ const urls=[];let releaseRead,ack;
+ const l=createTaskLauncher({view:'priority',api:{get:url=>{urls.push(url);return url.includes('priority=high')&&!releaseRead?new Promise(r=>releaseRead=r):Promise.resolve({suggestions:[{id:'low',title:'Read low',match_kind:'prefix'}]});}},startTask:(p,h)=>{h.onSubmitted('old-view');return new Promise(resolve=>{ack=()=>{h.onAcknowledged({operation_id:'old-view',timer:{id:'t',state:'paused'}});resolve(true);};});}});
+ await l.input('read');assert.equal(new URL(urls[0],'http://test').searchParams.get('view'),'priority');
+ const saving=l.start();await Promise.resolve();
+ const old=l.priority('high');await l.view('suggested');await l.priority('low');
+ releaseRead({suggestions:[{id:'old-high',title:'Old high',match_kind:'prefix'}]});await old;ack();await saving;
+ assert.equal(l.snapshot().view,'suggested');assert.equal(l.snapshot().priority,'low');assert.equal(l.snapshot().query,'read');assert.equal(l.snapshot().rows[0].id,'low');assert.equal(l.snapshot().open,true);
+ const p=new URL(urls.at(-1),'http://test').searchParams;assert.equal(p.get('view'),'suggested');assert.equal(p.get('priority'),'low');
+});
+for(const [selector,oldChoice,newChoice] of [['view','suggested','priority'],['priority','high','none']]){
+ test(`${selector} alone owns its late read and Start ACK fence`,async()=>{
+  let release,ack;const rows=[{id:'a',title:'Read A',match_kind:'prefix'},{id:'b',title:'Read B',match_kind:'prefix'}];
+  const l=createTaskLauncher({view:'priority',api:{get:async url=>{
+   if(new URL(url,'http://test').searchParams.get(selector)===oldChoice&&!release)return new Promise(r=>release=r);
+   return {suggestions:rows};
+  }},startTask:(p,h)=>{h.onSubmitted('op');return new Promise(resolve=>{ack=()=>{h.onAcknowledged({operation_id:'op',timer:{id:'t',state:'running'}});resolve(true);};});}});
+  await l.input('read');const saving=l.start();await Promise.resolve();
+  const old=l[selector](oldChoice);await l[selector](newChoice);l.choose(1);
+  release({suggestions:[{id:'stale',title:'Old choice',match_kind:'prefix'}]});await old;ack();await saving;
+  assert.equal(l.snapshot()[selector],newChoice);assert.equal(l.snapshot().query,'read');assert.equal(l.snapshot().rows[l.snapshot().activeIndex].id,'b');assert.equal(l.snapshot().open,true);
+ });
+}

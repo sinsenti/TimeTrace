@@ -1122,3 +1122,37 @@ test('ui72 manual recording labels Entry note separately from plan notes',async(
     await p.elements.get('agenda-record').click();assert.equal(p.elements.get('agenda-notes-label').textContent,'Entry note');
     await p.elements.get('agenda-new').click();assert.equal(p.elements.get('agenda-notes-label').textContent,'Plan notes');
 });
+
+test('Agenda mounts priority discovery through the shared launcher and keeps pins secondary',async()=>{
+    const reads=[];
+    const task={id:'low-priority-task',title:'Low task',priority:'low',match_kind:'default'};
+    const p=sessionPage(async(url,options)=>{
+        if(options.method!=='GET')return {operation_id:JSON.parse(options.body).operation_id,timer:{id:'started-timer',task_id:task.id,state:'running'}};
+        reads.push(url);
+        if(url.startsWith('/api/tasks/launcher'))return {suggestions:[task]};
+        if(url==='/api/tasks?status=all')return [task];
+        if(url===`/api/tasks/${task.id}`)return task;
+        if(url==='/timers')return {timers:[],revision:1};
+        if(url.startsWith('/agenda?'))return [];
+        return [];
+    });
+    const root=p.element('agenda-launcher');root.ownerDocument=p.context.document;root.querySelector=()=>null;
+    p.element('agenda-priority-control');p.element('agenda-priority','select').value='all';
+    p.context.document.createTextNode=text=>{const node=p.element();node.textContent=text;return node;};
+    p.context.document.querySelector=()=>({checked:true});
+    const {createTimerController}=require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
+    const storage=new Map();
+    p.context.multipleTimers=createTimerController({api:p.run('api'),storage:{getItem:k=>storage.get(k),setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},operationId:()=> 'agenda-priority-start',onState(){}});
+    await p.context.multipleTimers.refresh();
+    p.load('task_launcher.js');loadFolio(p);
+    await p.documentListeners.get('DOMContentLoaded')();
+    await p.context.agendaTaskLauncher.model.refresh();
+    assert.equal(p.context.agendaTaskLauncher.model.snapshot().view,'priority');
+    assert.equal(new URL(reads.findLast(url=>url.startsWith('/api/tasks/launcher')),'http://test').searchParams.get('view'),'priority');
+    assert.equal(p.elements.get('agenda-pins').hidden,true);
+    assert.equal(p.elements.get('agenda-activities').hidden,false);
+    const section=p.elements.get('agenda-activities').children.find(el=>el.dataset.priority==='low');
+    const start=section.children.find(el=>el.tagName==='ARTICLE').children[1].children[0];
+    await start.click();
+    assert.equal(p.writes.length,1);assert.equal(p.writes[0].url,'/timers');assert.equal(p.writes[0].payload.task_id,task.id);assert.equal(p.writes[0].payload.scheduled_session_id,undefined);
+});

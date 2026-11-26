@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/static/css/ai.css">
     <link rel="stylesheet" href="/static/css/agenda.css?v=ui72-rc1">
     <link rel="stylesheet" href="/static/css/timer_presence.css?v=ui72-rc1">
+    <link rel="stylesheet" href="/static/css/agenda_discovery.css?v=ui72-priority1">
 </head>
 <body class="agenda-page">
     <header class="bg-[var(--bg-header)] border-b border-[var(--border-color)] px-4 py-2">
@@ -32,10 +33,14 @@
         <button id="agenda-retry" type="button" hidden>Refresh agenda</button>
         <section class="agenda-search-first" aria-label="Activity discovery">
             <div class="section-heading"><h3>Start an activity</h3><button type="button" id="agenda-manage-pins">Manage pins</button></div>
-            <nav class="agenda-activity-tabs" aria-label="Activity list"><button type="button" data-activity-tab="all" aria-pressed="true">All activities</button><button type="button" data-activity-tab="pinned" aria-pressed="false">Pinned activities</button></nav>
+            <nav class="agenda-activity-tabs" aria-label="Activity list"><button type="button" data-activity-tab="all" aria-pressed="true">By priority</button><button type="button" data-activity-tab="pinned" aria-pressed="false">Pinned activities</button></nav>
             <div id="agenda-launcher" data-task-launcher class="task-launcher"><label>Task search <input id="agenda-search" data-launcher-input type="search" placeholder="Type a task, then Enter to start…"></label></div>
             <p id="agenda-pin-status" role="status"></p><div id="agenda-pins" class="agenda-activity-cards" hidden></div>
-            <div id="agenda-activities" class="agenda-activity-cards" hidden></div>
+            <label id="agenda-priority-control" class="agenda-priority-control">Priority
+                <select id="agenda-priority"><option value="all">Any priority</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option><option value="none">No priority</option></select>
+            </label>
+            <p class="agenda-discovery-help">Start selects a task's timer, not its schedule. Priority groups use recorded task time from the last 30 days as a tie-break, not start frequency. Search ranks exact titles, then prefixes, then literal matches; close matches need explicit selection.</p>
+            <div id="agenda-activities" class="agenda-priority-results" hidden></div>
             <button type="button" id="agenda-filters-open">Filter activities / history</button>
         </section>
         <dialog id="agenda-filters" role="dialog" class="app-dialog" aria-labelledby="agenda-filters-title">
@@ -83,7 +88,7 @@
     </main>
     <dialog id="agenda-help" role="dialog" class="app-dialog app-dialog-wide" aria-labelledby="agenda-help-title"><h2 id="agenda-help-title">Shortcuts &amp; recording help</h2>
         <p>Outside editors: Alt+Shift+1–9 selects; Alt+Shift+Enter starts the picked task; Alt+Shift+P pauses/resumes; Alt+Shift+S stops; Alt+Shift+F searches. In activity search, use ↑/↓ to choose and Enter to start; Tab only moves focus. Close matches require explicit selection. Clock ±5 applies directly after a one-time explanation. Adjust time keeps Preview and Apply for full interval edits. Invalid quick adjustments are refused, never clamped.</p>
-        <p>History reads intervals intersecting the local day, grouped by local start day. Totals retain their labeled start-date cohort. Task search returns at most 50 matching tasks before display sorting. Notes filtering searches saved entry notes and scheduled-session plan notes, not task descriptions or live timer notes. More combinations are in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
+        <p>History reads intervals intersecting the local day, grouped by local start day. Totals retain their labeled start-date cohort. Activity discovery shows up to 20 results, grouped by priority; filter by priority or search for more tasks. Schedule badges do not change priority order. Notes filtering searches saved entry notes and scheduled-session plan notes, not task descriptions or live timer notes. More combinations are in <a href="/tasks">Tasks filters</a> and <a href="/stats">Statistics</a>.</p>
         <p>Carry-ins belong to their local start day, not this day's export. Export uses a bounded saved-work start-day view; plans and live timers are never eligible.</p>
         <p>Entry note belongs to tracked work: Save keeps the note on the eligible timer interval; Stop &amp; record carries it into saved history. Saved entries have their own notes. Task descriptions and plan notes remain separate. Discard my changes only reloads the saved note; it does not discard tracked time.</p>
         <footer class="app-dialog-actions"><form method="dialog"><button autofocus>Close</button></form></footer>
@@ -111,7 +116,7 @@
     <script src="/static/js/timer_corrections.js?v=ui72-rc1"></script>
     <script src="/static/js/workspace_shortcuts.js?v=launcher70-1"></script>
     <script src="/static/js/workspace_summary.js?v=polish59-rc2"></script>
-    <script src="/static/js/agenda.js?v=ui72-rc1"></script>
+    <script src="/static/js/agenda.js?v=ui72-priority1"></script>
     <script src="/static/js/history_export.js?v=ui72-rc1"></script>
     <script src="/static/js/ai_assistant.js?v=ui72-rc1"></script>
     <script src="/static/js/ai_insights.js"></script>
