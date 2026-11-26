@@ -164,3 +164,9 @@ asset paths, requires one versioned inclusion with a nonempty version and fetche
 successfully instead of pinning an obsolete token. All existing priority/pin assertions remain.
 Focused root/launcher checks then passed **28 Python**; full verification is repeated after this
 test-only repair rather than reporting1282 green cases from the failed full run.
+
+Final complete gates after the focus and fixture repairs (`99d8eaa8`): **1282 Python passed /
+1696 warnings in228.69s;988 Node passed**, zero failures/cancellations/skips. Scoped Ruff, changed
+JS/CJS syntax and whitespace pass; broad Ruff retains17 inherited findings. The full run kept the
+same isolated environment and four-worker/synthetic-idle policy. The integration preview remains
+available for owner review; all commits remain local, without dev merge/push or personal deployment.
