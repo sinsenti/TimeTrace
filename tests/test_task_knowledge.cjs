@@ -24,8 +24,10 @@ function page(api) {
     const alerts = [];
     const logs = [];
     const context = vm.createContext({ api, document, console: { error: (...args) => logs.push(args), warn: (...args) => logs.push(args) }, setTimeout: () => {},
-        localStorage: { getItem: () => null }, addEventListener() {}, alert: msg => alerts.push(msg) });
+        localStorage: { getItem: () => null }, addEventListener() {} });
     context.window = context;
+    // Human-decision SDK boundary: this metadata/Session DOM has no native dialog/top-layer support.
+    context.appDialogs = {alert: async ({message}) => { alerts.push(message); }, confirm: async () => false};
     const run = code => vm.runInContext(code, context);
     const load = filename => vm.runInContext(fs.readFileSync(path.join(staticJs, filename), 'utf8'), context, { filename });
     if (fs.existsSync(path.join(staticJs, 'task_knowledge.js'))) load('task_knowledge.js');
@@ -50,7 +52,6 @@ function sessionPage(api = {}) {
     p.load('tags_engine.js');
     p.load('session_modal.js');
     p.load('calendar.js');
-    p.context.confirm = () => false;
     p.context.allSessions = [{ id: 'session-1', task_id: 'missing-id',
         start_time: '2026-01-01T10:00:00Z', end_time: '2026-01-01T10:45:00Z', tags: '#kept', notes: 'Keep notes' }];
     return { ...p, writes };
@@ -226,7 +227,7 @@ for (const result of ['offline', 'missing', 'partial']) {
             },
             delete: async url => deleted.push(url)
         });
-        p.context.confirm = () => { confirmations++; return true; };
+        p.context.appDialogs.confirm = async () => { confirmations++; return true; };
         p.elements.get('recurring_delete_modal').classList.add('hidden');
         await p.run('promptDeleteSession("session-1")');
         assert.equal(confirmations, 0);
@@ -269,7 +270,7 @@ test('deleting an uncached session uses its authoritative daemon link and known 
         delete: async url => deleted.push(url)
     });
     p.context.allSessions = [];
-    p.context.confirm = () => true;
+    p.context.appDialogs.confirm = async () => true;
     await p.run('promptDeleteSession("session-1")');
     assert.deepEqual(deleted, ['/sessions/session-1?scope=only_this']);
 });

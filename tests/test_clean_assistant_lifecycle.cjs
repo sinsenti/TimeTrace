@@ -53,7 +53,9 @@ function browser(respond, resize = null) {
         requestAnimationFrame: fn => fn(),
         getComputedStyle: () => ({getPropertyValue: key => properties.get(key) || ''}),
         calendar: resize ? {updateSize() {}} : undefined,
-        window: {innerWidth: resize?.viewport, location: {pathname: '/dashboard'}, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener(name, fn) {(windowEvents[name] ||= []).push(fn);}, confirm() {return false;}},
+        window: {innerWidth: resize?.viewport, location: {pathname: '/dashboard'}, localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}}, addEventListener(name, fn) {(windowEvents[name] ||= []).push(fn);},
+            // Human-decision SDK boundary: this bounded DOM has no native dialog/top-layer dispatch.
+            appDialogs: {confirm: async () => false}},
         localStorage: {getItem: key => storage.get(key) ?? null, setItem: (key, value) => {storageWrites.push([key, value]); storage.set(key, value);}},
         document: {activeElement: element('launcher'), body: element(), documentElement: {style: {setProperty: (key, value) => properties.set(key, value)}},
             getElementById: id => fields[id] || Object.values(fields).flatMap(root => root.querySelectorAll('*')).find(child => child.id === id) || null, removeEventListener() {}, createElement: tag => element('', tag), querySelector() {return null;}, querySelectorAll() {return [];}, addEventListener(name, fn) {(events[name] ||= []).push(fn);}},
@@ -369,7 +371,7 @@ test('a pending batch-wide Undo all blocks a new card action', async () => {
 test('Acknowledged Delete retains instruction edits typed while the actual DELETE callback is pending', async () => {
     const deletion = held();
     const b = browser((url, options) => options.method === 'DELETE' ? deletion.promise : normal(url));
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.run("aiSelectConversation('conversation')");
     b.run("aiAppendInstructionProposal({id:'instruction', status:'pending', proposed_instruction:'Original'})");
     const card = b.fields.ai_thread.children.at(-1), input = card.querySelector('textarea');
@@ -418,7 +420,7 @@ for (const stage of ['list', 'detail']) for (const fail of [false, true]) test(`
 for (const fail of [false, true]) test(`Delete ${fail ? 'rejection' : 'ACK'} retains task edits opened after submission and Cancel permits later selection`, async () => {
     const deletion = held();
     const b = browser((url, options) => options.method === 'DELETE' ? deletion.promise : url.endsWith('/new') ? response({messages:[{role:'assistant',content:'next conversation'}]}) : normal(url));
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.run("aiSelectConversation('conversation')");
     b.run("aiAppendChatBatch({id:'batch',status:'pending',items:[{id:'item',entity_type:'task',op:'create',status:'pending',proposed:{title:'Original'}}]})");
     const card = b.fields.ai_thread.children.at(-1);
@@ -450,7 +452,7 @@ for (const fail of [false, true]) test(`Dirty Delete ${fail ? 'rejection keeps i
         if (url.endsWith('/created')) return response({messages:[]});
         return normal(url);
     });
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.run("aiSelectConversation('conversation')");
     b.run("aiAppendChatBatch({id:'batch',status:'pending',items:[{id:'item',entity_type:'task',op:'create',status:'pending',proposed:{title:'Original'}}]})");
     const card = b.fields.ai_thread.children.at(-1);
@@ -481,7 +483,7 @@ for (const hasOtherThread of [false, true]) test(`Deleted orphaned edit survives
         if (url.endsWith('/new')) return response({messages:[{role:'assistant',content:'New owner'}]});
         return normal(url);
     });
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.run("aiSelectConversation('conversation')");
     b.run("aiAppendChatBatch({id:'batch',status:'pending',items:[{id:'item',entity_type:'task',op:'create',status:'pending',proposed:{title:'Original'}}]})");
     const card = b.fields.ai_thread.children.at(-1);
@@ -513,7 +515,7 @@ test('Canceled Delete sends nothing; a held acknowledged Delete cannot clear a n
     await b.run("aiSelectConversation('conversation')");
     await b.click('ai_delete_conversation_btn');
     assert.equal(b.requests.filter(r => r.options.method === 'DELETE').length, 0);
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     const deleting = b.click('ai_delete_conversation_btn'); await tick();
     await b.fields.ai_conversation_select.listeners.change[0]({target:{value:'new'}});
     deletion.resolve(response({})); await deleting;
@@ -569,7 +571,7 @@ test('Stopped initial creation ACK reconciles its row without selecting over ref
 for (const fail of [false, true]) test(`Held Delete pauses Send, Enter and presets until ${fail ? 'rejection' : 'ACK'} without losing composer input`, async () => {
     const deletion = held();
     const b = browser((url, options) => options.method === 'DELETE' ? deletion.promise : normal(url));
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.fields.ai_conversation_select.listeners.change[0]({target:{value:'conversation'}});
     b.input('unsent while deleting');
     const deleting = b.click('ai_delete_conversation_btn'); await tick();
@@ -597,7 +599,7 @@ for (const fail of [false, true]) test(`Old Delete ${fail ? 'rejection' : 'ACK'}
         if (url.endsWith('/messages')) return turn.promise;
         return normal(url);
     });
-    b.context.window.confirm = () => true;
+    b.context.window.appDialogs.confirm = async () => true;
     await b.fields.ai_conversation_select.listeners.change[0]({target:{value:'conversation'}});
     const deleting = b.click('ai_delete_conversation_btn'); await tick();
     await b.fields.ai_conversation_select.listeners.change[0]({target:{value:'new'}});

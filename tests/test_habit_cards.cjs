@@ -15,7 +15,8 @@ function browser(respond = () => ({json:[]})) {
     const writes = [], elements = {habit_entry_owners:node('habit_entry_owners')};
     const context = vm.createContext({console, URL, Date, Intl, setTimeout:()=>{},
         document:{addEventListener(){},removeEventListener(){},getElementById:id=>elements[id] || Object.values(elements).flatMap(root=>{const walk=el=>[el,...el.children.flatMap(walk)];return walk(root);}).find(el=>el.id===id) || null,createElement:tag=>node('',tag)},
-        window:{location:{href:'http://localhost/habits-view'},addEventListener(){},removeEventListener(){},confirm:()=>false},
+        // Human-decision SDK boundary; this card DOM adapter has no dialog/top-layer support.
+        window:{location:{href:'http://localhost/habits-view'},addEventListener(){},removeEventListener(){},appDialogs:{confirm:async()=>false}},
         localStorage:{getItem:()=>null}, showCustomConfirm:async()=>true,
         fetch:async(url, options)=>{
             if(options.method !== 'GET') writes.push({url,body:JSON.parse(options.body)});
