@@ -139,5 +139,20 @@ Unfolding never counts as explicit selection of a fuzzy match. Shared Suggested 
 Red-first evidence: the four new Node regressions and one root-HTTP toolbar case failed against the
 previous code. Focused green checks passed **80 Node and13 Python**. The existing Agenda-mounted
 writer test's direct-child fixture was adjusted for the controlled group body without removing its
-task-only writer assertions. Full-suite, independent follow-up review and native checks follow this
-checkpoint; do not substitute the previous batch's final counts for this candidate.
+task-only writer assertions. Full-suite checks follow this checkpoint; do not substitute the
+previous batch's final counts for this candidate.
+
+The follow-up independent review returned **Standards1 P1 / Spec0**: the full-width disclosure's
+outward focus outline was clipped by its rounded section, especially when folded. Retained browser
+probe `tests/browser_agenda_priority_focus_72.js` reproduced red with a2px outward offset. A scoped
+important negative offset now keeps the2px outline inside the group, overriding the shared positive
+offset. The same probe passed after native Space in both folded/expanded states (-3px offset, focus
+retained); the stylesheet cache token advances. This is computed browser geometry, not raster proof.
+
+Native checks on the owned synthetic18132 app passed Space/Enter and pointer activation at the
+header's far edge, body removal from layout, focus retention and read-preserved folds. All three
+toolbar actions still open their original editor/help and cancel safely. Toolbar controls wrap without
+horizontal overflow at1217/768/390/320 CSS pixels; all three light palettes and dark mode use their
+own primary background/foreground. The probe observed **zero mutation requests**. No physical-touch,
+other-engine, screen-reader or owner visual acceptance is inferred. The final CSS-only focus repair
+has its own native red/green evidence; it does not alter the Python/JS behavior under the full gates.
