@@ -266,3 +266,19 @@ walks the nested feature checkout; excluding `.worktrees` leaves the same17 inhe
 (and an unchanged models-file noqa warning), with no new scoped finding. Earlier native and
 independent-review evidence remains bounded as recorded above. No personal-daemon restart,
 personal database/provider experiment, push or deployment is part of this local integration.
+
+## Follow-up: excess space above Outline inspector content
+
+The owner's Tasks screenshot shows a blank strip above Back/subtask context. A fresh isolated
+synthetic Outline/subtask reproduction measured42px twice between the inspector header and Back.
+Independent one-variable browser probes attributed12px to the empty selection-notice margin and
+16px to the broad sibling rule counting the leading hidden task-ID input; the remaining14px is
+normal panel padding. The hidden empty-state component already had zero layout height.
+
+The scoped CSS now zeros the notice margin only while empty (keeping the live status region and
+real messages), and exempts the first visible sibling of the leading hidden input from section
+spacing. The serving stylesheet cache token advances. No template content, editor/controller,
+navigation, data or task-time semantics change. Maintained browser check
+`tests/browser_outline_spacing_72.js` failed against42px/14px expected padding before the fix;
+the original native loop then passed with14px. The CSS-contract regression failed first and the
+focused25 Outline Node cases passed after the fix. Broader verification follows this checkpoint.

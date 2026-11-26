@@ -74,6 +74,15 @@ test('outline empty state honors hidden when its layout rule sets display:grid',
     assert.match(outlineCss, /#outline_empty\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/);
 });
 
+test('empty inspector notice and leading hidden task ID do not reserve extra top spacing', () => {
+    assert.match(outlineCss, /#outline_selection_notice:empty\s*\{\s*margin:\s*0;?\s*\}/,
+        'keep the live region but collapse its margin when it has no message');
+    assert.match(outlineCss, /\.task-detail-panel\s*>\s*input\[type="hidden"\]:first-child\s*\+\s*\*\s*\{\s*margin-top:\s*0;?\s*\}/,
+        'the hidden identifier must not give the first visible content a sibling gap');
+    assert.match(outlineCss, /#outline_selection_notice\s*\{[^}]*margin:\s*12px 16px 0/s,
+        'real loading/error notices retain their spacing');
+});
+
 test('Kanban cards separate tags into escaped chips and keep UUIDs quoted in handlers', () => {
     const p = fixture();
     p.context.task = {id:'0195e535-0000-7000-8000-00000000000a',title:'Chip task',status:'To Do',tags:'#one, #two <img>'};

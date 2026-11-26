@@ -127,8 +127,11 @@
 }
 .outline-inspector-tools :is(button, a):hover { background: var(--accent-soft); }
 #outline_selection_notice { margin: 12px 16px 0; color: var(--text-muted); font-size: 11px; }
+#outline_selection_notice:empty { margin: 0; }
 .task-detail-panel { min-width: 0; padding: 14px; overflow-wrap: anywhere; }
 .task-detail-panel > * + * { margin-top: 16px; }
+/* The leading task identity is not a visible section needing a sibling gap. */
+.task-detail-panel > input[type="hidden"]:first-child + * { margin-top: 0; }
 .task-detail-panel .detail-card { background: var(--bg-main); border: 1px solid var(--border-color); border-radius: 10px; padding: 14px; }
 .task-detail-panel .flex { flex-wrap: wrap; gap: 8px; }
 .task-detail-panel .grid > * { min-width: 0; }
