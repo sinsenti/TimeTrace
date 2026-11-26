@@ -100,7 +100,22 @@ Escape on static Help/Filter/Export modals without delegating cancellation. The 
 entry regression failed first; the shield now delegates to the focused static dialog's cancel
 owner (`requestClose`, with cancel-event fallback), preserving export invalidation without waiting
 for a close frame. Focused74 Node cases passed, followed by actual native Escape checks closing
-all three dialogs. Final revalidation/recheck of this last correction remains pending.
+all three dialogs. The bounded independent recheck verified this P2 resolved with no new issue.
+
+## Final verified checkpoint
+
+Code `f8ec350`: **1281 Python passed/1696 warnings (7m03s),984 Node passed**, zero failures,
+cancellations or skips. Python used four work-stealing workers, safe path, external HOME/TMPDIR/DB,
+notifications/tracing disabled and synthetic idle coverage enabled. Changed Python Ruff, all changed
+JS/CJS syntax and whitespace pass; broad Ruff retains17 inherited findings in unchanged files.
+
+Initial Standards0 / Spec1 P1 and the later parent-found P2 remain in this ledger; both fixes were
+independently rechecked with no unresolved/new findings. No screenshot, physical touch, screen-reader,
+other-engine or blanket platform certification is claimed. The four finished implementation checkouts
+were removed after preserving their branches; the clean integration branch and owned18132 synthetic
+preview remain for owner review. The owner's original18131 test UI and unrelated root edits remain
+untouched. No dev merge, push, personal-daemon restart or deployment occurred.
 
 Owner visual acceptance and the history-ranking choice remain separate; the ongoing #72 review map
-is not completed by this batch.
+is not completed by this batch. The remaining choice is an honestly labelled Most worked on view from
+existing recorded-time history, or prospective Frequently started tracking with explicit coverage.
