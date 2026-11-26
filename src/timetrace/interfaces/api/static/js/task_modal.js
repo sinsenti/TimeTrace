@@ -69,6 +69,7 @@ function setTaskParentLocked(locked) {
 }
 
 function resetTaskEditor() {
+    if(typeof window!=='undefined')window.refreshTaskPinDetail?.(null);
     taskEditorGeneration++;
     taskReturnFocus = document.activeElement;
     savedTaskParent = null;
@@ -227,6 +228,7 @@ async function openEditTaskModal(id) {
 
     const idEl = document.getElementById('edit_task_id');
     if (idEl) idEl.value = t.id;
+    if(typeof window!=='undefined')window.refreshTaskPinDetail?.(t.id);
 
     const modalTitle = document.getElementById('modal_task_title');
     if (modalTitle) modalTitle.innerText = 'Edit Task';

@@ -61,29 +61,32 @@ const agendaPage = (() => {
         // Repeat activities never inherit an old plan association, note or timestamp.
         await window.multipleTimers?.start({task_id:taskId || null});
     }
+    let activityMode='all';
+    function activityCard(task,start,disabled=false){
+        const item=make('article','', 'agenda-activity-card');item.append(make('strong',task.title||'Task unavailable'));
+        const info=[task.parent_title,task.scheduled_state==='now'?'Scheduled now':task.scheduled_state==='soon'?'Scheduled within one hour':null,task.match_kind==='fuzzy'?'Close match':null].filter(Boolean).join(' · ');item.append(make('small',info));
+        const actions=make('div','', 'activity-actions');const begin=make('button','Start');begin.type='button';begin.disabled=disabled;begin.dataset.workspaceStart='true';begin.dataset.metadataAvailable=String(!disabled);begin.addEventListener('click',start);
+        const details=make('button','Task details');details.type='button';details.addEventListener('click',()=>{if(typeof openEditTaskModal==='function')void openEditTaskModal(task.id);});actions.append(begin,details);item.append(actions);return item;
+    }
+    let cardsSignature=null;
+    function suggestionCards(state){const root=get('activities');if(!root||!window.agendaTaskLauncher)return;const timers=window.multipleTimers.snapshot();const ownAck=timers.receipt?.outcome==='acknowledged'&&timers.lastResult?.operation_id===timers.receipt.payload?.operation_id;const blocked=timers.pending||!(timers.fresh&&!timers.receipt||ownAck);const signature=JSON.stringify([state.rows,state.pending,state.loading,activityMode,blocked]);if(signature===cardsSignature)return;cardsSignature=signature;clear(root);root.hidden=activityMode!=='all'||!state.rows.length;get('pins').hidden=activityMode!=='pinned';
+        for(const task of state.rows)root.append(activityCard(task,()=>window.agendaTaskLauncher.activate(task.id),state.pending||state.loading||blocked));
+    }
     let discoveryGeneration = 0;
     async function discovery() {
         const read = ++discoveryGeneration;
         const pinned = get('pins'), activities = get('activities');
-        clear(pinned); clear(activities);
+        clear(pinned); if(!window.agendaTaskLauncher)clear(activities);
         const fresh = taskKnowledge.state().status === 'fresh';
-        const action = (label, fn, disabled = false) => {
-            const button = make('button', label); button.type = 'button'; button.disabled = disabled;
-            if (label === 'Start') {
-                button.dataset.workspaceStart = 'true'; button.dataset.metadataAvailable = String(!disabled);
-                const state = window.multipleTimers?.snapshot(); button.disabled ||= !state?.fresh || state.pending || Boolean(state.receipt);
-            }
-            button.addEventListener('click', fn); return button;
-        };
-        const toggle = (id, remove) => {
-            try { remove ? pins.unpin(id) : pins.pin(id); get('pin-status').textContent = ''; discovery(); }
-            catch (error) { get('pin-status').textContent = `Pins not saved: ${error.message}`; }
-        };
         for (const id of pins?.ids() || []) {
             const task = taskKnowledge.get(id);
-            const item = make('div', task ? `${task.title} ` : 'Unavailable task ');
-            item.append(action('Start', () => startActivity(id), !fresh || !task), action('Unpin', () => toggle(id, true)));
+            const item=activityCard(task||{id,title:'Task unavailable'},()=>startActivity(id),!fresh||!task);
             pinned.append(item);
+        }
+        if(window.agendaTaskLauncher){
+            pinned.hidden=activityMode!=='pinned';const tag=queryText('filter-tag');
+            if(window.agendaTaskLauncher.model.snapshot().tagFilter!==tag)void window.agendaTaskLauncher.model.tag(tag);
+            suggestionCards(window.agendaTaskLauncher.model.snapshot());return;
         }
         const search = queryText('search'), tag = queryText('filter-tag');
         activities.hidden=!(search||tag);if(activities.hidden)return;
@@ -99,10 +102,7 @@ const agendaPage = (() => {
         clear(activities);
         if (matches.length === 50) activities.append(make('p', 'Showing at most 50 matches in stable ID order; narrow the search for more.'));
         for (const task of matches) {
-            const item = make('div', `${task.title} `);
-            item.append(action('Start', () => startActivity(task.id), !fresh),
-                action(pins?.ids().includes(task.id) ? 'Unpin' : 'Pin', () => toggle(task.id, pins.ids().includes(task.id)), !pins));
-            activities.append(item);
+            activities.append(activityCard(task,()=>startActivity(task.id),!fresh));
         }
     }
 
@@ -606,6 +606,11 @@ const agendaPage = (() => {
     const readSelectedNote=()=>{if(document.visibilityState!=='hidden')void owner?.refreshSavedWorkNote?.();};
     window.addEventListener('focus',readSelectedNote);
     if(typeof setInterval==='function'){const notePoll=setInterval(readSelectedNote,30000);window.addEventListener('pagehide',()=>clearInterval(notePoll),{once:true});}
+    get('filters-open')?.addEventListener('click',()=>get('filters').showModal());
+    get('manage-pins')?.addEventListener('click',()=>window.openWorkspacePins?.());
+    for(const tab of document.querySelectorAll('[data-activity-tab]'))tab.addEventListener('click',()=>{activityMode=tab.dataset.activityTab;for(const item of document.querySelectorAll('[data-activity-tab]'))item.setAttribute('aria-pressed',String(item===tab));void discovery();if(activityMode==='all')void window.agendaTaskLauncher?.model.focus();});
+    window.addEventListener('timetrace:pins-changed',()=>{try{pins=createWorkspacePins(localStorage);get('pin-status').textContent='';}catch(error){get('pin-status').textContent=error.message;}void discovery();});
+    document.addEventListener('DOMContentLoaded',async()=>{await window.multipleTimersReady;if(typeof mountTaskLauncher!=='function'||!window.multipleTimers)return;const root=document.getElementById('agenda-launcher');if(!root)return;window.agendaTaskLauncher=mountTaskLauncher(root,window.multipleTimers,{input:get('search'),onSuggestions:suggestionCards});void window.agendaTaskLauncher.model.refresh();void discovery();});
     void refresh();
     for (const id of ['search','filter-tag','filter-note']) get(id).addEventListener('input', () => { discovery(); ledger(); });
     return { refresh, refreshTaskLabels,

@@ -14,7 +14,7 @@ from timetrace.interfaces.api.schemas import (
     TaskUpdate,
     TaskWithPolicyResponse,
 )
-from timetrace.services import TaskService
+from timetrace.services import TaskLauncherService, TaskService
 
 router = APIRouter(prefix="/api/tasks", tags=["Tasks API"])
 
@@ -22,6 +22,21 @@ router = APIRouter(prefix="/api/tasks", tags=["Tasks API"])
 # ============================================================
 # 1. STATIC ROUTES
 # ============================================================
+
+
+@router.get("/launcher")
+def task_launcher(
+    q: str = Query("", max_length=200),
+    limit: int = Query(20, ge=1, le=50),
+    include_completed: bool = False,
+    timezone: str | None = Query(None, max_length=100),
+    tag_contains: str = Query("", max_length=200),
+    db: DBSession = Depends(get_session),
+):
+    return TaskLauncherService(db).suggestions(
+        q, limit=limit, include_completed=include_completed, timezone=timezone, tag_contains=tag_contains
+    )
+
 
 @router.get("/statuses", response_model=list[TaskStatus])
 def list_task_statuses(db: DBSession = Depends(get_session)):
@@ -54,6 +69,7 @@ def delete_completed_tasks(db: DBSession = Depends(get_session)):
 # 2. ROOT COLLECTION ROUTES
 # ============================================================
 
+
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
 def create_task(task: TaskCreate, db: DBSession = Depends(get_session)):
     return TaskService(db).create_task(task)
@@ -69,7 +85,7 @@ def list_tasks(
     title_contains: str | None = Query(None, max_length=200),
     tag_contains: str | None = Query(None, max_length=200),
     limit: int | None = Query(None, ge=1, le=200),
-    db: DBSession = Depends(get_session)
+    db: DBSession = Depends(get_session),
 ):
     return TaskService(db).list_tasks(
         status_filter=status_filter,
@@ -86,6 +102,7 @@ def list_tasks(
 # ============================================================
 # 3. DYNAMIC PARAMETER ROUTES
 # ============================================================
+
 
 @router.get("/{task_id}", response_model=Task)
 def get_task_by_id(task_id: str, db: DBSession = Depends(get_session)):
@@ -109,9 +126,7 @@ def update_task(task_id: str, task_data: TaskUpdate, db: DBSession = Depends(get
 
 
 @router.post("/{task_id}/clear-scheduled-sessions", response_model=ClearScheduledSessionsResponse)
-def clear_scheduled_sessions(
-    task_id: str, req: ClearScheduledSessionsRequest, db: DBSession = Depends(get_session)
-):
+def clear_scheduled_sessions(task_id: str, req: ClearScheduledSessionsRequest, db: DBSession = Depends(get_session)):
     return TaskService(db).clear_scheduled_sessions(task_id, req)
 
 

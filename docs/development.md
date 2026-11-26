@@ -149,6 +149,12 @@ quick clicks: `createQuickTimeAdjustments` still obtains and verifies each signe
 committing through the shared receipt funnel. Full **Adjust time** retains human preview/Apply.
 The quick controller fences selection generations, revisions, current interval identity and drafts;
 it never clamps an invalid subtraction, resumes a paused timer or replays an uncertain operation.
+The [search-first task launcher #70](task-launcher-70.md) uses one public JS controller for Agenda
+and the shared strip. `TaskLauncherService` ranks current/nearby plans, priority and canonical
+recorded-task-time evidence before limiting results; typed/close matches remain deterministic.
+Enter starts only the captured task, never its suggested schedule. Page-preservation and exact
+query/ACK ownership are private UI metadata over the existing timer writer. Task pins stay local
+and move off card faces into the full task editor / Manage pins; no task schema field is added.
 Urgent focus actions/notices and operation/idle recovery remain available outside settings. Prototype
 scripts are design references only, never production page dependencies. Saved-entry notes refresh
 quietly on open/focus and while visible, without replacing typing or rebasing uncertain writes.

@@ -44,7 +44,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             fresh = false; message = 'Timer status unavailable. Last-known timers retained; retry status.'; publish(); return null;
         }
     }
-    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true) {
+    async function write(url, payload, retry = false, onAcknowledged = null, selectResult = true, preservePage = false) {
         if (pending || (receipt && receipt.outcome !== 'acknowledged' && !retry)) return false;
         const ownership = ++writeGeneration;
         ++readGeneration; // Pre-write reads must never restore obsolete timer/gap state.
@@ -54,7 +54,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
         try {
             if (!retry) {
                 informationNotice = ''; message = '';
-                receipt = {url, payload: JSON.parse(JSON.stringify({...payload, operation_id: operationId()})), outcome:'uncertain'};
+                receipt = {url, payload: JSON.parse(JSON.stringify({...payload, operation_id: operationId()})), outcome:'uncertain',...(preservePage?{preserve_page:true}:{})};
                 try { storage.setItem(key, JSON.stringify(receipt)); }
                 catch (_) { receipt = {outcome:'storage'}; message = 'Safety storage unavailable; no write sent.'; return false; }
             }
@@ -161,7 +161,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (!/^\/(timers|recorded-work)\/[^/]+$/.test(resource) || preview?.resource !== resource) return Promise.reject(Error('Correction resource does not match approval.'));
             return write(`${resource}/correction`, {preview}, false, null, false);
         },
-        start: payload => write('/timers', payload),
+        start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true),
         act: (id, action, payload = {}, onAcknowledged = null) => write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
     };
 }
@@ -170,7 +170,7 @@ function createTimerStartFocus({interaction, guarded, focus}) {
     let intent = null;
     return state => {
         const receipt = state.receipt;
-        if (receipt?.url !== '/timers') return;
+        if (receipt?.url !== '/timers' || receipt.preserve_page) return;
         const id = receipt.payload?.operation_id;
         if (state.pending && receipt.outcome === 'uncertain' && intent?.id !== id) intent = {id, interaction:interaction()};
         if (receipt.outcome === 'acknowledged' && intent?.id === id) {
@@ -305,6 +305,9 @@ if (typeof window !== 'undefined') {
             if (focused) restoreFocus = focused;
             const blocked = state.pending || Boolean(state.receipt) || !state.fresh;
             region.querySelector('[data-timer-start]').disabled = blocked;
+            const unassignedStart=region.querySelector('[data-timer-unassigned]');if(unassignedStart)unassignedStart.disabled=blocked;
+            window.sharedTaskLauncher?.sync();
+            window.agendaTaskLauncher?.sync();
             for (const button of document.querySelectorAll('[data-workspace-start]')) button.disabled = blocked || button.dataset.metadataAvailable !== 'true';
             const signature = JSON.stringify([state.pending, state.fresh, state.receipt?.outcome, state.selectedTimerId,
                 state.timers.map(({elapsed_seconds, remaining_seconds, ...timer}) => timer)]);
@@ -405,6 +408,11 @@ if (typeof window !== 'undefined') {
         };
         if (typeof window.openTimeCorrection === 'function') control.correctTime = (timer,change) => window.openTimeCorrection({timer,change});
         control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };
+        const launcherRoot=region.querySelector('[data-task-launcher]');
+        if(launcherRoot&&typeof mountTaskLauncher==='function'){
+            window.sharedTaskLauncher=mountTaskLauncher(launcherRoot,control,{startButton:region.querySelector('[data-timer-start]')});
+            const legacy=region.querySelector('[data-legacy-task-picker]');if(legacy)legacy.hidden=true;
+        }
         ready();
         control.perform = async (operation, payload, stillCurrent = () => true) => {
             await control.refresh();
@@ -419,8 +427,10 @@ if (typeof window !== 'undefined') {
             if (operation === 'toggle') operation = timer.state === 'running' ? 'stop' : 'resume';
             return control.act(timer.id, operation, {...payload, expected_revision:timer.revision});
         };
-        region.querySelector('[data-timer-start]').addEventListener('click', () => control.start({task_id:tasks.value || null,
+        region.querySelector('[data-timer-start]').addEventListener('click', () => window.sharedTaskLauncher?window.sharedTaskLauncher.start():control.start({task_id:tasks.value || null,
             pause_when_idle:region.querySelector('[data-timer-idle]').checked}));
+        region.querySelector('[data-timer-unassigned]')?.addEventListener('click',()=>control.start({task_id:null,pause_when_idle:region.querySelector('[data-timer-idle]').checked},null,{preservePage:true}));
+        for(const startButton of [region.querySelector('[data-timer-start]'),region.querySelector('[data-timer-unassigned]')])startButton?.addEventListener('keydown',event=>{if(event.isComposing||event.repeat)event.preventDefault();});
         region.querySelector('[data-timer-refresh]').addEventListener('click', () => control.refresh());
         region.querySelector('[data-idle-apply]').addEventListener('click', async () => {
             const result = await control.review([...choices.values()]);
@@ -428,7 +438,7 @@ if (typeof window !== 'undefined') {
             renderedSignature = null; render(control.snapshot());
             notice.textContent = `${result.acknowledged.length} selected gap decision(s) acknowledged; ${result.remaining.length} not applied. ${control.snapshot().message}`;
         });
-        async function refreshTaskOptions(){const generation=++taskRead;
+        async function refreshTaskOptions(){if(window.sharedTaskLauncher)return;const generation=++taskRead;
             try{const rows=await api.get('/api/tasks');if(generation!==taskRead)return;if(!Array.isArray(rows))throw Error('Unknown task response');
                 const selected=tasks.value,previous=tasks.selectedOptions?.[0]?.textContent;tasks.replaceChildren();
                 const unassigned=document.createElement('option');unassigned.value='';unassigned.textContent='Unassigned';tasks.append(unassigned);

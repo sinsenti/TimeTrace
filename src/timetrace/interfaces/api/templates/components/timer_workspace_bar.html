@@ -1,8 +1,10 @@
 <section id="multiple_timers" aria-label="Independent timers" class="multiple-timers timer-strip">
     <div class="multiple-timer-row timer-strip-main">
-        <label>Task <select data-timer-task aria-label="Timer task"><option value="">Unassigned</option></select></label>
+        <label data-legacy-task-picker>Task <select data-timer-task aria-label="Timer task"><option value="">Unassigned</option></select></label>
+        <div data-task-launcher class="task-launcher task-launcher-shared" hidden><label>Task to time <input data-launcher-input type="search" placeholder="Find an activity…" aria-label="Task to time"></label></div>
         <label><input type="checkbox" data-timer-idle checked> Pause when idle</label>
         <button type="button" data-timer-start disabled>Start timer</button>
+        <button type="button" data-timer-unassigned>Start unassigned</button>
         <a data-timer-selected href="/agenda-view" class="timer-strip-selected">Open timer workspace</a>
         <details data-timer-expander class="timer-strip-others">
             <summary data-timer-count>Other timers</summary>
@@ -22,10 +24,13 @@
 </section>
 <section data-focus-alerts aria-label="Timer notifications and actions" aria-live="polite" hidden></section>
 <link rel="stylesheet" href="/static/css/timer_workspace.css?v=feedback59-1">
+<link rel="stylesheet" href="/static/css/task_launcher.css?v=launcher70-1">
 <script defer src="/static/js/personal_goals.js?v=polish59-rc2"></script>
 <style>[data-work-assignment]{padding:0 1rem;margin:.7rem auto;box-sizing:border-box}[data-work-assignment] input,[data-work-assignment] select{max-width:100%}[data-work-assignment] button{margin:.3rem}</style>
 <section data-work-assignment aria-label="Optional saved work assignment" hidden style="max-width:100%;overflow-wrap:anywhere"></section>
-<script defer src="/static/js/multiple_timers.js?v=quick59-1"></script>
+<script src="/static/js/workspace_pins.js?v=launcher70-1"></script>
+<script defer src="/static/js/task_launcher.js?v=launcher70-1"></script>
+<script defer src="/static/js/multiple_timers.js?v=launcher70-1"></script>
 <script defer src="/static/js/work_assignment.js?v=goals64"></script>
 <script defer src="/static/js/timer_focus.js?v=polish59-rc3"></script>
 <link rel="stylesheet" href="/static/css/timer.css?v=ui-review2-3">
