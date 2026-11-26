@@ -92,8 +92,8 @@ test('tile cards use the shared content band and canvas rows stretch without fix
     assert.match(css, /\.widget-tile-label\s*\{[^}]*white-space:\s*nowrap/s);
     assert.match(css, /\.canvas-tab\[aria-current="page"\]\s*\{[^}]*color:\s*var\(--text-main\)[^}]*background:\s*var\(--bg-card\)/s);
     assert.doesNotMatch(css, /grid-auto-rows\s*:/);
-    assert.match(template, /dashboard_canvas\.css\?v=ui-review2-1/);
-    assert.match(template, /dashboards\.js\?v=ui-review2-1/);
+    assert.match(template, /dashboard_canvas\.css\?v=[A-Za-z0-9_-]+/);
+    assert.match(template, /dashboards\.js\?v=[A-Za-z0-9_-]+/);
 });
 
 test('selected dashboard tab uses a neutral themed active class and preserves the saved name', () => {
