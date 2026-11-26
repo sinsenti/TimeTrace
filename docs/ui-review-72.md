@@ -226,3 +226,18 @@ Three new/extended Node entry cases and the root-HTTP composition case failed fi
 then passed **88 Node /29 Python** (including independent export criteria, shared keyboard defaults,
 explicit filter-row task-only Start, hidden-row refusal, retained filter and pinned-view controls).
 Full gates, native checks and bounded independent review follow this checkpoint.
+
+Verified code `5ad7a080`: **1283 Python passed/1696 warnings in207.74s;997 Node passed**, zero
+failures/cancellations/skips. Scoped Ruff, JS/CJS syntax and whitespace pass; broad Ruff's17 inherited
+findings remain unchanged. Independent bounded Standards/Spec review found **0 /0** issues.
+
+Native checks used a fresh isolated profile. Typing either title field left the other list/query
+unchanged; activity Arrow/Enter produced no Start dispatch and no implicit selected row. Literal
+results stayed in priority groups; explicit row dispatch retained the filter. Real Alt+Shift+F
+focused Task to time and Enter there dispatched the captured task-only payload. Those two writer
+dispatches were intercepted at the public controller boundary, not sent to the daemon. One actual
+read-only history-export preview POST used the history title, not the different activity filter;
+no task/timer/session mutation was sent. Pinned view hid the activity filter and restored it on return.
+Both local fields fit1217/390/320 CSS-pixel layouts. No owner-profile state, personal app, saved data
+or running timer was changed. Raster/AT/touch/other-engine and owner visual acceptance remain open;
+all source commits stay local, without merge, push or deployment.
