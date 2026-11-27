@@ -32,7 +32,8 @@ The preview does **not** deploy TimeTrace.
 1. Edit a scheduled session or add another one. Pick a task, enter the date and times with the
    browser controls, then Save. No drag gesture is required. The plan stays separate from work.
 2. Type a task name in **Task to time** at the top. Pick a match, or use the arrow keys and
-   Enter. Start another task and use **Other timers** to switch. Try **+5** and **−5** on one clock;
+   Enter. The field clears after launch and never mirrors the selected timer. Start another task
+   and use **Other timers** to switch. Try **+5** and **−5** on one clock;
    the other stays unchanged. Picking the same task selects its existing timer. Toggle **Simulate connection loss**
    and use **Stop & record**: the
    original timestamps show under **Saved on this device · Stop pending sync**. Reconnect

@@ -142,7 +142,8 @@ function App() {
     setExtraInspector(selection);
   }
   function addPlan(trigger: HTMLElement) {
-    edit({ id: Date.now(), task, date: viewDate || day, start: '09:00', end: '09:30' }, trigger);
+    const planTask = task === unassigned ? (running?.task ?? unassigned) : task;
+    edit({ id: Date.now(), task: planTask, date: viewDate || day, start: '09:00', end: '09:30' }, trigger);
   }
   function edit(plan: Plan, trigger: HTMLElement) {
     returnFocus.current = trigger;
@@ -172,11 +173,11 @@ function App() {
   }
   function selectTimer(timer: RunningTimer) {
     setSelectedTimerId(timer.id);
-    setTask(timer.task);
     setPanel('work');
     setTimerMessage('');
   }
   function start(title: string) {
+    setTask(unassigned);
     const existing = title === unassigned ? undefined : timers.find((timer) => timer.task === title);
     if (existing) {
       selectTimer(existing);
