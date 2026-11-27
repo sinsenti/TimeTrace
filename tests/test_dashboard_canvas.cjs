@@ -731,3 +731,27 @@ test('consecutive keyboard moves keep the widget UUID when titles are identical'
     assert.deepEqual(b.elements.widget_grid.children.map(card=>card.dataset.widgetId),['b','c','a']);
     assert.equal(b.context.document.activeElement.closest('[data-widget-id]').dataset.widgetId,'a');
 });
+
+test('saved unassigned widget labels summed overlap and matching record durations honestly', async () => {
+    const workWidget = {...widget('unassigned'), spec: {mode:'structured', query: {
+        source:'recorded_work', measure:'unassigned_recorded_time', chart:'tile'
+    }}};
+    const one = dashboard('one', [workWidget]);
+    const workResult = {columns:[{unit:'hours'}],rows:[],total:2/3,meta:{
+        basis:'unassigned_recorded_sum',cohort:'Whole typed intervals by local record-start range',
+        totals_overlap:true,physical_cohort_seconds:2400,attributed_total_seconds:2400,cohort_count:2
+    }};
+    const b = browser(async (url) => {
+        if(url === '/api/dashboards')return [one];
+        if(url === '/api/dashboards/one')return one;
+        if(url.endsWith('/data'))return {dashboard:one,widgets:one.widgets,results:{unassigned:workResult},sql_results:{},errors:{}};
+        return workResult;
+    });
+    await b.run('loadDashboards()'); await tick();
+    const text=b.elements.widget_grid.textContent;
+    assert.match(text,/Unassigned recorded time sum \(overlaps count in full\)/);
+    assert.match(text,/matching record durations 2400 seconds/);
+    assert.match(text,/not elapsed clock coverage/);
+    assert.match(text,/Non-additive/);
+    assert.doesNotMatch(text,/Recorded work union/);
+});

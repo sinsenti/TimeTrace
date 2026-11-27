@@ -565,11 +565,14 @@ function renderWidget(widget, data, index) {
 
     if (result && !error && !data.loading?.[widget.id]) {
         if (result.meta.basis) {
-            const basis = result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
+            const unassignedSum = result.meta.basis === 'unassigned_recorded_sum';
+            const basis = unassignedSum ? 'Unassigned recorded time sum (overlaps count in full)' : result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union';
             card.appendChild(_el('p', 'text-xs text-slate-400', `${basis}. Values in hours. ${result.meta.cohort}`));
-            if (result.meta.totals_overlap) card.appendChild(_el('p', 'text-xs text-slate-400', 'Non-additive grouped/day/plan totals may overlap; the full-range scalar is independent. Plan fills have no additive scalar.'));
+            if (result.meta.totals_overlap) card.appendChild(_el('p', 'text-xs text-slate-400', unassignedSum ? 'Non-additive fan-out tag totals may overlap; the full-range scalar counts each matching record once.' : 'Non-additive grouped/day/plan totals may overlap; the full-range scalar is independent. Plan fills have no additive scalar.'));
             if (result.meta.physical_cohort_seconds !== undefined) {
-                card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; physical cohort ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. Taskless/unassigned work is not task credit.`));
+                const physical = unassignedSum ? 'matching record durations' : 'physical cohort';
+                const explanation = unassignedSum ? 'Unassigned sums are not elapsed clock coverage or task credit.' : 'Taskless/unassigned work is not task credit.';
+                card.appendChild(_el('p', 'text-xs text-slate-400', `Attributed ${result.meta.attributed_total_seconds} seconds; ${physical} ${result.meta.physical_cohort_seconds} seconds; ${result.meta.cohort_count} records. ${explanation}`));
             }
         } else if (widget.spec?.query?.source === 'sessions') {
             card.appendChild(_el('p', 'text-xs text-slate-400', 'Legacy-inclusive session accounting; additive stored durations/counts, not explicit recorded-work unions.'));

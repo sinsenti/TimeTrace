@@ -651,14 +651,14 @@ function _wbStructuredQuery() {
     if (source === 'recorded_work') {
         const caps = capabilitiesBySource?.[source]?.measures.find(m => m.value === measure)?.capabilities;
         if (query.date_range.preset === 'all_time') {
-            _wbShowError('Recorded unions require a bounded local record-start range (up to 400 days).'); return null;
+            _wbShowError('Recorded-work measures require a bounded local record-start range (up to 400 days).'); return null;
         }
         if (caps?.plan_selection) {
             query.plan_basis = _wbValue('wb_plan_basis');
             query.plan_ids = _wbValue('wb_plan_ids').split(',').map(id => id.trim()).filter(Boolean);
         } else { query.plan_basis = null; query.plan_ids = []; }
         if (query.fill_gaps || _wbValue('wb_comparison') !== 'none') {
-            _wbShowError('Recorded unions do not support gap filling or period baselines. Select original plan or current schedule for plan comparisons.'); return null;
+            _wbShowError('Recorded-work measures do not support gap filling or period baselines. Select original plan or current schedule for plan comparisons.'); return null;
         }
     }
     if (query.fill_gaps && query.group_by.length > 1 &&
@@ -732,9 +732,10 @@ async function wbRunStructuredPreview() {
             box.appendChild(baseline);
         }
         const notes = [...result.meta.warnings];
-        if (result.meta.totals_overlap) notes.push(result.meta.basis ? 'Non-additive unions: group/day/plan totals may overlap.' : 'Fan-out: totals overlap across tags.');
-        if (result.meta.basis) notes.push(`Basis: ${result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union'}. ${result.meta.cohort}`);
-        if (result.meta.physical_cohort_seconds !== undefined) notes.push(`Attributed: ${result.meta.attributed_total_seconds} seconds; physical cohort: ${result.meta.physical_cohort_seconds} seconds (${result.meta.cohort_count} records).`);
+        const unassignedSum = result.meta.basis === 'unassigned_recorded_sum';
+        if (result.meta.totals_overlap) notes.push(unassignedSum ? 'Non-additive fan-out tag totals may overlap; the scalar counts each matching record once.' : result.meta.basis ? 'Non-additive unions: group/day/plan totals may overlap.' : 'Fan-out: totals overlap across tags.');
+        if (result.meta.basis) notes.push(`Basis: ${unassignedSum ? 'Unassigned recorded time sum (overlaps count in full)' : result.meta.basis === 'original' ? 'Original plan' : result.meta.basis === 'current' ? 'Current schedule' : 'Recorded work union'}. ${result.meta.cohort}`);
+        if (result.meta.physical_cohort_seconds !== undefined) notes.push(`Attributed: ${result.meta.attributed_total_seconds} seconds; ${unassignedSum ? 'matching record durations' : 'physical cohort'}: ${result.meta.physical_cohort_seconds} seconds (${result.meta.cohort_count} records).${unassignedSum ? ' Unassigned sums are not elapsed clock coverage or task credit.' : ''}`);
         if (result.meta.truncated) notes.push('Results truncated at the row limit.');
         notes.forEach(text => { const note = document.createElement('p'); note.textContent = text; box.appendChild(note); });
         const table = document.createElement('table');

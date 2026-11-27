@@ -74,6 +74,19 @@ other union measures, historical rows and goals/estimates must not be reclassifi
 query/UI/report consumers and attribution/filter contracts; label overlapping totals honestly.
 Update GLOSSARY and ADR0001 for this expressly approved metric change, preserving original history.
 
+Implemented #68 accounting path: the structured compiler sums untagged unassigned records and
+uses per-record SQL attribution domains for tagged reads. Fan-out counts matching record IDs
+once in the scalar; tag rows may overlap. Split-evenly divides each record among its distinct
+tags before filtering, without renormalization. `QueryService` reports `unassigned_recorded_sum`;
+its physical-cohort seconds are summed matching durations, not elapsed coverage. Local start-day
+selection, whole intervals, raw-record filters, limits and legacy/live exclusions stay unchanged.
+The shared Agenda summary and Statistics widget/preview labels explain the new basis. Weekly
+review consumes the same query response but displays its existing separate taskless SUM; goal
+evidence and history/CSV/Markdown exports retain their existing summed-work and elapsed-union
+paths. No timer, SessionService, task estimate, goal target or export-row mutation is involved.
+Public compiler/service/root-HTTP regressions are in `tests/test_unassigned_recorded_time.py`;
+mounted summary, saved-widget and builder-preview regressions cover the changed presentation.
+
 ## Verification and execution
 
 Use the established public root-HTTP/service and mounted JS controller/presenter seams, red/green

@@ -1,10 +1,10 @@
 """Bounded SQL tag attribution for explicit interval queries (no database access)."""
 
 
-def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicate):
-    """Allocate atomic segments before filtering, or union matching fan-out records."""
+def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicate, *, per_record=False):
+    """Allocate before filtering; per-record domains sum unassigned intervals, including overlaps."""
     keys = "".join(", " + key for key in groups)
-    domain = "task_id" if per_task else "'all'"
+    domain = "id" if per_record else "task_id" if per_task else "'all'"
     tagged_keys = keys + (f", tag AS g{tag_index}" if tag_index is not None else "")
     output_groups = list(groups)
     if tag_index is not None:
@@ -35,7 +35,7 @@ def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicat
         ), active AS (
           SELECT DISTINCT s.domain{"".join(", s." + key for key in groups)},s.x,s.y,t.tag
           FROM segments s JOIN tagged t ON s.x<t.b AND s.y>t.a
-            {"AND s.domain=t.task_id" if per_task else ""}{joins}
+            {"AND s.domain=t.id" if per_record else "AND s.domain=t.task_id" if per_task else ""}{joins}
           WHERE s.y>s.x
         ), allocated AS (
           SELECT *, (y-x)*1.0/COUNT(*) OVER (PARTITION BY domain{keys},x,y) AS credit FROM active
@@ -65,7 +65,7 @@ def tag_union_sql(selected_sql, groups, tag_index, per_task, split, tag_predicat
           FROM merged{group}
         """
     if split:
-        physical = tag_union_sql(selected_sql, groups, tag_index, per_task, False, tag_predicate)
+        physical = tag_union_sql(selected_sql, groups, tag_index, per_task, False, tag_predicate, per_record=per_record)
         joins = " AND ".join(f"a.{key} IS p.{key}" for key in output_groups) or "1"
         columns = "".join(f"a.{key}," for key in output_groups)
         return (

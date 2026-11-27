@@ -72,7 +72,7 @@ _Avoid_: Recorded task time
 A recorded interval without an assigned task. It contributes to elapsed recorded time, but not recorded task time.
 
 **Unassigned recorded time**:
-The time covered by unassigned recorded intervals, counting overlapping minutes only once. It may overlap recorded task time and is not an additive remainder of elapsed recorded time.
+The sum of each unassigned recorded interval's full duration, including overlap: two intervals covering the same 20 minutes contribute 40 minutes. It is not an additive remainder of elapsed recorded time and does not credit a task.
 
 **Link to a scheduled session**:
 An explicit connection from a recorded interval to at most one scheduled session for the same task. Sharing a task or overlapping in time does not create the link.

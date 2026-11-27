@@ -8,7 +8,7 @@ function renderWorkSummary(root,progress,selectedPlanId=null) {
     if(!Number.isFinite(task)||Math.round(task*60)!==Math.round(elapsed*60))main.append(node('span',`${human(task)} task credit`));
     if(!Number.isFinite(unassigned)||unassigned>0)main.append(node('span',`${human(unassigned)} unassigned`));
     const detail=node('details');detail.className='work-summary-details';detail.append(node('summary','How time is counted & breakdown'));
-    detail.append(node('p','Recorded time counts overlapping minutes once. Task credit counts overlaps once within each task; simultaneous work on different tasks can count more than once. Unassigned work can overlap assigned work. These figures are not additive.'));
+    detail.append(node('p','Recorded time counts overlapping minutes once. Task credit counts overlaps once within each task; simultaneous work on different tasks can count more than once. Unassigned time sums each saved interval in full, including overlaps; it can also overlap assigned work. These figures are not additive.'));
     detail.append(node('p',`Recorded task time: ${precise(task)} · Elapsed recorded time: ${precise(elapsed)} · Unassigned: ${precise(unassigned)}`));
     const iso=progress.measurement_at,instant=iso?new Date(/[zZ]$|[+-]\d{2}:\d{2}$/.test(iso)?iso:iso+'Z'):null;
     detail.append(node('p',`${progress.cohort||''} Measured ${instant&&Number.isFinite(instant.getTime())?instant.toLocaleString():'unavailable'}. Zone: ${progress.recorded_task_time.meta?.timezone||'daemon local'}.`));
