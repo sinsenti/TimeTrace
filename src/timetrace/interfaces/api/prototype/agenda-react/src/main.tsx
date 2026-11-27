@@ -1,28 +1,38 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import {
+  activities,
+  ActivityPicker,
+  HistoryTools,
+  localDate,
+  PlanDetails,
+  range,
+  TimerTools,
+  unassigned,
+  type Interval,
+  type RecordedInterval,
+  type Plan,
+} from './agenda-tools';
 
 // Throwaway: compare three layouts for the same touch scheduling and timer workflow.
 const modes = ['A', 'B', 'C'] as const;
 type Mode = (typeof modes)[number];
 const names: Record<Mode, string> = { A: 'Dayline', B: 'Split desk', C: 'Focus' };
-const tasks = ['Draft project outline', 'Review reading notes', 'Weekly planning'];
-const day = '2026-06-16';
-type Plan = { id: number; task: string; date: string; start: string; end: string };
-type Interval = { task: string; start: number; end: number };
+const tasks = activities.map(({ title }) => title);
+const day = localDate(Date.now());
 const sample: Plan[] = [
-  { id: 1, task: tasks[0], date: day, start: '09:00', end: '09:45' },
+  {
+    id: 1,
+    task: tasks[0],
+    date: day,
+    start: '09:00',
+    end: '09:45',
+    notes: 'Keep time to outline the first section.',
+  },
   { id: 2, task: tasks[1], date: day, start: '11:00', end: '11:30' },
   { id: 3, task: tasks[2], date: day, start: '14:00', end: '14:30' },
 ];
-const time = new Intl.DateTimeFormat(undefined, {
-  hour: 'numeric',
-  minute: '2-digit',
-  second: '2-digit',
-});
-function range(item: Interval) {
-  return `${time.format(item.start)} – ${time.format(item.end)}`;
-}
 function fromUrl(): Mode {
   const mode = new URLSearchParams(location.search).get('variant');
   return modes.find((key) => key === mode) ?? 'A';
@@ -37,6 +47,9 @@ function duration(ms: number) {
 function App() {
   const [variant, setVariant] = useState(fromUrl);
   const [plans, setPlans] = useState(sample);
+  const [viewDate, setViewDate] = useState(day);
+  const [pins, setPins] = useState([tasks[0]]);
+  const [entryNote, setEntryNote] = useState('');
   const [draft, setDraft] = useState<Plan | null>(null);
   const [formError, setFormError] = useState('');
   const [task, setTask] = useState(tasks[0]);
@@ -44,9 +57,10 @@ function App() {
   const [running, setRunning] = useState<Omit<Interval, 'end'> | null>(null);
   const [pending, setPending] = useState<Interval | null>(null);
   const [remote, setRemote] = useState<Interval | null>(null);
-  const [recorded, setRecorded] = useState<Interval[]>([]);
+  const [recorded, setRecorded] = useState<RecordedInterval[]>([]);
+  const nextRecordingId = useRef(3);
   const [notice, setNotice] = useState('');
-  const [panel, setPanel] = useState<'work' | 'plans'>('work');
+  const [panel, setPanel] = useState<'work' | 'activities' | 'plans' | 'history'>('work');
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
   const editing = Boolean(draft);
@@ -90,7 +104,11 @@ function App() {
   }
   function edit(plan: Plan, trigger: HTMLElement) {
     returnFocus.current = trigger;
-    setDraft(plan);
+    setDraft(
+      plans.some(({ id }) => id === plan.id)
+        ? { ...plan, original: plan.original ?? `${plan.date} · ${plan.start}–${plan.end}` }
+        : plan,
+    );
     setFormError('');
   }
   function savePlan(event: FormEvent) {
@@ -105,19 +123,27 @@ function App() {
         ? previous.map((row) => (row.id === draft.id ? draft : row))
         : [...previous, draft],
     );
+    setViewDate(draft.date);
     setNotice(`Scheduled session saved for ${draft.task}.`);
     setDraft(null);
   }
-  function start() {
-    setRunning({ task, start: Date.now() });
+  function start(title: string) {
+    setTask(title);
+    setPanel('work');
+    setEntryNote('');
+    setRunning({ task: title, start: Date.now() });
     setNotice(online ? 'Timer started in the demo.' : 'Timer started on this device in the demo.');
+  }
+  function saveRecording(item: Interval) {
+    const saved = { ...item, id: nextRecordingId.current++ };
+    setRecorded((previous) => [saved, ...previous]);
   }
   function stop() {
     if (!running) return;
-    const item = { ...running, end: Date.now() };
+    const item = { ...running, end: Date.now(), note: entryNote.trim() };
     setRunning(null);
     if (online) {
-      setRecorded((previous) => [item, ...previous]);
+      saveRecording(item);
       setNotice('Recorded interval synced in the demo.');
     } else {
       setPending(item);
@@ -134,13 +160,13 @@ function App() {
       setRemote({ task: pending.task, start: pending.start - 900_000, end: pending.end + 900_000 });
       setNotice('Same-task overlap. Review the two captures before syncing.');
     } else {
-      setRecorded((previous) => [pending, ...previous]);
+      saveRecording(pending);
       setPending(null);
       setNotice('Original time range synced in the demo.');
     }
   }
   function resolve(item: Interval) {
-    setRecorded((previous) => [item, ...previous]);
+    saveRecording(item);
     setPending(null);
     setRemote(null);
     setNotice('Choice synced in the demo. Only the selected interval is counted.');
@@ -150,25 +176,43 @@ function App() {
     <section className="card timer" aria-labelledby="timer-title">
       <p className="eyebrow">Recorded work</p>
       <h2 id="timer-title">{running ? 'Timer running' : 'Timer'}</h2>
-      {running ? <Clock key={running.start} start={running.start} /> : <p className="clock">00:00:00</p>}
+      {running && (variant !== 'C' || panel === 'work') ? (
+        <Clock key={running.start} start={running.start} />
+      ) : (
+        <p className="clock">00:00:00</p>
+      )}
       {running ? (
         <p>{running.task}</p>
       ) : (
         <label>
           Task
           <select value={task} onChange={(e) => setTask(e.target.value)}>
-            {tasks.map((name) => (
+            {[...tasks, unassigned].map((name) => (
               <option key={name}>{name}</option>
             ))}
           </select>
         </label>
+      )}
+      {running && (
+        <details className="tool-details">
+          <summary>Entry note</summary>
+          <label>
+            Entry note
+            <textarea
+              rows={2}
+              value={entryNote}
+              onChange={(event) => setEntryNote(event.target.value)}
+            />
+          </label>
+          <p className="hint">Stop includes this note in the simulated recorded interval.</p>
+        </details>
       )}
       {running ? (
         <button className="primary" onClick={stop}>
           Stop timer
         </button>
       ) : (
-        <button className="primary" disabled={pending !== null} onClick={start}>
+        <button className="primary" disabled={pending !== null} onClick={() => start(task)}>
           Start timer
         </button>
       )}
@@ -177,6 +221,7 @@ function App() {
           Review or sync the current recording before starting another in this demo.
         </p>
       )}
+      <TimerTools />
     </section>
   );
   const feedback = (
@@ -215,8 +260,8 @@ function App() {
       )}
       {recorded.length > 0 && (
         <ul className="records">
-          {recorded.map((item, index) => (
-            <li key={`${item.start}-${index}`}>
+          {recorded.map((item) => (
+            <li key={item.id}>
               <strong>{item.task}</strong>
               <span>{range(item)}</span>
               <small>Synced</small>
@@ -225,6 +270,31 @@ function App() {
         </ul>
       )}
     </section>
+  );
+  const discovery = (
+    <ActivityPicker
+      pinned={pins}
+      setPinned={setPins}
+      plans={plans.filter((plan) => plan.date === viewDate)}
+      onChoose={(title) => {
+        setTask(title);
+        setPanel('work');
+        setNotice(`${title} selected. No timer started.`);
+      }}
+      onStart={start}
+      canStart={!running && !pending}
+    />
+  );
+  const historyTools = (
+    <HistoryTools
+      recorded={recorded}
+      plans={plans}
+      day={localDate(Date.now() - 86_400_000)}
+      save={(item) => {
+        saveRecording(item);
+        setNotice('Manual recorded work saved in the demo.');
+      }}
+    />
   );
   const agenda = (
     <section className="card agenda" aria-labelledby="agenda-title">
@@ -237,14 +307,28 @@ function App() {
         </div>
         <button
           onClick={(e) =>
-            edit({ id: Date.now(), task, date: day, start: '09:00', end: '09:30' }, e.currentTarget)
+            edit(
+              {
+                id: Date.now(),
+                task,
+                date: viewDate || day,
+                start: '09:00',
+                end: '09:30',
+              },
+              e.currentTarget,
+            )
           }
         >
           Add session
         </button>
       </div>
+      <label>
+        Local date
+        <input type="date" value={viewDate} onChange={(event) => setViewDate(event.target.value)} />
+      </label>
       <ul className="plan-list">
-        {[...plans]
+        {plans
+          .filter((plan) => !viewDate || plan.date === viewDate)
           .sort((a, b) => `${a.date}T${a.start}`.localeCompare(`${b.date}T${b.start}`))
           .map((plan) => (
             <li key={plan.id}>
@@ -261,9 +345,15 @@ function App() {
               >
                 Edit times
               </button>
+              <div className="plan-more">
+                <PlanDetails plan={plan} />
+              </div>
             </li>
           ))}
       </ul>
+      {!plans.some((plan) => !viewDate || plan.date === viewDate) && (
+        <p className="hint">No scheduled sessions on this date.</p>
+      )}
     </section>
   );
   const editor = draft && (
@@ -276,7 +366,7 @@ function App() {
         <label>
           Scheduled task
           <select value={draft.task} onChange={(e) => setDraft({ ...draft, task: e.target.value })}>
-            {tasks.map((name) => (
+            {[...tasks, unassigned].map((name) => (
               <option key={name}>{name}</option>
             ))}
           </select>
@@ -310,6 +400,21 @@ function App() {
             />
           </label>
         </div>
+        <label>
+          Tags
+          <input
+            value={draft.tags ?? ''}
+            onChange={(event) => setDraft({ ...draft, tags: event.target.value })}
+          />
+        </label>
+        <label>
+          Plan notes
+          <textarea
+            rows={2}
+            value={draft.notes ?? ''}
+            onChange={(event) => setDraft({ ...draft, notes: event.target.value })}
+          />
+        </label>
         {formError && <p role="alert">{formError}</p>}
         <div className="button-row">
           <button className="primary" type="submit">
@@ -350,10 +455,24 @@ function App() {
           </p>
         </div>
         {variant === 'A' && (
-          <VariantA agenda={agenda} editor={editor} timer={timer} feedback={feedback} />
+          <VariantA
+            agenda={agenda}
+            editor={editor}
+            timer={timer}
+            feedback={feedback}
+            discovery={discovery}
+            historyTools={historyTools}
+          />
         )}
         {variant === 'B' && (
-          <VariantB agenda={agenda} editor={editor} timer={timer} feedback={feedback} />
+          <VariantB
+            agenda={agenda}
+            editor={editor}
+            timer={timer}
+            feedback={feedback}
+            discovery={discovery}
+            historyTools={historyTools}
+          />
         )}
         {variant === 'C' && (
           <>
@@ -361,18 +480,25 @@ function App() {
               <button aria-pressed={panel === 'work'} onClick={() => setPanel('work')}>
                 Timer and work
               </button>
+              <button aria-pressed={panel === 'activities'} onClick={() => setPanel('activities')}>
+                Activities
+              </button>
               <button aria-pressed={panel === 'plans'} onClick={() => setPanel('plans')}>
                 Schedule
               </button>
+              <button aria-pressed={panel === 'history'} onClick={() => setPanel('history')}>
+                History
+              </button>
             </nav>
-            {panel === 'work' ? (
-              <div className="focus-pane">
+            <div className="focus-pane">
+              <div className="focus-pane" hidden={panel !== 'work'}>
                 {timer}
                 {feedback}
               </div>
-            ) : (
-              <div className="focus-pane">{editor || agenda}</div>
-            )}
+              <div hidden={panel !== 'activities'}>{discovery}</div>
+              <div hidden={panel !== 'plans'}>{editor || agenda}</div>
+              <div hidden={panel !== 'history'}>{historyTools}</div>
+            </div>
           </>
         )}
         <section className="card demo" aria-labelledby="demo-title">
@@ -444,27 +570,38 @@ function Clock({ start }: { start: number }) {
   return <p className="clock">{duration(elapsed)}</p>;
 }
 
-type Blocks = { agenda: ReactNode; editor: ReactNode; timer: ReactNode; feedback: ReactNode };
-function VariantA({ agenda, editor, timer, feedback }: Blocks) {
+type Blocks = {
+  agenda: ReactNode;
+  editor: ReactNode;
+  timer: ReactNode;
+  feedback: ReactNode;
+  discovery: ReactNode;
+  historyTools: ReactNode;
+};
+function VariantA({ agenda, editor, timer, feedback, discovery, historyTools }: Blocks) {
   return (
     <div className="dayline">
       {editor}
       {agenda}
       {timer}
       {feedback}
+      {discovery}
+      {historyTools}
     </div>
   );
 }
-function VariantB({ agenda, editor, timer, feedback }: Blocks) {
+function VariantB({ agenda, editor, timer, feedback, discovery, historyTools }: Blocks) {
   return (
     <div className="split">
       <aside aria-label="Timer and work">
         {timer}
         {feedback}
+        {discovery}
       </aside>
       <div className="planning">
         {editor}
         {agenda}
+        {historyTools}
       </div>
     </div>
   );

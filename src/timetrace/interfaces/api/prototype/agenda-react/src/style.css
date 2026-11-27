@@ -1,3 +1,7 @@
+[hidden] {
+  display: none !important;
+}
+
 :root {
   font-family: system-ui, sans-serif;
   color: #192e2a;
@@ -345,6 +349,68 @@ form {
     grid-column: auto;
     grid-row: auto;
   }
+}
+.control-row {
+  margin: 0.55rem 0;
+}
+.tool-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+.tool-list li {
+  border-top: 1px solid var(--border);
+  padding: 0.55rem 0;
+}
+.tool-details {
+  margin: 0.4rem 0;
+}
+summary {
+  cursor: pointer;
+  font-weight: 650;
+  padding: 0.6rem 0;
+}
+.example {
+  margin: 0.6rem 0;
+  padding: 0.7rem;
+  background: #eff5f1;
+  border-radius: 0.5rem;
+}
+.example pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 14rem;
+  overflow: auto;
+}
+.check {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+}
+.check input {
+  width: 1.15rem;
+  min-height: 1.15rem;
+  accent-color: var(--accent);
+}
+textarea {
+  font: inherit;
+  width: 100%;
+  max-width: 100%;
+  color: inherit;
+  background: #fff;
+  border: 1px solid #829e93;
+  border-radius: 0.45rem;
+  padding: 0.45rem 0.65rem;
+}
+.plan-list li .plan-more {
+  grid-column: 1 / -1;
+}
+.segmented {
+  flex-wrap: wrap;
+}
+.segmented button {
+  min-width: min(100%, 7rem);
 }
 @media (min-width: 56rem) {
   .split {

@@ -16,8 +16,8 @@ npm ci && npm run dev
 ```
 
 Open http://127.0.0.1:18783/ (or append `?variant=A`, `?variant=B`, or `?variant=C`).
-The bottom switcher keeps demo state when switching. Arrow keys switch when focus is not in
-an interactive control. `npm run build` type-checks and builds static files.
+The bottom switcher keeps plans, pins, and recordings when switching. Local filters and open
+panels can reset between layouts. Arrow keys switch when focus is not in an interactive control. `npm run build` type-checks and builds static files.
 
 For physical phones on a trusted local network, replace the dev command with
 `npm exec -- vite --host 0.0.0.0 --port 18783 --strictPort` and open the development
@@ -35,8 +35,22 @@ The preview does **not** deploy TimeTrace.
    explicitly choose one for this scripted example. The losing capture is not counted; the
    original times are shown for comparison. This previews the review UI, not all eventual
    correction/keep-both behavior.
-4. Compare which layout makes the active timer and the next planned session easiest to find.
-   Try the edit form using touch and the software keyboard, then a desktop keyboard.
+4. Open **Start an activity** to search by title or priority and manage pins. Select an
+   activity without starting it, or start it explicitly. Try a taskless timer and an Entry note.
+5. Open **History & plans** to add past recorded work, optionally link it to a same-task plan,
+   filter the ledger and preview selected/all-filtered saved work as Markdown or CSV.
+6. Compare which layout makes the timer, schedule, discovery, and history easiest to reach.
+   Try the forms using touch and the software keyboard, then a desktop keyboard.
+
+### Designed vs. wired
+
+Activity selection, pins, plan editing, Start/Stop, Entry notes, manual recording, basic ledger
+filters and export **preview** work in memory. Plan details show original vs. current times.
+Expanding **Timer tools**, **Plan details & actions**, and a history row shows where the existing
+advanced tools go: switching timers, pause/resume, correction/discard, idle/focus, assignment,
+plan extension, Delete everything/Squeeze, and saved-work editing. Those actions, goal totals,
+actual export copying/downloading, and server error recovery are illustrations or not wired;
+the prototype does not attempt the production Agenda's exact policy or report math.
 
 ## Performance and scope
 
