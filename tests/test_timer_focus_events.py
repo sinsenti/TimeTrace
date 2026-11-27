@@ -297,7 +297,23 @@ def test_unknown_old_anchor_is_initialized_prospectively_not_on_get(client, db, 
     clock.advance(7200)
     factory().evaluate()
     assert [n["kind"] for n in client.get("/timer-notifications").json()["notices"]] == ["two_hour"]
-    assert client.post(path + "/focus_evaluate", json={"operation_id": "not-a-daemon"}).status_code == 400
+    clock.advance(7200)
+    before_timer = client.get(path).json()
+    before_notices = client.get("/timer-notifications").json()
+    before_file = file.read_bytes()
+    before_operations = [row.model_dump() for row in db.exec(select(MutationOperation)).all()]
+    # Public path validation rejects private daemon actions before observing or mutating anything.
+    refused = client.post(path + "/focus_evaluate", json={"operation_id": "not-a-daemon"})
+    assert refused.status_code == 422
+    errors = refused.json()["detail"]
+    assert len(errors) == 1
+    assert errors[0]["type"] == "literal_error"
+    assert errors[0]["loc"] == ["path", "action"]
+    assert errors[0]["input"] == "focus_evaluate"
+    assert client.get(path).json() == before_timer
+    assert client.get("/timer-notifications").json() == before_notices
+    assert file.read_bytes() == before_file
+    assert [row.model_dump() for row in db.exec(select(MutationOperation)).all()] == before_operations
 
 
 def test_automatic_boundary_only_its_timer_break_waits_and_claims_once(client, focus_world):

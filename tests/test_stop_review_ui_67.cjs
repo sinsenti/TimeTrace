@@ -1,5 +1,7 @@
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
 const {createTimerController} = require('../src/timetrace/interfaces/api/static/js/multiple_timers.js');
 function setup({paused=false,lost=false}={}) {
     const calls=[], store=new Map();
@@ -7,7 +9,7 @@ function setup({paused=false,lost=false}={}) {
     const control=createTimerController({storage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},operationId:()=>`op-${calls.length}`,onState(){},api:{
         get:async url=>{calls.push(['GET',url]);return url==='/timers'?{timers:[timer],revision:1}:{status:'pending_reconciliation'};},
         post:async (url,payload)=>{calls.push(['POST',url,payload]);if(lost)throw Error('lost ACK');
-            timer={...timer,state:'paused',revision:3,stop_review:{id:payload.operation_id,cutoff:'2026-01-01T10:00:00Z',was_running:!paused}};
+            timer={...timer,state:'paused',revision:3,stop_review:{id:payload.operation_id,cutoff:'2026-01-01T10:00:00Z',was_running:!paused,timer_revision:3}};
             return {operation_id:payload.operation_id,timer};}
     }});
     return {control,calls,store};
@@ -43,6 +45,21 @@ function dialogDocument() {
     doc={createElement:t=>new Element(t)};doc.body=new Element('body');doc.activeElement=new Element('button');return doc;
 }
 const descendants = el => [el,...el.children.flatMap(descendants)];
+// Exercise the shipped capture-phase Escape boundary, not a synthetic dialog dismissal alone.
+function escapeKey(doc) {
+    let keydown;
+    doc.addEventListener=()=>{};
+    doc.querySelector=()=>doc.body.children.findLast(n=>n.open);
+    for(const dialog of doc.body.children) dialog.requestClose=()=>{
+        let prevented=false;
+        dialog.listeners.cancel({preventDefault(){prevented=true;}});
+        if(!prevented)dialog.close();
+    };
+    vm.runInNewContext(fs.readFileSync(require.resolve('../src/timetrace/interfaces/api/static/js/app_dialogs.js'),'utf8'),{
+        document:doc,window:{addEventListener:(name,listener)=>{if(name==='keydown')keydown=listener;}}
+    });
+    keydown({key:'Escape',preventDefault(){},stopImmediatePropagation(){}});
+}
 test('mounted Stop review requires an explicit plan and shows separated actual parts; Escape only dismisses',async()=>{
     const doc=dialogDocument(),calls=[];
     const timer={id:'timer',revision:3,state:'paused',stop_review:{id:'review',was_running:true}};
@@ -105,4 +122,93 @@ test('mounted already-paused Stop disables Continue; uncertain commit remains GE
     await descendants(p.dialog).find(n=>n.textContent==='Check operation (read only)').listeners.click();await p.control.retry();
     assert.equal(p.calls.filter(c=>c[1].endsWith('/stop-commit')).length,1);
     assert.equal(p.calls.at(-1)[0],'GET');
+});
+
+test('public Stop lifecycle prepares a new cutoff after Cancel then ordinary Resume on a nonselected row', async () => {
+    const doc=dialogDocument(), calls=[], store=new Map();
+    const other={id:'other',revision:1,state:'running'};
+    let target={id:'target',revision:2,state:'running'}, cutoff=0;
+    const control=createTimerController({storage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},onState(){},operationId:()=>`op-${calls.length}`,api:{
+        get:async()=>({timers:[other,target],revision:1}),
+        post:async(url,payload)=>{
+            calls.push([url,payload]);
+            if(url.endsWith('/stop-preview')) return {actual_parts:[],candidates:[],blocked:{actual:[],continue:[],fit:['No plan'],split:['No plan'],scheduled:['No plan']},effects:{}};
+            const revision=target.revision+1;
+            target=url.endsWith('/resume') ? {...target,state:'running',revision} : {...target,state:'paused',revision,stop_review:{id:payload.operation_id,timer_revision:revision,cutoff:`2020-01-01T10:0${++cutoff}:00Z`,was_running:true}};
+            return {timer:target,operation_id:payload.operation_id};
+        }
+    }});
+    await control.refresh();await control.act('target','stop',{expected_revision:2});
+    const first=await mountStopReview({document:doc,control,id:'target'});
+    first.listeners.cancel({preventDefault(){}});
+    await control.act('target','resume',{expected_revision:3});
+    control.select('other');
+    await control.act('target','stop',{expected_revision:4});
+    assert.equal(calls.filter(c=>c[0].endsWith('/stop-review')).length,2);
+    assert.equal(control.snapshot().timers.find(t=>t.id==='target').stop_review.cutoff,'2020-01-01T10:02:00Z');
+    assert.equal(control.snapshot().timers.find(t=>t.id==='target').state,'paused');
+    assert.equal(control.snapshot().selectedTimerId,'other');assert.deepEqual(control.snapshot().timers[0],other);
+});
+
+for(const dismiss of ['Cancel','Escape']) for(const uncertain of [false,true]) test(`mounted Stop blocks ${dismiss} while commit is held; ${uncertain?'uncertain Close retains journal':'late ACK yields focus to newer owner'}`,async()=>{
+    const doc=dialogDocument();let release;const held=new Promise(r=>{release=r;});let mutations=0;
+    const timer={id:'t',revision:3,state:'paused',stop_review:{id:'r'}};
+    const control={snapshot:()=>({timers:[timer],message:'Inspect operation'}),previewStop:async()=>({actual_parts:[],candidates:[],blocked:{actual:[],continue:[],fit:[],split:[],scheduled:[]}}),commitStop:async()=>{mutations++;await held;return !uncertain;}};
+    const dialog=await mountStopReview({document:doc,control,id:'t'});
+    const save=descendants(dialog).find(n=>n.textContent==='Save actual time'), cancel=descendants(dialog).find(n=>n.textContent==='Cancel — leave paused');
+    const saving=save.listeners.click();
+    if(dismiss==='Cancel')cancel.listeners.click();else escapeKey(doc);
+    assert.equal(dialog.open,true);assert.equal(cancel.disabled,true);
+    const newer=doc.createElement('input');newer.focus();release();await saving;
+    assert.equal(mutations,1);assert.equal(doc.activeElement,newer);
+    if(uncertain){assert.equal(dialog.open,true);assert.match(cancel.textContent,/Close.*inspect/i);assert.ok(!descendants(dialog).some(n=>n.textContent?.includes('Cancel or Escape leaves it paused')));cancel.listeners.click();assert.equal(dialog.open,false);}
+    else assert.equal(dialog.open,false);
+});
+
+for(const dismiss of ['Cancel','Escape']) for(const uncertain of [false,true]) test(`mounted recording blocks held-write ${dismiss}; ${uncertain?'unknown outcome offers Close and GET-only recovery':'late ACK cannot steal newer focus'}`,async()=>{
+    const doc=dialogDocument();let release;const held=new Promise(r=>{release=r;});const calls=[];let journal=null,acks=0;
+    const api={post:async()=>({consent_token:'exact',existing_work:[]}),saveRecordedWork:async payload=>{calls.push('POST');journal=payload;await held;if(uncertain)throw Error('lost');journal=null;return {id:'w'};},recordedWorkAttempt:()=>journal,recoverRecordedWork:async()=>{calls.push('GET');journal=null;return {id:'w'};}};
+    const view=mountReviewedRecording({document:doc,api,payload:{start_time:'2020-01-01T09:00:00Z',end_time:'2020-01-01T10:00:00Z'},operationId:()=> 'op',acknowledge:()=>acks++});
+    await new Promise(setImmediate);const nodes=descendants(view.dialog),cancel=nodes.find(n=>n.textContent==='Cancel');
+    const saving=nodes.find(n=>n.textContent==='Save recorded work').listeners.click();
+    if(dismiss==='Cancel')cancel.listeners.click();else escapeKey(doc);
+    assert.equal(view.dialog.open,true);assert.equal(cancel.disabled,true);
+    const newer=doc.createElement('input');newer.focus();release();await saving;
+    assert.equal(doc.activeElement,newer);
+    if(uncertain){assert.match(cancel.textContent,/Close.*inspect/i);assert.ok(journal);await descendants(view.dialog).find(n=>n.textContent==='Check recording operation (read only)').listeners.click();assert.deepEqual(calls,['POST','GET']);}
+    assert.equal(view.dialog.open,false);assert.equal(acks,1);
+});
+
+for(const state of ['running','paused']) test(`Stop prepares again for ${state} timer with a stale review revision`,async()=>{
+    const calls=[],store=new Map();
+    const timer={id:'t',state,revision:5,stop_review:{id:'old',timer_revision:4}};
+    const control=createTimerController({storage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},onState(){},operationId:()=> 'new-review',api:{get:async()=>({timers:[timer],revision:1}),post:async(url,payload)=>{calls.push(url);return {operation_id:payload.operation_id,timer:{...timer,state:'paused',revision:6,stop_review:{id:payload.operation_id,timer_revision:6}}};}}});
+    await control.refresh();await control.act('t','stop',{expected_revision:5});assert.deepEqual(calls,['/timers/t/stop-review']);
+});
+
+test('recording ACK restores a replacement launcher only while the dialog owns focus',async()=>{
+    const doc=dialogDocument(), launcher=doc.activeElement, replacement=doc.createElement('button');
+    const view=mountReviewedRecording({document:doc,payload:{start_time:'2020-01-01T09:00:00Z',end_time:'2020-01-01T10:00:00Z'},operationId:()=> 'op',api:{post:async()=>({consent_token:'exact',existing_work:[]}),saveRecordedWork:async()=>({id:'w'})},acknowledge:()=>{launcher.isConnected=false;},returnFocus:()=>replacement});
+    await new Promise(setImmediate);await descendants(view.dialog).find(n=>n.textContent==='Save recorded work').listeners.click();assert.equal(doc.activeElement,replacement);assert.equal(view.dialog.open,false);
+});
+
+test('mounted uncertain Stop recovers the final ACK by GET without changing newer selection or focus',async()=>{
+    const doc=dialogDocument(),calls=[],store=new Map();
+    let stopped=false;
+    const target={id:'target',revision:3,state:'paused',stop_review:{id:'review',timer_revision:3}};
+    const other={id:'other',revision:1,state:'running'};
+    const result={operation_id:'commit-op',timer:{...target,state:'stopped',revision:4}};
+    const control=createTimerController({storage:{getItem:k=>store.get(k)||null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)},onState(){},operationId:()=> 'commit-op',api:{
+        get:async url=>{calls.push(['GET',url]);return url==='/timers'?{timers:stopped?[other]:[target,other],revision:4}:{status:'finalized',result};},
+        post:async(url)=>{calls.push(['POST',url]);if(url.endsWith('/stop-preview'))return {consent_token:'exact',actual_parts:[],candidates:[],blocked:{actual:[],continue:[],fit:[],split:[],scheduled:[]}};stopped=true;throw Error('lost ACK');}
+    }});
+    await control.refresh();const dialog=await mountStopReview({document:doc,control,id:'target'});
+    await descendants(dialog).find(n=>n.textContent==='Save actual time').listeners.click();
+    assert.ok(control.snapshot().receipt);control.select('other');const newer=doc.createElement('input');newer.focus();
+    await descendants(dialog).find(n=>n.textContent==='Check operation (read only)').listeners.click();await new Promise(setImmediate);
+    assert.equal(control.snapshot().lastResult.operation_id,'commit-op');assert.equal(control.snapshot().selectedTimerId,'other');assert.equal(doc.activeElement,newer);
+    assert.equal(calls.filter(c=>c[0]==='POST'&&c[1].endsWith('/stop-commit')).length,1);
+    assert.ok(calls.some(c=>c[0]==='GET'&&c[1]==='/operations/commit-op'));
+    assert.equal(control.snapshot().receipt,null);assert.equal(store.has('timetrace_timer_v2_operation'),false);
+    descendants(dialog).find(n=>n.textContent==='Close — inspect operation').listeners.click();assert.equal(dialog.open,false);
 });

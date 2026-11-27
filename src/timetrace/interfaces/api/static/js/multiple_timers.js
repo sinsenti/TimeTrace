@@ -235,7 +235,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             if (action === 'discard') return Promise.resolve(false);
             if (action === 'stop') {
                 const timer = timers.find(t => t.id === id);
-                if (timer?.stop_review) return Promise.resolve(!pending && (!receipt || receipt.outcome === 'acknowledged'));
+                if (timer?.state === 'paused' && timer.stop_review?.timer_revision === timer.revision) return Promise.resolve(!pending && (!receipt || receipt.outcome === 'acknowledged'));
                 return write(`/timers/${encodeURIComponent(id)}/stop-review`, payload, false, onAcknowledged, false);
             }
             return write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged);

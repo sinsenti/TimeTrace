@@ -593,3 +593,24 @@ def test_paused_before_review_uses_stop_click_cutoff_without_crediting_decision_
     assert work["start_time"] == "2025-01-01T09:00:00Z"
     assert work["end_time"] == "2025-01-01T10:15:00Z"
     assert work["duration_seconds"] == 4500
+
+
+def test_cancel_then_ordinary_resume_and_stop_captures_second_cutoff(client, clock):
+    timer = post(client, "/timers")["timer"]
+    other = post(client, "/timers")["timer"]
+    clock.instant = datetime(2025, 1, 1, 10, 10, tzinfo=UTC)
+    first = prepare(client, timer)["timer"]
+    # Cancel is dismissal only: no mutation. Ordinary Resume must not reuse this old review.
+    clock.instant = datetime(2025, 1, 1, 10, 30, tzinfo=UTC)
+    resumed = post(client, f"/timers/{timer['id']}/resume", expected_revision=first["revision"])["timer"]
+    assert resumed["state"] == "running"
+    assert resumed["stop_review"]["timer_revision"] != resumed["revision"]
+    clock.instant = datetime(2025, 1, 1, 10, 35, tzinfo=UTC)
+    second = prepare(client, resumed)["timer"]
+    assert second["stop_review"]["id"] != first["stop_review"]["id"]
+    assert second["stop_review"]["cutoff"] == "2025-01-01T10:35:00+00:00"
+    assert second["stop_review"]["timer_revision"] == second["revision"]
+    result = commit(client, second, preview(client, second))
+    rows = [client.get(f"/recorded-work/{i}").json() for i in result["recorded_work_ids"]]
+    assert [row["duration_seconds"] for row in rows] == [600, 300]
+    assert client.get(f"/timers/{other['id']}").json()["state"] == "running"

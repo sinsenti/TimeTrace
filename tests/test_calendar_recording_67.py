@@ -145,3 +145,62 @@ def test_receipted_recording_rejects_payload_reuse_and_future_end(client):
     )
     assert future.status_code == 400, future.text
     assert future.json()["code"] == "future_recorded_end"
+
+
+def test_reviewed_projection_recording_returns_materialized_identity_and_get_only_receipt(client, monkeypatch):
+    from datetime import UTC, datetime
+
+    import timetrace.services.recurrence_service as recurrence
+    import timetrace.services.session_service as sessions
+
+    class Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2025, 1, 1, 9, 30, tzinfo=UTC)
+
+    monkeypatch.setattr(recurrence, "datetime", Clock)
+    monkeypatch.setattr(sessions, "datetime", Clock)
+    task = client.post(
+        "/api/tasks",
+        json={
+            "title": "Record a live projection",
+            "is_recurring": True,
+            "recurrence_rrule": "FREQ=DAILY",
+            "recurrence_dtstart": "2025-01-01T09:00:00Z",
+            "recurrence_duration_minutes": 60,
+            "recurrence_timezone": "UTC",
+        },
+    ).json()
+    window = {"start": "2025-01-01T00:00:00Z", "end": "2025-01-02T00:00:00Z"}
+    projection = client.get("/agenda", params=window).json()["items"][0]
+    assert projection["id"].startswith("virt:")
+    payload = {
+        "task_id": task["id"],
+        "scheduled_session_id": projection["id"],
+        "expected_projection_revision": projection["projection_revision"],
+        "start_time": projection["start_time"],
+        "end_time": "2025-01-01T09:20:00Z",
+    }
+    approval = client.post("/recorded-work/preview", json=payload)
+    assert approval.status_code == 200, approval.text
+    assert client.get(f"/scheduled-sessions/{projection['id']}").json() == projection
+    operation = str(uuid4())
+    saved = client.post(
+        "/recorded-work", json={**payload, "operation_id": operation, "consent_token": approval.json()["consent_token"]}
+    )
+    assert saved.status_code == 201, saved.text
+    result = saved.json()
+    # Treat the response as lost; the original journal operation alone recovers the same final UUID/revision.
+    recovered = client.get(f"/operations/recorded-work:{operation}").json()["result"]
+    assert recovered == result
+    plan = recovered["linked_plan"]
+    assert not plan["id"].startswith("virt:")
+    assert plan["revision"] == 2
+    assert plan["start_time"] == projection["start_time"]
+    assert plan["end_time"] == projection["end_time"]
+    assert plan["original_start"] == projection["original_start"]
+    assert plan["original_end"] == projection["original_end"]
+    assert client.get(f"/scheduled-sessions/{plan['id']}").json() == plan
+    items = client.get("/agenda", params=window).json()["items"]
+    assert {row["id"] for row in items} == {plan["id"], result["id"]}
+    assert client.get(f"/api/tasks/{task['id']}").json()["status"] == task["status"]

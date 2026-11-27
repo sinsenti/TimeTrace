@@ -47,7 +47,7 @@ function createPlanningSession(taskId = null) {
     const date = new Date(calendar.getDate());
     const now = new Date();
     date.setHours(now.getHours(), Math.floor(now.getMinutes() / 15) * 15, 0, 0);
-    openCreateSessionModal(date, null, taskId, "", "schedule");
+    openCreateSessionModal(date, null, taskId, "", "calendar");
 }
 
 function filterPlanningTasks(query) {

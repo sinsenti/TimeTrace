@@ -10,18 +10,19 @@ async function mountStopReview({document, control, id, launcher = document.activ
     const status = make('p', 'Reading actual work and eligible plans…'); status.setAttribute('role', 'status');
     const body = make('section');
     const cancel = make('button', 'Cancel — leave paused'); cancel.type = 'button';
-    let closed = false, generation = 0, request = null;
-    function close() {
-        if (closed) return;
+    let closed = false, pending = false, generation = 0, request = null;
+    function close(authoritative = false) {
+        if (closed || (pending && !authoritative)) return;
         const ownedFocus = dialog.contains(document.activeElement);
         closed = true; generation++; dialog.close(); dialog.remove();
         if (ownedFocus) (previousFocus?.isConnected ? previousFocus : returnFocus())?.focus();
     }
-    cancel.addEventListener('click', close);
+    cancel.addEventListener('click', () => close());
     dialog.addEventListener('cancel', event => { event.preventDefault(); close(); });
-    dialog.addEventListener('close', close);
+    dialog.addEventListener('close', () => close());
     dialog.addEventListener('keydown', event => event.stopPropagation());
-    dialog.append(heading, make('p', 'This timer is paused. Decision time is excluded. Cancel or Escape leaves it paused; nothing is discarded. Other timers are unchanged.'), status, body, cancel);
+    const explanation = make('p', 'This timer is paused. Decision time is excluded. Cancel or Escape leaves it paused; nothing is discarded. Other timers are unchanged.');
+    dialog.append(heading, explanation, status, body, cancel);
     document.body.append(dialog); dialog.showModal(); cancel.focus();
     // Manifest work is naive DB UTC; typed plans/actual segments already carry an offset.
     const date = value => new Date(/(?:Z|[+-]\d\d:\d\d)$/i.test(value) ? value : `${value}Z`).toLocaleString();
@@ -67,12 +68,15 @@ async function mountStopReview({document, control, id, launcher = document.activ
                 if (policy === 'actual') button.className = 'app-dialog-primary';
                 if (reasons.length) body.append(make('p', `${text}: ${reasons.join(' ')}`));
                 button.addEventListener('click', async () => {
+                    if (pending || closed) return;
                     if (control.hasNoteDraft?.(id)) { status.textContent = 'Save or discard the Entry note draft before approving Stop.'; return; }
+                    pending = true; cancel.disabled = true;
+                    explanation.textContent = 'Stop approval is being sent. Wait for its outcome; dismissal cannot undo a dispatched mutation.';
                     buttons.forEach(b => { b.disabled = true; }); select.disabled = true;
                     try {
                         const ok = await control.commitStop(id, {...request, consent_token:approval.consent_token, policy});
                         if (closed) return;
-                        if (ok) close();
+                        if (ok) close(true);
                         else {
                             status.textContent = control.snapshot().message || 'Not confirmed. Inspect the saved operation; never repeat an uncertain write.';
                             const read = make('button', 'Check operation (read only)'); read.type = 'button';
@@ -80,6 +84,11 @@ async function mountStopReview({document, control, id, launcher = document.activ
                             body.append(read);
                         }
                     } catch (err) { if (!closed) status.textContent = `Not confirmed: ${err.message}. Use timer operation recovery; no automatic retry.`; }
+                    finally {
+                        pending = false; cancel.disabled = false;
+                        cancel.textContent = 'Close — inspect operation';
+                        explanation.textContent = 'Approval was dispatched. Closing does not cancel or undo it. Keep the saved operation and inspect its outcome; do not repeat the write.';
+                    }
                 });
                 buttons.push(button); actions.append(button);
             }

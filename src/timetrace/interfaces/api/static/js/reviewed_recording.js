@@ -1,5 +1,5 @@
 /** Editable explicit recording approval. No plan or task mutation is composed in the browser. */
-function mountReviewedRecording({document, api, payload, operationId = () => crypto.randomUUID(), acknowledge = () => {}}) {
+function mountReviewedRecording({document, api, payload, operationId = () => crypto.randomUUID(), acknowledge = () => {}, returnFocus = () => null}) {
     const previousFocus = document.activeElement;
     const make = (tag, text) => { const node = document.createElement(tag); if (text !== undefined) node.textContent = text; return node; };
     const dialog = make('dialog'); dialog.className = 'app-dialog recording-review-dialog'; dialog.setAttribute('aria-label', 'Record actual work');
@@ -31,11 +31,11 @@ function mountReviewedRecording({document, api, payload, operationId = () => cry
     let closed = false, pending = false, generation = 0, approval = null, approvedPayload = null, acknowledged = false;
     let finish;
     const completion = new Promise(resolve => { finish = resolve; });
-    function close(result = null) {
-        if (closed) return;
+    function close(result = null, authoritative = false) {
+        if (closed || (pending && !authoritative)) return;
         const ownedFocus = dialog.contains(document.activeElement);
         closed = true; generation++; dialog.close(); dialog.remove();
-        if (ownedFocus && previousFocus?.isConnected) previousFocus.focus();
+        if (ownedFocus) (previousFocus?.isConnected ? previousFocus : returnFocus())?.focus();
         finish(result);
     }
     cancel.addEventListener('click', () => close());
@@ -79,25 +79,27 @@ function mountReviewedRecording({document, api, payload, operationId = () => cry
     save.addEventListener('click', async () => {
         if (!approval || !approvedPayload || pending || save.disabled) return;
         if (JSON.stringify(values()) !== JSON.stringify(approvedPayload)) { changed(); return; }
-        pending = true; save.disabled = true; review.disabled = true;
+        pending = true; cancel.disabled = true; save.disabled = true; review.disabled = true;
+        status.textContent = 'Recording is being sent. Wait for its outcome; dismissal cannot undo a dispatched mutation.';
         for (const input of Object.values(fields)) input.disabled = true;
         try {
             const result = await api.saveRecordedWork({...approvedPayload,consent_token:approval.consent_token,acknowledge_existing_work:acknowledged,operation_id:operationId()});
             // ACK is final even if a display owner fails; never offer another write as recovery.
             try { acknowledge(result); } catch (error) { console.error('Recording acknowledged; display update failed.', error); }
-            close(result);
+            close(result, true);
         } catch (err) {
             if (closed) return;
             const uncertain = Boolean(api.recordedWorkAttempt());
             status.textContent = uncertain ? 'Recording not confirmed. Check the saved operation below or in recording recovery. No mutation will be replayed.' : `Not saved: ${err.message}. Review again before another approval.`;
             if (uncertain) {
+                cancel.textContent = 'Close — inspect recording';
                 const check = make('button','Check recording operation (read only)'); check.type = 'button';
                 check.addEventListener('click', async () => {
-                    try { const result = await api.recoverRecordedWork(); if (result) { try { acknowledge(result); } finally { close(result); } } else status.textContent = 'No finalized receipt. Keep the operation and check again.'; }
+                    try { const result = await api.recoverRecordedWork(); if (result) { try { acknowledge(result); } finally { close(result, true); } } else status.textContent = 'No finalized receipt. Keep the operation and check again.'; }
                     catch (error) { status.textContent = `Operation not confirmed: ${error.message}. Recovery remains read-only.`; }
                 }); evidence.append(check);
             } else { approval = null; review.disabled = false; for (const input of Object.values(fields)) input.disabled = false; }
-        } finally { pending = false; }
+        } finally { pending = false; cancel.disabled = false; }
     });
     document.body.append(dialog); dialog.showModal(); cancel.focus(); void preview();
     return {dialog,completion};

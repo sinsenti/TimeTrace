@@ -1327,3 +1327,65 @@ test('#67 Calendar past quick creation uses its resolved default duration before
     assert.equal(p.elements.get('session_modal_intent').value,'work');
     assert.equal(p.elements.get('session_modal_save_btn').textContent,'Review actual work');
 });
+
+for (const taskId of [null,'task-uuid']) test(`#67 actual Calendar +Session/Schedule entry (${taskId}) uses past choice and future schedule`,()=>{
+    const p=sessionPage();p.element('session_modal_intent');p.element('session_modal_intent_choice');
+    p.context.calendar={unselect(){},getDate:()=>new Date('2020-01-01T12:00:00Z')};p.context.entryTask=taskId;
+    p.run('createPlanningSession(entryTask)');
+    assert.equal(p.run('sessionModalOwner.intent'),'work');
+    assert.equal(p.elements.get('session_modal_intent_choice').classList.contains('hidden'),false);
+    assert.equal(p.elements.get('session_modal_save_btn').textContent,'Review actual work');
+    p.elements.get('session_modal_intent').value='schedule';p.run('updateSessionModalIntent()');assert.equal(p.run('sessionModalOwner.intent'),'schedule');
+    p.context.calendar.getDate=()=>new Date('2099-01-01T12:00:00Z');p.run('createPlanningSession(entryTask)');assert.equal(p.run('sessionModalOwner.intent'),'schedule');
+    p.run('openEditSessionModal("past",null,{id:"past",kind:"scheduled_session",revision:2,start_time:"2020-01-01T09:00:00Z",end_time:"2020-01-01T10:00:00Z"})');
+    assert.equal(p.run('sessionModalOwner.intent'),'schedule');assert.equal(p.elements.get('session_modal_intent_choice').classList.contains('hidden'),true);
+});
+
+for(const outcome of ['ack','recover','newer editor']) test(`#67 projection Record time adopts original identity before failed refresh: ${outcome}`,async()=>{
+    const source={id:'virt:task:2020-01-01',kind:'scheduled_session',task_id:'task',is_virtual:true,projection_revision:'projection',start_time:'2020-01-01T09:00:00Z',end_time:'2020-01-01T10:00:00Z',original_start:'2020-01-01T09:00:00Z',original_end:'2020-01-01T10:00:00Z'};
+    const sourceId=source.id;
+    const plan={...source,id:'materialized-uuid',is_virtual:false,projection_revision:null,revision:2};
+    const result={id:'work-uuid',kind:'recorded_work',linked_plan:plan};let release;const held=new Promise(r=>{release=r;}),calls=[];
+    const p=sessionPage(async(url,options)=>{calls.push([options.method,url]);
+        if(url==='/recorded-work/preview')return {consent_token:'exact',existing_work:[]};
+        if(url==='/recorded-work'){await held;if(outcome==='recover')throw Error('lost ACK');return result;}
+        if(url.startsWith('/operations/'))return {status:'finalized',result};
+        throw Error('refresh unavailable');
+    });
+    p.element('session_modal_plan_detail');p.context.source=source;p.run('allSessions=[source];rememberSavedSession(source);openEditSessionModal(source.id)');
+    const walk=n=>[n,...n.children.flatMap(walk)];
+    p.elements.get('session_modal_plan_detail').children.find(n=>n.textContent==='Record time').click();await new Promise(setImmediate);
+    const dialog=p.context.document.body.children.at(-1);
+    const end=walk(dialog).find(n=>n['aria-label']==='Recorded end');end.value='2020-01-01T09:45:00';end.input();await walk(dialog).find(n=>n.textContent==='Review changed recording').click();
+    const saving=walk(dialog).find(n=>n.textContent==='Save linked recorded work').click();
+    const draft='2020-01-01T10:17';p.elements.get('session_modal_end').value=draft;
+    if(outcome==='newer editor'){
+        p.run('openEditSessionModal("new-plan",null,{...source,id:"new-plan",is_virtual:false,revision:8})');
+        p.elements.get('session_modal_end').value='2020-01-01T10:29';
+    }
+    const newerFocus=p.element('newer-focus','input');newerFocus.focus();release();await saving;
+    if(outcome==='recover'){
+        dialog.cancel({preventDefault(){}});assert.ok(p.run('api.recordedWorkAttempt()'));
+        await p.run('api.recoverRecordedWork()');
+    }
+    await new Promise(setImmediate);
+    assert.equal(p.run('calendarSessionRows().filter(r=>r.id==="virt:task:2020-01-01").length'),0);
+    assert.equal(p.run('allSessions.filter(r=>r.id==="virt:task:2020-01-01").length'),0);
+    assert.equal(p.run('calendarSessionRows().filter(r=>r.id==="materialized-uuid").length'),1);
+    assert.equal(p.context.document.activeElement,newerFocus);
+    if(outcome==='newer editor'){
+        assert.equal(p.run('sessionModalOwner.session.id'),'new-plan');assert.equal(p.elements.get('edit_session_id').value,'new-plan');
+        assert.equal(p.elements.get('session_modal_end').value,'2020-01-01T10:29');
+    }
+    else {
+        assert.equal(p.run('sessionModalOwner.session.id'),plan.id);assert.equal(p.elements.get('edit_session_id').value,plan.id);assert.equal(p.run('sessionModalOwner.session.revision'),2);
+        assert.equal(p.elements.get('session_modal_end').value,draft,'unsaved schedule endpoints survive ACK');
+        p.elements.get('session_modal_end').value=p.run('sessionModalOwner.timeBaseline[1]');
+        p.elements.get('session_modal_plan_detail').children.find(n=>n.textContent==='Record time').click();await new Promise(setImmediate);
+        const preview=p.writes.filter(w=>w.url==='/recorded-work/preview').at(-1).payload;
+        assert.equal(preview.scheduled_session_id,plan.id);assert.equal(preview.expected_plan_revision,2);assert.equal(preview.expected_projection_revision,undefined);
+    }
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work').length,1);
+    assert.equal(p.writes.find(w=>w.url==='/recorded-work').payload.scheduled_session_id,sourceId);
+    if(outcome==='recover')assert.equal(calls.filter(c=>c[1].startsWith('/operations/')).length,1);
+});

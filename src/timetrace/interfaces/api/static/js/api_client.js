@@ -114,7 +114,7 @@ class ApiClient {
         if (JSON.stringify(this.recordedWorkAttempt()) !== JSON.stringify(attempt)) return null;
         this.rememberRecordedWorkAttempt(null);
         if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('timetrace:recording-acknowledged', {detail:receipt.result}));
+            window.dispatchEvent(new CustomEvent('timetrace:recording-acknowledged', {detail:{...receipt.result,requested_scheduled_session_id:attempt.payload.scheduled_session_id}}));
         }
         return receipt.result;
     }

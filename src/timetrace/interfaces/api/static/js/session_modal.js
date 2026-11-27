@@ -339,6 +339,7 @@ function showSessionModalPlan(row) {
 
 function mountCalendarPlanActions(detail, row) {
     const owner = sessionModalOwner;
+    const sourceId = row.id;
     const available = () => {
         if (sessionModalOwner !== owner || owner.pending || owner.blocked || owner.removalPending) return false;
         if (typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(row)) return false;
@@ -348,13 +349,16 @@ function mountCalendarPlanActions(detail, row) {
         return true;
     };
     const record = document.createElement('button'); record.type = 'button'; record.textContent = 'Record time';
+    owner.recordButton = record;
     record.disabled = !row.task_id;
     record.addEventListener('click', () => {
         if (!available()) return;
         if (typeof mountReviewedRecording !== 'function') { sessionModalFeedback('Recording review unavailable; reload before recording.'); return; }
+        owner.recordingSourceId = sourceId;
         const view = mountReviewedRecording({document,api,payload:{task_id:row.task_id,start_time:row.start_time,end_time:row.end_time,tags:row.tags || '',notes:'',scheduled_session_id:row.id,
             ...(row.is_virtual ? {expected_projection_revision:row.projection_revision} : {expected_plan_revision:row.revision})},
-            acknowledge:acknowledgeCalendarRecording});
+            acknowledge:result => acknowledgeCalendarRecording(result,sourceId,owner),
+            returnFocus:() => sessionModalOwner === owner && !document.getElementById('session_modal').classList.contains('hidden') ? owner.recordButton : null});
         void view.completion.then(result => { if (result) void refreshSessionDisplay(); });
     });
     detail.appendChild(record);
@@ -372,13 +376,19 @@ function mountCalendarPlanActions(detail, row) {
     }});
 }
 
-function acknowledgeCalendarRecording(result) {
+function acknowledgeCalendarRecording(result, sourceId = result.requested_scheduled_session_id, owner = null) {
     const plan = result.linked_plan;
     if (plan) {
-        rememberSavedSession(plan,plan.id);
-        if (sessionModalOwner?.session?.id === plan.id) {
-            // Association ACK changes revision, not schedule fields; retain the editor DOM/focus.
-            Object.assign(sessionModalOwner.session,plan);
+        const previousId = sourceId || plan.id;
+        rememberSavedSession(plan,previousId);
+        // Recovery carries the journal's original projection ID, not the materialized UUID.
+        const editor = owner || (sessionModalOwner?.recordingSourceId === previousId ? sessionModalOwner : null);
+        if (editor && sessionModalOwner === editor && editor.session?.id === previousId) {
+            const materialized = previousId !== plan.id;
+            // Association ACK changes identity/revision, not input times or their draft baseline.
+            Object.assign(editor.session,plan);
+            document.getElementById('edit_session_id').value = plan.id;
+            if (materialized) showSessionModalPlan(editor.session);
         }
     }
     rememberSavedSession(result,result.id);

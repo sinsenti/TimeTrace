@@ -166,7 +166,11 @@ def test_all_seven_pages_and_aliases_render_one_controller_and_reachable_recover
         response = client.get(path)
         assert response.status_code == 200
         html = response.text
-        assert html.count('src="/static/js/timer_control.js?v=timers4"') == 1
+        timer_assets = re.findall(r'src="(/static/js/timer_control\.js\?v=[^"]+)"', html)
+        assert len(timer_assets) == 1
+        asset = client.get(timer_assets[0])
+        assert asset.status_code == 200
+        assert "Timer" in asset.text
         assert len(re.findall(r'src="/static/js/multiple_timers\.js\?v=[^"]+"', html)) == 1
         assert len(re.findall(r'src="/static/js/timer_focus\.js\?v=[^"]+"', html)) == 1
         assert html.count('aria-label="Per-timer idle review"') == 1

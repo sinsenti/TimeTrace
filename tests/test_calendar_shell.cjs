@@ -150,6 +150,7 @@ test('planning actions search existing cards and open a task-attached session wi
     assert.equal(opened[0].getDate(), 16);
     assert.equal(opened[1], null);
     assert.equal(opened[2], 'synthetic-task');
+    assert.equal(opened[4], 'calendar', 'Schedule uses the Calendar past-work/default intent chooser');
 });
 
 test('Preferences traps Tab and restores its launcher on Escape without saving', () => {

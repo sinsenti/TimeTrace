@@ -111,7 +111,8 @@ Save actual time is primary. Plan selection is explicit, exact actual parts and 
 segments are shown separately from original/current schedules and already-recorded work, and
 server reasons disable unsafe policies. Cancel/Escape leave paused. Continue is offered only
 when the server permits it. The shared timer journal retains unknown preparation/commit operations;
-Check/Retry inspect them with GET only. Reopen an existing review without preparing it again.
+Check/Retry inspect them with GET only. Reopen only a paused review whose timer revision is still
+current without preparing it again; ordinary Resume then Stop captures a new durable cutoff.
 Legacy browser Stop cannot fall back to immediate `/timer/stop` if shared review is unavailable.
 
 Calendar's scheduled-block editor offers **Record time**, initialized from exact current plan
@@ -148,3 +149,22 @@ Initial focused checks exposed a stale cache-version oracle and an over-restrict
 freshness guard; versions were updated without relaxing cardinality assertions, and the guard
 was repaired while preserving the existing pending-writer assertions. Full suite, independent
 Standards/Spec review and native browser/narrow-layout checks were not run by this lane.
+
+### Final review repairs
+
+The actual Calendar **+ Session** / task Schedule callback uses the same Calendar intent choice
+as range selection: entirely past defaults to explicit work, future to scheduling. Existing plans
+remain plan edits. Linked recording ACKs and GET-only receipt recovery reconcile the captured original
+projection ID to the final UUID/revision before display reads, retaining unsaved schedule inputs and
+newer editor/focus owners.
+
+Stop and recording approvals cannot be dismissed with Cancel or Escape while their mutation is
+pending. Authoritative ACK closes normally. An uncertain outcome instead offers **Close — inspect
+operation/recording**, retains its safety journal, and never claims that dismissal canceled a
+write or left a timer paused. Recovery remains read-only.
+
+The public timer action route intentionally validates its Literal path boundary: private daemon
+`focus_evaluate` is rejected with exactly 422 `literal_error` on `path.action` (formerly the test
+expected 400). It remains forbidden; rejection performs no observation, timer/notice change or
+receipt write. Serving-contract tests retain exactly one shared controller and recovery instance,
+and fetch the included versioned asset instead of pinning the obsolete `timers4` URL.
