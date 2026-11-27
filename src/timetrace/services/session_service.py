@@ -65,9 +65,107 @@ class SessionService:
             self._recurrence = RecurrenceService(self.db)
         return self._recurrence
 
+    def recorded_work_preview(self, req: RecordedWorkCreate):
+        """Inspect linked and same-task overlapping work without creating a plan or recording."""
+        with sqlite_read_snapshot(self.db) as reader:
+            return SessionService(reader)._recording_context(req)
+
+    def _recording_context(self, req):
+        start, end = self._scheduled_interval(req.start_time, req.end_time)
+        if end > datetime.now(UTC).replace(tzinfo=None):
+            raise ValidationError("Recorded work cannot end in the future.", code="future_recorded_end")
+        if req.task_id is not None and self.db.get(Task, req.task_id) is None:
+            raise EntityNotFoundError("Task", req.task_id)
+        plan = None
+        if req.scheduled_session_id:
+            plan = self.get_scheduled_session(req.scheduled_session_id)
+            if req.task_id is None or req.task_id != plan.task_id:
+                raise ConflictError("Association requires the same non-null task.", code="association_task_conflict")
+            if plan.is_virtual:
+                if req.expected_plan_revision is not None:
+                    raise ValidationError("A projection requires only its projection revision.")
+                if req.expected_projection_revision != plan.projection_revision:
+                    raise self._stale_projection()
+            else:
+                if req.expected_projection_revision is not None:
+                    raise ValidationError("A persisted plan requires only its plan revision.")
+                if req.expected_plan_revision != plan.revision:
+                    raise self._stale_plan()
+        elif req.expected_plan_revision is not None or req.expected_projection_revision is not None:
+            raise ValidationError("A plan revision requires an explicit association.")
+        rows = self.db.exec(
+            select(SessionModel)
+            .where(
+                SessionModel.kind == "recorded_work",
+                or_(
+                    (SessionModel.task_id == req.task_id)
+                    & (SessionModel.start_time < end)
+                    & (SessionModel.end_time > start),
+                    SessionModel.scheduled_session_id == req.scheduled_session_id
+                    if req.scheduled_session_id
+                    else False,
+                ),
+            )
+            .order_by(SessionModel.id)
+        ).all()
+        snapshot = req.model_dump(mode="json", exclude={"operation_id", "consent_token", "acknowledge_existing_work"})
+        manifest = {
+            "request": snapshot,
+            "plan": plan.model_dump(mode="json") if plan else None,
+            "work": [r.model_dump(mode="json") for r in rows],
+        }
+        return {
+            "consent_token": hashlib.sha256(json.dumps(manifest, sort_keys=True).encode()).hexdigest(),
+            "plan": manifest["plan"],
+            "start_time": ensure_utc(start).isoformat(),
+            "end_time": ensure_utc(end).isoformat(),
+            "existing_work": [self._read_agenda_session(r).model_dump(mode="json") for r in rows],
+            "duplicate_warning": bool(rows),
+        }
+
     def create_recorded_work(self, req: RecordedWorkCreate) -> RecordedWorkCreated:
         try:
+            lock_sqlite_writer(self.db)
+            operation_id = "recorded-work:" + req.operation_id if req.operation_id else None
+            payload_hash = hashlib.sha256(json.dumps(req.model_dump(mode="json"), sort_keys=True).encode()).hexdigest()
+            if operation_id:
+                receipt = self.db.get(MutationOperation, operation_id)
+                if receipt is not None:
+                    if receipt.payload_hash != payload_hash:
+                        raise ConflictError("Operation payload differs.", code="operation_payload_mismatch")
+                    self.db.rollback()
+                    return RecordedWorkCreated.model_validate_json(receipt.result_json)
+                if req.consent_token is None:
+                    raise ValidationError(
+                        "Preview recording before submitting a receipted operation.", code="recording_preview_required"
+                    )
+                context = self._recording_context(req)
+                if context["consent_token"] != req.consent_token:
+                    raise ConflictError("Recording context changed; preview again.", code="recording_preview_stale")
+                if context["existing_work"] and not req.acknowledge_existing_work:
+                    raise ConflictError(
+                        "Explicitly acknowledge existing linked/matching work.", code="recording_overlap_unacknowledged"
+                    )
+            elif req.consent_token is not None or req.acknowledge_existing_work:
+                raise ValidationError(
+                    "Reviewed recording requires an operation ID.", code="recording_operation_required"
+                )
             result = self.stage_recorded_work(req, provenance="manual")
+            if operation_id:
+                if result.scheduled_session_id:
+                    result.linked_plan = self.get_scheduled_session(result.scheduled_session_id)
+                self.db.add(
+                    MutationOperation(
+                        id=operation_id,
+                        payload_hash=payload_hash,
+                        before_revision=0,
+                        after_revision=1,
+                        cutoff=datetime.now(UTC).isoformat(),
+                        after_state_json="{}",
+                        result_json=result.model_dump_json(),
+                        file_finalized=True,
+                    )
+                )
             self.db.commit()
             return result
         except Exception:
@@ -96,6 +194,12 @@ class SessionService:
         lock_sqlite_writer(self.db)
         if req.task_id is not None and self.db.get(Task, req.task_id) is None:
             raise EntityNotFoundError("Task", req.task_id)
+        from timetrace.services.correction_guards import check_correction_guard
+
+        accepted_operation_id = timer_identity.get("timer_operation_id") if timer_identity else None
+        check_correction_guard(
+            self.db, task_ids=[req.task_id] if req.task_id else [], accepted_operation_id=accepted_operation_id
+        )
         plan = None
         if req.scheduled_session_id is not None:
             if is_occurrence_id(req.scheduled_session_id):
@@ -143,7 +247,7 @@ class SessionService:
                     raise self._stale_plan()
             from timetrace.services.correction_guards import check_correction_guard
 
-            check_correction_guard(self.db, plan_ids=[plan.id])
+            check_correction_guard(self.db, plan_ids=[plan.id], accepted_operation_id=accepted_operation_id)
             plan.revision += 1
             self.db.add(plan)
         elif req.expected_plan_revision is not None or req.expected_projection_revision is not None:
@@ -345,6 +449,33 @@ class SessionService:
         if row is None or row.kind != "recorded_work":
             raise EntityNotFoundError("Recorded work", work_id)
         return self._read_agenda_session(row)
+
+    def stage_remove_projected_plan(self, plan_id, expected_projection_revision):
+        """Skip exactly one still-live projection in the caller's receipt transaction."""
+        occurrence = self.recurrence.projected_occurrence(plan_id, planning=True)
+        if occurrence.projection_revision != expected_projection_revision:
+            raise ConflictError("Occurrence changed; preview again.", code="stale_plan_manifest")
+        from timetrace.services.correction_guards import check_correction_guard
+
+        check_correction_guard(self.db, task_ids=[occurrence.task_id])
+        self.recurrence.skip(occurrence.task_id, occurrence.start_utc, commit=False)
+        self.db.flush()
+
+    def stage_stop_plan_changes(self, changes):
+        """Install an accepted per-occurrence fit/split without touching original evidence or history."""
+        before = changes["before"]
+        plan = self.db.get(ScheduledSession, before["id"])
+        if plan is None or plan.model_dump(mode="json") != before:
+            raise ConflictError("Accepted Stop plan changed; recover its context.", code="reconciliation_required")
+        for index, row in enumerate(changes["rows"]):
+            if index == 0:
+                plan.start_time = datetime.fromisoformat(row["start_time"])
+                plan.end_time = datetime.fromisoformat(row["end_time"])
+                plan.revision = row["revision"]
+                self.db.add(plan)
+            else:
+                self.db.add(ScheduledSession.model_validate(row))
+        self.db.flush()
 
     def create_scheduled_session(self, req: ScheduledSessionCreate) -> ScheduledSessionRead:
         response = self.stage_scheduled_session(req)

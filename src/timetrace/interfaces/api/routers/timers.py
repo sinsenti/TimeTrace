@@ -354,8 +354,50 @@ def discard_timer(timer_id: str, req: DiscardTimerRequest, db: Session = Depends
     return MultipleTimerService(db).mutate("discard", timer_id, req.model_dump())
 
 
+class StopReviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    operation_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+
+
+class StopPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    review_id: str = Field(min_length=1, max_length=128)
+    expected_revision: int = Field(ge=1)
+    scheduled_session_id: str | None = None
+    expected_plan_revision: int | None = Field(default=None, ge=1)
+
+
+class StopCommitRequest(StopPreviewRequest):
+    operation_id: str = Field(min_length=1, max_length=128)
+    consent_token: str = Field(pattern="^[0-9a-f]{64}$")
+    policy: Literal["actual", "continue", "fit", "split", "scheduled"]
+
+
+@router.post("/timers/{timer_id}/stop-review")
+def stop_review(timer_id: str, req: StopReviewRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("stop_review", timer_id, req.model_dump())
+
+
+@router.post("/timers/{timer_id}/stop-preview")
+def stop_preview(timer_id: str, req: StopPreviewRequest, db: Session = Depends(get_session)):
+    from timetrace.services.stop_review_service import StopReviewService
+
+    return StopReviewService(MultipleTimerService(db)).preview(timer_id, req.model_dump())
+
+
+@router.post("/timers/{timer_id}/stop-commit")
+def stop_commit(timer_id: str, req: StopCommitRequest, db: Session = Depends(get_session)):
+    return MultipleTimerService(db).mutate("stop_commit", timer_id, req.model_dump())
+
+
 @router.post("/timers/{timer_id}/{action}")
-def mutate_timer(timer_id: str, action: str, req: TimerMutation, db: Session = Depends(get_session)):
+def mutate_timer(
+    timer_id: str,
+    action: Literal["pause", "resume", "stop", "split", "resolve", "note", "idle_preference"],
+    req: TimerMutation,
+    db: Session = Depends(get_session),
+):
     payload = req.model_dump()
     if action != "note":
         # Keep canonical payload hashes for operations journaled before note support.

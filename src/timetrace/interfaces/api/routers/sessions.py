@@ -54,6 +54,11 @@ def recorded_work_progress(
     return QueryService(db).recorded_progress(start_date, end_date, plan_ids)
 
 
+@router.post("/recorded-work/preview")
+def preview_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
+    return SessionService(db).recorded_work_preview(req)
+
+
 @router.post("/recorded-work", response_model=RecordedWorkCreated, status_code=status.HTTP_201_CREATED)
 def create_recorded_work(req: RecordedWorkCreate, db: DBSession = Depends(get_session)):
     return SessionService(db).create_recorded_work(req)

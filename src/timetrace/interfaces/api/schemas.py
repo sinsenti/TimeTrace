@@ -17,7 +17,7 @@ from timetrace.core.query_spec import (
 
 class PlanRemovalRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    action: Literal["delete_everything", "squeeze"]
+    action: Literal["delete_everything", "squeeze", "remove_schedule"]
     consent_token: str = Field(min_length=64, max_length=64)
     operation_id: str = Field(min_length=1, max_length=100, pattern=r"^[A-Za-z0-9_-]+$")
 
@@ -275,6 +275,9 @@ class RecordedWorkNoteUpdate(BaseModel):
 class RecordedWorkCreate(ScheduledSessionCreate):
     """Explicit manual work; legacy session input deliberately stays separate."""
 
+    operation_id: str | None = Field(default=None, min_length=1, max_length=128)
+    consent_token: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    acknowledge_existing_work: bool = False
     scheduled_session_id: str | None = None
     expected_plan_revision: StrictInt | None = Field(default=None, ge=1)
     expected_projection_revision: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
@@ -288,6 +291,7 @@ class RecordedWorkWarning(BaseModel):
 
 class RecordedWorkCreated(AgendaRecordedWorkRead):
     warnings: list[RecordedWorkWarning] = []
+    linked_plan: ScheduledSessionRead | None = Field(default=None, exclude_if=lambda value: value is None)
 
 
 class AgendaRead(BaseModel):

@@ -722,6 +722,7 @@ class MultipleTimerService:
                 assignment = None
                 task_deletion = None
                 plan_capture = None
+                stop_plan_changes = stop_details = stop_dependencies = None
                 correction_changes = correction_audits = correction_guard = correction_result = None
                 if action in ("focus_evaluate", "focus_initialize"):
                     from timetrace.services.timer_focus_service import evaluate_state
@@ -852,7 +853,17 @@ class MultipleTimerService:
                     continue_running = timer["state"] == "running"
                     if action not in ("correction", "note", "idle_preference"):
                         checkpoint(timer, cutoff)
-                    if action == "focus_settings":
+                    if action == "stop_review":
+                        from timetrace.services.stop_review_service import StopReviewService
+
+                        StopReviewService.prepare(timer, cutoff, operation_id)
+                    elif action == "stop_commit":
+                        from timetrace.services.stop_review_service import StopReviewService
+
+                        stop_plan_changes, stop_details, stop_dependencies = StopReviewService(self).accept(
+                            after, timer, payload, cutoff
+                        )
+                    elif action == "focus_settings":
                         configure(timer, payload, cutoff)
                     elif action == "focus_action":
                         focus = timer.get("focus")
@@ -960,14 +971,16 @@ class MultipleTimerService:
                             focus["phase"] = "disabled"
                             focus["recording_anchor"] = None
                     timer["revision"] += 1
+                    if action in ("note", "idle_preference") and timer.get("stop_review"):
+                        timer["stop_review"]["timer_revision"] = timer["revision"]
                 work = []
-                if action in ("stop", "split"):
+                if action in ("stop", "split") or (action == "stop_commit" and payload["policy"] != "continue"):
                     for segment in timer["segments"]:
                         if segment.get("recorded_work_id"):
                             continue
                         segment["recorded_work_id"] = str(uuid7())
                         work.append({**segment, "timer_id": timer["id"]})
-                    if action == "stop":
+                    if action in ("stop", "stop_commit"):
                         timer["state"] = "stopped"
                     else:
                         timer["tags"] = payload.get("new_tags", "")
@@ -1002,7 +1015,7 @@ class MultipleTimerService:
                     "operation_id": operation_id,
                     "recorded_work_ids": [s["recorded_work_id"] for s in work],
                 }
-                if action == "stop":
+                if action in ("stop", "stop_commit"):
                     result["saved_taskless_work"] = [
                         {
                             "id": s["recorded_work_id"],
@@ -1037,6 +1050,8 @@ class MultipleTimerService:
                             }
                         ),
                     }
+                if stop_details:
+                    result.update(stop_details)
                 if action == "focus_defaults":
                     result["focus_defaults"] = after["focus_defaults"]
                 if action == "correction_initialize":
@@ -1058,6 +1073,18 @@ class MultipleTimerService:
                         else None
                     ),
                 }
+                if stop_plan_changes:
+                    intent["stop_plan_changes"] = stop_plan_changes
+                if stop_dependencies:
+                    intent["stop_dependencies"] = stop_dependencies
+                if action == "stop_commit" and payload["policy"] in ("fit", "split", "scheduled"):
+                    plan = self.db.get(ScheduledSession, payload["scheduled_session_id"])
+                    intent["correction_guard"] = {
+                        "task_ids": [timer["task_id"]],
+                        "plan_ids": [plan.id],
+                        "work_ids": [],
+                        "plans": [{"id": plan.id, "revision": plan.revision, "task_id": plan.task_id}],
+                    }
                 if assignment is not None:
                     intent["assignment"] = assignment
                     result["task_id"] = assignment["task_id"]
@@ -1087,7 +1114,7 @@ class MultipleTimerService:
                 state["pending_operation"] = intent
                 self.store.write(state)
                 self._complete(intent)
-                return result
+                return json.loads(self.db.get(MutationOperation, operation_id).result_json)
             except (OSError, SQLAlchemyError) as exc:
                 self.db.rollback()
                 raise ConflictError(
@@ -1308,6 +1335,25 @@ class MultipleTimerService:
                     or plan.task_id != expected_plan["task_id"]
                 ):
                     raise ConflictError("Pending correction plan context changed.", code="reconciliation_required")
+            if intent.get("stop_dependencies"):
+                dependencies = intent["stop_dependencies"]
+                task = self.db.get(Task, dependencies["task"]["id"])
+                selected_plan = self.db.get(ScheduledSession, dependencies["plan"]["id"])
+                anchors = self.db.exec(
+                    select(RecurrenceException)
+                    .where(RecurrenceException.scheduled_session_id == dependencies["plan"]["id"])
+                    .order_by(RecurrenceException.id)
+                ).all()
+                if (
+                    task is None
+                    or task.model_dump(mode="json") != dependencies["task"]
+                    or selected_plan is None
+                    or selected_plan.model_dump(mode="json") != dependencies["plan"]
+                    or [r.model_dump(mode="json") for r in anchors] != dependencies["recurrence"]
+                ):
+                    raise ConflictError("Accepted Stop dependencies changed.", code="reconciliation_required")
+            if intent.get("stop_plan_changes"):
+                SessionService(self.db).stage_stop_plan_changes(intent["stop_plan_changes"])
             if intent.get("assignment"):
                 SessionService(self.db).stage_work_assignment(intent["assignment"])
             if intent.get("correction_changes"):
@@ -1376,6 +1422,20 @@ class MultipleTimerService:
                         "timer_segment_id": segment["id"],
                     },
                 )
+            result = json.loads(intent["result_json"])
+            if result.get("schedule"):
+                result["schedule"]["parts"] = [
+                    SessionService(self.db).get_scheduled_session(identity).model_dump(mode="json")
+                    for identity in result["schedule"]["part_ids"]
+                ]
+                intent["result_json"] = json.dumps(result)
+            if result.get("replacement"):
+                result["replacement"]["plan"] = (
+                    SessionService(self.db)
+                    .get_scheduled_session(result["timer"]["scheduled_session_id"])
+                    .model_dump(mode="json")
+                )
+                intent["result_json"] = json.dumps(result)
             for notice in self.db.exec(select(TimerNotification).where(TimerNotification.status == "pending")).all():
                 owner = expected["timers"].get(notice.timer_id)
                 if owner and (
@@ -1409,6 +1469,8 @@ class MultipleTimerService:
                         "correction_guard",
                         "notification_events",
                         "assignment",
+                        "stop_plan_changes",
+                        "stop_dependencies",
                     }
                 }
             )

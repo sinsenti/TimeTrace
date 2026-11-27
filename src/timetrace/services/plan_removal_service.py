@@ -8,6 +8,7 @@ from sqlalchemy import or_
 from sqlmodel import select
 
 from timetrace.core.exceptions import ConflictError, EntityNotFoundError, ValidationError
+from timetrace.core.recurrence import is_occurrence_id
 from timetrace.db.models import AIDraftItem, MutationOperation, RatingEntry, RecurrenceException, ScheduledSession
 from timetrace.db.models import Session as Work
 from timetrace.db.session import lock_sqlite_writer
@@ -29,6 +30,32 @@ class PlanRemovalService:
         from timetrace.services.multiple_timer_service import MultipleTimerService
 
         self.db.expire_all()
+        if is_occurrence_id(plan_id):
+            from timetrace.services.session_service import SessionService
+
+            plan = SessionService(self.db).get_scheduled_session(plan_id)
+            pending = MultipleTimerService(self.db).store.inspect().get("pending_operation") or {}
+            capture = pending.get("plan_capture") or {}
+            ratings = self.db.exec(
+                select(RatingEntry).where(RatingEntry.target_id == plan_id).order_by(RatingEntry.id)
+            ).all()
+            drafts = self.db.exec(
+                select(AIDraftItem)
+                .where(or_(AIDraftItem.target_id == plan_id, AIDraftItem.applied_entity_id == plan_id))
+                .order_by(AIDraftItem.id)
+            ).all()
+            return {
+                "plan": plan.model_dump(mode="json"),
+                "work": [],
+                "recurrence": [],
+                "lineage": [],
+                "ratings": [r.model_dump(mode="json") for r in ratings],
+                "drafts": [
+                    {"id": r.id, "snapshot_fingerprint": _fingerprint(r.model_dump(mode="json"))} for r in drafts
+                ],
+                "unfinished_timers": MultipleTimerService(self.db).unfinished_for_plan(plan_id),
+                "pending_capture_operation_id": pending.get("id") if capture.get("projection_id") == plan_id else None,
+            }
         plan = self.db.get(ScheduledSession, plan_id)
         if plan is None:
             raise EntityNotFoundError("Scheduled session", plan_id)
@@ -101,7 +128,11 @@ class PlanRemovalService:
             if manifest["unfinished_timers"]
             else []
         )
+        if manifest.get("pending_capture_operation_id"):
+            common.append("Recover the accepted timer capture before removing this occurrence.")
         delete = list(common)
+        if manifest["plan"].get("is_virtual"):
+            delete.append("Only Remove schedule for this exact projected occurrence is supported here.")
         if manifest["ratings"]:
             delete.append("Rated records require metadata-preserving removal, which is not supported.")
         if manifest["drafts"]:
@@ -114,7 +145,14 @@ class PlanRemovalService:
         if any(row["kind"] != "recorded_work" or not row["end_time"] for row in manifest["work"]):
             delete.append("Association includes unsupported work metadata.")
             squeeze.append("Association includes unsupported work metadata.")
-        return {"delete_everything": delete, "squeeze": squeeze}
+        remove = list(common)
+        if any(r["target_id"] == manifest["plan"]["id"] for r in manifest["ratings"]):
+            remove.append("The plan itself has ratings; metadata-preserving plan removal is not supported.")
+        if manifest["drafts"]:
+            remove.append("AI draft restoration references require review before removing this schedule.")
+        if any(row["kind"] != "recorded_work" or not row["end_time"] for row in manifest["work"]):
+            remove.append("Association includes unsupported work metadata.")
+        return {"delete_everything": delete, "squeeze": squeeze, "remove_schedule": remove}
 
     def preview(self, plan_id):
         try:
@@ -142,7 +180,14 @@ class PlanRemovalService:
             from timetrace.services.correction_guards import check_correction_guard
 
             check_correction_guard(self.db, plan_ids=[plan_id])
-            manifest = self._manifest(plan_id)
+            try:
+                manifest = self._manifest(plan_id)
+            except EntityNotFoundError:
+                if not is_occurrence_id(plan_id):
+                    raise
+                raise ConflictError(
+                    "Occurrence changed or is unavailable; preview again.", code="stale_plan_manifest"
+                ) from None
             if _fingerprint(manifest) != request.consent_token:
                 raise ConflictError(
                     "Plan, work, dependencies or timer context changed. Preview again.", code="stale_plan_manifest"
@@ -151,7 +196,7 @@ class PlanRemovalService:
             if reasons:
                 raise ConflictError(" ".join(reasons), code="plan_removal_blocked")
             plan = self.db.get(ScheduledSession, plan_id)
-            before = plan.revision
+            before = plan.revision if plan else 0
             ids = [row["id"] for row in manifest["work"]]
             if request.action == "squeeze":
                 rows = [self.db.get(Work, work_id) for work_id in ids]
@@ -170,16 +215,41 @@ class PlanRemovalService:
                 }
             else:
                 for anchor in manifest["recurrence"]:
+                    if request.action == "remove_schedule" and anchor["scheduled_session_id"] != plan_id:
+                        continue  # Work's historical recurrence anchor is not the removed plan.
                     row = self.db.get(RecurrenceException, anchor["id"])
                     row.kind = "skip"
                     row.scheduled_session_id = None
                     self.db.add(row)
                 self.db.flush()
                 for work_id in ids:
-                    self.db.delete(self.db.get(Work, work_id))
+                    work = self.db.get(Work, work_id)
+                    if request.action == "remove_schedule":
+                        work.scheduled_session_id = None
+                        work.revision += 1
+                        self.db.add(work)
+                    else:
+                        self.db.delete(work)
                 self.db.flush()
-                self.db.delete(plan)
-                result = {"action": request.action, "plan_id": plan_id, "deleted_work_ids": ids}
+                if plan is None:
+                    from timetrace.services.session_service import SessionService
+
+                    SessionService(self.db).stage_remove_projected_plan(
+                        plan_id, manifest["plan"]["projection_revision"]
+                    )
+                else:
+                    self.db.delete(plan)
+                if request.action == "remove_schedule":
+                    result = {
+                        "action": request.action,
+                        "plan_id": plan_id,
+                        "removed_plan": manifest["plan"],
+                        "work_before": manifest["work"],
+                        "preserved_work_ids": ids,
+                        "deleted_work_ids": [],
+                    }
+                else:
+                    result = {"action": request.action, "plan_id": plan_id, "deleted_work_ids": ids}
             result["operation_id"] = operation_id
             self.db.add(
                 MutationOperation(
