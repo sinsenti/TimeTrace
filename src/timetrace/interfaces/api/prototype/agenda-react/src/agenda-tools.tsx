@@ -37,14 +37,12 @@ export function ActivityPicker({
   plans,
   onChoose,
   onStart,
-  canStart,
 }: {
   pinned: string[];
   setPinned: (next: string[]) => void;
   plans: Plan[];
   onChoose: (title: string) => void;
   onStart: (title: string) => void;
-  canStart: boolean;
 }) {
   const [search, setSearch] = useState('');
   const [priority, setPriority] = useState('Any priority');
@@ -115,9 +113,7 @@ export function ActivityPicker({
             </p>
             <div className="button-row">
               <button onClick={() => onChoose(title)}>Use in timer</button>
-              <button disabled={!canStart} onClick={() => onStart(title)}>
-                Start
-              </button>
+              <button onClick={() => onStart(title)}>Start</button>
             </div>
           </li>
         ))}
@@ -498,7 +494,9 @@ export function TimerTools() {
   return (
     <details className="tool-details">
       <summary>Timer tools &amp; unfinished timers</summary>
-      <p className="hint">The examples below show placement only. Start, Stop, ±5 and Discard work with demo data.</p>
+      <p className="hint">
+        The examples below show placement only. Start, Stop, ±5 and Discard work with demo data.
+      </p>
       <details className="tool-details">
         <summary>Switch timers · Pause / Resume</summary>
         <p>

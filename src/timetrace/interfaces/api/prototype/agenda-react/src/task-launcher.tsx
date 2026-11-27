@@ -5,12 +5,12 @@ const choices = activities.map(({ title }) => title);
 
 export function TaskLauncher({
   selected,
-  canStart,
+  runningTasks,
   choose,
   start,
 }: {
   selected: string;
-  canStart: boolean;
+  runningTasks: string[];
   choose: (title: string) => void;
   start: (title: string) => void;
 }) {
@@ -31,7 +31,6 @@ export function TaskLauncher({
     setExpanded(false);
   }
   function startChosen(title: string) {
-    if (!canStart) return;
     pick(title);
     start(title);
   }
@@ -84,8 +83,7 @@ export function TaskLauncher({
                   event.preventDefault();
                   const title = show && active >= 0 ? matches[active] : current;
                   if (!title || title === unassigned) return;
-                  if (canStart) startChosen(title);
-                  else pick(title);
+                  startChosen(title);
                 }
               }}
             />
@@ -108,14 +106,14 @@ export function TaskLauncher({
         <div className="button-row">
           <button
             className="primary"
-            disabled={!canStart || !current || current === unassigned}
+            disabled={!current || current === unassigned}
             onClick={() => current && startChosen(current)}
           >
-            Start timer
+            {current && current !== unassigned && runningTasks.includes(current)
+              ? 'Open existing timer'
+              : 'Start timer'}
           </button>
-          <button disabled={!canStart} onClick={() => startChosen(unassigned)}>
-            Start unassigned
-          </button>
+          <button onClick={() => startChosen(unassigned)}>Start unassigned</button>
         </div>
       </div>
       {expanded && !matches.length && (

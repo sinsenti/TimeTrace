@@ -47,12 +47,13 @@ function duration(ms: number) {
     .join(':');
 }
 
+type RunningTimer = { id: number; task: string; start: number; note: string };
+
 function App() {
   const [variant, setVariant] = useState(fromUrl);
   const [plans, setPlans] = useState(sample);
   const [viewDate, setViewDate] = useState(day);
   const [pins, setPins] = useState([tasks[0]]);
-  const [entryNote, setEntryNote] = useState('');
   const [draft, setDraft] = useState<Plan | null>(null);
   const [extraInspector, setExtraInspector] = useState<'manual' | RecordedInterval | null>(null);
   const [formError, setFormError] = useState('');
@@ -64,7 +65,13 @@ function App() {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const quickAllowed = useRef(false);
   const [online, setOnline] = useState(true);
-  const [running, setRunning] = useState<Omit<Interval, 'end'> | null>(null);
+  const [timers, setTimers] = useState<RunningTimer[]>([]);
+  const [selectedTimerId, setSelectedTimerId] = useState<number | null>(null);
+  const nextTimerId = useRef(1);
+  const focusTimerTitle = useRef(false);
+  const timerHeading = useRef<HTMLHeadingElement>(null);
+  const running = timers.find(({ id }) => id === selectedTimerId);
+  const otherTimers = timers.filter(({ id }) => id !== selectedTimerId);
   const [pending, setPending] = useState<Interval | null>(null);
   const [remote, setRemote] = useState<Interval | null>(null);
   const [recorded, setRecorded] = useState<RecordedInterval[]>([]);
@@ -89,6 +96,12 @@ function App() {
       returnFocus.current = null;
     }
   }, [inspectorKey, variant]);
+
+  useEffect(() => {
+    if (!focusTimerTitle.current) return;
+    focusTimerTitle.current = false;
+    timerHeading.current?.focus();
+  }, [selectedTimerId]);
 
   useEffect(() => {
     if (dialog !== null && !dialogRef.current?.open) dialogRef.current?.showModal();
@@ -157,22 +170,49 @@ function App() {
     setNotice(`Scheduled session saved for ${draft.task}.`);
     setDraft(null);
   }
-  function start(title: string) {
-    setTask(title);
+  function selectTimer(timer: RunningTimer) {
+    setSelectedTimerId(timer.id);
+    setTask(timer.task);
     setPanel('work');
-    setEntryNote('');
     setTimerMessage('');
-    setRunning({ task: title, start: Date.now() });
+  }
+  function start(title: string) {
+    const existing = title === unassigned ? undefined : timers.find((timer) => timer.task === title);
+    if (existing) {
+      selectTimer(existing);
+      setNotice('Selected the existing timer. No duplicate was created.');
+      return;
+    }
+    const timer = { id: nextTimerId.current++, task: title, start: Date.now(), note: '' };
+    setTimers((previous) => [...previous, timer]);
+    selectTimer(timer);
     setNotice(online ? 'Timer started in the demo.' : 'Timer started on this device in the demo.');
+  }
+  function updateSelected(update: Partial<Pick<RunningTimer, 'start' | 'note'>>) {
+    setTimers((previous) =>
+      previous.map((timer) => (timer.id === selectedTimerId ? { ...timer, ...update } : timer)),
+    );
+  }
+  function removeSelected() {
+    setTimers((previous) => previous.filter((timer) => timer.id !== selectedTimerId));
+    const next = otherTimers[0];
+    if (next) selectTimer(next);
+    else setSelectedTimerId(null);
   }
   function saveRecording(item: Interval) {
     const saved = { ...item, id: nextRecordingId.current++ };
     setRecorded((previous) => [saved, ...previous]);
   }
   function stop() {
-    if (!running) return;
-    const item = { ...running, end: Date.now(), note: entryNote.trim() };
-    setRunning(null);
+    if (!running || (!online && pending)) return;
+    const item = {
+      task: running.task,
+      start: running.start,
+      end: Date.now(),
+      note: running.note.trim(),
+    };
+    setTimerMessage('');
+    removeSelected();
     if (online) {
       saveRecording(item);
       setNotice('Recorded interval synced in the demo.');
@@ -210,7 +250,7 @@ function App() {
       setTimerMessage('Cannot remove five minutes: the current interval is shorter. No time changed.');
       return;
     }
-    setRunning({ ...running, start });
+    updateSelected({ start });
     setTimerMessage(
       delta === 5
         ? 'Added five minutes to this demo interval.'
@@ -228,8 +268,8 @@ function App() {
 
   const timer = (
     <section className="card timer" aria-labelledby="timer-title">
-      <p className="eyebrow">Recorded work</p>
-      <h2 id="timer-title">
+      <p className="eyebrow">{running ? 'Selected timer' : 'Recorded work'}</p>
+      <h2 id="timer-title" ref={timerHeading} tabIndex={-1} aria-live="polite">
         {running
           ? running.task === unassigned
             ? 'Unassigned recording'
@@ -245,7 +285,9 @@ function App() {
           >
             −5
           </button>
-          {(variant !== 'C' || panel === 'work') && <Clock key={running.start} start={running.start} />}
+          {(variant !== 'C' || panel === 'work') && (
+            <Clock key={`${running.id}:${running.start}`} start={running.start} />
+          )}
           <button
             className="quick-step"
             aria-label="Add five minutes"
@@ -262,7 +304,7 @@ function App() {
           {running.task !== unassigned && <button onClick={() => setDialog('edit')}>Edit task</button>}
           <button onClick={() => setDialog('adjust')}>Adjust time</button>
           <button onClick={() => setDialog('pause')}>Pause</button>
-          <button className="primary" onClick={stop}>
+          <button className="primary" disabled={!online && pending !== null} onClick={stop}>
             Stop &amp; record
           </button>
           <button className="subtle danger" onClick={() => setDialog('discard')}>
@@ -275,6 +317,30 @@ function App() {
           {timerMessage}
         </p>
       )}
+      {otherTimers.length > 0 && (
+        <section className="other-timers" aria-labelledby="other-timers-title">
+          <h3 id="other-timers-title">
+            Other timers <span className="hint">· {otherTimers.length} running</span>
+          </h3>
+          <ul>
+            {otherTimers.map((timer) => (
+              <li key={timer.id}>
+                <button
+                  onClick={() => {
+                    focusTimerTitle.current = true;
+                    selectTimer(timer);
+                  }}
+                >
+                  <span>
+                    {timer.task === unassigned ? `Unassigned recording ${timer.id}` : timer.task}
+                  </span>
+                  <span className="hint">Switch</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {running && (
         <details className="tool-details">
           <summary>Entry note</summary>
@@ -282,16 +348,17 @@ function App() {
             Entry note
             <textarea
               rows={2}
-              value={entryNote}
-              onChange={(event) => setEntryNote(event.target.value)}
+              value={running.note}
+              onChange={(event) => updateSelected({ note: event.target.value })}
             />
           </label>
           <p className="hint">Stop includes this note in the simulated recorded interval.</p>
         </details>
       )}
-      {pending && (
+      {running && !online && pending && (
         <p className="hint">
-          Review or sync the current recording before starting another in this demo.
+          The demo can hold one offline Stop. Reconnect to sync it before stopping another timer; this
+          timer keeps running.
         </p>
       )}
       <TimerTools />
@@ -355,7 +422,6 @@ function App() {
         setNotice(`${title} selected. No timer started.`);
       }}
       onStart={start}
-      canStart={!running && !pending}
     />
   );
   const previousDay = new Date();
@@ -526,7 +592,12 @@ function App() {
             Synthetic data only. Connection and saving are simulated; reload resets the preview.
           </p>
         </div>
-        <TaskLauncher selected={task} canStart={!running && !pending} choose={setTask} start={start} />
+        <TaskLauncher
+          selected={task}
+          runningTasks={timers.map((timer) => timer.task)}
+          choose={setTask}
+          start={start}
+        />
         {variant === 'D' && (
           <div className="familiar">
             <div className="familiar-timer">
@@ -653,8 +724,8 @@ function App() {
             )}
           </div>
           <p className="hint">
-            {plans.length} scheduled · {running ? '1' : '0'} running · {pending ? '1' : '0'} awaiting
-            sync or review · {recorded.length} synced
+            {plans.length} scheduled · {timers.length} running · {pending ? '1' : '0'} awaiting sync or
+            review · {recorded.length} synced
           </p>
         </section>
         <p className="notice" role="status">
@@ -708,7 +779,7 @@ function App() {
             <button
               className="danger"
               onClick={() => {
-                setRunning(null);
+                removeSelected();
                 setTimerMessage('Demo timer discarded. No work recorded.');
                 closeDialog();
               }}

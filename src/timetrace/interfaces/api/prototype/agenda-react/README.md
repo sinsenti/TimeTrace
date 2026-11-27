@@ -32,7 +32,8 @@ The preview does **not** deploy TimeTrace.
 1. Edit a scheduled session or add another one. Pick a task, enter the date and times with the
    browser controls, then Save. No drag gesture is required. The plan stays separate from work.
 2. Type a task name in **Task to time** at the top. Pick a match, or use the arrow keys and
-   Enter. Once running, try **+5** and **−5** beside the clock. Toggle **Simulate connection loss**
+   Enter. Start another task and use **Other timers** to switch. Try **+5** and **−5** on one clock;
+   the other stays unchanged. Picking the same task selects its existing timer. Toggle **Simulate connection loss**
    and use **Stop & record**: the
    original timestamps show under **Saved on this device · Stop pending sync**. Reconnect
    without a collision and the same interval becomes Synced.
@@ -53,7 +54,7 @@ The preview does **not** deploy TimeTrace.
 Activity selection, pins, plan editing, Start/Stop, quick ±5, timer discard, Entry notes, manual recording, basic ledger
 filters and export **preview** work in memory. Plan details show original vs. current times.
 Expanding **Timer tools**, **Plan details & actions**, and a history row shows where the existing
-advanced tools go: switching timers, pause/resume, correction/discard, idle/focus, assignment,
+advanced tools go: pause/resume, correction, idle/focus, assignment,
 plan extension, Delete everything/Squeeze, and saved-work editing. Apart from the simulated
 quick steps and discard, the advanced actions, goal totals,
 actual export copying/downloading, and server error recovery are illustrations or not wired;
@@ -68,6 +69,7 @@ real API, dense calendar, database, or offline persistence to measure. Those nee
 and physical phones in the next stage.
 
 All tasks, plans, and the laptop interval are synthetic. Connection loss, local saving,
-and sync are **labels for simulated transitions**, not browser network or storage behavior.
+and sync are **labels for simulated transitions**, not browser network or storage behavior. The
+preview holds only one pending offline Stop; other timers can keep running while it is pending.
 Reload resets everything. There is no backend, database, network API, service worker,
 persistence guarantee, real device sync, or claim of production accessibility.
