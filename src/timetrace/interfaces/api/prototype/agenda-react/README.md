@@ -1,8 +1,10 @@
 # Touch-first Agenda — throwaway React + TypeScript prototype
 
-Which arrangement makes scheduling and timer recovery clear on a phone without giving up the
-desktop overview? Three structurally different variants share the same synthetic fixtures and
-live in-memory state: **A Dayline**, **B Split desk**, **C Focus**. The default is Dayline.
+Does a React Agenda feel familiar without copying every detail? **D Familiar** is now the default.
+It follows the current page's order: timer, Activity toolbar, discovery, and one History & Plans
+ledger. The inspector sits beside the ledger on desktop and below it on narrow screens. The
+new pending-sync feedback lives beside the timer. **A Dayline**, **B Split desk**, and **C Focus**
+remain available for comparison and share the synthetic fixtures.
 This standalone page sits alongside the existing Agenda interface because the approved preview
 must not load or mutate any live TimeTrace data.
 
@@ -15,9 +17,10 @@ cd src/timetrace/interfaces/api/prototype/agenda-react
 npm ci && npm run dev
 ```
 
-Open http://127.0.0.1:18783/ (or append `?variant=A`, `?variant=B`, or `?variant=C`).
+Open http://127.0.0.1:18783/ (or use `?variant=D`, `?variant=A`, `?variant=B`, or `?variant=C`).
 The bottom switcher keeps plans, pins, and recordings when switching. Local filters and open
-panels can reset between layouts. Arrow keys switch when focus is not in an interactive control. `npm run build` type-checks and builds static files.
+panels can reset between layouts. Arrow keys switch when focus is not in an interactive control.
+`npm run build` type-checks and builds static files.
 
 For physical phones on a trusted local network, replace the dev command with
 `npm exec -- vite --host 0.0.0.0 --port 18783 --strictPort` and open the development
@@ -37,7 +40,8 @@ The preview does **not** deploy TimeTrace.
    correction/keep-both behavior.
 4. Open **Start an activity** to search by title or priority and manage pins. Select an
    activity without starting it, or start it explicitly. Try a taskless timer and an Entry note.
-5. Open **History & plans** to add past recorded work, optionally link it to a same-task plan,
+5. Use **Add recorded work** (in the Activity toolbar in Familiar; inside History & Plans in
+   the other layouts). Optionally link it to a same-task plan,
    filter the ledger and preview selected/all-filtered saved work as Markdown or CSV.
 6. Compare which layout makes the timer, schedule, discovery, and history easiest to reach.
    Try the forms using touch and the software keyboard, then a desktop keyboard.

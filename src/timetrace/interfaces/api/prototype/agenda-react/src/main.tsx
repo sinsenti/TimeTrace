@@ -6,8 +6,10 @@ import {
   ActivityPicker,
   HistoryTools,
   localDate,
+  ManualRecording,
   PlanDetails,
   range,
+  RecordedDetails,
   TimerTools,
   unassigned,
   type Interval,
@@ -15,10 +17,10 @@ import {
   type Plan,
 } from './agenda-tools';
 
-// Throwaway: compare three layouts for the same touch scheduling and timer workflow.
-const modes = ['A', 'B', 'C'] as const;
+// Throwaway: a current-Agenda baseline, plus earlier touch-layout comparisons.
+const modes = ['D', 'A', 'B', 'C'] as const;
 type Mode = (typeof modes)[number];
-const names: Record<Mode, string> = { A: 'Dayline', B: 'Split desk', C: 'Focus' };
+const names: Record<Mode, string> = { D: 'Familiar', A: 'Dayline', B: 'Split desk', C: 'Focus' };
 const tasks = activities.map(({ title }) => title);
 const day = localDate(Date.now());
 const sample: Plan[] = [
@@ -35,7 +37,7 @@ const sample: Plan[] = [
 ];
 function fromUrl(): Mode {
   const mode = new URLSearchParams(location.search).get('variant');
-  return modes.find((key) => key === mode) ?? 'A';
+  return modes.find((key) => key === mode) ?? 'D';
 }
 function duration(ms: number) {
   const seconds = Math.floor(ms / 1000);
@@ -51,6 +53,7 @@ function App() {
   const [pins, setPins] = useState([tasks[0]]);
   const [entryNote, setEntryNote] = useState('');
   const [draft, setDraft] = useState<Plan | null>(null);
+  const [extraInspector, setExtraInspector] = useState<'manual' | RecordedInterval | null>(null);
   const [formError, setFormError] = useState('');
   const [task, setTask] = useState(tasks[0]);
   const [online, setOnline] = useState(true);
@@ -63,16 +66,22 @@ function App() {
   const [panel, setPanel] = useState<'work' | 'activities' | 'plans' | 'history'>('work');
   const editorHeading = useRef<HTMLHeadingElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
-  const editing = Boolean(draft);
+  const inspectorKey = draft
+    ? `plan-${draft.id}`
+    : variant === 'D' && extraInspector
+      ? extraInspector === 'manual'
+        ? 'manual'
+        : `recorded-${extraInspector.id}`
+      : '';
 
   useEffect(() => {
-    if (editing) editorHeading.current?.focus();
+    if (inspectorKey) editorHeading.current?.focus();
     else if (returnFocus.current) {
       if (returnFocus.current.isConnected) returnFocus.current.focus();
-      else document.getElementById('agenda-title')?.focus();
+      else document.getElementById(variant === 'D' ? 'history-title' : 'agenda-title')?.focus();
       returnFocus.current = null;
     }
-  }, [editing]);
+  }, [inspectorKey, variant]);
 
   useEffect(() => {
     function keys(event: KeyboardEvent) {
@@ -102,8 +111,17 @@ function App() {
     history.replaceState(null, '', url);
     setVariant(next);
   }
+  function openInspector(selection: 'manual' | RecordedInterval, trigger: HTMLElement) {
+    returnFocus.current = trigger;
+    setDraft(null);
+    setExtraInspector(selection);
+  }
+  function addPlan(trigger: HTMLElement) {
+    edit({ id: Date.now(), task, date: viewDate || day, start: '09:00', end: '09:30' }, trigger);
+  }
   function edit(plan: Plan, trigger: HTMLElement) {
     returnFocus.current = trigger;
+    setExtraInspector(null);
     setDraft(
       plans.some(({ id }) => id === plan.id)
         ? { ...plan, original: plan.original ?? `${plan.date} · ${plan.start}–${plan.end}` }
@@ -255,10 +273,10 @@ function App() {
           <p className="hint">Not included in recorded time until accepted.</p>
         </div>
       )}
-      {recorded.length === 0 && !pending && (
+      {variant !== 'D' && recorded.length === 0 && !pending && (
         <p className="hint">No recorded intervals in this demo yet.</p>
       )}
-      {recorded.length > 0 && (
+      {variant !== 'D' && recorded.length > 0 && (
         <ul className="records">
           {recorded.map((item) => (
             <li key={item.id}>
@@ -285,15 +303,24 @@ function App() {
       canStart={!running && !pending}
     />
   );
+  const previousDay = new Date();
+  previousDay.setDate(previousDay.getDate() - 1);
+  const previousDate = localDate(previousDay.getTime());
+  const manualDate = viewDate && viewDate < day ? viewDate : previousDate;
+  function saveManual(item: Interval) {
+    saveRecording(item);
+    if (variant === 'D') setViewDate(localDate(item.start));
+    setNotice('Manual recorded work saved in the demo.');
+  }
   const historyTools = (
     <HistoryTools
       recorded={recorded}
       plans={plans}
-      day={localDate(Date.now() - 86_400_000)}
-      save={(item) => {
-        saveRecording(item);
-        setNotice('Manual recorded work saved in the demo.');
-      }}
+      day={manualDate}
+      save={saveManual}
+      scopeDate={variant === 'D' ? viewDate : undefined}
+      openPlan={variant === 'D' ? edit : undefined}
+      openWork={variant === 'D' ? openInspector : undefined}
     />
   );
   const agenda = (
@@ -305,22 +332,7 @@ function App() {
             Scheduled sessions
           </h2>
         </div>
-        <button
-          onClick={(e) =>
-            edit(
-              {
-                id: Date.now(),
-                task,
-                date: viewDate || day,
-                start: '09:00',
-                end: '09:30',
-              },
-              e.currentTarget,
-            )
-          }
-        >
-          Add session
-        </button>
+        <button onClick={(event) => addPlan(event.currentTarget)}>Add session</button>
       </div>
       <label>
         Local date
@@ -362,6 +374,9 @@ function App() {
       <h2 id="edit-title" ref={editorHeading} tabIndex={-1}>
         {plans.some((item) => item.id === draft.id) ? 'Edit scheduled session' : 'Add scheduled session'}
       </h2>
+      {variant === 'D' && plans.some((plan) => plan.id === draft.id) && (
+        <PlanDetails plan={plans.find((plan) => plan.id === draft.id)!} />
+      )}
       <form onSubmit={savePlan}>
         <label>
           Scheduled task
@@ -448,12 +463,76 @@ function App() {
               ? 'Scan the day in time order.'
               : variant === 'B'
                 ? 'Keep the plan and timer side by side.'
-                : 'Put one activity in view at a time.'}
+                : variant === 'C'
+                  ? 'Put one activity in view at a time.'
+                  : 'The familiar Agenda order, adapted for touch.'}
           </p>
           <p className="hint">
             Synthetic data only. Connection and saving are simulated; reload resets the preview.
           </p>
         </div>
+        {variant === 'D' && (
+          <div className="familiar">
+            <div className="familiar-timer">
+              {timer}
+              {pending && feedback}
+            </div>
+            <section className="activity-toolbar" aria-labelledby="activity-heading">
+              <div className="activity-context">
+                <h2 id="activity-heading">Activity</h2>
+                <label>
+                  Local date
+                  <input
+                    type="date"
+                    value={viewDate}
+                    onChange={(event) => setViewDate(event.target.value)}
+                  />
+                </label>
+              </div>
+              <div className="button-row">
+                <button className="primary" onClick={(event) => addPlan(event.currentTarget)}>
+                  + Plan session
+                </button>
+                <button onClick={(event) => openInspector('manual', event.currentTarget)}>
+                  Add recorded work
+                </button>
+                <details className="activity-help">
+                  <summary>Shortcuts &amp; help</summary>
+                  <p className="hint">
+                    Use Start and Stop to time work. Plan session sets aside time; Add recorded work
+                    saves past work instead. Desktop shortcuts are illustrated in Timer tools.
+                  </p>
+                </details>
+              </div>
+            </section>
+            {discovery}
+            <div className={`familiar-ledger ${editor || extraInspector ? 'has-inspector' : ''}`}>
+              {historyTools}
+              {editor ||
+                (extraInspector && (
+                  <aside className="card editor" aria-labelledby="extra-inspector-title">
+                    <p className="eyebrow">Inspector</p>
+                    <h2 id="extra-inspector-title" ref={editorHeading} tabIndex={-1}>
+                      {extraInspector === 'manual' ? 'Record what you did' : extraInspector.task}
+                    </h2>
+                    {extraInspector === 'manual' ? (
+                      <ManualRecording
+                        plans={plans}
+                        day={manualDate}
+                        save={saveManual}
+                        dismiss={() => setExtraInspector(null)}
+                      />
+                    ) : (
+                      <>
+                        <RecordedDetails item={extraInspector} />
+                        <button onClick={() => setExtraInspector(null)}>Close inspector</button>
+                      </>
+                    )}
+                  </aside>
+                ))}
+            </div>
+          </div>
+        )}
         {variant === 'A' && (
           <VariantA
             agenda={agenda}

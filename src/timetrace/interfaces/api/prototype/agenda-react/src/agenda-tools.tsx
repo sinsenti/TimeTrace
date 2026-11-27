@@ -158,11 +158,17 @@ export function HistoryTools({
   plans,
   save,
   day,
+  scopeDate,
+  openPlan,
+  openWork,
 }: {
   recorded: RecordedInterval[];
   plans: Plan[];
   save: (item: Interval) => void;
   day: string;
+  scopeDate?: string;
+  openPlan?: (plan: Plan, trigger: HTMLElement) => void;
+  openWork?: (item: RecordedInterval, trigger: HTMLElement) => void;
 }) {
   const [search, setSearch] = useState('');
   const [tag, setTag] = useState('');
@@ -172,20 +178,30 @@ export function HistoryTools({
   const [format, setFormat] = useState('Markdown');
   const [selection, setSelection] = useState<'all' | 'selected'>('all');
   const [selected, setSelected] = useState<number[]>([]);
+  const dayStart = scopeDate ? new Date(`${scopeDate}T00:00`) : null;
+  const nextDay = dayStart ? new Date(dayStart) : null;
+  if (nextDay) nextDay.setDate(nextDay.getDate() + 1);
   const visibleWork = [...recorded, ...exampleWork]
     .map((item) => ({ item, key: item.id }))
     .filter(
       ({ item }) =>
-        includes(item.task, search) && includes(tagOf(item.task), tag) && includes(item.note, notes),
+        (!dayStart || !nextDay || (item.end > dayStart.getTime() && item.start < nextDay.getTime())) &&
+        includes(item.task, search) &&
+        includes(tagOf(item.task), tag) &&
+        includes(item.note, notes),
     );
   const visiblePlans = plans.filter(
     (item) =>
+      (!scopeDate || item.date === scopeDate) &&
       includes(item.task, search) &&
       includes(`${tagOf(item.task)} ${item.tags ?? ''}`, tag) &&
       includes(item.notes, notes),
   );
   const exporting = visibleWork.filter(
-    ({ key }) => kind !== 'Scheduled sessions' && (selection === 'all' || selected.includes(key)),
+    ({ key, item }) =>
+      kind !== 'Scheduled sessions' &&
+      (!scopeDate || localDate(item.start) === scopeDate) &&
+      (selection === 'all' || selected.includes(key)),
   );
   const csv = (text: string) => `"${text.replaceAll('"', '""')}"`;
   const preview =
@@ -197,10 +213,12 @@ export function HistoryTools({
       <div className="section-head">
         <div>
           <p className="eyebrow">Ledger</p>
-          <h2 id="history-title">History &amp; plans</h2>
+          <h2 id="history-title" tabIndex={-1}>
+            History &amp; plans
+          </h2>
         </div>
       </div>
-      <ManualRecording plans={plans} save={save} day={day} />
+      {!openPlan && <ManualRecording plans={plans} save={save} day={day} />}
       <div className="control-row time-fields">
         <label>
           Search history &amp; plans
@@ -278,17 +296,21 @@ export function HistoryTools({
                 />
                 Select {item.task} for export
               </label>
-              <details>
-                <summary>
-                  {localDate(item.start)} · {item.task} · {range(item)}
-                </summary>
-                <p>Entry note: {item.note || 'None'}.</p>
-                <p>Plan link: {item.planId ? `Explicit link to plan ${item.planId}` : 'None'}</p>
-                <p className="hint">
-                  Recorded-work inspector: review or correct the interval, edit its Entry note, or
-                  explicitly assign or link it. These inspector writes are illustrated, not wired.
-                </p>
-              </details>
+              {openWork ? (
+                <button
+                  className="ledger-entry"
+                  onClick={(event) => openWork(item, event.currentTarget)}
+                >
+                  {item.task} · {range(item)} <small>Recorded work · {localDate(item.start)}</small>
+                </button>
+              ) : (
+                <details>
+                  <summary>
+                    {localDate(item.start)} · {item.task} · {range(item)}
+                  </summary>
+                  <RecordedDetails item={item} />
+                </details>
+              )}
             </li>
           ))}
         </ul>
@@ -297,11 +319,22 @@ export function HistoryTools({
         <ul className="tool-list">
           {visiblePlans.map((plan) => (
             <li key={plan.id}>
-              <strong>{plan.task}</strong>
-              <p className="hint">
-                Scheduled session · {plan.date} · {plan.start}–{plan.end}
-              </p>
-              <PlanDetails plan={plan} />
+              {openPlan ? (
+                <button
+                  className="ledger-entry"
+                  onClick={(event) => openPlan(plan, event.currentTarget)}
+                >
+                  {plan.task} · {plan.start}–{plan.end} <small>Scheduled session · {plan.date}</small>
+                </button>
+              ) : (
+                <>
+                  <strong>{plan.task}</strong>
+                  <p className="hint">
+                    Scheduled session · {plan.date} · {plan.start}–{plan.end}
+                  </p>
+                  <PlanDetails plan={plan} />
+                </>
+              )}
             </li>
           ))}
         </ul>
@@ -320,14 +353,32 @@ export function HistoryTools({
   );
 }
 
-function ManualRecording({
+export function RecordedDetails({ item }: { item: RecordedInterval }) {
+  return (
+    <>
+      <p>
+        {localDate(item.start)} · {range(item)}
+      </p>
+      <p>Entry note: {item.note || 'None'}.</p>
+      <p>Plan link: {item.planId ? `Explicit link to plan ${item.planId}` : 'None'}</p>
+      <p className="hint">
+        Review/correct the interval, edit its Entry note, or explicitly assign or link it here. These
+        inspector writes are illustrated, not wired.
+      </p>
+    </>
+  );
+}
+
+export function ManualRecording({
   plans,
   save,
   day,
+  dismiss,
 }: {
   plans: Plan[];
   save: (item: Interval) => void;
   day: string;
+  dismiss?: () => void;
 }) {
   const [task, setTask] = useState(unassigned);
   const [link, setLink] = useState('');
@@ -350,13 +401,16 @@ function ManualRecording({
     setTask(unassigned);
     setLink('');
     setError('');
+    dismiss?.();
   }
   return (
     <div className="control-row">
-      <button aria-expanded={open} onClick={() => (open ? cancel() : setOpen(true))}>
-        Add recorded work
-      </button>
-      {open && (
+      {!dismiss && (
+        <button aria-expanded={open} onClick={() => (open ? cancel() : setOpen(true))}>
+          Add recorded work
+        </button>
+      )}
+      {(open || dismiss) && (
         <form className="example" onSubmit={submit}>
           <label>
             Recorded task
