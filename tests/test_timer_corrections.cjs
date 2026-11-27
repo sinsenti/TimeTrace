@@ -81,7 +81,7 @@ test('a correction approved on A never retargets a newer selected timer B',async
 test('acknowledged correction with hung display read does not block a new Stop or release its pending ownership',async()=>{
     let releaseRead, releaseStop;
     const {control}=setup({get:()=>new Promise(resolve=>releaseRead=resolve),post:async(url,payload)=>{
-        if(url.endsWith('/stop')) return new Promise(resolve=>releaseStop=()=>resolve({operation_id:payload.operation_id}));
+        if(url.endsWith('/stop-review')) return new Promise(resolve=>releaseStop=()=>resolve({operation_id:payload.operation_id}));
         return {operation_id:payload.operation_id};
     }});
     const first=control.act('a','pause');

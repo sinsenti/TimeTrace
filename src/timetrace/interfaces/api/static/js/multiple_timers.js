@@ -111,7 +111,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 }
                 if (ownership !== writeGeneration) return false;
                 if (receipt?.outcome === 'acknowledged') return true;
-                message = receipt.url.endsWith('/discard') ? 'Discard outcome uncertain. Check saved operation status; recovery is read-only.' : 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
+                message = /\/(discard|stop-review|stop-commit)$/.test(receipt.url) ? 'Outcome uncertain. Check saved operation status; recovery is read-only.' : 'Outcome uncertain. Check operation status or explicitly retry the same operation.'; return false;
             }
             if (result?.operation_id !== receipt.payload.operation_id || (receipt.url.endsWith('/discard') &&
                 (!result.timer?.discarded || result.timer.state !== 'stopped' || receipt.url !== `/timers/${encodeURIComponent(result.timer.id)}/discard`))) {
@@ -166,8 +166,8 @@ function createTimerController({api, storage, onState, operationId = () => crypt
                 fresh = false; publish();
                 if (typeof window !== 'undefined' && lastResult) window.dispatchEvent(new CustomEvent('timetrace:timer-mutated', {detail:lastResult}));
                 void refresh();
-            } else { message = recovering.url.endsWith('/discard') ? 'Discard needs daemon reconciliation. Keep the saved operation and check status again; no discard will be replayed.' : 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
-        } catch (_) { if (receipt !== recovering || pending) return; message = recovering.url.endsWith('/discard') ? 'Discard not confirmed. Keep the saved operation and check status again; recovery is read-only.' : 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
+            } else { message = /\/(discard|stop-review|stop-commit)$/.test(recovering.url) ? 'Operation needs daemon reconciliation. Keep the saved operation and check status again; no write will be replayed.' : 'Operation needs reconciliation. Retry the same operation to finish recovery.'; publish(); }
+        } catch (_) { if (receipt !== recovering || pending) return; message = /\/(discard|stop-review|stop-commit)$/.test(recovering.url) ? 'Operation not confirmed. Keep the saved operation and check status again; recovery is read-only.' : 'Operation not confirmed. Retry only this saved operation, never a new Start/Stop.'; publish(); }
     }
     async function review(choices) {
         const acknowledged = [];
@@ -214,7 +214,7 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             try {storage.setItem('timetrace_timer_selected',id);}catch(_){/* Display preference only; safety journal is independent. */}
             publish(); return true;
         },
-        retry: () => receipt?.outcome === 'acknowledged' ? refresh() : receipt?.url?.endsWith('/discard') ? recover() : receipt?.payload && write(receipt.url, receipt.payload, true),
+        retry: () => receipt?.outcome === 'acknowledged' ? refresh() : /\/(discard|stop-review|stop-commit)$/.test(receipt?.url || '') ? recover() : receipt?.payload && write(receipt.url, receipt.payload, true),
         initializeCorrections: () => write('/timers/correction-initialize', {}),
         previewCorrection: (resource, request) => {
             if (pending || (receipt && receipt.outcome !== 'acknowledged')) return Promise.reject(Error('Finish timer recovery before previewing corrections.'));
@@ -226,7 +226,20 @@ function createTimerController({api, storage, onState, operationId = () => crypt
             return write(`${resource}/correction`, {preview}, false, null, false);
         },
         start: (payload,onAcknowledged=null,options={}) => write('/timers', payload, false, onAcknowledged, true, options.preservePage===true, options.selectionGeneration??null),
-        act: (id, action, payload = {}, onAcknowledged = null) => action === 'discard' ? Promise.resolve(false) : write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged)
+        previewStop: (id, payload) => {
+            if (!fresh || pending || receipt) return Promise.reject(Error('Refresh timer status and finish operation recovery first.'));
+            return api.post(`/timers/${encodeURIComponent(id)}/stop-preview`, payload);
+        },
+        commitStop: (id, payload) => write(`/timers/${encodeURIComponent(id)}/stop-commit`, payload, false, null, false),
+        act: (id, action, payload = {}, onAcknowledged = null) => {
+            if (action === 'discard') return Promise.resolve(false);
+            if (action === 'stop') {
+                const timer = timers.find(t => t.id === id);
+                if (timer?.stop_review) return Promise.resolve(!pending && (!receipt || receipt.outcome === 'acknowledged'));
+                return write(`/timers/${encodeURIComponent(id)}/stop-review`, payload, false, onAcknowledged, false);
+            }
+            return write(`/timers/${encodeURIComponent(id)}/${action}`, payload, false, onAcknowledged);
+        }
     };
 }
 
@@ -318,6 +331,7 @@ function renderTimerWorkspaceCard(root, state, control) {
     }
     for (const [label, action] of [[timer.state === 'running' ? 'Pause' : 'Resume', timer.state === 'running' ? 'pause' : 'resume'], ['Stop & record', 'stop']]) {
         const button = create('button', label); button.type = 'button'; button.disabled = blocked;
+        button.dataset.timerFocus = `${timer.id}/${action === 'stop' ? 'stop' : 'pause-resume'}`;
         button.addEventListener('click', () => control.act(timer.id, action, {expected_revision:timer.revision}));
         row.append(button);
     }
@@ -530,7 +544,7 @@ if (typeof window !== 'undefined') {
             }
             if (state.receipt?.payload) {
                 list.append(button('Check saved operation', () => window.multipleTimers.recover(), state.pending, 'receipt/check'));
-                list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : state.receipt.url?.endsWith('/discard') ? 'Check discard status again' : 'Retry same operation',
+                list.append(button(state.receipt.outcome === 'acknowledged' ? 'Retry status refresh' : /\/(discard|stop-review|stop-commit)$/.test(state.receipt.url || '') ? 'Check operation status again' : 'Retry same operation',
                     () => window.multipleTimers.retry(), state.pending, 'receipt/retry'));
             }
             if (restoreFocus && !state.pending && region.contains(document.activeElement)) {
@@ -548,13 +562,27 @@ if (typeof window !== 'undefined') {
         if (currentCard) noteView = createCurrentNoteView(document.getElementById('workspace-current-note'),control);
         control.hasNoteDraft = id => Boolean(noteView?.hasDraft(id));
         const act = control.act;
-        control.act = (id, action, ...args) => {
+        let stopOpening = false;
+        control.act = async (id, action, ...args) => {
             if (action === 'stop' && noteView?.hasDraft(id)) {
                 notice.textContent = 'Save the Entry note draft or explicitly discard its changes before Stop & record.';
                 if(control.snapshot().selectedTimerId===id){const panel=document.querySelector('[data-current-note]');if(panel)panel.open=true;}
                 return Promise.resolve(false);
             }
-            return act(id,action,...args);
+            if (action !== 'stop') return act(id,action,...args);
+            if (stopOpening) return false;
+            if (typeof mountStopReview !== 'function') { notice.textContent = 'Stop review unavailable. Reload before stopping.'; return false; }
+            stopOpening = true;
+            const launcher = document.activeElement;
+            try {
+                const prepared = await act(id,action,...args);
+                if (!prepared) return false;
+                await control.refresh();
+                if (!control.snapshot().fresh || control.snapshot().receipt) return false;
+                await mountStopReview({document,control,id,launcher,returnFocus:() =>
+                    [...document.querySelectorAll('[data-timer-focus]')].find(node => node.dataset.timerFocus === `${id}/stop`) || region.querySelector('[data-timer-refresh]')});
+                return true;
+            } finally { stopOpening = false; }
         };
         if (typeof window.openTimeCorrection === 'function') control.correctTime = (timer,change) => window.openTimeCorrection({timer,change});
         control.editTask = id => { if (typeof openEditTaskModal === 'function') return openEditTaskModal(id); };

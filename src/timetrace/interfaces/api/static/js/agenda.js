@@ -255,7 +255,7 @@ const agendaPage = (() => {
                 ack: async result => {
                     generation++;
                     if (owner === capturedDraft) {
-                        if (result.action === 'delete_everything') open(null);
+                        if (['delete_everything','remove_schedule'].includes(result.action)) open(null);
                         else open({...row, ...result.plan}); // Adopt fixed ACK before any refresh read.
                     }
                     await refresh();
@@ -585,8 +585,35 @@ const agendaPage = (() => {
         ledger(); void discovery();
     }
 
+    window.addEventListener('timetrace:plan-removal-acknowledged', event => {
+        const result = event.detail;
+        generation++;
+        if (['remove_schedule','delete_everything'].includes(result.action)) {
+            rows = rows.filter(row => row.id !== result.plan_id);
+            if (owner?.row?.id === result.plan_id) open(null);
+        } else if (result.plan) {
+            rows = [...rows.filter(row => row.id !== result.plan.id),result.plan];
+            if (owner?.row?.id === result.plan.id && !owner?.pending) {
+                owner.latest = result.plan; owner.blocked = true; controls();
+            }
+        }
+        void refresh();
+    });
     window.addEventListener('timetrace:timer-mutated', event => {
         const result = event.detail;
+        const finalPlans = result?.schedule?.parts || (result?.replacement?.plan ? [result.replacement.plan] : []);
+        if (finalPlans.length) {
+            generation++;
+            for (const plan of finalPlans) {
+                rows = [...rows.filter(row => row.id !== plan.id),plan];
+                if (owner?.row?.id === plan.id) {
+                    Object.assign(owner.row,plan);
+                    owner.latest = plan; owner.blocked = true;
+                    get('edit-status').textContent = 'Stop updated this schedule. Your input is retained; explicitly use saved times before another edit.';
+                    controls();
+                }
+            }
+        }
         if (result?.correction?.changed_work_ids?.includes(owner?.row?.id)) {
             owner.invalidateWorkNote?.(`Actual time changed. Your typing is retained, but this note snapshot is stale. Reopen the interval from refreshed history before writing. Affected start days (${result.correction.timezone || 'historical receipt context'}): ${result.correction.affected_local_dates.join(', ')}.`);
         }

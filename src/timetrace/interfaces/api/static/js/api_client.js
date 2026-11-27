@@ -96,7 +96,7 @@ class ApiClient {
             saved = await this.post('/recorded-work', payload);
             if (!saved?.id || saved.kind !== 'recorded_work') throw new Error('Missing recorded work acknowledgement');
         } catch (error) {
-            if (error.status && error.status < 500) this.rememberRecordedWorkAttempt(null);
+            if (error.status && error.status < 500 && !['operation_payload_mismatch','reconciliation_required'].includes(error.code)) this.rememberRecordedWorkAttempt(null);
             throw error;
         } finally {
             this.workPending = false;
@@ -104,6 +104,19 @@ class ApiClient {
         // ACK wins over fallible cleanup/display: never report a committed recording as failed.
         try { this.rememberRecordedWorkAttempt(null); } catch (_) { /* Retained journal safely blocks a duplicate. */ }
         return saved;
+    }
+
+    async recoverRecordedWork() {
+        const attempt = this.recordedWorkAttempt();
+        if (!attempt?.payload?.operation_id || this.workPending) return null;
+        const receipt = await this.get(`/operations/${encodeURIComponent(`recorded-work:${attempt.payload.operation_id}`)}`);
+        if (receipt.status !== 'finalized' || !receipt.result?.id || receipt.result.kind !== 'recorded_work') return null;
+        if (JSON.stringify(this.recordedWorkAttempt()) !== JSON.stringify(attempt)) return null;
+        this.rememberRecordedWorkAttempt(null);
+        if (typeof window !== 'undefined' && typeof CustomEvent !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('timetrace:recording-acknowledged', {detail:receipt.result}));
+        }
+        return receipt.result;
     }
 
     put(url, body = null, headers = {}) {

@@ -398,6 +398,18 @@ function rememberSavedSession(savedSession, previousId, event = null) {
 window.addEventListener('timetrace:timer-mutated', async event => {
     ++calendarReadVersion; // Fence in-flight ranges at the authoritative ACK, before any fallible GET.
     const result = event.detail;
+    const finalPlans = result?.schedule?.parts || (result?.replacement?.plan ? [result.replacement.plan] : []);
+    for (const plan of finalPlans) {
+        rememberSavedSession(plan,plan.id);
+        if (typeof sessionModalOwner !== 'undefined' && sessionModalOwner?.session?.id === plan.id) {
+            sessionModalOwner.session = plan;
+            sessionModalOwner.latest = plan;
+            sessionModalOwner.blocked = true;
+            sessionModalFeedback('Stop updated this schedule. Your input is retained. Explicitly use saved times before another edit.');
+            document.getElementById('session_modal_use_latest')?.classList.remove('hidden');
+            setSessionSavePending(sessionModalOwner,false);
+        }
+    }
     const previousId = result?.requested_scheduled_session_id || result?.timer?.scheduled_session_id;
     const row = calendarSessionRows().find(row => row.id === previousId && row.kind === 'scheduled_session');
     if (row && result.plan_revision) {
@@ -410,6 +422,23 @@ window.addEventListener('timetrace:timer-mutated', async event => {
             showSessionModalPlan(saved);
         }
     }
+    await refreshSessionDisplay();
+});
+
+window.addEventListener('timetrace:plan-removal-acknowledged', async event => {
+    ++calendarReadVersion;
+    const result = event.detail;
+    if (result.plan) rememberSavedSession(result.plan,result.plan.id);
+    if (['remove_schedule','delete_everything'].includes(result.action)) {
+        forgetCalendarPlanningRow(result.plan_id);
+        if (typeof sessionModalOwner !== 'undefined' && sessionModalOwner?.session?.id === result.plan_id) closeSessionModal();
+    }
+    await refreshSessionDisplay();
+});
+
+window.addEventListener('timetrace:recording-acknowledged', async event => {
+    ++calendarReadVersion;
+    acknowledgeCalendarRecording(event.detail);
     await refreshSessionDisplay();
 });
 

@@ -21,7 +21,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
             appendChild(child) { this.children.push(child); if (child.id) elements.set(child.id, child); },
             append(...children) { for (const child of children) this.appendChild(child); },
             replaceChildren(...children) { this.children = []; this.append(...children); },
-            querySelectorAll() { return []; }, contains(child) { return this === child || this.children.includes(child); },
+            querySelectorAll() { return []; }, contains(child) { return this === child || this.children.some(node=>node.contains?.(child)); },
             insertBefore(child) { this.children.unshift(child); }, remove() { elements.delete(this.id); },
             showModal(){this.open=true;},close(){this.open=false;},
             focus() { context.document.activeElement = this; }, select() {} };
@@ -30,7 +30,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
     }
     const document = { getElementById: id => elements.get(id) || null, createElement: tag => element('', tag),
         addEventListener(name, fn) { documentListeners.set(name, fn); }, removeEventListener() {}, querySelectorAll() { return []; }, body: element('body') };
-    context = vm.createContext({ document, Date, URLSearchParams, location: {search:'',pathname:'/agenda-view',href:''}, setTimeout: () => {}, console: { error() {} },
+    context = vm.createContext({ document, Date, URLSearchParams, crypto:require('node:crypto').webcrypto, location: {search:'',pathname:'/agenda-view',href:''}, setTimeout: () => {}, console: { error() {} },
         sessionStorage: {getItem:key => safetyStorage.get(key) || null, setItem:(key,value) => safetyStorage.set(key,value), removeItem:key => safetyStorage.delete(key)},
         localStorage: { getItem: () => null }, alert: msg => alerts.push(msg),
         addEventListener(name, fn) { listeners.set(name, fn); },
@@ -55,7 +55,7 @@ function sessionPage(http = async () => ({ id: 'real-session' })) {
         'session_modal_start', 'session_modal_end', 'session_modal_task_id', 'session_modal_tags_input', 'session_modal_task_search',
         'task_chip_container', 'session_modal_notes', 'session_modal', 'recurring_delete_modal', 'session_modal_save_btn', 'session_modal_feedback']) element(id, 'input');
     element('launcher', 'button').focus();
-    for (const name of ['api_client.js', 'task_knowledge.js', 'utils.js', 'task_attach.js', 'tags_engine.js', 'session_modal.js', 'calendar.js']) load(name);
+    for (const name of ['api_client.js', 'task_knowledge.js', 'utils.js', 'task_attach.js', 'tags_engine.js', 'reviewed_recording.js', 'session_modal.js', 'calendar.js']) load(name);
     context.allSessions = [];
     const open = () => run('openCreateSessionModal(new Date("2026-11-10T23:45:00Z"), new Date("2026-11-11T00:30:00Z"))');
     return { context, elements, alerts, writes, listeners, documentListeners, run, load, open, element };
@@ -549,14 +549,21 @@ test('Calendar modal conflict remains blocked after reopening and through a drag
 });
 
 test('manual recording uncertainty blocks Calendar reopen and navigation to another client until explicit review', async () => {
-    const p = sessionPage(async (url, options) => { if (options.method === 'GET') return {items:[]}; throw Error('lost response'); });
+    const p = sessionPage(async (url, options) => { if (options.method === 'GET') return {items:[]}; if(url==='/recorded-work/preview')return {consent_token:'approval',existing_work:[]}; throw Error('lost response'); });
+    const walk=node=>[node,...node.children.flatMap(walk)];
     p.run('openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
-    await p.run('saveSessionFromModal()');
+    const first=p.run('saveSessionFromModal()');await new Promise(setImmediate);
+    const firstDialog=p.context.document.body.children.at(-1);
+    await walk(firstDialog).find(n=>n.textContent==='Save recorded work').click();
+    firstDialog.cancel({preventDefault(){}});await first;
     p.run('closeSessionModal(); openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
-    await p.run('saveSessionFromModal()');
-    assert.equal(p.writes.length, 1, 'uncertain manual work must not be replayed by reopening');
+    const second=p.run('saveSessionFromModal()');await new Promise(setImmediate);
+    const secondDialog=p.context.document.body.children.at(-1);
+    await walk(secondDialog).find(n=>n.textContent==='Save recorded work').click();
+    secondDialog.cancel({preventDefault(){}});await second;
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work').length, 1, 'uncertain manual work must not be replayed by reopening');
     await assert.rejects(p.run('new ApiClient().saveRecordedWork({start_time:"2000-01-04T09:00Z", end_time:"2000-01-04T10:00Z"})'), /unconfirmed/);
-    assert.equal(p.writes.length, 1, 'the navigation client consumes the same persisted journal');
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work').length, 1, 'the navigation client consumes the same persisted journal');
 });
 
 for (const recovery of [false, true]) test(`Calendar receives production timer capture ACK before pending status (${recovery ? 'receipt recovery after reload' : 'POST'})`, async () => {
@@ -654,14 +661,19 @@ test('Calendar targeted timer ACK adopts captured plan UUID and revision before 
 });
 
 test('Calendar explicit manual recording creates typed work and never falls back to legacy edits', async () => {
-    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] :
+    const p = sessionPage(async (url, options) => options.method === 'GET' ? [] : url==='/recorded-work/preview' ? {consent_token:'approval',existing_work:[]} :
         {id:'manual-work', kind:'recorded_work', provenance:'manual', ...JSON.parse(options.body)});
     p.run('openCreateSessionModal(new Date("2000-01-04T09:00Z"), new Date("2000-01-04T10:00Z"), null, "", "work")');
-    await p.run('saveSessionFromModal()');
-    assert.equal(p.writes[0].url, '/recorded-work');
+    const saving=p.run('saveSessionFromModal()');await new Promise(setImmediate);
+    const walk=node=>[node,...node.children.flatMap(walk)];
+    await walk(p.context.document.body).find(n=>n.textContent==='Save recorded work').click();await saving;
+    assert.equal(p.writes[0].url, '/recorded-work/preview');
+    assert.equal(p.writes[1].url, '/recorded-work');
+    assert.equal(p.writes[1].payload.consent_token,'approval');
+    assert.ok(p.writes[1].payload.operation_id);
     p.run('openEditSessionModal("manual-work")');
     await p.run('saveSessionFromModal()');
-    assert.equal(p.writes.length, 1, 'typed recorded work is read-only, including repeat Save');
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work').length, 1, 'typed recorded work is read-only, including repeat Save');
 });
 
 test('explicit Calendar scheduling writes a plan, but an existing legacy edit keeps its old route', async () => {
@@ -1202,4 +1214,116 @@ test('Agenda mounts priority discovery through the shared launcher and keeps pin
     const start=body.children.find(el=>el.tagName==='ARTICLE').children[1].children[0];
     await start.click();
     assert.equal(p.writes.length,1);assert.equal(p.writes[0].url,'/timers');assert.equal(p.writes[0].payload.task_id,task.id);assert.equal(p.writes[0].payload.scheduled_session_id,undefined);
+});
+
+test('#67 wholly past Calendar creation defaults to explicit work, while future and existing plans stay scheduling',()=>{
+    const p=sessionPage();p.element('session_modal_intent');
+    p.run('openCreateSessionModal(new Date("2020-01-01T09:00:00Z"),new Date("2020-01-01T10:00:00Z"),null,"","calendar")');
+    assert.equal(p.run('sessionModalOwner.intent'),'work');
+    assert.equal(p.elements.get('session_modal_save_btn').textContent,'Review actual work');
+    p.run('openCreateSessionModal(new Date("2099-01-01T09:00:00Z"),new Date("2099-01-01T10:00:00Z"),null,"","calendar")');
+    assert.equal(p.run('sessionModalOwner.intent'),'schedule');
+    p.run('openEditSessionModal("plan",null,{id:"plan",kind:"scheduled_session",revision:2,start_time:"2020-01-01T09:00:00Z",end_time:"2020-01-01T10:00:00Z"})');
+    assert.equal(p.run('sessionModalOwner.intent'),'schedule');
+});
+
+test('#67 reviewed manual recording retains its operation receipt and recovers only by GET',async()=>{
+    const calls=[];let lost=true;
+    const p=sessionPage(async(url,options)=>{calls.push([options.method,url]);
+        if(options.method==='POST') {if(lost)throw Error('lost response');}
+        if(url.startsWith('/operations/'))return {status:'finalized',result:{id:'work-uuid',kind:'recorded_work',linked_plan:{id:'plan-uuid',kind:'scheduled_session',revision:4}}};
+        return [];
+    });
+    await assert.rejects(p.run('api.saveRecordedWork({operation_id:"reviewed-op",consent_token:"exact",start_time:"2020-01-01T09:00Z",end_time:"2020-01-01T10:00Z"})'),/lost response/);
+    const recovered=await p.run('api.recoverRecordedWork()');
+    assert.equal(recovered.id,'work-uuid');
+    assert.equal(recovered.linked_plan.revision,4);
+    assert.deepEqual(calls,[['POST','/recorded-work'],['GET','/operations/recorded-work%3Areviewed-op'],['GET','/api/tasks?status=all']]);
+    assert.equal(p.run('api.recordedWorkAttempt()'),null);
+});
+
+test('#67 Calendar scheduled block offers explicit Record time initialized from current plan, not original or edited inputs',async()=>{
+    const p=sessionPage();p.element('session_modal_plan_detail');p.context.crypto={randomUUID:()=> 'record-op'};
+    p.load('reviewed_recording.js');
+    p.run('rememberSavedSession({id:"plan-uuid",kind:"scheduled_session",task_id:"task-uuid",revision:3,original_start:"2020-01-01T08:00:00Z",original_end:"2020-01-01T09:00:00Z",start_time:"2020-01-01T09:00:00Z",end_time:"2020-01-01T10:00:00Z"});openEditSessionModal("plan-uuid")');
+    const detail=p.elements.get('session_modal_plan_detail');
+    const record=detail.children.find(n=>n.textContent==='Record time');assert.ok(record);
+    await record.click();await new Promise(setImmediate);
+    const preview=p.writes.find(w=>w.url==='/recorded-work/preview');
+    assert.equal(preview.payload.start_time,'2020-01-01T09:00:00Z');
+    assert.equal(preview.payload.end_time,'2020-01-01T10:00:00Z');
+    assert.equal(preview.payload.scheduled_session_id,'plan-uuid');
+    assert.equal(preview.payload.expected_plan_revision,3);
+    assert.equal(preview.payload.task_id,'task-uuid');
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work').length,0,'Record time only opens review');
+});
+
+test('#67 past external task drop opens recording confirmation without creating plan or changing task status',async()=>{
+    const p=sessionPage(async()=>[]);p.load('dashboard.js');
+    p.run('taskKnowledge.rememberFallback({id:"task-uuid",title:"Task",tags:"#tag"})');
+    p.context.drop={event:{title:'Task',start:new Date('2020-01-01T09:00:00Z'),extendedProps:{taskId:'task-uuid',estimatedMinutes:20},remove(){}}};
+    await p.run('scheduleCalendarDrop(drop)');
+    assert.equal(p.writes.length,0);
+    assert.equal(p.run('sessionModalOwner.intent'),'work');
+    assert.equal(p.elements.get('session_modal_task_id').value,'task-uuid');
+});
+
+test('#67 Calendar adopts every final split part and replacement plan before failed refresh, retaining open schedule input',async()=>{
+    const p=sessionPage(async()=>{throw Error('read failed');});
+    const source={id:'source-plan',kind:'scheduled_session',revision:2,start_time:'2020-01-01T09:00:00Z',end_time:'2020-01-01T10:00:00Z',original_start:'2020-01-01T09:00:00Z',original_end:'2020-01-01T10:00:00Z'};
+    p.context.source=source;p.run('rememberSavedSession(source);openEditSessionModal(source.id)');
+    p.elements.get('session_modal_end').value='2020-01-01T10:15';
+    await p.listeners.get('timetrace:timer-mutated')({detail:{schedule:{source_plan_id:source.id,parts:[{...source,revision:4,end_time:'2020-01-01T09:20:00Z'},{...source,id:'second-part',revision:2,start_time:'2020-01-01T09:30:00Z',end_time:'2020-01-01T09:40:00Z'}]}}});
+    assert.equal(p.run('calendarSessionRows().find(r=>r.id==="source-plan").revision'),4);
+    assert.equal(p.run('calendarSessionRows().find(r=>r.id==="second-part").revision'),2);
+    assert.equal(p.elements.get('session_modal_end').value,'2020-01-01T10:15');
+    assert.equal(p.run('sessionModalOwner.blocked'),true,'fresh endpoints require explicit review, not overwriting the draft');
+});
+
+test('#67 Calendar linked recording requires duplicate acknowledgement and adopts final plan revision without task or plan edits',async()=>{
+    const plan={id:'plan-uuid',kind:'scheduled_session',task_id:'task-uuid',revision:3,start_time:'2020-01-01T09:00:00Z',end_time:'2020-01-01T10:00:00Z',original_start:'2020-01-01T08:00:00Z',original_end:'2020-01-01T09:00:00Z'};
+    const p=sessionPage(async(url,options)=>{
+        if(url==='/recorded-work/preview')return {plan,consent_token:'exact-duplicate-consent',duplicate_warning:true,existing_work:[{id:'existing-work',start_time:plan.start_time,end_time:plan.end_time}]};
+        if(url==='/recorded-work')return {id:'new-work',kind:'recorded_work',...JSON.parse(options.body),linked_plan:{...plan,revision:4}};
+        throw Error('display unavailable');
+    });
+    p.element('session_modal_plan_detail');p.context.plan=plan;p.run('rememberSavedSession(plan);openEditSessionModal(plan.id)');
+    const initialEnd=p.elements.get('session_modal_end').value;
+    const walk=n=>[n,...n.children.flatMap(walk)];
+    const launch=p.elements.get('session_modal_plan_detail').children.find(n=>n.textContent==='Record time');
+    launch.focus();launch.click();await new Promise(setImmediate);
+    const dialog=p.context.document.body.children.at(-1),save=walk(dialog).find(n=>n.textContent==='Save linked recorded work');
+    assert.equal(save.disabled,true);
+    const check=walk(dialog).find(n=>n.type==='checkbox');check.checked=true;check.change();
+    await save.click();await new Promise(setImmediate);
+    const committed=p.writes.filter(w=>w.url==='/recorded-work');assert.equal(committed.length,1);
+    assert.equal(committed[0].payload.acknowledge_existing_work,true);assert.equal(committed[0].payload.consent_token,'exact-duplicate-consent');
+    assert.equal(p.run('sessionModalOwner.session.revision'),4);
+    assert.equal(p.elements.get('session_modal_end').value,initialEnd);
+    assert.equal(p.context.document.activeElement,launch,'ACK preserves the plan action DOM/focus');
+    launch.click();await new Promise(setImmediate);
+    assert.equal(p.writes.filter(w=>w.url==='/recorded-work/preview').at(-1).payload.expected_plan_revision,4);
+    assert.equal(p.writes.some(w=>w.method==='PUT'),false,'no status, estimate or schedule rewrite');
+});
+
+test('#67 future manual end is previewed unchanged, rejected visibly and never clipped or saved',async()=>{
+    const p=sessionPage(async(url)=>url==='/recorded-work/preview'?new Response(JSON.stringify({detail:'Recorded work cannot end in the future.',code:'future_recorded_end'}),{status:400}):[]);
+    p.run('openCreateSessionModal(new Date("2099-01-01T09:00:00Z"),new Date("2099-01-01T10:00:00Z"),null,"","work")');
+    const initialEnd=p.elements.get('session_modal_end').value;
+    const saving=p.run('saveSessionFromModal()');await new Promise(setImmediate);
+    const walk=n=>[n,...n.children.flatMap(walk)],dialog=p.context.document.body.children.at(-1);
+    assert.equal(p.writes[0].payload.end_time,'2099-01-01T10:00:00.000Z');
+    assert.ok(walk(dialog).some(n=>n.textContent.includes('cannot end in the future')));
+    assert.equal(walk(dialog).find(n=>n.textContent==='Save recorded work').disabled,true);
+    dialog.cancel({preventDefault(){}});await saving;
+    assert.equal(p.writes.some(w=>w.url==='/recorded-work'),false);
+    assert.equal(p.elements.get('session_modal_end').value,initialEnd);
+});
+
+test('#67 Calendar past quick creation uses its resolved default duration before choosing work intent',()=>{
+    const p=sessionPage();p.element('session_modal_intent');
+    p.run('openCreateSessionModal(new Date("2020-01-01T09:00:00Z"),null,null,"","calendar")');
+    assert.equal(p.run('sessionModalOwner.intent'),'work');
+    assert.equal(p.elements.get('session_modal_intent').value,'work');
+    assert.equal(p.elements.get('session_modal_save_btn').textContent,'Review actual work');
 });

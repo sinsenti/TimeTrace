@@ -14,10 +14,15 @@
         notice.textContent = `Manual recording not confirmed: ${attempt.payload.start_time} — ${attempt.payload.end_time}. Do not recreate work that already exists. Navigation and Refresh do not replay it.`;
         const read = document.createElement('button');
         read.type = 'button';
-        read.textContent = 'Read recorded work before reviewing';
+        read.textContent = attempt.payload.operation_id ? 'Check recording operation (read only)' : 'Read recorded work before reviewing';
         read.addEventListener('click', async () => {
             read.disabled = true;
             try {
+                if (attempt.payload.operation_id) {
+                    const saved = await api.recoverRecordedWork();
+                    notice.textContent = saved ? 'Recording confirmed. Refreshing display does not replay it.' : 'No finalized receipt yet. Keep this operation and check again; do not repeat the recording.';
+                    return;
+                }
                 const start = attempt.payload.start_time;
                 const end = new Date(+new Date(start) + 60000).toISOString();
                 const data = await api.get(`/agenda?${new URLSearchParams({start, end})}`);

@@ -63,3 +63,12 @@ These are bounded software/native-computed checks, not owner visual acceptance, 
 touch, assistive-technology, other-engine or OS notification certification. Test-created timers
 and status changes affected only synthetic state. No personal daemon/data/provider experiments,
 push or final deployment is part of this checkpoint.
+
+## Subsequent Stop / Calendar frontend
+
+The “Not implemented here” section above describes only the historical visibility slice. The
+subsequent foundation and frontend implementation are documented in
+[Stop / Calendar #67](stop-calendar-67.md#frontend-implementation-checkpoint) and its
+[backend API contract](stop-calendar-backend-67.md). Independent review and final integration
+validation remain separate from that frontend software checkpoint; the original visibility/focus
+receipts above are preserved unchanged.

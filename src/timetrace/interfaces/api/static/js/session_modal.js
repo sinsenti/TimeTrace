@@ -332,15 +332,68 @@ function showSessionModalPlan(row) {
     link.href = `/agenda-view?${new URLSearchParams({date:day, entry:row.id})}`;
     link.textContent = 'Open this entry in Agenda';
     detail.appendChild(link);
-    sessionModalFeedback(row.kind === 'recorded_work' ? 'Recorded work is read-only here.' : row.is_virtual
-        ? 'Save captures this occurrence. Deletion uses the existing recurrence choices, where available.'
-        : 'Only the current schedule is editable here. Deletion is not available for saved plans.');
+    sessionModalFeedback(row.kind === 'recorded_work' ? 'Recorded work is read-only here.'
+        : 'Only the current schedule is editable. Record time explicitly adds work; Remove schedule preserves saved work.');
+    if (row.kind === 'scheduled_session') mountCalendarPlanActions(detail, row);
+}
+
+function mountCalendarPlanActions(detail, row) {
+    const owner = sessionModalOwner;
+    const available = () => {
+        if (sessionModalOwner !== owner || owner.pending || owner.blocked || owner.removalPending) return false;
+        if (typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(row)) return false;
+        if (owner.timeBaseline?.some((value,index) => value !== document.getElementById(index ? 'session_modal_end' : 'session_modal_start').value)) {
+            sessionModalFeedback('Save or discard edited schedule times before recording or removing this plan.'); return false;
+        }
+        return true;
+    };
+    const record = document.createElement('button'); record.type = 'button'; record.textContent = 'Record time';
+    record.disabled = !row.task_id;
+    record.addEventListener('click', () => {
+        if (!available()) return;
+        if (typeof mountReviewedRecording !== 'function') { sessionModalFeedback('Recording review unavailable; reload before recording.'); return; }
+        const view = mountReviewedRecording({document,api,payload:{task_id:row.task_id,start_time:row.start_time,end_time:row.end_time,tags:row.tags || '',notes:'',scheduled_session_id:row.id,
+            ...(row.is_virtual ? {expected_projection_revision:row.projection_revision} : {expected_plan_revision:row.revision})},
+            acknowledge:acknowledgeCalendarRecording});
+        void view.completion.then(result => { if (result) void refreshSessionDisplay(); });
+    });
+    detail.appendChild(record);
+    if (!row.task_id) { const reason = document.createElement('p'); reason.textContent = 'Linked recording requires an assigned task. Taskless plans cannot implicitly assign work.'; detail.appendChild(reason); }
+    window.planRemoval?.mount(detail,row,{api,available,lock:pending => {
+        if (sessionModalOwner === owner) { owner.removalPending = pending; setSessionSavePending(owner,pending); }
+    },ack:async result => {
+        if (result.action === 'squeeze' && result.plan) rememberSavedSession(result.plan,result.plan.id);
+        else if (result.plan_id && typeof forgetCalendarPlanningRow === 'function') forgetCalendarPlanningRow(result.plan_id);
+        if (sessionModalOwner === owner) {
+            if (result.action === 'squeeze' && result.plan) openEditSessionModal(result.plan.id,owner.launcher,result.plan);
+            else closeSessionModal();
+        }
+        await refreshSessionDisplay();
+    }});
+}
+
+function acknowledgeCalendarRecording(result) {
+    const plan = result.linked_plan;
+    if (plan) {
+        rememberSavedSession(plan,plan.id);
+        if (sessionModalOwner?.session?.id === plan.id) {
+            // Association ACK changes revision, not schedule fields; retain the editor DOM/focus.
+            Object.assign(sessionModalOwner.session,plan);
+        }
+    }
+    rememberSavedSession(result,result.id);
+}
+
+function updateSessionSaveLabel() {
+    const button = document.getElementById('session_modal_save_btn');
+    if (button) button.textContent = sessionModalOwner?.intent === 'work' ? 'Review actual work' : sessionModalOwner?.intent === 'schedule' ? 'Save schedule' : 'Save legacy session';
 }
 
 function updateSessionModalIntent() {
     const owner = sessionModalOwner;
     if (!owner || owner.session || !owner.chooseIntent || owner.pending || owner.blocked) return;
     owner.intent = document.getElementById('session_modal_intent').value;
+    updateSessionSaveLabel();
     document.getElementById('session_modal_start_now_btn')?.classList.toggle('hidden', owner.intent !== 'legacy' || !owner.canStartNow);
     sessionModalFeedback(owner.intent === 'schedule' ? 'Scheduling time does not record work.' : owner.intent === 'work'
         ? 'Explicitly record actual past work. This does not create or attach a plan.' : 'Saved in uncertain legacy history.');
@@ -375,6 +428,7 @@ function openEditSessionModal(sessionId, launcher = null, recordedSession = null
     const owner = sessionModalOwner;
     owner.session = session;
     owner.intent = session.kind === 'scheduled_session' ? 'schedule' : 'legacy';
+    updateSessionSaveLabel();
     owner.blocked = session.kind === 'recorded_work';
     const typed = owner.intent === 'schedule' || owner.blocked;
     document.getElementById('session_modal_intent_choice')?.classList.add('hidden');
@@ -386,7 +440,7 @@ function openEditSessionModal(sessionId, launcher = null, recordedSession = null
     document.getElementById('session_modal_start_now_btn').classList.toggle('hidden',
         session.kind !== 'scheduled_session' || !session.task_id);
     const deleteBtn = document.getElementById('session_modal_delete_btn');
-    if (deleteBtn) deleteBtn.classList.toggle('hidden', typed && !session.is_virtual);
+    if (deleteBtn) deleteBtn.classList.toggle('hidden', typed);
 
     const taskDropdown = document.getElementById('task_suggestions_dropdown');
     if (taskDropdown) taskDropdown.classList.add('hidden');
@@ -423,6 +477,7 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
         beginSessionModal();
         const owner = sessionModalOwner;
         owner.intent = intent === 'calendar' ? 'schedule' : intent;
+        updateSessionSaveLabel();
         owner.chooseIntent = intent === 'calendar';
         document.getElementById('session_modal_intent_choice')?.classList.toggle('hidden', !owner.chooseIntent);
         const choice = document.getElementById('session_modal_intent');
@@ -451,6 +506,11 @@ function openCreateSessionModal(startDate, endDate, taskId = null, taskTitle = "
 
         if (!endDate || endDate <= startDate) {
             endDate = new Date(startDate.getTime() + defaultSessionMins * 60 * 1000);
+        }
+        if (owner.chooseIntent) {
+            owner.intent = endDate <= now ? 'work' : 'schedule';
+            if (choice) choice.value = owner.intent;
+            updateSessionSaveLabel();
         }
 
         const startInput = document.getElementById('session_modal_start');
@@ -566,7 +626,7 @@ async function saveSessionFromModal() {
             if (metadata && !sessionId) metadata.inert = true;
             owner.submittedTimes = [startVal, endVal];
         }
-        savedSession = work ? await api.saveRecordedWork(payload) : typed ? (previous ? await api.saveScheduledSession(previous, payload)
+        savedSession = work ? await mountReviewedRecording({document,api,payload,acknowledge:acknowledgeCalendarRecording}).completion : typed ? (previous ? await api.saveScheduledSession(previous, payload)
             : await createScheduledSessionFromEditor(payload)) : sessionId
             ? await api.put(`/sessions/${encodeURIComponent(sessionId)}`, payload)
             : await api.post('/sessions', payload);
@@ -606,6 +666,7 @@ async function saveSessionFromModal() {
         setSessionSavePending(owner, false);
     }
 
+    if (work && !savedSession) return; // Dismissal approves no recording; retain the editor draft.
     // A successful write is authoritative before any fallible display work, including POST IDs.
     if (savedSession && sessionModalOwner === owner) {
         document.getElementById('edit_session_id').value = savedSession.id;
@@ -637,7 +698,7 @@ function deleteSessionFromModal() {
     const sessionId = document.getElementById('edit_session_id').value;
     if (sessionModalOwner?.pending || sessionModalOwner?.blocked ||
         (typeof calendarScheduleNeedsReview === 'function' && calendarScheduleNeedsReview(sessionModalOwner?.session))) return;
-    if (!sessionId || (sessionModalOwner?.session?.kind === 'scheduled_session' && !sessionModalOwner.session.is_virtual) || sessionModalOwner?.session?.kind === 'recorded_work') return;
+    if (!sessionId || sessionModalOwner?.session?.kind === 'scheduled_session' || sessionModalOwner?.session?.kind === 'recorded_work') return;
     promptDeleteSession(sessionId);
 }
 

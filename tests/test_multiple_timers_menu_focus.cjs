@@ -9,7 +9,7 @@ const tick = () => new Promise(setImmediate);
 
 // DOM boundary for the actual shared-strip template and DOMContentLoaded mount. Removing
 // a focused subtree resets focus to body, as in a browser; controller/render code is not stubbed.
-function mountMenu() {
+function mountMenu({review=false}={}) {
     const listeners = new Map(), intervals = [], calls = [], planReads = [];
     let document;
     class Element {
@@ -46,6 +46,10 @@ function mountMenu() {
         descendants() { return this.children.flatMap(child => [child, ...child.descendants()]); }
         querySelector(selector) { return this.querySelectorAll(selector)[0] || null; }
         addEventListener(type, handler) { this.listeners[type] = handler; }
+        get isConnected(){return document.body.contains(this);}
+        showModal(){this.open=true;}
+        close(){this.open=false;}
+        remove(){this.parentNode.children=this.parentNode.children.filter(n=>n!==this);this.parentNode=null;}
         focus() { assert.ok(document.body.contains(this), 'only connected controls can be focused'); document.activeElement = this; }
     }
     document = {
@@ -71,7 +75,7 @@ function mountMenu() {
     const other = {id:'other-timer',revision:3,state:'running',elapsed_seconds:10};
     const window = {location:{search:'',href:'http://unit.invalid/dashboard'},addEventListener(){},dispatchEvent(){}};
     const values = new Map();
-    const context = vm.createContext({document, window, URLSearchParams,
+    const context = vm.createContext({document, window, URLSearchParams, crypto:require('node:crypto').webcrypto,
         CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } },
         sessionStorage:{getItem:key => values.get(key) ?? null,setItem:(key,value) => values.set(key,value),removeItem:key => values.delete(key)},
         setInterval(fn, delay) { intervals.push({fn,delay}); },
@@ -83,8 +87,18 @@ function mountMenu() {
                 assert.equal(url, '/scheduled-sessions/plan');
                 return new Promise(resolve => planReads.push(resolve));
             },
-            async post(url) { calls.push(['POST',url]); throw Error('No mutation expected'); }
+            async post(url,payload) {
+                calls.push(['POST',url]);
+                if(!review)throw Error('No mutation expected');
+                if(url.endsWith('/stop-review')){
+                    timer.revision++;timer.stop_review={id:payload.operation_id,was_running:false};
+                    return {operation_id:payload.operation_id,timer:{...timer}};
+                }
+                assert.equal(url,'/timers/paused-timer/stop-preview');
+                return {candidates:[],actual_parts:[],blocked:{actual:[],continue:['Already paused'],fit:['No work'],split:['No work'],scheduled:['No work']},effects:{},consent_token:'exact'};
+            }
         }});
+    vm.runInContext(fs.readFileSync(path.join(web, 'static/js/stop_review.js'), 'utf8'), context, {filename:'stop_review.js'});
     vm.runInContext(fs.readFileSync(path.join(web, 'static/js/multiple_timers.js'), 'utf8'), context, {filename:'multiple_timers.js'});
     for (const handler of listeners.get('DOMContentLoaded')) handler();
     return {document,window,calls,planReads,intervals,timer,other};
@@ -137,4 +151,19 @@ test('mounted shared menu preserves exact Resume DOM and focus across periodic p
     }
     assert.equal(p.calls.filter(([,url]) => url === '/timers').length, 3);
     assert.equal(p.calls.filter(([,url]) => url === '/scheduled-sessions/plan').length, 3);
+});
+
+test('#67 mounted shared-menu Stop opens durable paused review, and Escape keeps paused with no commit',async()=>{
+    const p=mountMenu({review:true});await tick();
+    const stop=p.document.getElementById('multiple_timers').querySelectorAll('[data-timer-focus]').find(n=>n.dataset.timerFocus==='paused-timer/stop');
+    stop.focus();await stop.listeners.click();await tick();
+    const dialog=p.document.body.children.find(n=>n.tagName==='dialog');
+    assert.ok(dialog,'shared Stop mounts app-owned review');
+    assert.equal(p.timer.state,'paused');
+    assert.equal(p.calls.filter(c=>c[0]==='POST'&&!c[1].endsWith('/stop-preview')).length,1);
+    assert.ok(p.calls.some(c=>c[1]==='/timers/paused-timer/stop-review'));
+    dialog.listeners.cancel({preventDefault(){}});
+    const currentStop=p.document.getElementById('multiple_timers').querySelectorAll('[data-timer-focus]').find(n=>n.dataset.timerFocus==='paused-timer/stop');
+    assert.equal(p.document.activeElement,currentStop,'dismissal restores the replacement Stop control, not removed DOM');
+    assert.equal(p.calls.filter(c=>c[1].endsWith('/stop-commit')).length,0);
 });

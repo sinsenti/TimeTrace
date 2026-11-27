@@ -385,7 +385,11 @@ async function promptDeleteSession(sessionId) {
     let session = rows.find(item => item.id === sessionId)
         || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sessionId) : null);
     if (calendarDeleteNeedsReview(session || { id: sessionId })) return;
-    if ((session?.kind === 'scheduled_session' && !session.is_virtual) || session?.kind === 'recorded_work') {
+    if (session?.kind === 'scheduled_session') {
+        window.appDialogs.alert({message:'Legacy deletion is not available for plans. Open the plan editor and preview Remove schedule only to preserve saved work.'});
+        return;
+    }
+    if (session?.kind === 'recorded_work') {
         window.appDialogs.alert({message:'Deletion is not available for this entry.'});
         return;
     }
@@ -463,6 +467,9 @@ async function confirmRecurringDelete(scope) {
         || (typeof allSessions !== 'undefined' ? allSessions.find(item => item.id === sid) : null)
         || { id: sid };
     if (calendarDeleteNeedsReview(session)) return;
+    if (session.kind === 'scheduled_session' || session.kind === 'recorded_work') {
+        window.appDialogs.alert({message:'Use the typed plan preview; no legacy delete was sent.'}); return;
+    }
 
     try {
         // Ids may be synthetic (`virt:<task>:<stamp>`), so encode before interpolating.

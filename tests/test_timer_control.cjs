@@ -148,13 +148,16 @@ test('a changed timer or captured gap during preflight requires a new explicit a
 
 for (const operation of ['start', 'stop']) {
     test(`unknown ${operation} remains blocked even when fresh status changes, including Session Timer Now`, async () => {
-        const p = page();
+        // New Stop gestures now require shared review. Existing legacy unknown Stop receipts
+        // must still block every writer after an upgrade/reload, without replaying the old write.
+        const storage = operation === 'stop' ? new Map([['timetrace_timer_receipt',JSON.stringify({operation:'stop',outcome:'uncertain'})]]) : new Map();
+        const p = page(storage);
         p.setStatus(operation === 'stop' ? { ...stopped, is_running: true, start_time: '2026-10-01T10:00:00Z' } : stopped);
         p.write = async () => { throw Error('unknown commit outcome'); };
         await p.run('toggleTimer()');
         p.setStatus(stopped); await p.run('retryTimerRead()');
         await p.run('startTimerFromSession({task_id:"other"}, () => true)');
-        assert.equal(p.writes.length, 1);
+        assert.equal(p.writes.length, operation === 'stop' ? 0 : 1);
         assert.match(p.elements.get('timer_notice_text').textContent, /uncertain/);
     });
 }
@@ -185,4 +188,17 @@ test('R09 startup receipt-storage failure stays visible after successful status 
     await p.run('acknowledgeTimerVerification()');
     assert.deepEqual(p.writes, [], 'explicit manual verification does not create timer/session work');
     assert.equal(p.elements.get('toggle_btn').disabled, false, 'existing explicit verification clears the hold when storage permits removal');
+});
+
+test('#67 legacy Stop caller waits for shared controller and never falls back to immediate legacy Stop',async()=>{
+    const p=page();p.setStatus({...stopped,is_running:true,start_time:'2020-01-01T09:00:00Z'});
+    await p.run('fetchTimerStatus()');
+    await p.run('performTimerAction("stop",{})');
+    assert.equal(p.writes.length,0);
+    assert.match(p.elements.get('timer_notice_text').textContent,/Stop review unavailable/);
+    const held=deferred(),calls=[];p.context.multipleTimersReady=held.promise;
+    const action=p.run('performTimerAction("stop",{})');
+    p.context.multipleTimers={perform:async(...args)=>{calls.push(args);return true;}};
+    held.resolve();assert.equal(await action,true);assert.equal(calls[0][0],'stop');
+    assert.equal(p.writes.length,0);
 });

@@ -49,3 +49,7 @@
 #history-export-rows fieldset { border: 1px solid var(--border-muted); border-radius: 6px; padding: .8rem; margin-block: .75rem; }
 #history-export-rows label { display: flex; gap: .6rem; margin-block: .6rem; align-items: baseline; }
 #history-export-preview { display: block; width: 100%; min-height: 14rem; font: .85rem/1.5 ui-monospace, monospace; }
+/* Review dialogs retain exact evidence without forcing horizontal overflow on narrow screens. */
+:is(.stop-review-dialog, .recording-review-dialog) :is(input, select, textarea, button) { box-sizing: border-box; }
+.recording-review-dialog .app-dialog-fields :is(input, textarea) { width: 100%; }
+.plan-removal-manifest { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }

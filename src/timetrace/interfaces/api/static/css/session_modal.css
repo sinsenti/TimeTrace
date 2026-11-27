@@ -13,3 +13,5 @@
     #session_modal > div { padding: 16px; max-height: calc(100dvh - 24px); }
     #session_modal label[for="session_modal_end"] { max-width: 95px; }
 }
+#session_modal_plan_detail pre { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+#session_modal_plan_detail button { margin: 6px 8px 6px 0; white-space: normal; text-align: left; }

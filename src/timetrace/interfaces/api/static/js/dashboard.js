@@ -39,6 +39,12 @@ async function scheduleCalendarDrop(info) {
         tags: targetTask?.tags || '',
         notes: ''
     };
+    if (new Date(payload.end_time) <= new Date()) {
+        if (scheduleCreateIntent() !== intent) return;
+        // A past external drop is an explicit recording draft, never a plan/status write.
+        openCreateSessionModal(new Date(payload.start_time),new Date(payload.end_time),taskId,targetTask?.title || title,'calendar');
+        return;
+    }
     let saved;
     try {
         saved = await createScheduledSessionFromEditor(payload, intent);

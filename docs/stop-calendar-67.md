@@ -102,3 +102,49 @@ Before imports use an external absolute DB/HOME/TMPDIR and disable native notifi
 For pytest use PYTHONSAFEPATH=1 plus python -P and four workers; unset the global idle flag for
 synthetic idle tests (false is for scratch daemons, not the whole test suite). Keep inherited17
 Ruff findings separate. No personal-daemon restart, root user-change overwrite or automatic push.
+
+## Frontend implementation checkpoint
+
+The shared current card, timer menu and legacy Stop callers now open an app-owned durable
+Stop review. Preparation uses `stop-review`; preview/commit use the integrated policy API.
+Save actual time is primary. Plan selection is explicit, exact actual parts and Entry-note/tag
+segments are shown separately from original/current schedules and already-recorded work, and
+server reasons disable unsafe policies. Cancel/Escape leave paused. Continue is offered only
+when the server permits it. The shared timer journal retains unknown preparation/commit operations;
+Check/Retry inspect them with GET only. Reopen an existing review without preparing it again.
+Legacy browser Stop cannot fall back to immediate `/timer/stop` if shared review is unavailable.
+
+Calendar's scheduled-block editor offers **Record time**, initialized from exact current plan
+endpoints (including untouched timestamp precision), with editable endpoints, Entry note and tags.
+Reviewed recording shows linked/matching work and requires explicit overlap acknowledgement.
+The manual-work journal retains the reviewed operation ID and recovers its namespaced receipt by
+GET, including after navigation. Future ends are rejected unchanged, not clipped. Entirely-past
+Calendar selections and external task drops default to an explicit work draft, with scheduling
+available as an alternative; existing plans remain plan edits. Recording never updates task status.
+
+Calendar and Agenda expose **Remove schedule only — keep recorded work** beside the separately
+explicit guarded destructive/Fit actions. Typed virtual occurrences use the same exact-occurrence
+preview/removal API, never legacy series DELETE. The plan-action journal and page-level recovery
+remain reachable even when the source plan has disappeared after a lost acknowledgement. No
+automatic task-status plan deletion is introduced. Final Stop part/replacement rows and manual
+recording plan revisions are adopted before fallible display refresh; open schedule drafts are
+retained and require explicit saved-state review when Stop changes their endpoints.
+
+All affected script/style includes are cache-versioned. The new dialogs use the existing native
+app-dialog keyboard boundary and narrow wrapping styles, render model text inertly, and restore
+focus to retained/replacement controls without resuming timers. Software checks cover root HTTP
+composition and mounted controllers with synthetic HTTP/storage/DOM boundaries. This checkpoint
+is not independent review, native-browser/physical-accessibility acceptance or full-suite acceptance;
+those integration gates remain with the parent session. No backend, schema, favicon or #68 accounting
+source is changed by the frontend lane.
+
+Focused frontend-lane checks: **87 Python cases passed (3 existing Pydantic serialization warnings),
+322 Node cases passed**, all 18 changed JS/CJS files passed syntax, and both changed Python test
+files passed scoped Ruff lint/format. Root composition adds 11 cases; mounted regressions cover
+explicit choices, paused cancellation/Continue blocking, exact scheduled replacement approval,
+GET-only uncertain recovery, duplicate acknowledgement, future rejection without clipping,
+source-plan disappearance after removal, final-part adoption, local intent defaults and focus.
+Initial focused checks exposed a stale cache-version oracle and an over-restrictive new Stop
+freshness guard; versions were updated without relaxing cardinality assertions, and the guard
+was repaired while preserving the existing pending-writer assertions. Full suite, independent
+Standards/Spec review and native browser/narrow-layout checks were not run by this lane.

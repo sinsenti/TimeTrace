@@ -109,11 +109,11 @@ def test_root_pages_serve_versioned_plan_context_and_fit_action_assets(client):
     ):
         response = client.get(page)
         assert response.status_code == 200
-        assert response.text.count('src="/static/js/multiple_timers.js?v=plan-links67-2"') == 1
+        assert response.text.count('src="/static/js/multiple_timers.js?v=stop67-1"') == 1
     agenda = client.get("/agenda-view").text
-    assert 'src="/static/js/plan_removal.js?v=plan-links67-1"' in agenda
-    timer_asset = client.get("/static/js/multiple_timers.js?v=plan-links67-2")
-    removal_asset = client.get("/static/js/plan_removal.js?v=plan-links67-1")
+    assert 'src="/static/js/plan_removal.js?v=stop67-1"' in agenda
+    timer_asset = client.get("/static/js/multiple_timers.js?v=stop67-1")
+    removal_asset = client.get("/static/js/plan_removal.js?v=stop67-1")
     assert timer_asset.status_code == removal_asset.status_code == 200
     assert "No linked plan" in timer_asset.text
     assert "Fit schedule to recorded work" in removal_asset.text

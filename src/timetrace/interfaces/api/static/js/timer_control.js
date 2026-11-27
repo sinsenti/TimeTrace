@@ -218,6 +218,7 @@ function updateDocumentTitle() {
 
 // Shared by Calendar and Session Timer Now; status preflight is not a cross-client lock.
 async function performTimerAction(operation, payload, stillCurrent = () => true, recoveryLauncher = null) {
+    if (window.multipleTimersReady) await window.multipleTimersReady;
     if (window.multipleTimers) return window.multipleTimers.perform(operation, payload, stillCurrent);
     if (timerActionPending || timerReceipt) { renderTimerState(); return false; }
     const checkpoint = operation === 'resolve' && payload?.option === 're_tag' && typeof settingsDraftCheckpoint === 'function'
@@ -233,6 +234,10 @@ async function performTimerAction(operation, payload, stillCurrent = () => true,
             return false;
         }
         if (operation === 'toggle') operation = data.is_running ? 'stop' : 'start';
+        if (operation === 'stop') {
+            timerNotice = 'Stop review unavailable. Reload to use the shared timer review; no immediate legacy Stop was sent.';
+            return false;
+        }
         if (operation !== 'resolve' && (data.pending_idle_gap || data.is_frozen_idle)) {
             openIdleResolution(recoveryLauncher);
             return false;
