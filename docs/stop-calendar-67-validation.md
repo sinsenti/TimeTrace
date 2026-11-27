@@ -6,9 +6,30 @@ The implementation is complete on `feat/plan-links-stop-67`.
 The final code revision is `9b615062410ac84b35eea5735db31155d727e165`.
 This record adds documentation only after the checks below.
 
-The feature branch has not been merged into root `dev`, pushed, or installed in the personal
-running app. Root `dev` remains at `bfacc9d0`. Existing owner changes were not overwritten.
-The earlier #72 publication and closure are separate from this delivery.
+At this validation checkpoint, the feature branch had not yet been merged into root `dev`,
+pushed, or installed in the personal app. Root `dev` was at `bfacc9d0`. Existing owner changes
+were not overwritten. The earlier #72 publication and closure are separate from this delivery.
+
+### Subsequent owner-authorized local deployment
+
+The owner then explicitly requested installation in the normal app. Root `dev` was fast-forwarded
+to `99bc6e0c`. Both existing tracked edits were merged without reset, stash or temporary clearing;
+the resulting files matched independently computed overlays. All 29 backed-up untracked files
+were unchanged. A private backup outside Git includes local edits, data, timer state and key.
+The consistent SQLite backup passed its integrity check.
+
+The full suites were repeated from root with those local edits present, using a separate synthetic
+DB/HOME/TMPDIR: **1,355 Python passed / 1,700 warnings and 1,053 Node passed**. Scoped lint/format,
+syntax, whitespace and unchanged-overlay checks passed. The 300-second command wrapper expired
+after both suites and lint/format finished; the missing final checks were completed separately.
+Passing suites were not repeated to conceal the timeout.
+
+The normal daemon was already stopped. It was started from root on `127.0.0.1:8002` with the normal
+data directory. Health, Calendar rendering and both new approval assets passed read-only checks.
+Database table counts, timer-file bytes and encryption-key bytes were unchanged at startup.
+No personal timer/record mutation or provider request was used as a test. The daemon is left running.
+This follow-up changes documentation only. Nothing has been pushed; owner UI acceptance and the
+previously deferred platform checks are still not claimed.
 
 Contracts:
 
@@ -144,5 +165,6 @@ that durable state directory (21 text files). Their original location was
 are also recorded above; this document does not depend on temporary-directory survival.
 
 Owned preview resources are closed after validation. The synthetic DB/evidence is retained
-outside the repository. No personal daemon restart, personal DB/key use, root reset/stash,
-provider call, push or deployment was performed.
+outside the repository. During that isolated validation stage, no personal daemon restart,
+personal DB/key use, root reset/stash, provider call, push or deployment was performed.
+The later owner-authorized local deployment is recorded separately above.

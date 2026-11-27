@@ -5,9 +5,9 @@ accounting correction: [#68](https://github.com/sinsenti/TimeTrace/issues/68).
 The owner requested building the whole agreed flow, including after Orca restarts. The prior
 visibility/label slice and its retained evidence are in `docs/plan-links-67.md`.
 
-Implementation is complete on the feature branch. See
-[final validation and delivery bounds](stop-calendar-67-validation.md). Publication, root `dev`
-integration and personal-app deployment have not been performed.
+Implementation is complete and the owner-authorized local deployment is recorded in
+[final validation and delivery bounds](stop-calendar-67-validation.md). Root `dev` and the normal
+app now include this build. Nothing has been pushed.
 
 ## Scope and agreed behavior
 
