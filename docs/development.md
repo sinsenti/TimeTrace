@@ -281,20 +281,27 @@ in these retained adoption notes; implementation details and original evidence l
 
 ## Explicit recorded-work widgets
 
-The existing Statistics widget editor offers the `recorded_work` source and six union measures.
+The existing Statistics widget editor offers the `recorded_work` source, union measures and
+summed recorded-work measures.
 Capabilities publish per-measure dimensions, predicate operators, units and plan-basis choices.
 Use a bounded local **record-start** range (at most 400 days); selected intervals remain whole.
 The daemon timezone and explicit week-start context follow the existing query conventions.
 The independent full-range scalar is not a sum of overlapping day/category/task/tag groups.
 
 - Recorded task time unions within each assigned task, then credits tasks independently.
-  Elapsed time unions across tasks, including taskless work; unassigned time unions taskless work
-  separately. Unassigned and task-credit totals are not additive elapsed time.
+  Elapsed time unions across tasks, including taskless work. Under approved [#68](https://github.com/sinsenti/TimeTrace/issues/68),
+  unassigned time sums each taskless interval's duration in full, including overlap: two identical
+  20-minute records yield 40 unassigned minutes but 20 elapsed minutes. Unassigned and task-credit
+  totals are not additive elapsed time; no records or estimates are changed.
 - Fan-out tags select distinct matching records and label overlapping group totals. Split-evenly
   allocates atomic interval segments among distinct active tags **before** filtering, independently
-  per task (task credit), across tasks (elapsed), or taskless-only (unassigned). Hidden shares are
-  not redistributed. Responses distinguish attributed seconds from physical cohort seconds and
-  expose record counts, predicates, measurement instant and basis for inspection.
+  per task (task credit) or across tasks (elapsed). Unassigned split-evenly instead divides each
+  record among its own distinct tags before filtering; hidden shares are not redistributed.
+  Unassigned fan-out deduplicates matching record IDs before summing; its tag rows can overlap,
+  while its day groups reconcile. Responses distinguish attributed seconds from physical cohort
+  seconds and expose record counts, predicates, measurement instant and basis for inspection.
+  For `unassigned_recorded_sum`, physical cohort seconds are summed matching record durations,
+  **not elapsed clock coverage**. Other measures keep their original union/attribution semantics.
 - Inside/outside measures require **Original plan** or **Current schedule**. Optional comma-separated
   plan IDs select plans independently of work dates; leaving IDs empty uses all same-task matching
   windows, unioned before aggregation. Plan fill requires explicit plan IDs and groups only by plan;

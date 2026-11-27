@@ -13,7 +13,7 @@ const deferred = () => {
 
 // Owned DOM adapter: actual template descendants, native select selectedness and bubbling.
 // No builder, draft, save or preview business handlers are replaced.
-function browser(preview, confirmDecision = () => true, capabilityRead = null) {
+function browser(preview, confirmDecision = () => true, capabilityRead = null, queryRead = null) {
     let context;
     const events = new Map();
     const document = { activeElement: null };
@@ -66,6 +66,10 @@ function browser(preview, confirmDecision = () => true, capabilityRead = null) {
         getClientRects() { return this.classList.contains('hidden') ? [] : (this.parentNode ? this.parentNode.getClientRects() : [{}]); }
         focus() { document.activeElement = this; }
         getContext() { return { canvas: this }; }
+        createTHead() { return this.appendChild(new Element('thead')); }
+        createTBody() { return this.appendChild(new Element('tbody')); }
+        insertRow() { return this.appendChild(new Element('tr')); }
+        insertCell() { return this.appendChild(new Element('td')); }
         replaceWith(el) {
             const index = this.parentNode.children.indexOf(this);
             this.parentNode.children[index] = el; el.parentNode = this.parentNode;
@@ -153,7 +157,7 @@ function browser(preview, confirmDecision = () => true, capabilityRead = null) {
             else if (url === '/api/dashboards') result = [board()];
             else if (url === `/api/dashboards/${boardId}`) result = board();
             else if (url === `/api/dashboards/${boardId}/widgets` && options.method === 'POST') { saved = { ...saved, ...body }; result = saved; }
-            else if (url === '/analytics/query') result = { columns: [{ key: 'value', unit: 'hours' }], rows: [], total: 0, meta: {}, warnings: [] };
+            else if (url === '/analytics/query') result = queryRead ? await queryRead(body) : { columns: [{ key: 'value', unit: 'hours' }], rows: [], total: 0, meta: {}, warnings: [] };
             else if (url === `/api/dashboards/${boardId}/widgets/${widgetId}` && options.method === 'PUT') {
                 saved = { ...saved, ...body }; result = saved;
             } else {
@@ -322,4 +326,30 @@ test('recorded scope explanation follows unchanged query scope and preserves cus
         if (query.filters.length) assert.equal(b.el('wb_filter_value').value, JSON.stringify(query.filters[0].values));
         assert.equal(b.writes().length, 0, 'render/open never rewrites the customized query');
     }
+});
+
+test('unassigned widget preview distinguishes summed record durations from elapsed union coverage', async () => {
+    const query = { source:'recorded_work',measure:'unassigned_recorded_time',group_by:['tag'],
+        chart:'table',sort:'value_desc',limit:200,fill_gaps:false,date_range:{preset:'last_7_days'},
+        tag_attribution:'fan_out',filters:[] };
+    const caps={sql_enabled:false,sources:[{source:'recorded_work',
+        measures:[{value:'unassigned_recorded_time',label:'Unassigned recorded time (sum; overlaps count in full)',unit:'hours',
+            capabilities:{dimensions:['tag'],tag_attributions:['fan_out','split_evenly'],plan_selection:false}}],
+        dimensions:[{value:'tag',label:'Tag'}],filter_fields:[]}]};
+    const value={columns:[{key:'tag',label:'Tag'},{key:'value',label:'Unassigned recorded time (sum; overlaps count in full)',unit:'hours'}],
+        rows:[{keys:['#b'],labels:['#b'],value:2/3}],row_count:1,total:2/3,
+        meta:{warnings:[],timezone:'UTC',first_day_of_week:1,basis:'unassigned_recorded_sum',
+            cohort:'Whole typed intervals by local record-start range',totals_overlap:true,
+            attributed_total_seconds:2400,physical_cohort_seconds:2400,cohort_count:2}};
+    const b=browser(async()=>b.responseA,()=>true,async()=>caps,async()=>value);
+    b.setSaved({spec:{mode:'structured',query}});await b.load();await b.open();
+    await b.run('wbRunStructuredPreview()');b.check();
+    assert.equal(b.el('wb_error').classList.contains('hidden'),true,b.el('wb_error').textContent);
+    const text=b.el('wb_preview_result').textContent;
+    assert.match(text,/Unassigned recorded time sum \(overlaps count in full\)/);
+    assert.match(text,/matching record durations: 2400 seconds/);
+    assert.match(text,/not elapsed clock coverage/);
+    assert.match(text,/Non-additive fan-out tag totals/);
+    assert.doesNotMatch(text,/Recorded work union|Non-additive unions/);
+    assert.equal(b.writes().length,0);
 });

@@ -1003,8 +1003,12 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
         # microsecond intervals that SQLite's millisecond-resolution julianday would lose.
         return f"(unixepoch(substr({expression},1,19))*1000000 + CAST(substr({expression},21,6) AS INTEGER))"
 
-    if query.measure == Measure.SUMMED_RECORDED_WORK:
-        if tagged or query.tag_attribution == TagAttribution.SPLIT_EVENLY:
+    if query.measure == Measure.SUMMED_RECORDED_WORK or (
+        query.measure == Measure.UNASSIGNED_RECORDED_TIME and not tagged
+    ):
+        if query.measure == Measure.SUMMED_RECORDED_WORK and (
+            tagged or query.tag_attribution == TagAttribution.SPLIT_EVENLY
+        ):
             raise ValidationError("Summed recorded work does not support tag attribution.")
         columns = ", ".join(group_names) + "," if group_names else ""
         group = " GROUP BY " + ", ".join(group_names) if group_names else ""
@@ -1038,6 +1042,7 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             task,
             query.tag_attribution == TagAttribution.SPLIT_EVENLY,
             " AND ".join(tag_conditions) or "1",
+            per_record=query.measure == Measure.UNASSIGNED_RECORDED_TIME,
         )
         return CompiledQuery(
             sql=sql,
@@ -1045,7 +1050,8 @@ def _compile_recorded_work(query: AnalyticsQuery, ctx: QueryContext) -> Compiled
             source=query.source,
             measure=query.measure,
             group_by=query.group_by,
-            totals_overlap=True,
+            totals_overlap=query.measure != Measure.UNASSIGNED_RECORDED_TIME
+            or (Dimension.TAG in query.group_by and query.tag_attribution == TagAttribution.FAN_OUT),
         )
 
     windows = []

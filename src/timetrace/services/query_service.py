@@ -277,7 +277,7 @@ class QueryService:
             "measurement_at": measurement,
             "cohort": (
                 "Whole typed work intervals by local record-start date; legacy and live buffers excluded. "
-                "Task, elapsed, unassigned and plan groups are non-additive."
+                "Task credit, elapsed coverage, unassigned interval sums and plan fills are not additive to each other."
             ),
         }
         with sqlite_read_snapshot(self.db) as reader:
@@ -469,10 +469,18 @@ class QueryService:
         if query.source.value == "recorded_work":
             meta.measurement_at = compiled.context.now_utc.replace(tzinfo=UTC)
             meta.basis = query.plan_basis or (
-                "summed_recorded_work" if query.measure == Measure.SUMMED_RECORDED_WORK else "recorded_work_union"
+                "summed_recorded_work"
+                if query.measure == Measure.SUMMED_RECORDED_WORK
+                else "unassigned_recorded_sum"
+                if query.measure == Measure.UNASSIGNED_RECORDED_TIME
+                else "recorded_work_union"
             )
             meta.cohort = "Whole typed intervals by local record-start range; legacy/live/future-ended rows excluded"
+            if query.measure == Measure.UNASSIGNED_RECORDED_TIME:
+                meta.cohort += "; each unassigned record counts in full, including overlaps (not elapsed coverage)"
             meta.non_additive = bool(query.group_by) and query.measure != Measure.SUMMED_RECORDED_WORK
+            if query.measure == Measure.UNASSIGNED_RECORDED_TIME:
+                meta.non_additive = Dimension.TAG in query.group_by and query.tag_attribution == TagAttribution.FAN_OUT
             meta.cohort_predicate = [f.model_dump(mode="json") for f in query.filters]
             if query.measure.value != "plan_fill":
                 physical_query = query.model_copy(update={"group_by": [], "tag_attribution": TagAttribution.FAN_OUT})

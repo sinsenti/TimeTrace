@@ -259,7 +259,9 @@ SOURCES[QuerySource.RECORDED_WORK] = SourceSpec(
         MeasureSpec(Measure.SUMMED_RECORDED_WORK, "hours", "Summed recorded work (overlaps count in full)"),
         MeasureSpec(Measure.RECORDED_TASK_TIME, "hours", "Recorded task time (union; typed work only)"),
         MeasureSpec(Measure.ELAPSED_RECORDED_TIME, "hours", "Elapsed recorded time (union; typed work only)"),
-        MeasureSpec(Measure.UNASSIGNED_RECORDED_TIME, "hours", "Unassigned recorded time (union; non-additive)"),
+        MeasureSpec(
+            Measure.UNASSIGNED_RECORDED_TIME, "hours", "Unassigned recorded time (sum; overlaps count in full)"
+        ),
     ),
     dimensions=_dimensions(
         *_UTC_TIME_DIMS,

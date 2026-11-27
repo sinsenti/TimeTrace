@@ -113,6 +113,10 @@ originals, skips/moves and recorded history; future schedule clearing never casc
 
 ## 3. Interval/query contract
 
+**Approved #68 amendment:** unassigned recorded time now sums each saved taskless interval in
+full, including overlap; earlier references to its union in the settled-input history above are
+superseded only for that measure. See [ADR0001's scoped supersession](adr/0001-explicit-recorded-work-boundaries.md#scoped-supersession-unassigned-interval-sums-68).
+
 Use positive half-open UTC intervals `[start,end)`, naive UTC storage and `ensure_utc()` boundaries.
 Pure `core` union/intersection/difference/envelope functions supply service results and SQL-oracle
 tests. Touching endpoints do not overlap; new durations derive from endpoints.
@@ -123,10 +127,12 @@ whole intervals; group by local **record start**, with explicit week start and e
 fallback/warning. DST changes elapsed seconds, not wall-clock subtraction. A New York fall-back
 00:30−04:00 → 02:30−05:00 record credits 180 minutes to its start day; never slice UTC dates.
 
-For selected records `R`, task unions `U_t`, and taskless union `U_0`:
+For selected records `R` and task unions `U_t`:
 
 - Recorded task time = sum of lengths of `U_t` for non-null tasks.
-- Elapsed recorded time = length of union of all R; unassigned = length of `U_0`.
+- Elapsed recorded time = length of union of all R.
+- Unassigned recorded time = sum of the full durations of taskless records in R, including overlap.
+  Two identical 20-minute taskless records yield 40 unassigned minutes but 20 elapsed minutes.
 - Per-plan fill = `U_t ∩ plan_interval`, separately original/current labeled.
 - Aggregate inside = intersect each `U_t` with the **union** of matching plan windows; outside =
   its difference. Plan-window lookup includes overlapping windows regardless of their start day;
@@ -155,7 +161,7 @@ validation before execution, including unknown measures/operators and tag-based 
 | --- | --- | --- | --- |
 | `recorded_task_time` | time, task_metadata, tag | Common + tag | Non-null tasks; fan-out default; owner-approved split-evenly rule below |
 | `elapsed_recorded_time` | time, task_metadata, tag | Common + tag | Includes taskless; same attribution choices |
-| `unassigned_recorded_time` | time, tag | time, notes, duration, provenance, tag; has_task=false only | Taskless only; same attribution choices |
+| `unassigned_recorded_time` | time, tag | time, notes, duration, provenance, tag; has_task=false only | Taskless interval sum; fan-out or per-record split-evenly (#68) |
 | `inside_scheduled_task_time`, `outside_scheduled_task_time` | time, task_metadata | Common + plan_ids; no tag | Require original/current; aggregate matching windows unioned per task; no taskless credit |
 | `plan_fill` | plan_id only | Common + plan_ids; no tag | Require original/current; return each plan's intersection, never sum overlapping fills |
 
@@ -169,17 +175,20 @@ Concrete cohort/filter order (same for scalar and each non-tag group):
 1. Select `R0`: closed explicit work, measurement instant, local start-date range, non-tag filters.
    Keep whole intervals; derive non-tag group membership from record-start/metadata.
 2. For fan-out tag reads, tokenize/deduplicate tags per record (`#general` if none), apply tag
-   eq/in, then union the **distinct matching record IDs**, not all of R0. A tag group gets only
-   its matching records; the independent scalar gets all matching records once, not summed groups.
+   eq/in, then union the **distinct matching record IDs**, not all of R0; for unassigned time,
+   instead sum those records' full durations. A tag group gets only its matching records; the
+   independent scalar gets all matching records once, not summed groups.
 3. **Owner-approved Q14:** for split-evenly, within each non-tag group
    (and separately the scalar's full R0), sweep atomic segments before tag filtering/grouping.
    Divide each segment's credit among distinct active tags: per task for recorded task time,
-   across tasks for elapsed, taskless-only for unassigned. Then filter allocated tag portions,
-   group by tag if requested, and sum retained portions; never renormalize after filtering.
+   across tasks for elapsed. Under #68, unassigned time instead divides each record's duration
+   among its own distinct tags. Then filter allocated tag portions, group by tag if requested,
+   and sum retained portions; never renormalize after filtering.
 4. For split-evenly, `value_seconds`/`attributed_total_seconds` is the retained attribution, not
-   the physical union. Separately return `physical_cohort_seconds`: the same measure's union of
-   distinct tag-matching record IDs; return cohort count/predicate/basis for drilldown. For fan-out,
-   scalar value equals that physical union; tag rows can overlap. No-tag reads credit all tags
+   the physical total. Separately return `physical_cohort_seconds`: the same measure's union of
+   distinct tag-matching record IDs, or their full-duration **sum** for unassigned time (not elapsed
+   clock coverage). Return cohort count/predicate/basis for drilldown. For fan-out, scalar value
+   equals that physical total; tag rows can overlap. No-tag reads credit all tags
    once, yielding the measure's physical total. Comparison queries apply their plan-window
    intersections/differences after record selection; neither tag filter nor tag grouping is enabled.
 
