@@ -11,9 +11,9 @@ before dispatch. Timer operation IDs are unprefixed in `/operations/{id}`.
    only that timer at server cutoff. Standard result includes `timer.stop_review`:
    `{id: operation_id, cutoff, was_running, timer_revision}`. Use returned timer/revision.
    Frozen/unresolved gaps return409 `idle_gap_unresolved` before any pause/write.
-   Reopening an active review uses GET timer/journal, not another preparation. For an
-   already-paused timer, cutoff is its last work boundary, not the later review click.
-   An acknowledged Entry-note edit updates the review revision without changing cutoff
+   Reopening an active review uses GET timer/journal, not another preparation. Initial
+   preparation uses server Stop time even for an already-paused timer, without changing
+   its actual segments. An acknowledged Entry-note edit updates revision without changing cutoff
    or was_running; re-preview using the returned timer before committing.
 2. `POST /timers/{id}/stop-preview {review_id, expected_revision,
    scheduled_session_id?: null, expected_plan_revision?: null}` is read-only.
@@ -37,6 +37,9 @@ before dispatch. Timer operation IDs are unprefixed in `/operations/{id}`.
    Optional actions require explicit current plan selection, even with an existing link.
    Existing links cannot be reassociated through this flow. Taskless saves remain supported.
    Saved/split history or matching saved work blocks optional actions; use corrections.
+   Scheduled replacement preserves a single consistent unsaved Entry-note/tag context
+   exactly; differing segment metadata blocks it rather than merging or dropping notes.
+   Actual/fit/split retain each original segment's metadata.
    Fit requires one contiguous part; Split requires separated parts and explicit consent.
    Scheduled replaces only approved unsaved work with exact current endpoints; its end
    must be at/before the ORIGINAL review cutoff, never later commit time. Waiting or

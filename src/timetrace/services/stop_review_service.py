@@ -31,8 +31,6 @@ class StopReviewService:
         if review and review["timer_revision"] == timer["revision"]:
             raise ConflictError("A Stop review is already open; read the timer.", code="stop_review_active")
         was_running = timer["state"] == "running"
-        if not was_running:
-            cutoff = max((s["end_time"] for s in timer["segments"]), default=timer.get("identity_started_at", cutoff))
         closed = None
         if was_running:
             from timetrace.services.multiple_timer_service import MultipleTimerService
@@ -181,6 +179,12 @@ class StopReviewService:
             blocked["fit"].append("Separated work parts require explicit Split, not continuous outer bounds.")
         if len(parts) < 2:
             blocked["split"].append("Only one contiguous work part; use Fit instead.")
+        if unsaved and any(
+            (s.get("tags"), s.get("notes")) != (unsaved[0].get("tags"), unsaved[0].get("notes")) for s in unsaved
+        ):
+            blocked["scheduled"].append(
+                "Unsaved parts have different notes or tag metadata; save actual time or split to preserve each entry."
+            )
         if plan and plan.end_time > datetime.fromisoformat(review["cutoff"]).replace(tzinfo=None):
             blocked["scheduled"].append(
                 "The scheduled end is after the time you pressed Stop; Continue timing then review again."
@@ -279,6 +283,7 @@ class StopReviewService:
                     "part_ids": [p["id"] for p in rows],
                 }
             else:
+                entry = preview["unsaved_segments"][0]
                 details["replacement"] = {
                     "unsaved_segments": deepcopy(preview["unsaved_segments"]),
                     "plan_before": before,
@@ -290,8 +295,8 @@ class StopReviewService:
                         "end_time": before["end_time"] + "+00:00",
                         "task_id": timer["task_id"],
                         "scheduled_session_id": before["id"],
-                        "tags": timer["tags"],
-                        "notes": timer["notes"],
+                        "tags": entry["tags"],
+                        "notes": entry["notes"],
                     }
                 ]
                 timer["scheduled_session_id"] = before["id"]

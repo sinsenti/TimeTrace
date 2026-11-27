@@ -530,3 +530,66 @@ def test_split_retains_selected_recurrence_override_and_leaves_next_occurrence_u
     resolved = client.get(f"/agenda/occurrences/{projection['id']}").json()
     assert resolved["id"] == source_id
     assert client.get(f"/api/tasks/{task['id']}").json()["recurrence_rrule"] == "FREQ=DAILY"
+
+
+@pytest.mark.parametrize("different_notes", [False, True])
+def test_scheduled_replacement_preserves_consistent_entry_metadata_or_refuses_mixed_notes(
+    client, clock, different_notes
+):
+    task, plan = task_plan(client, end="2025-01-01T09:45:00Z")
+    timer = post(
+        client,
+        "/timers",
+        task_id=task["id"],
+        scheduled_session_id=plan["id"],
+        expected_plan_revision=plan["revision"],
+        tags="writing",
+        notes="First entry",
+    )["timer"]
+    clock.instant = datetime(2025, 1, 1, 10, 10, tzinfo=UTC)
+    post(client, f"/timers/{timer['id']}/pause")
+    clock.instant = datetime(2025, 1, 1, 10, 20, tzinfo=UTC)
+    timer = post(client, f"/timers/{timer['id']}/resume")["timer"]
+    if different_notes:
+        timer = post(
+            client, f"/timers/{timer['id']}/note", expected_revision=timer["revision"], new_notes="Second entry"
+        )["timer"]
+    clock.instant = datetime(2025, 1, 1, 10, 30, tzinfo=UTC)
+    timer = prepare(client, timer)["timer"]
+    selection = select_plan(client, plan)
+    approval = preview(client, timer, **selection)
+    if different_notes:
+        assert any("metadata" in reason.lower() for reason in approval["blocked"]["scheduled"])
+        assert rejected_commit(client, timer, approval, "scheduled", **selection) == "stop_policy_blocked"
+        result = commit(client, timer, approval, "split", **selection)
+        rows = [client.get(f"/recorded-work/{i}").json() for i in result["recorded_work_ids"]]
+        assert [(r["tags"], r["notes"]) for r in rows] == [("writing", "First entry"), ("writing", "Second entry")]
+    else:
+        assert approval["blocked"]["scheduled"] == []
+        result = commit(client, timer, approval, "scheduled", **selection)
+        work = client.get(f"/recorded-work/{result['recorded_work_ids'][0]}").json()
+        assert (work["tags"], work["notes"]) == ("writing", "First entry")
+
+
+def test_paused_before_review_uses_stop_click_cutoff_without_crediting_decision_time(client, clock):
+    task, plan = task_plan(client, end="2025-01-01T10:15:00Z")
+    timer = linked_start(client, task, plan)
+    clock.instant = datetime(2025, 1, 1, 10, 10, tzinfo=UTC)
+    timer = post(client, f"/timers/{timer['id']}/pause")["timer"]
+    original_segments = timer["segments"]
+    clock.instant = datetime(2025, 1, 1, 10, 20, tzinfo=UTC)
+    timer = prepare(client, timer)["timer"]
+    assert timer["segments"] == original_segments
+    assert timer["stop_review"]["cutoff"] == "2025-01-01T10:20:00+00:00"
+    assert timer["stop_review"]["was_running"] is False
+    selection = select_plan(client, plan)
+    approval = preview(client, timer, **selection)
+    assert approval["blocked"]["continue"]
+    assert approval["blocked"]["scheduled"] == []
+    clock.instant = datetime(2025, 1, 1, 11, tzinfo=UTC)
+    assert preview(client, timer, **selection) == approval
+    result = commit(client, timer, approval, "scheduled", **selection)
+    work = client.get(f"/recorded-work/{result['recorded_work_ids'][0]}").json()
+    assert work["start_time"] == "2025-01-01T09:00:00Z"
+    assert work["end_time"] == "2025-01-01T10:15:00Z"
+    assert work["duration_seconds"] == 4500
