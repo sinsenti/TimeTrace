@@ -5,6 +5,10 @@ accounting correction: [#68](https://github.com/sinsenti/TimeTrace/issues/68).
 The owner requested building the whole agreed flow, including after Orca restarts. The prior
 visibility/label slice and its retained evidence are in `docs/plan-links-67.md`.
 
+Implementation is complete on the feature branch. See
+[final validation and delivery bounds](stop-calendar-67-validation.md). Publication, root `dev`
+integration and personal-app deployment have not been performed.
+
 ## Scope and agreed behavior
 
 1. Pressing Stop opens an app-owned review and durably pauses only that timer, capturing its
@@ -103,7 +107,7 @@ For pytest use PYTHONSAFEPATH=1 plus python -P and four workers; unset the globa
 synthetic idle tests (false is for scratch daemons, not the whole test suite). Keep inherited17
 Ruff findings separate. No personal-daemon restart, root user-change overwrite or automatic push.
 
-## Frontend implementation checkpoint
+## Frontend implementation checkpoint (historical lane report)
 
 The shared current card, timer menu and legacy Stop callers now open an app-owned durable
 Stop review. Preparation uses `stop-review`; preview/commit use the integrated policy API.
