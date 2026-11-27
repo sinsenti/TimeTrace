@@ -1,0 +1,1867 @@
+{
+  "recovery": [
+    {
+      "durable_receipts_equal_after_restart": 12,
+      "fault": "upstream response fully discarded before reaching caller; graceful daemon restart afterwards",
+      "independent_timer_survived": true,
+      "mode": "delete",
+      "timings_ms": {
+        "accepted_first": {
+          "max": 64.238,
+          "n": 12,
+          "p50": 52.235,
+          "p95": 64.238,
+          "p99": 64.238
+        },
+        "exact_retry": {
+          "max": 9.054,
+          "n": 12,
+          "p50": 7.611,
+          "p95": 9.054,
+          "p99": 9.054
+        },
+        "receipt_lookup_after_loss": {
+          "max": 7.918,
+          "n": 12,
+          "p50": 5.984,
+          "p95": 7.918,
+          "p99": 7.918
+        }
+      },
+      "work_rows": 12
+    },
+    {
+      "durable_receipts_equal_after_restart": 12,
+      "fault": "upstream response fully discarded before reaching caller; graceful daemon restart afterwards",
+      "independent_timer_survived": true,
+      "mode": "wal",
+      "timings_ms": {
+        "accepted_first": {
+          "max": 59.107,
+          "n": 12,
+          "p50": 48.17,
+          "p95": 59.107,
+          "p99": 59.107
+        },
+        "exact_retry": {
+          "max": 11.945,
+          "n": 12,
+          "p50": 7.46,
+          "p95": 11.945,
+          "p99": 11.945
+        },
+        "receipt_lookup_after_loss": {
+          "max": 13.502,
+          "n": 12,
+          "p50": 6.017,
+          "p95": 13.502,
+          "p99": 13.502
+        }
+      },
+      "work_rows": 12
+    }
+  ],
+  "trials": {
+    "control-1": {
+      "CPU_core_pct": 62.3,
+      "actual_wall_s": 25.201,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "control",
+      "ledger_exact_match": true,
+      "measured_rows": 100,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 25,
+      "peak_RSS_MiB": 184.6,
+      "process_write_MiB": 158.4,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "driver_schedule_delay": {
+          "max": 3.842,
+          "n": 100,
+          "p50": 0.967,
+          "p95": 1.827,
+          "p99": 2.306
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 641.902,
+          "n": 50,
+          "p50": 222.614,
+          "p95": 406.986,
+          "p99": 641.902
+        },
+        "start": {
+          "max": 337.63,
+          "n": 100,
+          "p50": 94.252,
+          "p95": 184.961,
+          "p99": 254.37
+        },
+        "stop_commit": {
+          "max": 357.309,
+          "n": 50,
+          "p50": 90.69,
+          "p95": 139.839,
+          "p99": 357.309
+        },
+        "stop_direct": {
+          "max": 270.58,
+          "n": 50,
+          "p50": 108.512,
+          "p95": 185.491,
+          "p99": 270.58
+        },
+        "stop_preview": {
+          "max": 52.076,
+          "n": 50,
+          "p50": 25.189,
+          "p95": 40.372,
+          "p99": 52.076
+        },
+        "stop_review": {
+          "max": 263.172,
+          "n": 50,
+          "p50": 102.599,
+          "p95": 175.066,
+          "p99": 263.172
+        }
+      },
+      "requests_scheduled": {
+        "direct": 50,
+        "reviewed": 50
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-1": {
+      "CPU_core_pct": 53.1,
+      "actual_wall_s": 34.849,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 62344,
+        "read_timers": 1437,
+        "report": 1968,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 70,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 35,
+      "peak_RSS_MiB": 195.2,
+      "process_write_MiB": 99.6,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 437.342,
+          "n": 35,
+          "p50": 132.31,
+          "p95": 290.655,
+          "p99": 437.342
+        },
+        "driver_schedule_delay": {
+          "max": 2.806,
+          "n": 210,
+          "p50": 0.855,
+          "p95": 1.466,
+          "p99": 2.17
+        },
+        "read_timers": {
+          "max": 558.578,
+          "n": 70,
+          "p50": 116.154,
+          "p95": 472.06,
+          "p99": 558.578
+        },
+        "report": {
+          "max": 428.971,
+          "n": 35,
+          "p50": 268.954,
+          "p95": 369.387,
+          "p99": 428.971
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 414.212,
+          "n": 35,
+          "p50": 211.219,
+          "p95": 323.423,
+          "p99": 414.212
+        },
+        "start": {
+          "max": 596.433,
+          "n": 70,
+          "p50": 352.372,
+          "p95": 519.178,
+          "p99": 596.433
+        },
+        "stop_commit": {
+          "max": 285.102,
+          "n": 35,
+          "p50": 82.539,
+          "p95": 102.995,
+          "p99": 285.102
+        },
+        "stop_direct": {
+          "max": 257.941,
+          "n": 35,
+          "p50": 129.636,
+          "p95": 249.239,
+          "p99": 257.941
+        },
+        "stop_preview": {
+          "max": 31.156,
+          "n": 35,
+          "p50": 24.911,
+          "p95": 31.14,
+          "p99": 31.156
+        },
+        "stop_review": {
+          "max": 230.994,
+          "n": 35,
+          "p50": 97.641,
+          "p95": 190.165,
+          "p99": 230.994
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 35,
+        "direct": 35,
+        "report": 35,
+        "reviewed": 35,
+        "timers": 70
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-2": {
+      "CPU_core_pct": 52.1,
+      "actual_wall_s": 34.775,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 62344,
+        "read_timers": 1462,
+        "report": 1968,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 70,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 35,
+      "peak_RSS_MiB": 194.3,
+      "process_write_MiB": 99.5,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 280.823,
+          "n": 35,
+          "p50": 202.534,
+          "p95": 280.705,
+          "p99": 280.823
+        },
+        "driver_schedule_delay": {
+          "max": 2.463,
+          "n": 210,
+          "p50": 0.812,
+          "p95": 1.538,
+          "p99": 1.969
+        },
+        "read_timers": {
+          "max": 568.693,
+          "n": 70,
+          "p50": 140.636,
+          "p95": 450.899,
+          "p99": 568.693
+        },
+        "report": {
+          "max": 379.577,
+          "n": 35,
+          "p50": 257.408,
+          "p95": 370.788,
+          "p99": 379.577
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 323.978,
+          "n": 35,
+          "p50": 209.876,
+          "p95": 319.638,
+          "p99": 323.978
+        },
+        "start": {
+          "max": 607.358,
+          "n": 70,
+          "p50": 348.606,
+          "p95": 488.428,
+          "p99": 607.358
+        },
+        "stop_commit": {
+          "max": 107.052,
+          "n": 35,
+          "p50": 80.124,
+          "p95": 99.37,
+          "p99": 107.052
+        },
+        "stop_direct": {
+          "max": 321.463,
+          "n": 35,
+          "p50": 124.399,
+          "p95": 300.605,
+          "p99": 321.463
+        },
+        "stop_preview": {
+          "max": 38.656,
+          "n": 35,
+          "p50": 24.983,
+          "p95": 35.273,
+          "p99": 38.656
+        },
+        "stop_review": {
+          "max": 218.911,
+          "n": 35,
+          "p50": 99.127,
+          "p95": 216.402,
+          "p99": 218.911
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 35,
+        "direct": 35,
+        "report": 35,
+        "reviewed": 35,
+        "timers": 70
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-large-1": {
+      "CPU_core_pct": 90.4,
+      "actual_wall_s": 50.144,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 72020,
+        "read_timers": 13351,
+        "report": 1972,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {
+        "reviewed_no_task": 1
+      },
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 100000,
+      "journal": "delete",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 69,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 35,
+      "peak_RSS_MiB": 299.3,
+      "process_write_MiB": 95.7,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 1701.174,
+          "n": 35,
+          "p50": 571.112,
+          "p95": 1654.78,
+          "p99": 1701.174
+        },
+        "driver_schedule_delay": {
+          "max": 4.916,
+          "n": 210,
+          "p50": 0.877,
+          "p95": 1.91,
+          "p99": 2.28
+        },
+        "read_timers": {
+          "max": 7663.672,
+          "n": 70,
+          "p50": 4978.362,
+          "p95": 7482.981,
+          "p99": 7663.672
+        },
+        "report": {
+          "max": 1697.854,
+          "n": 35,
+          "p50": 578.907,
+          "p95": 1647.326,
+          "p99": 1697.854
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 15802.768,
+          "n": 34,
+          "p50": 11398.701,
+          "p95": 15295.158,
+          "p99": 15802.768
+        },
+        "start": {
+          "max": 7664.034,
+          "n": 69,
+          "p50": 5443.466,
+          "p95": 7516.566,
+          "p99": 7664.034
+        },
+        "stop_commit": {
+          "max": 7779.113,
+          "n": 34,
+          "p50": 5548.412,
+          "p95": 7694.784,
+          "p99": 7779.113
+        },
+        "stop_direct": {
+          "max": 7726.698,
+          "n": 35,
+          "p50": 6094.455,
+          "p95": 7553.725,
+          "p99": 7726.698
+        },
+        "stop_preview": {
+          "max": 1419.291,
+          "n": 34,
+          "p50": 378.707,
+          "p95": 1403.795,
+          "p99": 1419.291
+        },
+        "stop_review": {
+          "max": 7730.744,
+          "n": 34,
+          "p50": 6044.014,
+          "p95": 7496.308,
+          "p99": 7730.744
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 35,
+        "direct": 35,
+        "report": 35,
+        "reviewed": 35,
+        "timers": 70
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-large-2": {
+      "CPU_core_pct": 90.7,
+      "actual_wall_s": 50.872,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 72748,
+        "read_timers": 12464,
+        "report": 1972,
+        "start": 1095,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 1
+      },
+      "errors": 2,
+      "fixture_rows": 100000,
+      "journal": "delete",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 68,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 35,
+      "peak_RSS_MiB": 293.2,
+      "process_write_MiB": 95.0,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 1229.8,
+          "n": 35,
+          "p50": 524.536,
+          "p95": 1195.353,
+          "p99": 1229.8
+        },
+        "driver_schedule_delay": {
+          "max": 2.592,
+          "n": 210,
+          "p50": 0.805,
+          "p95": 1.687,
+          "p99": 2.229
+        },
+        "read_timers": {
+          "max": 7573.754,
+          "n": 70,
+          "p50": 3951.625,
+          "p95": 7319.052,
+          "p99": 7573.754
+        },
+        "report": {
+          "max": 1219.678,
+          "n": 35,
+          "p50": 551.851,
+          "p95": 1201.014,
+          "p99": 1219.678
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 15283.015,
+          "n": 33,
+          "p50": 11420.221,
+          "p95": 14931.528,
+          "p99": 15283.015
+        },
+        "start": {
+          "max": 7588.77,
+          "n": 70,
+          "p50": 3935.257,
+          "p95": 7407.005,
+          "p99": 7588.77
+        },
+        "stop_commit": {
+          "max": 7626.974,
+          "n": 33,
+          "p50": 5181.376,
+          "p95": 7328.279,
+          "p99": 7626.974
+        },
+        "stop_direct": {
+          "max": 7125.39,
+          "n": 35,
+          "p50": 5918.825,
+          "p95": 7073.892,
+          "p99": 7125.39
+        },
+        "stop_preview": {
+          "max": 1029.629,
+          "n": 33,
+          "p50": 385.897,
+          "p95": 1026.744,
+          "p99": 1029.629
+        },
+        "stop_review": {
+          "max": 7329.373,
+          "n": 34,
+          "p50": 5921.311,
+          "p95": 7120.6,
+          "p99": 7329.373
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 35,
+        "direct": 35,
+        "report": 35,
+        "reviewed": 35,
+        "timers": 70
+      },
+      "shutdown": "regular",
+      "timers_left": 1,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-large-wal": {
+      "CPU_core_pct": 97.9,
+      "actual_wall_s": 34.43,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 70519,
+        "read_timers": 7593,
+        "report": 1973,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 100000,
+      "journal": "wal",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 50,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 25,
+      "peak_RSS_MiB": 262.4,
+      "process_write_MiB": 35.0,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 1545.781,
+          "n": 25,
+          "p50": 883.778,
+          "p95": 1508.383,
+          "p99": 1545.781
+        },
+        "driver_schedule_delay": {
+          "max": 2.198,
+          "n": 150,
+          "p50": 0.836,
+          "p95": 1.56,
+          "p99": 2.181
+        },
+        "read_timers": {
+          "max": 4820.35,
+          "n": 50,
+          "p50": 2259.534,
+          "p95": 4701.629,
+          "p99": 4820.35
+        },
+        "report": {
+          "max": 1320.822,
+          "n": 25,
+          "p50": 774.752,
+          "p95": 1230.26,
+          "p99": 1320.822
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 9810.954,
+          "n": 25,
+          "p50": 6656.083,
+          "p95": 9607.398,
+          "p99": 9810.954
+        },
+        "start": {
+          "max": 4847.242,
+          "n": 50,
+          "p50": 2568.868,
+          "p95": 4777.468,
+          "p99": 4847.242
+        },
+        "stop_commit": {
+          "max": 5045.264,
+          "n": 25,
+          "p50": 2994.725,
+          "p95": 5005.043,
+          "p99": 5045.264
+        },
+        "stop_direct": {
+          "max": 4879.483,
+          "n": 25,
+          "p50": 2635.301,
+          "p95": 4476.963,
+          "p99": 4879.483
+        },
+        "stop_preview": {
+          "max": 1808.897,
+          "n": 25,
+          "p50": 1284.261,
+          "p95": 1796.464,
+          "p99": 1808.897
+        },
+        "stop_review": {
+          "max": 4711.637,
+          "n": 25,
+          "p50": 2682.984,
+          "p95": 4530.549,
+          "p99": 4711.637
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 25,
+        "direct": 25,
+        "report": 25,
+        "reviewed": 25,
+        "timers": 50
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "everyday-wal-1": {
+      "CPU_core_pct": 51.1,
+      "actual_wall_s": 29.638,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 59574,
+        "read_timers": 1201,
+        "report": 1967,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 10000,
+      "journal": "wal",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 60,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 30,
+      "peak_RSS_MiB": 197.2,
+      "process_write_MiB": 42.0,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 568.936,
+          "n": 30,
+          "p50": 345.058,
+          "p95": 426.909,
+          "p99": 568.936
+        },
+        "driver_schedule_delay": {
+          "max": 4.725,
+          "n": 180,
+          "p50": 0.836,
+          "p95": 1.726,
+          "p99": 2.769
+        },
+        "read_timers": {
+          "max": 437.521,
+          "n": 60,
+          "p50": 84.875,
+          "p95": 294.836,
+          "p99": 437.521
+        },
+        "report": {
+          "max": 545.746,
+          "n": 30,
+          "p50": 333.95,
+          "p95": 369.152,
+          "p99": 545.746
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 290.147,
+          "n": 30,
+          "p50": 238.217,
+          "p95": 285.788,
+          "p99": 290.147
+        },
+        "start": {
+          "max": 476.202,
+          "n": 60,
+          "p50": 151.211,
+          "p95": 339.393,
+          "p99": 476.202
+        },
+        "stop_commit": {
+          "max": 92.304,
+          "n": 30,
+          "p50": 69.884,
+          "p95": 87.26,
+          "p99": 92.304
+        },
+        "stop_direct": {
+          "max": 284.513,
+          "n": 30,
+          "p50": 228.222,
+          "p95": 274.149,
+          "p99": 284.513
+        },
+        "stop_preview": {
+          "max": 64.306,
+          "n": 30,
+          "p50": 24.658,
+          "p95": 47.399,
+          "p99": 64.306
+        },
+        "stop_review": {
+          "max": 174.828,
+          "n": 30,
+          "p50": 140.784,
+          "p95": 168.341,
+          "p99": 174.828
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 30,
+        "direct": 30,
+        "report": 30,
+        "reviewed": 30,
+        "timers": 60
+      },
+      "shutdown": "regular",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "pilot": {
+      "CPU_core_pct": 98.6,
+      "actual_wall_s": 17.289,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 1158176,
+        "read_timers": 5341,
+        "report": 12296,
+        "start": 1089,
+        "stop_commit": 1396,
+        "stop_direct": 1396,
+        "stop_preview": 3686,
+        "stop_review": 1446
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 3,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 3
+      },
+      "errors": 6,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 5,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 2,
+      "peak_RSS_MiB": 272.5,
+      "process_write_MiB": 6.4,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 16263.714,
+          "n": 6,
+          "p50": 15156.444,
+          "p95": 16263.714,
+          "p99": 16263.714
+        },
+        "driver_schedule_delay": {
+          "max": 1.347,
+          "n": 26,
+          "p50": 0.868,
+          "p95": 1.294,
+          "p99": 1.347
+        },
+        "read_timers": {
+          "max": 16202.445,
+          "n": 4,
+          "p50": 15357.906,
+          "p95": 16202.445,
+          "p99": 16202.445
+        },
+        "report": {
+          "max": 13073.048,
+          "n": 5,
+          "p50": 10369.506,
+          "p95": 13073.048,
+          "p99": 13073.048
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 382.3,
+          "n": 2,
+          "p50": 364.934,
+          "p95": 382.3,
+          "p99": 382.3
+        },
+        "start": {
+          "max": 16234.476,
+          "n": 7,
+          "p50": 15790.186,
+          "p95": 16234.476,
+          "p99": 16234.476
+        },
+        "stop_commit": {
+          "max": 135.932,
+          "n": 2,
+          "p50": 91.938,
+          "p95": 135.932,
+          "p99": 135.932
+        },
+        "stop_direct": {
+          "max": 228.762,
+          "n": 3,
+          "p50": 210.291,
+          "p95": 228.762,
+          "p99": 228.762
+        },
+        "stop_preview": {
+          "max": 48.085,
+          "n": 2,
+          "p50": 36.97,
+          "p95": 48.085,
+          "p99": 48.085
+        },
+        "stop_review": {
+          "max": 224.589,
+          "n": 3,
+          "p50": 210.105,
+          "p95": 224.589,
+          "p99": 224.589
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 8,
+        "direct": 4,
+        "report": 6,
+        "reviewed": 4,
+        "timers": 4
+      },
+      "shutdown": "regular",
+      "timers_left": 3,
+      "unobserved_accepted_count": 0
+    },
+    "restart-everyday-large-wal": {
+      "CPU_core_pct": 98.5,
+      "actual_wall_s": 30.11,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 66768,
+        "read_timers": 9091,
+        "report": 1973,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 100000,
+      "journal": "wal",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 40,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 20,
+      "peak_RSS_MiB": 266.0,
+      "process_write_MiB": 22.6,
+      "profile_ms": {
+        "db_commit_ns": {
+          "max": 29.626,
+          "n": 210,
+          "p50": 4.809,
+          "p95": 19.281,
+          "p99": 26.601
+        },
+        "sqlite_cte_execute_ns": {
+          "max": 632.783,
+          "n": 63,
+          "p50": 216.909,
+          "p95": 569.703,
+          "p99": 632.783
+        },
+        "sqlite_writer_reservation_ns": {
+          "max": 16.084,
+          "n": 263,
+          "p50": 0.046,
+          "p95": 3.913,
+          "p99": 13.736
+        },
+        "timer_file_lock_access_ns": {
+          "max": 0.275,
+          "n": 158,
+          "p50": 0.178,
+          "p95": 0.249,
+          "p99": 0.272
+        },
+        "timer_json_write_ns": {
+          "max": 100.501,
+          "n": 210,
+          "p50": 22.682,
+          "p95": 60.715,
+          "p99": 82.408
+        },
+        "timer_process_lock_wait_ns": {
+          "max": 5440.102,
+          "n": 158,
+          "p50": 2393.478,
+          "p95": 5011.975,
+          "p99": 5322.463
+        }
+      },
+      "request_latency_ms": {
+        "agenda": {
+          "max": 1735.39,
+          "n": 20,
+          "p50": 909.785,
+          "p95": 1615.526,
+          "p99": 1735.39
+        },
+        "driver_schedule_delay": {
+          "max": 4.563,
+          "n": 120,
+          "p50": 0.905,
+          "p95": 1.722,
+          "p99": 2.344
+        },
+        "read_timers": {
+          "max": 5510.269,
+          "n": 40,
+          "p50": 3178.098,
+          "p95": 5067.319,
+          "p99": 5510.269
+        },
+        "report": {
+          "max": 1463.967,
+          "n": 20,
+          "p50": 836.543,
+          "p95": 1293.111,
+          "p99": 1463.967
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 10841.895,
+          "n": 20,
+          "p50": 7927.105,
+          "p95": 10108.562,
+          "p99": 10841.895
+        },
+        "start": {
+          "max": 5376.588,
+          "n": 40,
+          "p50": 2281.466,
+          "p95": 5238.757,
+          "p99": 5376.588
+        },
+        "stop_commit": {
+          "max": 5438.838,
+          "n": 20,
+          "p50": 3842.969,
+          "p95": 5351.796,
+          "p99": 5438.838
+        },
+        "stop_direct": {
+          "max": 5225.386,
+          "n": 20,
+          "p50": 3065.803,
+          "p95": 4735.848,
+          "p99": 5225.386
+        },
+        "stop_preview": {
+          "max": 2157.46,
+          "n": 20,
+          "p50": 1234.646,
+          "p95": 2119.857,
+          "p99": 2157.46
+        },
+        "stop_review": {
+          "max": 5496.31,
+          "n": 20,
+          "p50": 3044.1,
+          "p95": 4853.676,
+          "p99": 5496.31
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 20,
+        "direct": 20,
+        "report": 20,
+        "reviewed": 20,
+        "timers": 40
+      },
+      "shutdown": "terminated:0",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "restart-paced-delete": {
+      "CPU_core_pct": 97.4,
+      "actual_wall_s": 41.556,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 1158522,
+        "read_timers": 2477,
+        "report": 12296,
+        "start": 1089
+      },
+      "drops": {
+        "agenda_inflight_cap": 6,
+        "direct_inflight_cap": 5,
+        "report_inflight_cap": 10,
+        "reviewed_inflight_cap": 6,
+        "timers_inflight_cap": 15
+      },
+      "error_breakdown": {
+        "client wait timeout": 72,
+        "daemon Locked SQLAlchemy exceptions": 10,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 1
+      },
+      "errors": 83,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "wide-paced",
+      "ledger_exact_match": false,
+      "measured_rows": 2,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 24,
+      "peak_RSS_MiB": 303.7,
+      "process_write_MiB": 10.0,
+      "profile_ms": {
+        "db_commit_error_ns": {
+          "max": 5029.982,
+          "n": 2,
+          "p50": 5020.329,
+          "p95": 5029.982,
+          "p99": 5029.982
+        },
+        "db_commit_ns": {
+          "max": 5029.985,
+          "n": 92,
+          "p50": 4.544,
+          "p95": 3063.87,
+          "p99": 5029.985
+        },
+        "sqlite_cte_execute_ns": {
+          "max": 8310.775,
+          "n": 30,
+          "p50": 329.6,
+          "p95": 7153.87,
+          "p99": 8310.775
+        },
+        "sqlite_cte_execute_ns_error": {
+          "max": 7267.589,
+          "n": 5,
+          "p50": 5025.581,
+          "p95": 7267.589,
+          "p99": 7267.589
+        },
+        "sqlite_writer_reservation_ns": {
+          "max": 5.016,
+          "n": 102,
+          "p50": 0.055,
+          "p95": 0.699,
+          "p99": 1.933
+        },
+        "timer_file_lock_access_ns": {
+          "max": 0.282,
+          "n": 86,
+          "p50": 0.167,
+          "p95": 0.236,
+          "p99": 0.282
+        },
+        "timer_json_write_ns": {
+          "max": 26.178,
+          "n": 91,
+          "p50": 8.413,
+          "p95": 20.199,
+          "p99": 26.178
+        },
+        "timer_process_lock_wait_ns": {
+          "max": 31323.61,
+          "n": 86,
+          "p50": 15451.098,
+          "p95": 29914.9,
+          "p99": 31323.61
+        }
+      },
+      "request_latency_ms": {
+        "agenda": {
+          "max": 17813.396,
+          "n": 8,
+          "p50": 14847.433,
+          "p95": 17813.396,
+          "p99": 17813.396
+        },
+        "driver_schedule_delay": {
+          "max": 9.074,
+          "n": 102,
+          "p50": 0.77,
+          "p95": 2.09,
+          "p99": 4.037
+        },
+        "read_timers": {
+          "max": 17999.836,
+          "n": 4,
+          "p50": 14352.107,
+          "p95": 17999.836,
+          "p99": 17999.836
+        },
+        "report": {
+          "max": 17828.877,
+          "n": 7,
+          "p50": 15778.692,
+          "p95": 17828.877,
+          "p99": 17828.877
+        },
+        "start": {
+          "max": 14306.833,
+          "n": 3,
+          "p50": 4247.297,
+          "p95": 14306.833,
+          "p99": 14306.833
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 18,
+        "direct": 19,
+        "report": 14,
+        "reviewed": 18,
+        "timers": 33
+      },
+      "shutdown": "terminated:0",
+      "timers_left": 31,
+      "unobserved_accepted_count": 2
+    },
+    "restart-paced-wal": {
+      "CPU_core_pct": 92.0,
+      "actual_wall_s": 41.558,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "read_timers": 2960,
+        "report": 12294,
+        "start": 1089,
+        "stop_commit": 1396,
+        "stop_direct": 1396,
+        "stop_preview": 3686,
+        "stop_review": 1446
+      },
+      "drops": {
+        "agenda_inflight_cap": 10,
+        "direct_inflight_cap": 7,
+        "report_inflight_cap": 5,
+        "reviewed_inflight_cap": 9,
+        "timers_inflight_cap": 17
+      },
+      "error_breakdown": {
+        "client wait timeout": 78,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 3,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 2
+      },
+      "errors": 80,
+      "fixture_rows": 10000,
+      "journal": "wal",
+      "lane": "wide-paced",
+      "ledger_exact_match": true,
+      "measured_rows": 5,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 24,
+      "peak_RSS_MiB": 332.9,
+      "process_write_MiB": 1.5,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "driver_schedule_delay": {
+          "max": 2.167,
+          "n": 96,
+          "p50": 0.971,
+          "p95": 2.008,
+          "p99": 2.167
+        },
+        "read_timers": {
+          "max": 1926.666,
+          "n": 8,
+          "p50": 983.511,
+          "p95": 1926.666,
+          "p99": 1926.666
+        },
+        "report": {
+          "max": 16301.236,
+          "n": 4,
+          "p50": 15321.996,
+          "p95": 16301.236,
+          "p99": 16301.236
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 455.748,
+          "n": 1,
+          "p50": 455.748,
+          "p95": 455.748,
+          "p99": 455.748
+        },
+        "start": {
+          "max": 4701.991,
+          "n": 10,
+          "p50": 949.096,
+          "p95": 4701.991,
+          "p99": 4701.991
+        },
+        "stop_commit": {
+          "max": 177.62,
+          "n": 1,
+          "p50": 177.62,
+          "p95": 177.62,
+          "p99": 177.62
+        },
+        "stop_direct": {
+          "max": 2941.514,
+          "n": 4,
+          "p50": 1161.946,
+          "p95": 2941.514,
+          "p99": 2941.514
+        },
+        "stop_preview": {
+          "max": 8954.504,
+          "n": 2,
+          "p50": 75.269,
+          "p95": 8954.504,
+          "p99": 8954.504
+        },
+        "stop_review": {
+          "max": 5487.29,
+          "n": 4,
+          "p50": 758.726,
+          "p95": 5487.29,
+          "p99": 5487.29
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 14,
+        "direct": 17,
+        "report": 19,
+        "reviewed": 15,
+        "timers": 31
+      },
+      "shutdown": "forced_termination_after_shutdown_timeout:-9",
+      "timers_left": null,
+      "unobserved_accepted_count": 0
+    },
+    "restart-read-only": {
+      "CPU_core_pct": 100.0,
+      "actual_wall_s": 25.756,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "report": 12295
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 56,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 8,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 56,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "wide-reads",
+      "ledger_exact_match": true,
+      "measured_rows": 0,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 8,
+      "peak_RSS_MiB": 300.3,
+      "process_write_MiB": 0.0,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "driver_schedule_delay": {
+          "max": 2.063,
+          "n": 56,
+          "p50": 0.936,
+          "p95": 1.946,
+          "p99": 2.063
+        },
+        "report": {
+          "max": 11747.25,
+          "n": 1,
+          "p50": 11747.25,
+          "p95": 11747.25,
+          "p99": 11747.25
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 32,
+        "report": 24
+      },
+      "shutdown": "forced_termination_after_shutdown_timeout:-9",
+      "timers_left": null,
+      "unobserved_accepted_count": 0
+    },
+    "restart-wide-delete": {
+      "CPU_core_pct": 99.9,
+      "actual_wall_s": 23.005,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "agenda": 1158176,
+        "read_timers": 2216,
+        "report": 12295,
+        "start": 1089
+      },
+      "drops": {
+        "agenda_inflight_cap": 12,
+        "direct_inflight_cap": 5,
+        "report_inflight_cap": 9,
+        "reviewed_inflight_cap": 6,
+        "timers_inflight_cap": 6
+      },
+      "error_breakdown": {
+        "client wait timeout": 62,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 1,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 2
+      },
+      "errors": 64,
+      "fixture_rows": 10000,
+      "journal": "delete",
+      "lane": "wide",
+      "ledger_exact_match": true,
+      "measured_rows": 0,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 8,
+      "peak_RSS_MiB": 292.2,
+      "process_write_MiB": 0.6,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 1968.175,
+          "n": 1,
+          "p50": 1968.175,
+          "p95": 1968.175,
+          "p99": 1968.175
+        },
+        "driver_schedule_delay": {
+          "max": 14.391,
+          "n": 66,
+          "p50": 0.867,
+          "p95": 2.196,
+          "p99": 14.391
+        },
+        "read_timers": {
+          "max": 1986.571,
+          "n": 1,
+          "p50": 1986.571,
+          "p95": 1986.571,
+          "p99": 1986.571
+        },
+        "report": {
+          "max": 13939.501,
+          "n": 1,
+          "p50": 13939.501,
+          "p95": 13939.501,
+          "p99": 13939.501
+        },
+        "start": {
+          "max": 2020.772,
+          "n": 2,
+          "p50": 34.289,
+          "p95": 2020.772,
+          "p99": 2020.772
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 20,
+        "direct": 11,
+        "report": 15,
+        "reviewed": 10,
+        "timers": 10
+      },
+      "shutdown": "forced_termination_after_shutdown_timeout:-9",
+      "timers_left": null,
+      "unobserved_accepted_count": 0
+    },
+    "restart-wide-wal": {
+      "CPU_core_pct": 99.9,
+      "actual_wall_s": 23.113,
+      "affinity": "2",
+      "avg_payload_bytes": {
+        "read_timers": 2215,
+        "start": 1089,
+        "stop_commit": 1396,
+        "stop_direct": 1396,
+        "stop_preview": 3686,
+        "stop_review": 1446
+      },
+      "drops": {
+        "agenda_inflight_cap": 12,
+        "direct_inflight_cap": 5,
+        "report_inflight_cap": 9,
+        "reviewed_inflight_cap": 5,
+        "timers_inflight_cap": 6
+      },
+      "error_breakdown": {
+        "client wait timeout": 65,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 3,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 65,
+      "fixture_rows": 10000,
+      "journal": "wal",
+      "lane": "wide",
+      "ledger_exact_match": false,
+      "measured_rows": 3,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 8,
+      "peak_RSS_MiB": 298.1,
+      "process_write_MiB": 0.5,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "driver_schedule_delay": {
+          "max": 2.372,
+          "n": 67,
+          "p50": 0.962,
+          "p95": 1.844,
+          "p99": 2.372
+        },
+        "read_timers": {
+          "max": 56.667,
+          "n": 1,
+          "p50": 56.667,
+          "p95": 56.667,
+          "p99": 56.667
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 1134.266,
+          "n": 1,
+          "p50": 1134.266,
+          "p95": 1134.266,
+          "p99": 1134.266
+        },
+        "start": {
+          "max": 4082.393,
+          "n": 5,
+          "p50": 1523.756,
+          "p95": 4082.393,
+          "p99": 4082.393
+        },
+        "stop_commit": {
+          "max": 875.987,
+          "n": 1,
+          "p50": 875.987,
+          "p95": 875.987,
+          "p99": 875.987
+        },
+        "stop_direct": {
+          "max": 157.897,
+          "n": 1,
+          "p50": 157.897,
+          "p95": 157.897,
+          "p99": 157.897
+        },
+        "stop_preview": {
+          "max": 99.654,
+          "n": 1,
+          "p50": 99.654,
+          "p95": 99.654,
+          "p99": 99.654
+        },
+        "stop_review": {
+          "max": 158.318,
+          "n": 1,
+          "p50": 158.318,
+          "p95": 158.318,
+          "p99": 158.318
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 20,
+        "direct": 11,
+        "report": 15,
+        "reviewed": 11,
+        "timers": 10
+      },
+      "shutdown": "forced_termination_after_shutdown_timeout:-9",
+      "timers_left": null,
+      "unobserved_accepted_count": 1
+    },
+    "two-core-large-wal": {
+      "CPU_core_pct": 144.0,
+      "actual_wall_s": 25.424,
+      "affinity": "2,3",
+      "avg_payload_bytes": {
+        "agenda": 74220,
+        "read_timers": 2176,
+        "report": 1973,
+        "start": 1090,
+        "stop_commit": 1397,
+        "stop_direct": 1397,
+        "stop_preview": 3687,
+        "stop_review": 1447
+      },
+      "drops": {},
+      "error_breakdown": {
+        "client wait timeout": 0,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 0,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 0,
+      "fixture_rows": 100000,
+      "journal": "wal",
+      "lane": "mixed",
+      "ledger_exact_match": true,
+      "measured_rows": 50,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 25,
+      "peak_RSS_MiB": 202.0,
+      "process_write_MiB": 33.5,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "agenda": {
+          "max": 613.098,
+          "n": 25,
+          "p50": 455.97,
+          "p95": 593.479,
+          "p99": 613.098
+        },
+        "driver_schedule_delay": {
+          "max": 4.221,
+          "n": 150,
+          "p50": 0.91,
+          "p95": 1.935,
+          "p99": 3.357
+        },
+        "read_timers": {
+          "max": 614.795,
+          "n": 50,
+          "p50": 151.192,
+          "p95": 572.766,
+          "p99": 614.795
+        },
+        "report": {
+          "max": 523.113,
+          "n": 25,
+          "p50": 404.098,
+          "p95": 498.94,
+          "p99": 523.113
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 1750.691,
+          "n": 25,
+          "p50": 1160.629,
+          "p95": 1749.98,
+          "p99": 1750.691
+        },
+        "start": {
+          "max": 606.673,
+          "n": 50,
+          "p50": 137.87,
+          "p95": 562.915,
+          "p99": 606.673
+        },
+        "stop_commit": {
+          "max": 678.358,
+          "n": 25,
+          "p50": 529.898,
+          "p95": 667.113,
+          "p99": 678.358
+        },
+        "stop_direct": {
+          "max": 690.085,
+          "n": 25,
+          "p50": 156.784,
+          "p95": 614.165,
+          "p99": 690.085
+        },
+        "stop_preview": {
+          "max": 553.017,
+          "n": 25,
+          "p50": 411.686,
+          "p95": 535.938,
+          "p99": 553.017
+        },
+        "stop_review": {
+          "max": 656.087,
+          "n": 25,
+          "p50": 165.817,
+          "p95": 614.452,
+          "p99": 656.087
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 25,
+        "direct": 25,
+        "report": 25,
+        "reviewed": 25,
+        "timers": 50
+      },
+      "shutdown": "terminated:-15",
+      "timers_left": 0,
+      "unobserved_accepted_count": 0
+    },
+    "two-core-wide-wal": {
+      "CPU_core_pct": 134.8,
+      "actual_wall_s": 28.273,
+      "affinity": "2,3",
+      "avg_payload_bytes": {
+        "read_timers": 2216,
+        "report": 12296,
+        "start": 1089,
+        "stop_commit": 1396,
+        "stop_direct": 1396,
+        "stop_preview": 3686,
+        "stop_review": 1446
+      },
+      "drops": {
+        "agenda_inflight_cap": 19,
+        "direct_inflight_cap": 9,
+        "report_inflight_cap": 14,
+        "reviewed_inflight_cap": 9,
+        "timers_inflight_cap": 10
+      },
+      "error_breakdown": {
+        "client wait timeout": 63,
+        "daemon Locked SQLAlchemy exceptions": 0,
+        "daemon pool timeout exceptions": 6,
+        "database is locked": 0,
+        "pool timeout": 0,
+        "reconciliation_required": 0
+      },
+      "errors": 63,
+      "fixture_rows": 10000,
+      "journal": "wal",
+      "lane": "wide",
+      "ledger_exact_match": false,
+      "measured_rows": 4,
+      "missing_acknowledged_count": 0,
+      "offer_seconds": 10,
+      "peak_RSS_MiB": 318.0,
+      "process_write_MiB": 0.8,
+      "profile_ms": null,
+      "request_latency_ms": {
+        "driver_schedule_delay": {
+          "max": 4.548,
+          "n": 69,
+          "p50": 0.855,
+          "p95": 2.211,
+          "p99": 4.548
+        },
+        "read_timers": {
+          "max": 438.491,
+          "n": 2,
+          "p50": 30.448,
+          "p95": 438.491,
+          "p99": 438.491
+        },
+        "report": {
+          "max": 9784.912,
+          "n": 2,
+          "p50": 9453.099,
+          "p95": 9784.912,
+          "p99": 9784.912
+        },
+        "reviewed_stop_end_to_end": {
+          "max": 309.423,
+          "n": 1,
+          "p50": 309.423,
+          "p95": 309.423,
+          "p99": 309.423
+        },
+        "start": {
+          "max": 1471.893,
+          "n": 6,
+          "p50": 348.588,
+          "p95": 1471.893,
+          "p99": 1471.893
+        },
+        "stop_commit": {
+          "max": 157.434,
+          "n": 1,
+          "p50": 157.434,
+          "p95": 157.434,
+          "p99": 157.434
+        },
+        "stop_direct": {
+          "max": 429.237,
+          "n": 2,
+          "p50": 90.632,
+          "p95": 429.237,
+          "p99": 429.237
+        },
+        "stop_preview": {
+          "max": 49.666,
+          "n": 1,
+          "p50": 49.666,
+          "p95": 49.666,
+          "p99": 49.666
+        },
+        "stop_review": {
+          "max": 9253.701,
+          "n": 2,
+          "p50": 101.92,
+          "p95": 9253.701,
+          "p99": 9253.701
+        }
+      },
+      "requests_scheduled": {
+        "agenda": 21,
+        "direct": 11,
+        "report": 16,
+        "reviewed": 11,
+        "timers": 10
+      },
+      "shutdown": "forced_termination_after_shutdown_timeout:-9",
+      "timers_left": null,
+      "unobserved_accepted_count": 1
+    }
+  }
+}
