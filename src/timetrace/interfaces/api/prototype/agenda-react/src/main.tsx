@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './style.css';
+import { TaskLauncher } from './task-launcher';
 import {
   activities,
   ActivityPicker,
@@ -55,7 +56,13 @@ function App() {
   const [draft, setDraft] = useState<Plan | null>(null);
   const [extraInspector, setExtraInspector] = useState<'manual' | RecordedInterval | null>(null);
   const [formError, setFormError] = useState('');
-  const [task, setTask] = useState(tasks[0]);
+  const [task, setTask] = useState(unassigned);
+  const [timerMessage, setTimerMessage] = useState('');
+  const [dialog, setDialog] = useState<'help' | 'adjust' | 'pause' | 'edit' | 'discard' | -5 | 5 | null>(
+    null,
+  );
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const quickAllowed = useRef(false);
   const [online, setOnline] = useState(true);
   const [running, setRunning] = useState<Omit<Interval, 'end'> | null>(null);
   const [pending, setPending] = useState<Interval | null>(null);
@@ -84,9 +91,14 @@ function App() {
   }, [inspectorKey, variant]);
 
   useEffect(() => {
+    if (dialog !== null && !dialogRef.current?.open) dialogRef.current?.showModal();
+  }, [dialog]);
+
+  useEffect(() => {
     function keys(event: KeyboardEvent) {
       if (
         !import.meta.env.DEV ||
+        dialogRef.current?.open ||
         event.altKey ||
         event.metaKey ||
         event.ctrlKey ||
@@ -149,6 +161,7 @@ function App() {
     setTask(title);
     setPanel('work');
     setEntryNote('');
+    setTimerMessage('');
     setRunning({ task: title, start: Date.now() });
     setNotice(online ? 'Timer started in the demo.' : 'Timer started on this device in the demo.');
   }
@@ -190,26 +203,77 @@ function App() {
     setNotice('Choice synced in the demo. Only the selected interval is counted.');
   }
 
+  function applyQuickAdjustment(delta: -5 | 5) {
+    if (!running) return;
+    const start = running.start - delta * 60_000;
+    if (start >= Date.now()) {
+      setTimerMessage('Cannot remove five minutes: the current interval is shorter. No time changed.');
+      return;
+    }
+    setRunning({ ...running, start });
+    setTimerMessage(
+      delta === 5
+        ? 'Added five minutes to this demo interval.'
+        : 'Removed five minutes from this demo interval.',
+    );
+  }
+  function requestQuickAdjustment(delta: -5 | 5) {
+    if (!quickAllowed.current) setDialog(delta);
+    else applyQuickAdjustment(delta);
+  }
+  function closeDialog() {
+    dialogRef.current?.close();
+    setDialog(null);
+  }
+
   const timer = (
     <section className="card timer" aria-labelledby="timer-title">
       <p className="eyebrow">Recorded work</p>
-      <h2 id="timer-title">{running ? 'Timer running' : 'Timer'}</h2>
-      {running && (variant !== 'C' || panel === 'work') ? (
-        <Clock key={running.start} start={running.start} />
-      ) : (
-        <p className="clock">00:00:00</p>
-      )}
+      <h2 id="timer-title">
+        {running
+          ? running.task === unassigned
+            ? 'Unassigned recording'
+            : running.task
+          : 'Current timer'}
+      </h2>
       {running ? (
-        <p>{running.task}</p>
+        <div className="timer-clock-row">
+          <button
+            className="quick-step"
+            aria-label="Remove five minutes"
+            onClick={() => requestQuickAdjustment(-5)}
+          >
+            −5
+          </button>
+          {(variant !== 'C' || panel === 'work') && <Clock key={running.start} start={running.start} />}
+          <button
+            className="quick-step"
+            aria-label="Add five minutes"
+            onClick={() => requestQuickAdjustment(5)}
+          >
+            +5
+          </button>
+        </div>
       ) : (
-        <label>
-          Task
-          <select value={task} onChange={(e) => setTask(e.target.value)}>
-            {[...tasks, unassigned].map((name) => (
-              <option key={name}>{name}</option>
-            ))}
-          </select>
-        </label>
+        <p className="hint">Choose an activity above or start unassigned recording.</p>
+      )}
+      {running && (
+        <div className="button-row timer-actions">
+          {running.task !== unassigned && <button onClick={() => setDialog('edit')}>Edit task</button>}
+          <button onClick={() => setDialog('adjust')}>Adjust time</button>
+          <button onClick={() => setDialog('pause')}>Pause</button>
+          <button className="primary" onClick={stop}>
+            Stop &amp; record
+          </button>
+          <button className="subtle danger" onClick={() => setDialog('discard')}>
+            Discard timer
+          </button>
+        </div>
+      )}
+      {timerMessage && (
+        <p className="timer-message" role="status">
+          {timerMessage}
+        </p>
       )}
       {running && (
         <details className="tool-details">
@@ -224,15 +288,6 @@ function App() {
           </label>
           <p className="hint">Stop includes this note in the simulated recorded interval.</p>
         </details>
-      )}
-      {running ? (
-        <button className="primary" onClick={stop}>
-          Stop timer
-        </button>
-      ) : (
-        <button className="primary" disabled={pending !== null} onClick={() => start(task)}>
-          Start timer
-        </button>
       )}
       {pending && (
         <p className="hint">
@@ -471,6 +526,7 @@ function App() {
             Synthetic data only. Connection and saving are simulated; reload resets the preview.
           </p>
         </div>
+        <TaskLauncher selected={task} canStart={!running && !pending} choose={setTask} start={start} />
         {variant === 'D' && (
           <div className="familiar">
             <div className="familiar-timer">
@@ -489,20 +545,16 @@ function App() {
                   />
                 </label>
               </div>
-              <div className="button-row">
+              <div className="button-row activity-actions">
                 <button className="primary" onClick={(event) => addPlan(event.currentTarget)}>
                   + Plan session
                 </button>
                 <button onClick={(event) => openInspector('manual', event.currentTarget)}>
                   Add recorded work
                 </button>
-                <details className="activity-help">
-                  <summary>Shortcuts &amp; help</summary>
-                  <p className="hint">
-                    Use Start and Stop to time work. Plan session sets aside time; Add recorded work
-                    saves past work instead. Desktop shortcuts are illustrated in Timer tools.
-                  </p>
-                </details>
+                <button className="subtle" onClick={() => setDialog('help')}>
+                  Shortcuts &amp; help
+                </button>
               </div>
             </section>
             {discovery}
@@ -609,6 +661,63 @@ function App() {
           {notice}
         </p>
       </main>
+      <dialog ref={dialogRef} aria-labelledby="preview-dialog-title" onClose={() => setDialog(null)}>
+        <h2 id="preview-dialog-title">
+          {dialog === 'help'
+            ? 'Shortcuts & recording help'
+            : dialog === 'discard'
+              ? 'Discard this timer?'
+              : dialog === 'pause'
+                ? 'Pause / Resume'
+                : dialog === 'edit'
+                  ? 'Edit task'
+                  : dialog === 'adjust'
+                    ? 'Adjust time'
+                    : 'Enable quick five-minute adjustments?'}
+        </h2>
+        <p>
+          {dialog === 'help'
+            ? 'Type in Task to time to find an activity. Use the arrow keys to highlight a result, then Enter to start it. Plan session sets aside time; Add recorded work saves past work instead.'
+            : dialog === 'discard'
+              ? 'This removes the current demo timer without recording work. Previously saved intervals stay unchanged.'
+              : dialog === 'pause'
+                ? 'In the existing app Pause holds this timer without saving it; Resume continues the same timer. This preview shows placement only.'
+                : dialog === 'edit'
+                  ? 'The existing app opens the assigned task editor here. Editing the task is not wired in this preview.'
+                  : dialog === 'adjust'
+                    ? 'The existing app lets you preview exact changes to tracked intervals before applying them. This preview shows placement only.'
+                    : '+5 moves the start earlier and −5 moves it later. This changes recorded time, not your plan. A change that would leave no valid interval is refused.'}
+        </p>
+        <div className="button-row control-row">
+          <button autoFocus onClick={closeDialog}>
+            {typeof dialog === 'number' || dialog === 'discard' ? 'Cancel' : 'Close'}
+          </button>
+          {typeof dialog === 'number' && (
+            <button
+              className="primary"
+              onClick={() => {
+                quickAllowed.current = true;
+                applyQuickAdjustment(dialog);
+                closeDialog();
+              }}
+            >
+              Enable and apply
+            </button>
+          )}
+          {dialog === 'discard' && (
+            <button
+              className="danger"
+              onClick={() => {
+                setRunning(null);
+                setTimerMessage('Demo timer discarded. No work recorded.');
+                closeDialog();
+              }}
+            >
+              Discard unsaved time
+            </button>
+          )}
+        </div>
+      </dialog>
       {import.meta.env.DEV && (
         <nav className="switcher" aria-label="Prototype layout">
           <button aria-label="Previous layout" onClick={() => cycle(-1)}>

@@ -31,7 +31,9 @@ The preview does **not** deploy TimeTrace.
 
 1. Edit a scheduled session or add another one. Pick a task, enter the date and times with the
    browser controls, then Save. No drag gesture is required. The plan stays separate from work.
-2. Pick a task in the Timer panel and Start. Toggle **Simulate connection loss**. Stop: the
+2. Type a task name in **Task to time** at the top. Pick a match, or use the arrow keys and
+   Enter. Once running, try **+5** and **−5** beside the clock. Toggle **Simulate connection loss**
+   and use **Stop & record**: the
    original timestamps show under **Saved on this device · Stop pending sync**. Reconnect
    without a collision and the same interval becomes Synced.
 3. Repeat, then choose **Reconnect with overlap**. Compare the phone and laptop intervals and
@@ -48,11 +50,12 @@ The preview does **not** deploy TimeTrace.
 
 ### Designed vs. wired
 
-Activity selection, pins, plan editing, Start/Stop, Entry notes, manual recording, basic ledger
+Activity selection, pins, plan editing, Start/Stop, quick ±5, timer discard, Entry notes, manual recording, basic ledger
 filters and export **preview** work in memory. Plan details show original vs. current times.
 Expanding **Timer tools**, **Plan details & actions**, and a history row shows where the existing
 advanced tools go: switching timers, pause/resume, correction/discard, idle/focus, assignment,
-plan extension, Delete everything/Squeeze, and saved-work editing. Those actions, goal totals,
+plan extension, Delete everything/Squeeze, and saved-work editing. Apart from the simulated
+quick steps and discard, the advanced actions, goal totals,
 actual export copying/downloading, and server error recovery are illustrations or not wired;
 the prototype does not attempt the production Agenda's exact policy or report math.
 

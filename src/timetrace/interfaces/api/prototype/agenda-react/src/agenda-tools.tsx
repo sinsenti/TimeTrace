@@ -498,7 +498,7 @@ export function TimerTools() {
   return (
     <details className="tool-details">
       <summary>Timer tools &amp; unfinished timers</summary>
-      <p className="hint">Illustrations only. Start and Stop above are interactive.</p>
+      <p className="hint">The examples below show placement only. Start, Stop, ±5 and Discard work with demo data.</p>
       <details className="tool-details">
         <summary>Switch timers · Pause / Resume</summary>
         <p>

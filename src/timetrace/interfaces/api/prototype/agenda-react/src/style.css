@@ -4,14 +4,18 @@
 
 :root {
   font-family: system-ui, sans-serif;
-  color: #192e2a;
-  background: #eef2ed;
+  /* Refined Archive defaults from the app's shared appearance.css. */
+  color: #29342e;
+  background: #f5f7f6;
   line-height: 1.5;
   font-synthesis: none;
-  --border: #c9d8d0;
-  --ink: #123c34;
-  --muted: #47605a;
-  --accent: #206454;
+  --border: #dce3de;
+  --border-strong: #7b897f;
+  --ink: #29342e;
+  --muted: #526158;
+  --accent: #456b55;
+  --accent-soft: #e8f0e9;
+  --focus: #3c6750;
   --paper: #fff;
 }
 * {
@@ -38,8 +42,9 @@ h2 {
   margin: auto;
 }
 header {
-  background: var(--ink);
-  color: white;
+  background: var(--paper);
+  border-bottom: 1px solid var(--border);
+  color: var(--ink);
 }
 .masthead {
   display: flex;
@@ -55,14 +60,12 @@ header {
   text-transform: uppercase;
   color: var(--muted);
 }
-header .eyebrow {
-  color: #c6e3d9;
-}
 .tag {
   padding: 0.35rem 0.65rem;
   border-radius: 2rem;
   white-space: nowrap;
-  background: #d9eee5;
+  background: #f3f5f3;
+  border: 1px solid var(--border);
   color: var(--ink);
   font-size: 0.82rem;
   font-weight: 750;
@@ -117,7 +120,7 @@ button {
   cursor: pointer;
 }
 button:hover:enabled {
-  background: #e5f0ea;
+  background: var(--accent-soft);
 }
 button.primary,
 button[aria-pressed='true'] {
@@ -134,7 +137,7 @@ button:disabled {
   cursor: not-allowed;
 }
 :focus-visible {
-  outline: 3px solid #aa4a00;
+  outline: 3px solid var(--focus);
   outline-offset: 3px;
 }
 label {
@@ -426,9 +429,10 @@ textarea {
   display: flex;
   flex-wrap: wrap;
   justify-content: space-between;
-  align-items: start;
-  gap: 0.85rem;
-  padding: 0.5rem 0;
+  align-items: center;
+  gap: 0.65rem 0.85rem;
+  padding: 0.55rem 0 0.8rem;
+  border-bottom: 1px solid var(--border);
 }
 .activity-context {
   display: flex;
@@ -439,8 +443,104 @@ textarea {
 .activity-context input {
   max-width: 13rem;
 }
-.activity-help {
-  max-width: 24rem;
+.activity-context h2 {
+  margin: 0;
+}
+.activity-context label {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  white-space: nowrap;
+}
+.activity-actions {
+  align-items: center;
+}
+.activity-actions button {
+  white-space: nowrap;
+}
+.subtle {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+.danger {
+  color: #8d2c22;
+}
+.task-launcher {
+  margin-bottom: 0.85rem;
+}
+.launcher-row {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.launcher-field {
+  flex: 1 1 15rem;
+  min-width: 0;
+  position: relative;
+}
+.launcher-field ul {
+  position: absolute;
+  z-index: 3;
+  inset: 100% 0 auto;
+  list-style: none;
+  margin: 0.26rem 0;
+  padding: 0.2rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  background: var(--paper);
+  box-shadow: 0 4px 14px #29342e24;
+}
+.launcher-field li {
+  padding: 0.58rem 0.64rem;
+  min-height: 44px;
+  cursor: pointer;
+  border-radius: 0.35rem;
+}
+.launcher-field li[aria-selected='true'],
+.launcher-field li:hover {
+  background: var(--accent-soft);
+}
+.timer-clock-row {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.45rem, 2vw, 0.8rem);
+  margin: 0.4rem 0 0.65rem;
+}
+.timer-clock-row .clock {
+  margin: 0;
+}
+.quick-step {
+  min-width: 44px;
+  border-radius: 50%;
+  font-variant-numeric: tabular-nums;
+  padding-inline: 0.4rem;
+}
+.timer-message {
+  margin-top: 0.5rem;
+  color: var(--muted);
+}
+dialog {
+  width: min(32rem, calc(100% - 2rem));
+  max-height: calc(100% - 2rem);
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--border-strong);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+}
+dialog::backdrop {
+  background: #20262170;
+}
+@media (max-width: 44rem) {
+  .activity-context {
+    flex: 1 1 100%;
+    justify-content: space-between;
+  }
+  .activity-actions button {
+    font-size: 0.85rem;
+  }
 }
 .ledger-entry {
   text-align: left;
