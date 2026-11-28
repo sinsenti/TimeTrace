@@ -37,8 +37,10 @@ Shared working instructions for coding assistants in this repository.
 2. Trace the affected slice: JS/template or CLI → router/schema → service → core/model. Check other
    callers before changing a shared contract. Keep fixes scoped; do not bundle unrelated cleanup.
 3. Add regression tests for behavior changes unless the user explicitly requests a manual-only
-   change. Run focused tests during development and the full suite before reporting code changes;
-   report exactly what passed, failed, or was not run. Separate pre-existing failures from new ones.
+   change. Run focused tests during implementation. Run the full suite on the final revision before
+   merge, not after every implementation pass or ticket handoff. Run it earlier for shared code or
+   migration changes. This timing also applies when a skill asks for an end-of-implementation run.
+   Report what passed, failed, or was not run; distinguish pre-existing failures from new ones.
 4. Update the relevant documentation when behavior, commands, or architectural constraints change.
    Keep this file short and durable; put detailed maps/runbooks in `docs/`, not another history here.
 5. Execute the invoked skill's normal commit, branch/worktree, delegation, merge, publication and
@@ -53,7 +55,7 @@ Python **3.14**, managed with `uv`; there is no frontend build step.
 
 ```bash
 uv sync
-uv run python -P -m pytest -q -n 4 --dist=worksteal tests/
+uv run python -P -m pytest -q -n 2 --dist=worksteal tests/  # local full suite
 uv run ruff check .
 uv run ruff check --fix path/to/changed.py
 uv run ruff format path/to/changed.py

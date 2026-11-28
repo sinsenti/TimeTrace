@@ -35,16 +35,14 @@ style; don't introduce a build step or a dependency.
 
 Add a focused regression test for each behavior change unless the user explicitly requests a
 manual-only change. Use the existing `tests/` suite; do not bootstrap another suite or add test
-dependencies. Run focused tests during development and the full suite before reporting code changes
-with `uv run python -P -m pytest -q` (`-P` avoids the repository-root `copy.py` shadowing the
-standard library). Keep manual browser acceptance checks for behavior the Python suite cannot cover;
+dependencies. Keep manual browser acceptance checks for behavior the Python suite cannot cover;
 there is no browser harness, and adding one requires a separate justification. Use fake AI models and
 gateways, never live providers or personal data in automated tests.
 
 ## Definition of done
 
-1. Run focused regression tests during development and `uv run python -P -m pytest -q` before
-   reporting code changes. Use `-P` because the root `copy.py` shadows the standard library.
+1. Run focused regression tests during development and follow `AGENTS.md` for full-suite timing.
+   Use the test commands in `docs/development.md#testing-and-checks`.
 2. Run scoped Ruff checks/formatting on changed Python files; avoid rewriting unrelated files.
 3. If you changed JS: `node --check <file>` on each file you touched.
 4. If you changed models: a migration exists, and it applies cleanly to a **copy** of a real DB.

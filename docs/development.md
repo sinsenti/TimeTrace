@@ -635,13 +635,16 @@ not the latest suite count. Use the [shared delivery summary](../specs/README.md
 for current integrated receipts. "No browser test suite" means no installed automatic browser suite;
 tracked manual/native probes and their bounded execution evidence exist as described above.
 
-Run the full Python suite with four workers. Work stealing balances fast tests against slow
-subprocess and migration tests. Use the serial command for debugging or constrained runners.
-The `-P` safe-path option prevents the repository-root `copy.py` from shadowing the standard library.
+Follow [AGENTS.md](../AGENTS.md#working-agreement) for when to run the full suite. Use two workers
+locally by default, or run serially if CPU contention is still a problem. Use four workers in CI or
+when the local machine is idle. Work stealing balances fast tests against slow subprocess and
+migration tests. The `-P` safe-path option prevents the repository-root `copy.py` from shadowing
+the standard library.
 
 ```bash
-uv run python -P -m pytest -q -n 4 --dist=worksteal tests/  # standard full suite
-uv run python -P -m pytest -q -n 0 tests/                 # serial full suite
+uv run python -P -m pytest -q -n 2 --dist=worksteal tests/  # local default
+uv run python -P -m pytest -q -n 0 tests/                  # serial fallback
+uv run python -P -m pytest -q -n 4 --dist=worksteal tests/  # CI or idle machine
 ```
 
 Focused invocations stay serial by default. Keep parametrized values and order deterministic
